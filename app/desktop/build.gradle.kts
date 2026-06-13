@@ -65,7 +65,7 @@ compose.desktop {
             packageVersion = "1.0.0"
             description = "JetaProg IDE - Modern Cross-Platform IDE"
             vendor = "Aleksandr Pavlov"
-            copyright = "Copyright (c) 2026 Aleksandr Pavlov <ckidoz@gmail.com>. MIT License."
+            licenseFile.set(project.file("LICENSE"))
 
             macOS {
                 bundleID = "su.kidoz.jetaprog"
