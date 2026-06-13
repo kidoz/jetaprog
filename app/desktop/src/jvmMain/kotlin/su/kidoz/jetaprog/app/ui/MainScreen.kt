@@ -181,6 +181,7 @@ private fun MainScreenContent(
     coroutineScope: kotlinx.coroutines.CoroutineScope,
 ) {
     val editorState by session.editorViewModel.state.collectAsState()
+    val editorSettings by session.editorViewModel.settings.collectAsState()
     val terminalState by session.terminalViewModel.state.collectAsState()
     val gradleState by session.gradleViewModel.state.collectAsState()
     val configurationState by session.configurationViewModel.state.collectAsState()
@@ -467,9 +468,45 @@ private fun MainScreenContent(
                                             EditorIntent.MoveCursor(position),
                                         )
                                     },
+                                    onHoverRequest = { position ->
+                                        session.editorViewModel.dispatch(
+                                            EditorIntent.RequestHover(position),
+                                        )
+                                    },
+                                    onHoverDismiss = {
+                                        session.editorViewModel.dispatch(EditorIntent.DismissHover)
+                                    },
+                                    onSignatureHelpRequest = { triggerChar ->
+                                        session.editorViewModel.dispatch(
+                                            EditorIntent.RequestSignatureHelp(
+                                                triggerCharacter = triggerChar,
+                                                isRetrigger = false,
+                                            ),
+                                        )
+                                    },
+                                    onSignatureHelpNextSignature = {
+                                        session.editorViewModel.dispatch(EditorIntent.NextSignature)
+                                    },
+                                    onSignatureHelpPreviousSignature = {
+                                        session.editorViewModel.dispatch(EditorIntent.PreviousSignature)
+                                    },
+                                    onSignatureHelpDismiss = {
+                                        session.editorViewModel.dispatch(
+                                            EditorIntent.DismissSignatureHelp,
+                                        )
+                                    },
                                     onFormatDocument = {
                                         session.editorViewModel.dispatch(EditorIntent.FormatDocument)
                                     },
+                                    onIntent = { intent ->
+                                        session.editorViewModel.dispatch(intent)
+                                    },
+                                    indentUnit =
+                                        if (editorSettings.editor.useTabs) {
+                                            "\t"
+                                        } else {
+                                            " ".repeat(editorSettings.editor.tabSize)
+                                        },
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }

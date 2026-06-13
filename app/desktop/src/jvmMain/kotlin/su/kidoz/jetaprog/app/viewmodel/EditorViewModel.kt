@@ -13,17 +13,21 @@ import su.kidoz.jetaprog.common.completion.CompletionItem
 import su.kidoz.jetaprog.common.completion.CompletionItemKind
 import su.kidoz.jetaprog.common.completion.CompletionTriggerKind
 import su.kidoz.jetaprog.common.mvi.MviViewModel
+import su.kidoz.jetaprog.common.text.MarkedString
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.completion.CompletionController
 import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.SearchScope
+import su.kidoz.jetaprog.editor.search.FindMatcher
 import su.kidoz.jetaprog.editor.state.CompletionState
+import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.editor.state.EditorEffect
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.editor.state.EditorState
 import su.kidoz.jetaprog.editor.state.EditorTab
+import su.kidoz.jetaprog.editor.state.FindToggle
 import su.kidoz.jetaprog.editor.state.HoverState
 import su.kidoz.jetaprog.editor.state.NotificationType
 import su.kidoz.jetaprog.editor.state.SignatureHelpState
@@ -44,6 +48,8 @@ import su.kidoz.jetaprog.editor.syntax.rust.RustLexer
 import su.kidoz.jetaprog.editor.syntax.toml.TomlLexer
 import su.kidoz.jetaprog.editor.syntax.vala.ValaLexer
 import su.kidoz.jetaprog.editor.syntax.xml.XmlLexer
+import su.kidoz.jetaprog.editor.undo.EditSnapshot
+import su.kidoz.jetaprog.editor.undo.UndoManager
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.plugins.api.services.FormattingOptions
 import su.kidoz.jetaprog.plugins.api.services.LanguageDiagnostic
@@ -83,6 +89,7 @@ public class EditorViewModel(
     private var hoverJob: Job? = null
     private var signatureHelpJob: Job? = null
     private val lspOpenDocuments = mutableSetOf<String>()
+    private val undoManagers = mutableMapOf<String, UndoManager>()
 
     /**
      * Layered highlighter that combines multiple token sources.
@@ -302,6 +309,69 @@ public class EditorViewModel(
                 dismissSignatureHelp()
             }
 
+            // Undo/redo intents
+            is EditorIntent.Undo -> {
+                undo()
+            }
+
+            is EditorIntent.Redo -> {
+                redo()
+            }
+
+            // Line operation intents
+            is EditorIntent.DeleteLine -> {
+                deleteLine()
+            }
+
+            is EditorIntent.DuplicateLine -> {
+                duplicateLine()
+            }
+
+            // Find/replace intents
+            is EditorIntent.OpenFindBar -> {
+                openFindBar(intent.withReplace)
+            }
+
+            is EditorIntent.CloseFindBar -> {
+                closeFindBar()
+            }
+
+            is EditorIntent.UpdateFindQuery -> {
+                updateFindQuery(intent.query)
+            }
+
+            is EditorIntent.UpdateReplaceText -> {
+                updateReplaceText(intent.text)
+            }
+
+            is EditorIntent.ToggleFindOption -> {
+                toggleFindOption(intent.option)
+            }
+
+            is EditorIntent.FindNext -> {
+                findNext()
+            }
+
+            is EditorIntent.FindPrevious -> {
+                findPrevious()
+            }
+
+            is EditorIntent.ReplaceCurrent -> {
+                replaceCurrent()
+            }
+
+            is EditorIntent.ReplaceAll -> {
+                replaceAll()
+            }
+
+            is EditorIntent.Find -> {
+                handleLegacyFind(intent)
+            }
+
+            is EditorIntent.Replace -> {
+                handleLegacyReplace(intent)
+            }
+
             // Other intents not yet implemented
             else -> { /* TODO: Implement other intents */ }
         }
@@ -464,6 +534,7 @@ public class EditorViewModel(
             }
         }
 
+        undoManagers.remove(tab.uri.value)
         syncDocumentClosed(tab.uri, detectLanguage(tab.name))
         viewModelScope.launch {
             emitEffect(EditorEffect.FileClosed(tab.uri.value))
@@ -474,6 +545,7 @@ public class EditorViewModel(
         currentState.tabs.forEach { tab ->
             syncDocumentClosed(tab.uri, detectLanguage(tab.name))
         }
+        undoManagers.clear()
         updateState {
             copy(
                 tabs = emptyList(),
@@ -526,9 +598,30 @@ public class EditorViewModel(
         }
     }
 
-    private fun updateContent(content: String) {
+    private fun updateContent(
+        content: String,
+        coalesceUndo: Boolean = true,
+    ) {
         if (content == currentState.content) return
 
+        currentState.activeDocumentUri?.let { uri ->
+            undoManagerFor(uri.value).recordBeforeEdit(
+                before = currentSnapshot(),
+                nowMs = System.currentTimeMillis(),
+                coalesce = coalesceUndo,
+            )
+        }
+
+        applyContent(content)
+    }
+
+    /**
+     * Apply new content to the active document without touching undo history.
+     */
+    private fun applyContent(
+        content: String,
+        newCursor: TextPosition? = null,
+    ) {
         // Tokenize the new content
         val tokens = tokenize(content, currentState.languageId)
 
@@ -547,12 +640,226 @@ public class EditorViewModel(
                 content = content,
                 tokens = tokens,
                 tabs = updatedTabs,
+                cursor = newCursor?.let { cursor.moveTo(it) } ?: cursor,
             )
         }
 
         currentState.activeDocumentUri?.let { uri ->
             syncDocumentChanged(uri, currentState.languageId, content)
         }
+
+        refreshFindMatches()
+    }
+
+    private fun undoManagerFor(uri: String): UndoManager = undoManagers.getOrPut(uri) { UndoManager() }
+
+    private fun currentSnapshot(): EditSnapshot = EditSnapshot(currentState.content, currentState.cursor.position)
+
+    private fun undo() {
+        val uri = currentState.activeDocumentUri?.value ?: return
+        val restored = undoManagers[uri]?.undo(currentSnapshot()) ?: return
+        applyContent(restored.content, newCursor = restored.cursor)
+    }
+
+    private fun redo() {
+        val uri = currentState.activeDocumentUri?.value ?: return
+        val restored = undoManagers[uri]?.redo(currentSnapshot()) ?: return
+        applyContent(restored.content, newCursor = restored.cursor)
+    }
+
+    private fun deleteLine() {
+        val lines = currentState.content.lines()
+        val line = currentState.cursor.position.line
+        if (line !in lines.indices) return
+
+        val newLines = lines.toMutableList().apply { removeAt(line) }
+        val newLine = line.coerceAtMost((newLines.size - 1).coerceAtLeast(0))
+        val newColumn =
+            currentState.cursor.position.column
+                .coerceAtMost(newLines.getOrElse(newLine) { "" }.length)
+
+        updateContent(newLines.joinToString("\n"), coalesceUndo = false)
+        updateState { copy(cursor = cursor.moveTo(TextPosition(newLine, newColumn))) }
+    }
+
+    private fun duplicateLine() {
+        val lines = currentState.content.lines()
+        val position = currentState.cursor.position
+        if (position.line !in lines.indices) return
+
+        val newLines = lines.toMutableList().apply { add(position.line + 1, lines[position.line]) }
+        updateContent(newLines.joinToString("\n"), coalesceUndo = false)
+        updateState { copy(cursor = cursor.moveTo(TextPosition(position.line + 1, position.column))) }
+    }
+
+    // ========================================================================
+    // Find/Replace Methods
+    // ========================================================================
+
+    private fun refreshFindMatches(anchorOffset: Int? = null) {
+        val findState = currentState.findReplaceState
+        if (!findState.isVisible) return
+
+        val matches = FindMatcher.findMatches(currentState.content, findState.query, findState.options)
+        val anchor =
+            anchorOffset
+                ?: findState.currentMatch?.start
+                ?: positionToOffset(currentState.content, currentState.cursor.position)
+        val index = FindMatcher.matchIndexAtOrAfter(matches, anchor)
+
+        updateState {
+            copy(findReplaceState = findReplaceState.copy(matches = matches, currentMatchIndex = index))
+        }
+    }
+
+    private fun openFindBar(withReplace: Boolean) {
+        updateState {
+            copy(findReplaceState = findReplaceState.copy(isVisible = true, showReplace = withReplace))
+        }
+        refreshFindMatches(
+            anchorOffset = positionToOffset(currentState.content, currentState.cursor.position),
+        )
+    }
+
+    private fun closeFindBar() {
+        updateState {
+            copy(
+                findReplaceState =
+                    findReplaceState.copy(
+                        isVisible = false,
+                        matches = emptyList(),
+                        currentMatchIndex = -1,
+                    ),
+            )
+        }
+    }
+
+    private fun updateFindQuery(query: String) {
+        updateState { copy(findReplaceState = findReplaceState.copy(query = query)) }
+        refreshFindMatches(
+            anchorOffset = positionToOffset(currentState.content, currentState.cursor.position),
+        )
+    }
+
+    private fun updateReplaceText(text: String) {
+        updateState { copy(findReplaceState = findReplaceState.copy(replaceText = text)) }
+    }
+
+    private fun toggleFindOption(option: FindToggle) {
+        updateState {
+            val options = findReplaceState.options
+            val newOptions =
+                when (option) {
+                    FindToggle.CASE_SENSITIVE -> options.copy(caseSensitive = !options.caseSensitive)
+                    FindToggle.WHOLE_WORD -> options.copy(wholeWord = !options.wholeWord)
+                    FindToggle.REGEX -> options.copy(regex = !options.regex)
+                }
+            copy(findReplaceState = findReplaceState.copy(options = newOptions))
+        }
+        refreshFindMatches()
+    }
+
+    private fun findNext() {
+        val findState = currentState.findReplaceState
+        if (findState.matches.isEmpty()) return
+        val next = (findState.currentMatchIndex + 1).mod(findState.matches.size)
+        updateState { copy(findReplaceState = findReplaceState.copy(currentMatchIndex = next)) }
+    }
+
+    private fun findPrevious() {
+        val findState = currentState.findReplaceState
+        if (findState.matches.isEmpty()) return
+        val previous =
+            if (findState.currentMatchIndex < 0) {
+                findState.matches.lastIndex
+            } else {
+                (findState.currentMatchIndex - 1).mod(findState.matches.size)
+            }
+        updateState { copy(findReplaceState = findReplaceState.copy(currentMatchIndex = previous)) }
+    }
+
+    private fun replaceCurrent() {
+        val findState = currentState.findReplaceState
+        val match = findState.currentMatch ?: return
+        val newContent =
+            currentState.content.replaceRange(match.start, match.end, findState.replaceText)
+        updateContent(newContent, coalesceUndo = false)
+        // Anchor past the replacement so a self-matching replacement does not get stuck.
+        refreshFindMatches(anchorOffset = match.start + findState.replaceText.length)
+    }
+
+    private suspend fun replaceAll() {
+        val findState = currentState.findReplaceState
+        if (findState.matches.isEmpty()) return
+
+        var content = currentState.content
+        findState.matches.asReversed().forEach { match ->
+            content = content.replaceRange(match.start, match.end, findState.replaceText)
+        }
+        val count = findState.matches.size
+
+        updateContent(content, coalesceUndo = false)
+        emitEffect(
+            EditorEffect.ShowNotification(
+                "Replaced $count occurrence${if (count == 1) "" else "s"}",
+                NotificationType.INFO,
+            ),
+        )
+    }
+
+    private fun handleLegacyFind(intent: EditorIntent.Find) {
+        updateState {
+            copy(
+                findReplaceState =
+                    findReplaceState.copy(
+                        isVisible = true,
+                        query = intent.query,
+                        options = findReplaceState.options.copy(caseSensitive = intent.caseSensitive),
+                    ),
+            )
+        }
+        refreshFindMatches(
+            anchorOffset = positionToOffset(currentState.content, currentState.cursor.position),
+        )
+    }
+
+    private suspend fun handleLegacyReplace(intent: EditorIntent.Replace) {
+        updateState {
+            copy(
+                findReplaceState =
+                    findReplaceState.copy(
+                        isVisible = true,
+                        showReplace = true,
+                        query = intent.find,
+                        replaceText = intent.replaceWith,
+                    ),
+            )
+        }
+        refreshFindMatches(
+            anchorOffset = positionToOffset(currentState.content, currentState.cursor.position),
+        )
+        if (intent.all) {
+            replaceAll()
+        } else {
+            replaceCurrent()
+        }
+    }
+
+    /**
+     * Convert a line/column position to a character offset in [content].
+     */
+    private fun positionToOffset(
+        content: String,
+        position: TextPosition,
+    ): Int {
+        if (position.line <= 0 && position.column <= 0) return 0
+        var index = 0
+        var line = 0
+        while (index < content.length && line < position.line) {
+            if (content[index] == '\n') line++
+            index++
+        }
+        return (index + position.column).coerceIn(0, content.length)
     }
 
     private fun setTokens(tokens: List<su.kidoz.jetaprog.editor.syntax.Token>) {
@@ -571,8 +878,14 @@ public class EditorViewModel(
     }
 
     private fun insertText(text: String) {
-        // For now, just append text (real implementation would handle cursor position)
-        val newContent = currentState.content + text
+        val content = currentState.content
+        val offset = positionToOffset(content, currentState.cursor.position)
+        val newContent =
+            buildString {
+                append(content, 0, offset)
+                append(text)
+                append(content, offset, content.length)
+            }
         updateContent(newContent)
     }
 
@@ -1196,32 +1509,48 @@ public class EditorViewModel(
             viewModelScope.launch {
                 delay(HOVER_DEBOUNCE_MS)
 
-                val registry = languageRegistry
-                if (registry != null) {
-                    val document = TextDocumentAdapter(currentState)
-                    val hover = registry.provideHover(document, position)
-                    if (hover != null) {
-                        updateState {
-                            copy(
-                                hoverState =
-                                    HoverState(
-                                        isVisible = true,
-                                        contents = hover.contents,
-                                        position = position,
-                                        range = hover.range,
-                                        isLoading = false,
-                                    ),
-                            )
-                        }
-                        emitEffect(EditorEffect.HoverLoaded(position))
-                    } else {
-                        dismissHover()
+                val hover =
+                    languageRegistry?.let { registry ->
+                        registry.provideHover(TextDocumentAdapter(currentState), position)
                     }
-                } else {
+                val contents = diagnosticsAt(position) + hover?.contents.orEmpty()
+                if (contents.isEmpty()) {
                     dismissHover()
+                } else {
+                    updateState {
+                        copy(
+                            hoverState =
+                                HoverState(
+                                    isVisible = true,
+                                    contents = contents,
+                                    position = position,
+                                    range = hover?.range,
+                                    isLoading = false,
+                                ),
+                        )
+                    }
+                    emitEffect(EditorEffect.HoverLoaded(position))
                 }
             }
     }
+
+    /**
+     * Diagnostic messages at the given position, rendered as hover content.
+     */
+    private fun diagnosticsAt(position: TextPosition): List<MarkedString> =
+        currentState.diagnostics
+            .filter { position in it.range }
+            .map { diagnostic ->
+                val label =
+                    when (diagnostic.severity) {
+                        DiagnosticSeverity.ERROR -> "Error"
+                        DiagnosticSeverity.WARNING -> "Warning"
+                        DiagnosticSeverity.INFORMATION -> "Info"
+                        DiagnosticSeverity.HINT -> "Hint"
+                    }
+                val source = diagnostic.source?.let { " ($it)" } ?: ""
+                MarkedString.Markdown("**$label**$source: ${diagnostic.message}")
+            }
 
     private fun setHoverContent(
         contents: List<su.kidoz.jetaprog.plugins.api.language.MarkedString>,
