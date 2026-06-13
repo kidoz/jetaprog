@@ -36,6 +36,11 @@ kotlin {
                 implementation(kotlin("test"))
             }
         }
+        jvmTest {
+            dependencies {
+                implementation(kotlin("test-junit5"))
+            }
+        }
     }
 
     // Explicit API mode - all public declarations require visibility modifiers
