@@ -11,6 +11,8 @@ import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.cursor.Cursor
 import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
+import su.kidoz.jetaprog.editor.search.FindMatch
+import su.kidoz.jetaprog.editor.search.FindOptions
 import su.kidoz.jetaprog.editor.syntax.Diagnostic
 import su.kidoz.jetaprog.editor.syntax.TokenList
 
@@ -115,6 +117,10 @@ public data class EditorState(
      * Signature help popup state.
      */
     val signatureHelpState: SignatureHelpState = SignatureHelpState(),
+    /**
+     * Find/replace bar state.
+     */
+    val findReplaceState: FindReplaceState = FindReplaceState(),
 ) : State {
     /**
      * The active tab, if any.
@@ -241,6 +247,47 @@ public data class HoverState(
      */
     val position: TextPosition = TextPosition(0, 0),
 )
+
+/**
+ * State for the find/replace bar.
+ */
+@Serializable
+public data class FindReplaceState(
+    /**
+     * Whether the find bar is visible.
+     */
+    val isVisible: Boolean = false,
+    /**
+     * Whether the replace row is shown.
+     */
+    val showReplace: Boolean = false,
+    /**
+     * The current search query.
+     */
+    val query: String = "",
+    /**
+     * The current replacement text.
+     */
+    val replaceText: String = "",
+    /**
+     * The active search options.
+     */
+    val options: FindOptions = FindOptions(),
+    /**
+     * All matches of the query in the active document.
+     */
+    val matches: List<FindMatch> = emptyList(),
+    /**
+     * The index of the currently highlighted match (-1 if none).
+     */
+    val currentMatchIndex: Int = -1,
+) {
+    /**
+     * The currently highlighted match, if any.
+     */
+    public val currentMatch: FindMatch?
+        get() = matches.getOrNull(currentMatchIndex)
+}
 
 /**
  * State for the signature help popup.

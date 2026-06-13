@@ -437,6 +437,79 @@ public sealed interface EditorIntent : Intent {
         val replaceWith: String,
         val all: Boolean = false,
     ) : EditorIntent
+
+    /**
+     * Open the find bar, optionally with the replace row shown.
+     */
+    public data class OpenFindBar(
+        val withReplace: Boolean = false,
+    ) : EditorIntent
+
+    /**
+     * Close the find bar.
+     */
+    public data object CloseFindBar : EditorIntent
+
+    /**
+     * Update the find query and recompute matches.
+     */
+    public data class UpdateFindQuery(
+        val query: String,
+    ) : EditorIntent
+
+    /**
+     * Update the replacement text.
+     */
+    public data class UpdateReplaceText(
+        val text: String,
+    ) : EditorIntent
+
+    /**
+     * Toggle a find option and recompute matches.
+     */
+    public data class ToggleFindOption(
+        val option: FindToggle,
+    ) : EditorIntent
+
+    /**
+     * Move to the next match.
+     */
+    public data object FindNext : EditorIntent
+
+    /**
+     * Move to the previous match.
+     */
+    public data object FindPrevious : EditorIntent
+
+    /**
+     * Replace the current match with the replacement text.
+     */
+    public data object ReplaceCurrent : EditorIntent
+
+    /**
+     * Replace all matches with the replacement text.
+     */
+    public data object ReplaceAll : EditorIntent
+}
+
+/**
+ * Find options that can be toggled from the find bar.
+ */
+public enum class FindToggle {
+    /**
+     * Case-sensitive matching.
+     */
+    CASE_SENSITIVE,
+
+    /**
+     * Whole-word matching.
+     */
+    WHOLE_WORD,
+
+    /**
+     * Regular-expression matching.
+     */
+    REGEX,
 }
 
 /**
