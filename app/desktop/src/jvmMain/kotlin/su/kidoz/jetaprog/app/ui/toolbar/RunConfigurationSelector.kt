@@ -394,6 +394,9 @@ private fun RunConfiguration.subtitle(): String? =
         is ConfigurationSettings.CargoRun -> s.bin ?: s.profile.displayName
         is ConfigurationSettings.CargoTest -> s.testName ?: "all tests"
         is ConfigurationSettings.CargoClippy -> if (s.fix) "fix" else null
+        is ConfigurationSettings.DotNetBuild -> s.targetPath?.substringAfterLast('/') ?: s.configuration.displayName
+        is ConfigurationSettings.DotNetRun -> s.projectPath?.substringAfterLast('/') ?: s.configuration.displayName
+        is ConfigurationSettings.DotNetTest -> s.filter ?: s.targetPath?.substringAfterLast('/') ?: "all tests"
         is ConfigurationSettings.Application -> s.executablePath.substringAfterLast('/')
         is ConfigurationSettings.ShellScript -> s.script.substringAfterLast('/').take(SUBTITLE_MAX_LENGTH)
         is ConfigurationSettings.Compound -> "${s.configurationIds.size} configuration(s)"
@@ -412,6 +415,9 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.CARGO_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.CARGO_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.CARGO_CLIPPY -> Icons.Filled.Build
+        ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
+        ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
+        ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow
         ConfigurationType.APPLICATION -> Icons.Default.PlayArrow
         ConfigurationType.SHELL_SCRIPT -> Icons.Default.Terminal
         ConfigurationType.COMPOUND -> Icons.Default.PlayArrow

@@ -53,6 +53,8 @@ public class ConfigurationDiscovery(
 
             ProjectType.UV -> createUvConfigurations(project, existingNames)
 
+            ProjectType.DOTNET -> createDotNetConfigurations(project, existingNames)
+
             ProjectType.PYTHON_PYPROJECT,
             ProjectType.PYTHON_SETUP,
             -> createPythonConfigurations(project, existingNames)
@@ -311,6 +313,71 @@ public class ConfigurationDiscovery(
                     settings =
                         ConfigurationSettings.Uv(
                             command = UvCommand.SYNC,
+                            workingDirectory = project.rootPath,
+                        ),
+                ),
+            )
+        }
+
+        return configs
+    }
+
+    private fun createDotNetConfigurations(
+        project: DetectedProject,
+        existingNames: Set<String>,
+    ): List<RunConfiguration> {
+        val configs = mutableListOf<RunConfiguration>()
+        val baseName = project.projectName ?: ".NET"
+        val targetPath = project.metadata["targetPath"] ?: project.detectionFile
+        val projectPath = project.metadata["projectPath"] ?: project.mainEntry
+
+        val buildName = "$baseName Build"
+        if (buildName !in existingNames) {
+            configs.add(
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = buildName,
+                    type = ConfigurationType.DOTNET_BUILD,
+                    isTemporary = false,
+                    settings =
+                        ConfigurationSettings.DotNetBuild(
+                            targetPath = targetPath,
+                            workingDirectory = project.rootPath,
+                        ),
+                ),
+            )
+        }
+
+        if (projectPath != null) {
+            val runName = "$baseName Run"
+            if (runName !in existingNames) {
+                configs.add(
+                    RunConfiguration(
+                        id = ConfigurationId.generate(),
+                        name = runName,
+                        type = ConfigurationType.DOTNET_RUN,
+                        isTemporary = false,
+                        settings =
+                            ConfigurationSettings.DotNetRun(
+                                projectPath = projectPath,
+                                workingDirectory = project.rootPath,
+                            ),
+                    ),
+                )
+            }
+        }
+
+        val testName = "$baseName Test"
+        if (testName !in existingNames) {
+            configs.add(
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = testName,
+                    type = ConfigurationType.DOTNET_TEST,
+                    isTemporary = true,
+                    settings =
+                        ConfigurationSettings.DotNetTest(
+                            targetPath = targetPath,
                             workingDirectory = project.rootPath,
                         ),
                 ),

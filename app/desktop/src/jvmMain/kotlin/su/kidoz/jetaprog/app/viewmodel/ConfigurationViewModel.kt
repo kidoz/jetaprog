@@ -16,6 +16,7 @@ import su.kidoz.jetaprog.configuration.ConfigurationType
 import su.kidoz.jetaprog.configuration.DockerBuildSettings
 import su.kidoz.jetaprog.configuration.DockerComposeSettings
 import su.kidoz.jetaprog.configuration.DockerRunSettings
+import su.kidoz.jetaprog.configuration.DotNetConfigurationType
 import su.kidoz.jetaprog.configuration.RunConfiguration
 import su.kidoz.jetaprog.configuration.SpringBootDevServerSettings
 import su.kidoz.jetaprog.configuration.SpringBootSettings
@@ -181,6 +182,18 @@ public class ConfigurationViewModel(
 
             is ConfigurationSettings.CargoClippy -> {
                 executeCargoClippy(settings)
+            }
+
+            is ConfigurationSettings.DotNetBuild -> {
+                executeDotNetBuild(settings)
+            }
+
+            is ConfigurationSettings.DotNetRun -> {
+                executeDotNetRun(settings)
+            }
+
+            is ConfigurationSettings.DotNetTest -> {
+                executeDotNetTest(settings)
             }
 
             is ConfigurationSettings.Application -> {
@@ -497,6 +510,76 @@ public class ConfigurationViewModel(
             ).map { it.exitCode }
     }
 
+    private suspend fun executeDotNetBuild(settings: ConfigurationSettings.DotNetBuild): Result<Int> {
+        val command =
+            buildList {
+                add("dotnet")
+                add("build")
+                settings.targetPath?.let { add(it) }
+                add("--configuration")
+                add(settings.configuration.value)
+                if (settings.noRestore) add("--no-restore")
+                addAll(settings.arguments)
+            }
+
+        return processExecutor
+            .execute(
+                command = command,
+                workingDirectory = settings.workingDirectory ?: projectPath,
+                environment = settings.environment,
+            ).map { it.exitCode }
+    }
+
+    private suspend fun executeDotNetRun(settings: ConfigurationSettings.DotNetRun): Result<Int> {
+        val command =
+            buildList {
+                add("dotnet")
+                add("run")
+                settings.projectPath?.let {
+                    add("--project")
+                    add(it)
+                }
+                add("--configuration")
+                add(settings.configuration.value)
+                if (settings.noRestore) add("--no-restore")
+                if (settings.programArguments.isNotEmpty()) {
+                    add("--")
+                    addAll(settings.programArguments)
+                }
+            }
+
+        return processExecutor
+            .execute(
+                command = command,
+                workingDirectory = settings.workingDirectory ?: projectPath,
+                environment = settings.environment,
+            ).map { it.exitCode }
+    }
+
+    private suspend fun executeDotNetTest(settings: ConfigurationSettings.DotNetTest): Result<Int> {
+        val command =
+            buildList {
+                add("dotnet")
+                add("test")
+                settings.targetPath?.let { add(it) }
+                add("--configuration")
+                add(settings.configuration.value)
+                settings.filter?.let {
+                    add("--filter")
+                    add(it)
+                }
+                if (settings.noBuild) add("--no-build")
+                addAll(settings.arguments)
+            }
+
+        return processExecutor
+            .execute(
+                command = command,
+                workingDirectory = settings.workingDirectory ?: projectPath,
+                environment = settings.environment,
+            ).map { it.exitCode }
+    }
+
     private fun stopConfiguration() {
         gradleTaskRunner.cancelTask()
         updateState {
@@ -617,12 +700,27 @@ public class ConfigurationViewModel(
             return ConfigurationType.GRADLE
         }
         if (exists("Cargo.toml")) return ConfigurationType.CARGO_RUN
+        if (hasDotNetProject(root)) return ConfigurationType.DOTNET_RUN
         if (exists("meson.build")) return ConfigurationType.MESON_BUILD
         if (exists("uv.lock") || hasPyprojectSection(root, "tool.uv")) return ConfigurationType.UV
         if (exists("poetry.lock") || hasPyprojectSection(root, "tool.poetry")) return ConfigurationType.POETRY
 
         return null
     }
+
+    private fun hasDotNetProject(root: File): Boolean =
+        root
+            .listFiles()
+            ?.any { file ->
+                file.isFile &&
+                    (
+                        file.name.endsWith(".sln") ||
+                            file.name.endsWith(".slnx") ||
+                            file.name.endsWith(".csproj") ||
+                            file.name.endsWith(".fsproj") ||
+                            file.name.endsWith(".vbproj")
+                    )
+            } ?: false
 
     private fun hasPyprojectSection(
         root: File,
@@ -749,6 +847,45 @@ public class ConfigurationViewModel(
                 )
             }
 
+            ConfigurationType.DOTNET_BUILD -> {
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = name,
+                    type = ConfigurationType.DOTNET_BUILD,
+                    settings =
+                        ConfigurationSettings.DotNetBuild(
+                            targetPath = findDotNetTargetPath(),
+                            workingDirectory = projectPath.ifBlank { null },
+                        ),
+                )
+            }
+
+            ConfigurationType.DOTNET_RUN -> {
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = name,
+                    type = ConfigurationType.DOTNET_RUN,
+                    settings =
+                        ConfigurationSettings.DotNetRun(
+                            projectPath = findDotNetProjectPath(),
+                            workingDirectory = projectPath.ifBlank { null },
+                        ),
+                )
+            }
+
+            ConfigurationType.DOTNET_TEST -> {
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = name,
+                    type = ConfigurationType.DOTNET_TEST,
+                    settings =
+                        ConfigurationSettings.DotNetTest(
+                            targetPath = findDotNetTargetPath(),
+                            workingDirectory = projectPath.ifBlank { null },
+                        ),
+                )
+            }
+
             ConfigurationType.TOMCAT_LOCAL -> {
                 RunConfiguration(
                     id = ConfigurationId.generate(),
@@ -833,6 +970,9 @@ public class ConfigurationViewModel(
             ConfigurationType.CARGO_RUN -> "New Cargo Run"
             ConfigurationType.CARGO_TEST -> "New Cargo Test"
             ConfigurationType.CARGO_CLIPPY -> "New Cargo Clippy"
+            ConfigurationType.DOTNET_BUILD -> "New .NET Build"
+            ConfigurationType.DOTNET_RUN -> "New .NET Run"
+            ConfigurationType.DOTNET_TEST -> "New .NET Test"
             ConfigurationType.TOMCAT_LOCAL -> "New Tomcat Local"
             ConfigurationType.TOMCAT_REMOTE -> "New Tomcat Remote"
             ConfigurationType.SPRING_BOOT -> "New Spring Boot"
@@ -856,6 +996,9 @@ public class ConfigurationViewModel(
             ConfigurationType.CARGO_RUN -> "Cargo Run"
             ConfigurationType.CARGO_TEST -> "Cargo Test"
             ConfigurationType.CARGO_CLIPPY -> "Cargo Clippy"
+            ConfigurationType.DOTNET_BUILD -> ".NET Build"
+            ConfigurationType.DOTNET_RUN -> ".NET Run"
+            ConfigurationType.DOTNET_TEST -> ".NET Test"
             ConfigurationType.TOMCAT_LOCAL -> "Tomcat Local"
             ConfigurationType.TOMCAT_REMOTE -> "Tomcat Remote"
             ConfigurationType.SPRING_BOOT -> "Spring Boot"
@@ -863,6 +1006,24 @@ public class ConfigurationViewModel(
             ConfigurationType.DOCKER_RUN -> "Docker Run"
             ConfigurationType.DOCKER_COMPOSE -> "Docker Compose"
         }
+
+    private fun findDotNetTargetPath(): String? {
+        if (projectPath.isBlank()) return null
+        val root = File(projectPath)
+        return root.findChildPath(".sln", ".slnx")
+            ?: root.findChildPath(".csproj", ".fsproj", ".vbproj")
+    }
+
+    private fun findDotNetProjectPath(): String? {
+        if (projectPath.isBlank()) return null
+        return File(projectPath).findChildPath(".csproj", ".fsproj", ".vbproj")
+    }
+
+    private fun File.findChildPath(vararg extensions: String): String? =
+        listFiles()
+            ?.firstOrNull { file ->
+                file.isFile && extensions.any { file.name.endsWith(it) }
+            }?.path
 
     private fun closeDialog() {
         updateState { copy(isDialogOpen = false, editingConfiguration = null) }

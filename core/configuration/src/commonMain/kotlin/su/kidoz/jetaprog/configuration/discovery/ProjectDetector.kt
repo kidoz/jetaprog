@@ -29,6 +29,9 @@ public class ProjectDetector(
         // Check for Python projects (Poetry, UV, pyproject.toml, setup.py)
         detectPython(projectPath)?.let { detected.add(it) }
 
+        // Check for .NET projects (solution or project file)
+        detectDotNet(projectPath)?.let { detected.add(it) }
+
         // Check for CMake project
         detectCMake(projectPath)?.let { detected.add(it) }
 
@@ -178,6 +181,26 @@ public class ProjectDetector(
         return null
     }
 
+    private suspend fun detectDotNet(projectPath: String): DetectedProject? {
+        val solutionFiles = findChildFiles(projectPath, ".sln", ".slnx")
+        val projectFiles = findChildFiles(projectPath, ".csproj", ".fsproj", ".vbproj")
+        val detectionFile = solutionFiles.firstOrNull() ?: projectFiles.firstOrNull() ?: return null
+        val mainProject = projectFiles.firstOrNull()
+
+        return DetectedProject(
+            type = ProjectType.DOTNET,
+            rootPath = projectPath,
+            detectionFile = detectionFile,
+            projectName = detectionFile.substringAfterLast('/').substringBeforeLast('.'),
+            mainEntry = mainProject,
+            metadata =
+                buildMap {
+                    put("targetPath", detectionFile)
+                    mainProject?.let { put("projectPath", it) }
+                },
+        )
+    }
+
     private suspend fun detectCMake(projectPath: String): DetectedProject? {
         val cmakeLists = "$projectPath/CMakeLists.txt"
         if (!fileSystem.exists(cmakeLists)) return null
@@ -303,5 +326,18 @@ public class ProjectDetector(
         // Simple regex to extract name from package.json
         val pattern = """"name"\s*:\s*"([^"]+)"""".toRegex()
         return pattern.find(content)?.groupValues?.get(1)
+    }
+
+    private suspend fun findChildFiles(
+        projectPath: String,
+        vararg extensions: String,
+    ): List<String> {
+        val entries = fileSystem.listDirectory(projectPath).getOrNull() ?: return emptyList()
+        return entries
+            .asSequence()
+            .filter { !it.isDirectory }
+            .map { it.path }
+            .filter { path -> extensions.any { path.endsWith(it) } }
+            .toList()
     }
 }

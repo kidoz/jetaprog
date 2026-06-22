@@ -75,6 +75,18 @@ public enum class ConfigurationType(
     @SerialName("cargo_clippy")
     CARGO_CLIPPY("Cargo Clippy", "rust"),
 
+    /** .NET build. */
+    @SerialName("dotnet_build")
+    DOTNET_BUILD(".NET Build", "dotnet"),
+
+    /** .NET run. */
+    @SerialName("dotnet_run")
+    DOTNET_RUN(".NET Run", "dotnet"),
+
+    /** .NET test. */
+    @SerialName("dotnet_test")
+    DOTNET_TEST(".NET Test", "dotnet"),
+
     /** Direct application/executable. */
     @SerialName("application")
     APPLICATION("Application", "application"),
@@ -346,6 +358,68 @@ public sealed interface ConfigurationSettings {
     ) : ConfigurationSettings
 
     /**
+     * .NET build configuration.
+     */
+    @Serializable
+    @SerialName("dotnet_build")
+    public data class DotNetBuild(
+        /** Solution, project, or directory target. */
+        val targetPath: String? = null,
+        /** Build configuration. */
+        val configuration: DotNetConfigurationType = DotNetConfigurationType.DEBUG,
+        /** Skip package restore. */
+        val noRestore: Boolean = false,
+        /** Additional dotnet build arguments. */
+        val arguments: List<String> = emptyList(),
+        /** Environment variables. */
+        val environment: Map<String, String> = emptyMap(),
+        /** Working directory. */
+        val workingDirectory: String? = null,
+    ) : ConfigurationSettings
+
+    /**
+     * .NET run configuration.
+     */
+    @Serializable
+    @SerialName("dotnet_run")
+    public data class DotNetRun(
+        /** Project file to run. */
+        val projectPath: String? = null,
+        /** Build configuration. */
+        val configuration: DotNetConfigurationType = DotNetConfigurationType.DEBUG,
+        /** Skip package restore. */
+        val noRestore: Boolean = false,
+        /** Program arguments passed after --. */
+        val programArguments: List<String> = emptyList(),
+        /** Environment variables. */
+        val environment: Map<String, String> = emptyMap(),
+        /** Working directory. */
+        val workingDirectory: String? = null,
+    ) : ConfigurationSettings
+
+    /**
+     * .NET test configuration.
+     */
+    @Serializable
+    @SerialName("dotnet_test")
+    public data class DotNetTest(
+        /** Solution, project, or directory target. */
+        val targetPath: String? = null,
+        /** Build configuration. */
+        val configuration: DotNetConfigurationType = DotNetConfigurationType.DEBUG,
+        /** Test filter expression. */
+        val filter: String? = null,
+        /** Skip build before testing. */
+        val noBuild: Boolean = false,
+        /** Additional dotnet test arguments. */
+        val arguments: List<String> = emptyList(),
+        /** Environment variables. */
+        val environment: Map<String, String> = emptyMap(),
+        /** Working directory. */
+        val workingDirectory: String? = null,
+    ) : ConfigurationSettings
+
+    /**
      * Direct application/executable configuration.
      */
     @Serializable
@@ -392,6 +466,23 @@ public sealed interface ConfigurationSettings {
         /** Whether to run in parallel or sequentially. */
         val parallel: Boolean = false,
     ) : ConfigurationSettings
+}
+
+/**
+ * .NET build configuration type.
+ */
+@Serializable
+public enum class DotNetConfigurationType(
+    public val value: String,
+    public val displayName: String,
+) {
+    /** Debug configuration. */
+    @SerialName("debug")
+    DEBUG("Debug", "Debug"),
+
+    /** Release configuration. */
+    @SerialName("release")
+    RELEASE("Release", "Release"),
 }
 
 /**

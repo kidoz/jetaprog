@@ -25,6 +25,9 @@ public enum class ProjectType {
     /** UV-managed Python project. */
     UV,
 
+    /** .NET solution or project. */
+    DOTNET,
+
     /** CMake project (CMakeLists.txt). */
     CMAKE,
 

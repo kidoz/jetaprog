@@ -59,6 +59,7 @@ import su.kidoz.jetaprog.configuration.ConfigurationId
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationState
 import su.kidoz.jetaprog.configuration.ConfigurationType
+import su.kidoz.jetaprog.configuration.DotNetConfigurationType
 import su.kidoz.jetaprog.configuration.RunConfiguration
 
 /**
@@ -522,6 +523,27 @@ private fun ConfigurationEditorPanel(
                     text = "Cargo settings editor coming soon",
                     color = IntelliJColors.textSecondary,
                     modifier = Modifier.padding(16.dp),
+                )
+            }
+
+            is ConfigurationSettings.DotNetBuild -> {
+                DotNetBuildSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
+                )
+            }
+
+            is ConfigurationSettings.DotNetRun -> {
+                DotNetRunSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
+                )
+            }
+
+            is ConfigurationSettings.DotNetTest -> {
+                DotNetTestSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
                 )
             }
 
@@ -1012,6 +1034,198 @@ private fun UvSettingsEditor(
 }
 
 @Composable
+private fun DotNetBuildSettingsEditor(
+    settings: ConfigurationSettings.DotNetBuild,
+    onSettingsChange: (ConfigurationSettings.DotNetBuild) -> Unit,
+) {
+    DotNetConfigurationSelector(
+        configuration = settings.configuration,
+        onConfigurationChange = { onSettingsChange(settings.copy(configuration = it)) },
+    )
+
+    IntelliJTextField(
+        value = settings.targetPath ?: "",
+        onValueChange = { onSettingsChange(settings.copy(targetPath = it.ifBlank { null })) },
+        label = "Solution or project:",
+        placeholder = "Workspace root if empty",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
+        value = settings.arguments.joinToString(" "),
+        onValueChange = { onSettingsChange(settings.copy(arguments = parseArguments(it))) },
+        label = "Arguments:",
+        placeholder = "--no-incremental",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    DotNetCommonOptions(
+        noRestore = settings.noRestore,
+        onNoRestoreChange = { onSettingsChange(settings.copy(noRestore = it)) },
+        workingDirectory = settings.workingDirectory,
+        onWorkingDirectoryChange = { onSettingsChange(settings.copy(workingDirectory = it)) },
+    )
+}
+
+@Composable
+private fun DotNetRunSettingsEditor(
+    settings: ConfigurationSettings.DotNetRun,
+    onSettingsChange: (ConfigurationSettings.DotNetRun) -> Unit,
+) {
+    DotNetConfigurationSelector(
+        configuration = settings.configuration,
+        onConfigurationChange = { onSettingsChange(settings.copy(configuration = it)) },
+    )
+
+    IntelliJTextField(
+        value = settings.projectPath ?: "",
+        onValueChange = { onSettingsChange(settings.copy(projectPath = it.ifBlank { null })) },
+        label = "Project:",
+        placeholder = "Workspace root if empty",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
+        value = settings.programArguments.joinToString(" "),
+        onValueChange = { onSettingsChange(settings.copy(programArguments = parseArguments(it))) },
+        label = "Program arguments:",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    DotNetCommonOptions(
+        noRestore = settings.noRestore,
+        onNoRestoreChange = { onSettingsChange(settings.copy(noRestore = it)) },
+        workingDirectory = settings.workingDirectory,
+        onWorkingDirectoryChange = { onSettingsChange(settings.copy(workingDirectory = it)) },
+    )
+}
+
+@Composable
+private fun DotNetTestSettingsEditor(
+    settings: ConfigurationSettings.DotNetTest,
+    onSettingsChange: (ConfigurationSettings.DotNetTest) -> Unit,
+) {
+    DotNetConfigurationSelector(
+        configuration = settings.configuration,
+        onConfigurationChange = { onSettingsChange(settings.copy(configuration = it)) },
+    )
+
+    IntelliJTextField(
+        value = settings.targetPath ?: "",
+        onValueChange = { onSettingsChange(settings.copy(targetPath = it.ifBlank { null })) },
+        label = "Solution or project:",
+        placeholder = "Workspace root if empty",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
+        value = settings.filter ?: "",
+        onValueChange = { onSettingsChange(settings.copy(filter = it.ifBlank { null })) },
+        label = "Test filter:",
+        placeholder = "FullyQualifiedName~Namespace",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
+        value = settings.arguments.joinToString(" "),
+        onValueChange = { onSettingsChange(settings.copy(arguments = parseArguments(it))) },
+        label = "Arguments:",
+        placeholder = "--logger trx",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(
+            checked = settings.noBuild,
+            onCheckedChange = { onSettingsChange(settings.copy(noBuild = it)) },
+            colors =
+                CheckboxDefaults.colors(
+                    checkedColor = IntelliJColors.accent,
+                    uncheckedColor = IntelliJColors.textSecondary,
+                ),
+        )
+        Spacer(modifier = Modifier.width(Spacing.xs.dp))
+        Text(
+            text = "Skip build",
+            color = IntelliJColors.textPrimary,
+            fontSize = 12.sp,
+        )
+    }
+
+    IntelliJTextField(
+        value = settings.workingDirectory ?: "",
+        onValueChange = { onSettingsChange(settings.copy(workingDirectory = it.ifBlank { null })) },
+        label = "Working directory:",
+        placeholder = "Project root by default",
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun DotNetConfigurationSelector(
+    configuration: DotNetConfigurationType,
+    onConfigurationChange: (DotNetConfigurationType) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        IntelliJButton(
+            text = "Configuration: ${configuration.displayName}",
+            onClick = { expanded = true },
+            modifier = Modifier.width(180.dp),
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DotNetConfigurationType.entries.forEach { type ->
+                DropdownMenuItem(
+                    text = { Text(type.displayName) },
+                    onClick = {
+                        onConfigurationChange(type)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DotNetCommonOptions(
+    noRestore: Boolean,
+    onNoRestoreChange: (Boolean) -> Unit,
+    workingDirectory: String?,
+    onWorkingDirectoryChange: (String?) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(
+            checked = noRestore,
+            onCheckedChange = onNoRestoreChange,
+            colors =
+                CheckboxDefaults.colors(
+                    checkedColor = IntelliJColors.accent,
+                    uncheckedColor = IntelliJColors.textSecondary,
+                ),
+        )
+        Spacer(modifier = Modifier.width(Spacing.xs.dp))
+        Text(
+            text = "Skip restore",
+            color = IntelliJColors.textPrimary,
+            fontSize = 12.sp,
+        )
+    }
+
+    IntelliJTextField(
+        value = workingDirectory ?: "",
+        onValueChange = { onWorkingDirectoryChange(it.ifBlank { null }) },
+        label = "Working directory:",
+        placeholder = "Project root by default",
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
 private fun DialogFooter(
     onCancel: () -> Unit,
     onApply: () -> Unit,
@@ -1067,6 +1281,9 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.CARGO_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.CARGO_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.CARGO_CLIPPY -> Icons.Filled.Build
+        ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
+        ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
+        ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow
         ConfigurationType.APPLICATION -> Icons.Default.PlayArrow
         ConfigurationType.SHELL_SCRIPT -> Icons.Default.Terminal
         ConfigurationType.COMPOUND -> Icons.Default.PlayArrow
@@ -1086,6 +1303,9 @@ private val configurationCreationTypes =
         ConfigurationType.CARGO_BUILD,
         ConfigurationType.CARGO_TEST,
         ConfigurationType.CARGO_CLIPPY,
+        ConfigurationType.DOTNET_RUN,
+        ConfigurationType.DOTNET_BUILD,
+        ConfigurationType.DOTNET_TEST,
         ConfigurationType.GRADLE,
         ConfigurationType.MESON_BUILD,
         ConfigurationType.MESON_RUN,
@@ -1094,3 +1314,8 @@ private val configurationCreationTypes =
         ConfigurationType.SHELL_SCRIPT,
         ConfigurationType.COMPOUND,
     )
+
+private fun parseArguments(value: String): List<String> =
+    value
+        .split(" ")
+        .filter { it.isNotBlank() }

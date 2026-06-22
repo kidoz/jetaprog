@@ -261,6 +261,12 @@ public class ExecutionOrchestrator(
 
             is ConfigurationSettings.CargoClippy -> buildCargoClippyConfig(settings, workspacePath)
 
+            is ConfigurationSettings.DotNetBuild -> buildDotNetBuildConfig(settings, workspacePath)
+
+            is ConfigurationSettings.DotNetRun -> buildDotNetRunConfig(settings, workspacePath)
+
+            is ConfigurationSettings.DotNetTest -> buildDotNetTestConfig(settings, workspacePath)
+
             is ConfigurationSettings.Application -> buildApplicationConfig(settings, workspacePath)
 
             is ConfigurationSettings.ShellScript -> buildShellScriptConfig(settings, workspacePath)
@@ -509,6 +515,82 @@ public class ExecutionOrchestrator(
                     add("-D")
                     add("warnings")
                 }
+            }
+
+        return ProcessConfig(
+            command = command,
+            workingDirectory = settings.workingDirectory ?: workspacePath,
+            environment = settings.environment,
+        )
+    }
+
+    private fun buildDotNetBuildConfig(
+        settings: ConfigurationSettings.DotNetBuild,
+        workspacePath: String,
+    ): ProcessConfig {
+        val command =
+            buildList {
+                add("dotnet")
+                add("build")
+                settings.targetPath?.let { add(it) }
+                add("--configuration")
+                add(settings.configuration.value)
+                if (settings.noRestore) add("--no-restore")
+                addAll(settings.arguments)
+            }
+
+        return ProcessConfig(
+            command = command,
+            workingDirectory = settings.workingDirectory ?: workspacePath,
+            environment = settings.environment,
+        )
+    }
+
+    private fun buildDotNetRunConfig(
+        settings: ConfigurationSettings.DotNetRun,
+        workspacePath: String,
+    ): ProcessConfig {
+        val command =
+            buildList {
+                add("dotnet")
+                add("run")
+                settings.projectPath?.let {
+                    add("--project")
+                    add(it)
+                }
+                add("--configuration")
+                add(settings.configuration.value)
+                if (settings.noRestore) add("--no-restore")
+                if (settings.programArguments.isNotEmpty()) {
+                    add("--")
+                    addAll(settings.programArguments)
+                }
+            }
+
+        return ProcessConfig(
+            command = command,
+            workingDirectory = settings.workingDirectory ?: workspacePath,
+            environment = settings.environment,
+        )
+    }
+
+    private fun buildDotNetTestConfig(
+        settings: ConfigurationSettings.DotNetTest,
+        workspacePath: String,
+    ): ProcessConfig {
+        val command =
+            buildList {
+                add("dotnet")
+                add("test")
+                settings.targetPath?.let { add(it) }
+                add("--configuration")
+                add(settings.configuration.value)
+                settings.filter?.let {
+                    add("--filter")
+                    add(it)
+                }
+                if (settings.noBuild) add("--no-build")
+                addAll(settings.arguments)
             }
 
         return ProcessConfig(
