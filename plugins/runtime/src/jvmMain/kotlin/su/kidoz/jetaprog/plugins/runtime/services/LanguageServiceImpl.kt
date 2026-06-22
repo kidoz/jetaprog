@@ -205,6 +205,8 @@ public class LanguageServiceImpl(
         when {
             pattern.endsWith(".kt") || pattern.endsWith(".kts") -> "kotlin"
             pattern.endsWith(".py") || pattern.endsWith(".pyi") -> "python"
+            pattern.endsWith(".cs") || pattern.endsWith(".csx") -> "csharp"
+            pattern.endsWith(".csproj") || pattern.endsWith(".props") || pattern.endsWith(".targets") -> "msbuild"
             pattern.endsWith(".vala") || pattern.endsWith(".vapi") -> "vala"
             pattern.endsWith(".java") -> "java"
             pattern.endsWith(".js") -> "javascript"

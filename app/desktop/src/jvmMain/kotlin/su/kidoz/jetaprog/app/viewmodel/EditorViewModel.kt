@@ -1840,6 +1840,7 @@ public class EditorViewModel(
             lowerFileName == "meson.build" || lowerFileName == "meson_options.txt" -> return LanguageId.MESON
             lowerFileName == "cargo.toml" || lowerFileName == "cargo.lock" -> return LanguageId.TOML
             lowerFileName == "pom.xml" -> return LanguageId.XML
+            lowerFileName.endsWith(".sln") || lowerFileName.endsWith(".slnx") -> return LanguageId.MSBUILD
         }
 
         val extension = fileName.substringAfterLast('.', "").lowercase()
@@ -1849,6 +1850,8 @@ public class EditorViewModel(
             "js" -> LanguageId.JAVASCRIPT
             "ts" -> LanguageId.TYPESCRIPT
             "py" -> LanguageId.PYTHON
+            "cs", "csx" -> LanguageId.CSHARP
+            "csproj", "fsproj", "vbproj", "props", "targets" -> LanguageId.MSBUILD
             "rs" -> LanguageId.RUST
             "go" -> LanguageId.GO
             "cpp", "cc", "cxx", "c", "h", "hpp" -> LanguageId.CPP

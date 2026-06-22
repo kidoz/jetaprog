@@ -51,6 +51,8 @@ public value class LanguageId(
         public val JAVASCRIPT: LanguageId = LanguageId("javascript")
         public val TYPESCRIPT: LanguageId = LanguageId("typescript")
         public val PYTHON: LanguageId = LanguageId("python")
+        public val CSHARP: LanguageId = LanguageId("csharp")
+        public val MSBUILD: LanguageId = LanguageId("msbuild")
         public val MARKDOWN: LanguageId = LanguageId("markdown")
         public val JSON: LanguageId = LanguageId("json")
         public val YAML: LanguageId = LanguageId("yaml")
@@ -73,6 +75,8 @@ public value class LanguageId(
                 "javascript" to "JavaScript",
                 "typescript" to "TypeScript",
                 "python" to "Python",
+                "csharp" to "C#",
+                "msbuild" to "MSBuild",
                 "markdown" to "Markdown",
                 "json" to "JSON",
                 "yaml" to "YAML",

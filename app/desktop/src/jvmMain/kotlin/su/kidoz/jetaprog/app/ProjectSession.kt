@@ -26,6 +26,7 @@ import su.kidoz.jetaprog.lsp.server.EmbeddedServerConfig
 import su.kidoz.jetaprog.lsp.server.EmbeddedServerRegistry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
+import su.kidoz.jetaprog.plugins.dotnet.DotNetPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinPlugin
 import su.kidoz.jetaprog.plugins.python.PythonPlugin
 import su.kidoz.jetaprog.plugins.runtime.activation.ActivationEventServiceImpl
@@ -242,6 +243,7 @@ public class ProjectSession(
 
         // Register bundled plugins (lazy activation handled by LazyPluginActivator)
         pluginManager.registerBundledPlugin(KotlinPlugin())
+        pluginManager.registerBundledPlugin(DotNetPlugin())
         pluginManager.registerBundledPlugin(PythonPlugin())
         pluginManager.registerBundledPlugin(RustPlugin())
         pluginManager.registerBundledPlugin(ValaPlugin())
