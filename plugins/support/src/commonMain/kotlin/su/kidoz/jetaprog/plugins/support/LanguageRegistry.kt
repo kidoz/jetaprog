@@ -178,6 +178,24 @@ public class LanguageRegistry(
                 priority = -10,
             ),
         )
+        disposables.add(
+            hybridProvider.registerLspReferencesProvider(
+                server.createReferencesProvider(),
+                priority = -10,
+            ),
+        )
+        disposables.add(
+            hybridProvider.registerLspFormattingProvider(
+                server.createFormattingProvider(),
+                priority = -10,
+            ),
+        )
+        disposables.add(
+            hybridProvider.registerLspCodeActionProvider(
+                server.createCodeActionProvider(),
+                priority = -10,
+            ),
+        )
 
         // Forward diagnostics
         server.onDiagnostics { uri, diagnostics ->

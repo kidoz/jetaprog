@@ -248,6 +248,45 @@ public class HybridLanguageProvider(
         return Disposable { definitionProviders.remove(registered) }
     }
 
+    /**
+     * Register an LSP-backed references provider.
+     */
+    public fun registerLspReferencesProvider(
+        provider: ReferencesProvider,
+        priority: Int = -1,
+    ): Disposable {
+        val registered = RegisteredProvider(provider, ProviderSource.Lsp, priority)
+        referencesProviders.add(registered)
+        referencesProviders.sortByDescending { it.priority }
+        return Disposable { referencesProviders.remove(registered) }
+    }
+
+    /**
+     * Register an LSP-backed formatting provider.
+     */
+    public fun registerLspFormattingProvider(
+        provider: FormattingProvider,
+        priority: Int = -1,
+    ): Disposable {
+        val registered = RegisteredProvider(provider, ProviderSource.Lsp, priority)
+        formattingProviders.add(registered)
+        formattingProviders.sortByDescending { it.priority }
+        return Disposable { formattingProviders.remove(registered) }
+    }
+
+    /**
+     * Register an LSP-backed code action provider.
+     */
+    public fun registerLspCodeActionProvider(
+        provider: CodeActionProvider,
+        priority: Int = -1,
+    ): Disposable {
+        val registered = RegisteredProvider(provider, ProviderSource.Lsp, priority)
+        codeActionProviders.add(registered)
+        codeActionProviders.sortByDescending { it.priority }
+        return Disposable { codeActionProviders.remove(registered) }
+    }
+
     // ========================================================================
     // Provider Invocation
     // ========================================================================
