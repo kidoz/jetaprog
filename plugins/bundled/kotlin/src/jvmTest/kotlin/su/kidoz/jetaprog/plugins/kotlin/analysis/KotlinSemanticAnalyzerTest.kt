@@ -56,6 +56,27 @@ class KotlinSemanticAnalyzerTest {
     }
 
     @Test
+    fun reusedEnvironmentProducesIndependentResults() {
+        // Analyses share one reused compiler environment; each must reflect only
+        // its own content with no state leaking between calls.
+        val cleanFirst =
+            analyzer
+                .diagnostics(
+                    "fun f(): Int = 1",
+                ).filter { it.severity == KotlinDiagnosticSeverity.ERROR }
+        val broken = analyzer.diagnostics("fun g() { nope() }").filter { it.severity == KotlinDiagnosticSeverity.ERROR }
+        val cleanAgain =
+            analyzer
+                .diagnostics(
+                    "fun h(): Int = 2",
+                ).filter { it.severity == KotlinDiagnosticSeverity.ERROR }
+
+        assertTrue(cleanFirst.isEmpty(), "first clean analysis should have no errors: $cleanFirst")
+        assertTrue(broken.isNotEmpty(), "broken analysis should report an error")
+        assertTrue(cleanAgain.isEmpty(), "later clean analysis should have no errors: $cleanAgain")
+    }
+
+    @Test
     fun memberCompletionResolvesClasspathTypeMembers() {
         val source = "val length = \"hello\".length"
         val offset = source.length // cursor at the end of `.length`

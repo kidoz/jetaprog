@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM
 import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoots
 import org.jetbrains.kotlin.cli.jvm.configureJdkHomeFromSystemProperty
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
+import org.jetbrains.kotlin.com.intellij.psi.PsiManager
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.CompilerConfiguration
@@ -54,16 +55,17 @@ public data class KotlinSemanticDiagnostic(
  * analysis to surface semantic diagnostics and member completions that the
  * parser-only [KotlinPsiAnalyzer] cannot produce.
  *
- * Source is analyzed from a disk-backed source root so function bodies are fully
- * resolved. Results are immutable and cached by content + classpath, so repeated
- * requests (e.g. lint passes without edits) are served without re-analysis.
- * Access is serialized; the compiler environment is built and disposed per
- * analysis.
+ * The expensive compiler environment (classpath/JDK indexing) is built once per
+ * classpath and reused; each analysis only rewrites and reparses the backing
+ * source file. The environment is rebuilt when the classpath changes. Immutable
+ * results are cached by content, so repeated requests skip analysis entirely.
+ * Access is serialized.
  */
 public class KotlinSemanticAnalyzer(
     private val classpathProvider: () -> List<String> = { emptyList() },
 ) : Disposable {
     private val lock = Any()
+    private var session: Session? = null
 
     private val diagnosticsCache = lruCache<String, List<KotlinSemanticDiagnostic>>(CACHE_SIZE)
     private val completionCache = lruCache<String, List<KotlinDeclaration>>(CACHE_SIZE)
@@ -79,8 +81,7 @@ public class KotlinSemanticAnalyzer(
      */
     public fun diagnostics(text: String): List<KotlinSemanticDiagnostic> =
         synchronized(lock) {
-            val key = cacheKey(text)
-            diagnosticsCache.getOrPut(key) {
+            diagnosticsCache.getOrPut(cacheKey(text)) {
                 withAnalysis(text) { file, bindingContext ->
                     bindingContext.diagnostics
                         .all()
@@ -100,8 +101,7 @@ public class KotlinSemanticAnalyzer(
         offset: Int,
     ): List<KotlinDeclaration> =
         synchronized(lock) {
-            val key = "$offset@${cacheKey(text)}"
-            completionCache.getOrPut(key) {
+            completionCache.getOrPut("$offset@${cacheKey(text)}") {
                 withAnalysis(text) { file, bindingContext ->
                     val receiver = findReceiver(file, offset) ?: return@withAnalysis emptyList()
                     val type =
@@ -115,48 +115,32 @@ public class KotlinSemanticAnalyzer(
             }
         }
 
-    @OptIn(CompilerConfiguration.Internals::class, org.jetbrains.kotlin.K1Deprecation::class)
+    @OptIn(org.jetbrains.kotlin.K1Deprecation::class)
     @Suppress("DEPRECATION_ERROR")
     private fun <R> withAnalysis(
         text: String,
         block: (KtFile, BindingContext) -> R,
     ): R? {
-        val disposable = Disposer.newDisposable("KotlinSemanticAnalysis")
-        val tempDir = Files.createTempDirectory("jetaprog-semantics")
-        val sourceFile = tempDir.resolve("semantic.kt").toFile()
-        return try {
-            sourceFile.writeText(text)
-            val configuration =
-                CompilerConfiguration().apply {
-                    put(CommonConfigurationKeys.MODULE_NAME, "jetaprog-kotlin-semantics")
-                    put(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY, MessageCollector.NONE)
-                    configureJdkHomeFromSystemProperty()
-                    addJvmClasspathRoots(classpathProvider().map(::File).filter { it.exists() })
-                    addKotlinSourceRoot(sourceFile.absolutePath)
-                }
-            val environment =
-                KotlinCoreEnvironment.createForProduction(
-                    disposable,
-                    configuration,
-                    EnvironmentConfigFiles.JVM_CONFIG_FILES,
-                )
-            val files = environment.getSourceFiles()
-            val file = files.firstOrNull() ?: return null
-            val bindingContext =
-                TopDownAnalyzerFacadeForJVM
-                    .analyzeFilesWithJavaIntegration(
-                        environment.project,
-                        files,
-                        NoScopeRecordCliBindingTrace(environment.project),
-                        environment.configuration,
-                        environment::createPackagePartProvider,
-                    ).bindingContext
-            block(file, bindingContext)
-        } finally {
-            Disposer.dispose(disposable)
-            sourceFile.delete()
-            Files.deleteIfExists(tempDir)
-        }
+        val active = session(classpathProvider())
+        val file = active.reparse(text) ?: return null
+        val bindingContext =
+            TopDownAnalyzerFacadeForJVM
+                .analyzeFilesWithJavaIntegration(
+                    active.environment.project,
+                    listOf(file),
+                    NoScopeRecordCliBindingTrace(active.environment.project),
+                    active.environment.configuration,
+                    active.environment::createPackagePartProvider,
+                ).bindingContext
+        return block(file, bindingContext)
+    }
+
+    private fun session(classpath: List<String>): Session {
+        val key = classpath.hashCode()
+        val existing = session
+        if (existing != null && existing.classpathKey == key) return existing
+        existing?.close()
+        return Session.create(classpath, key).also { session = it }
     }
 
     private fun findReceiver(
@@ -203,19 +187,76 @@ public class KotlinSemanticAnalyzer(
 
     override fun dispose() {
         synchronized(lock) {
+            session?.close()
+            session = null
             diagnosticsCache.clear()
             completionCache.clear()
         }
     }
 
+    /**
+     * A reusable compiler environment bound to a specific classpath. The
+     * expensive classpath/JDK indexing is done once; each analysis writes a
+     * freshly named file into the session's source-root directory (avoiding any
+     * stale virtual-file content cache) and parses it through the shared project.
+     */
+    private class Session(
+        private val disposable: org.jetbrains.kotlin.com.intellij.openapi.Disposable,
+        val environment: KotlinCoreEnvironment,
+        private val sourceDir: File,
+        val classpathKey: Int,
+    ) {
+        private var counter = 0
+        private var previousFile: File? = null
+
+        fun reparse(text: String): KtFile? {
+            val file = File(sourceDir, "semantic_${counter++}.kt")
+            file.writeText(text)
+            previousFile?.delete()
+            previousFile = file
+            val virtualFile = environment.findLocalFile(file.absolutePath) ?: return null
+            return PsiManager.getInstance(environment.project).findFile(virtualFile) as? KtFile
+        }
+
+        fun close() {
+            Disposer.dispose(disposable)
+            sourceDir.deleteRecursively()
+        }
+
+        companion object {
+            @OptIn(CompilerConfiguration.Internals::class, org.jetbrains.kotlin.K1Deprecation::class)
+            fun create(
+                classpath: List<String>,
+                classpathKey: Int,
+            ): Session {
+                val disposable = Disposer.newDisposable("KotlinSemanticSession")
+                val sourceDir = Files.createTempDirectory("jetaprog-semantics").toFile()
+                val configuration =
+                    CompilerConfiguration().apply {
+                        put(CommonConfigurationKeys.MODULE_NAME, "jetaprog-kotlin-semantics")
+                        put(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY, MessageCollector.NONE)
+                        configureJdkHomeFromSystemProperty()
+                        addJvmClasspathRoots(classpath.map(::File).filter { it.exists() })
+                        addKotlinSourceRoot(sourceDir.absolutePath)
+                    }
+                val environment =
+                    KotlinCoreEnvironment.createForProduction(
+                        disposable,
+                        configuration,
+                        EnvironmentConfigFiles.JVM_CONFIG_FILES,
+                    )
+                return Session(disposable, environment, sourceDir, classpathKey)
+            }
+        }
+    }
+
     private companion object {
         private const val CACHE_SIZE = 32
+        private const val LOAD_FACTOR = 0.75f
 
         private fun <K, V> lruCache(maxSize: Int): MutableMap<K, V> =
             object : LinkedHashMap<K, V>(maxSize, LOAD_FACTOR, true) {
                 override fun removeEldestEntry(eldest: Map.Entry<K, V>): Boolean = size > maxSize
             }
-
-        private const val LOAD_FACTOR = 0.75f
     }
 }
