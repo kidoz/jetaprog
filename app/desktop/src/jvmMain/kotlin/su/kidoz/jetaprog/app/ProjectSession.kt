@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
@@ -212,6 +213,14 @@ public class ProjectSession(
         GradleImportCoordinator(projectPath = projectPath, fileSystem = fileSystem)
 
     /**
+     * The Kotlin compile classpath derived from the Gradle import, populated
+     * asynchronously after the project opens. Fed to the Kotlin plugin for
+     * classpath-aware analysis.
+     */
+    @Volatile
+    private var kotlinClasspath: List<String> = emptyList()
+
+    /**
      * The agent (ACP) session view model, driving an external coding agent.
      */
     public val agentSessionViewModel: AgentSessionViewModel =
@@ -265,7 +274,7 @@ public class ProjectSession(
         configurationViewModel.dispatch(ConfigurationIntent.Initialize(projectPath))
 
         // Register bundled plugins (lazy activation handled by LazyPluginActivator)
-        pluginManager.registerBundledPlugin(KotlinPlugin())
+        pluginManager.registerBundledPlugin(KotlinPlugin(classpathProvider = { kotlinClasspath }))
         pluginManager.registerBundledPlugin(DotNetPlugin())
         pluginManager.registerBundledPlugin(PythonPlugin())
         pluginManager.registerBundledPlugin(RustPlugin())
@@ -281,6 +290,18 @@ public class ProjectSession(
 
         // Fire startup finished event (activates plugins with onStartupFinished)
         activationEventService.fireStartupFinished()
+
+        // Resolve the Kotlin classpath from Gradle in the background so semantic
+        // analysis becomes available once import completes.
+        sessionScope.launch { loadKotlinClasspath() }
+    }
+
+    private suspend fun loadKotlinClasspath() {
+        gradleImportCoordinator
+            .importModel()
+            .onSuccess { model ->
+                kotlinClasspath = model.modules.flatMap { it.classpath }.distinct()
+            }
     }
 
     /**

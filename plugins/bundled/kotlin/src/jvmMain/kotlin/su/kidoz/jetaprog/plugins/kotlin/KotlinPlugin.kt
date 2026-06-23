@@ -11,11 +11,14 @@ import su.kidoz.jetaprog.plugins.api.services.LanguageClient
 import su.kidoz.jetaprog.plugins.api.services.LanguageConfiguration
 import su.kidoz.jetaprog.plugins.api.services.LanguageServerConfig
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinPsiAnalyzer
+import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
+import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinSemanticLintProvider
 import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinStyleProvider
 import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinSyntaxLintProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.ConfigurableKotlinCompletionProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinCompletionProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinPsiCompletionProvider
+import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinSemanticCompletionProvider
 import su.kidoz.jetaprog.plugins.support.formatters.FormatterRegistry
 import java.io.File
 
@@ -32,8 +35,9 @@ private val logger = KotlinLogging.logger {}
  * - Code formatting
  * - Lint rules (style checks)
  */
-public class KotlinPlugin :
-    BasePlugin(
+public class KotlinPlugin(
+    private val classpathProvider: () -> List<String> = { emptyList() },
+) : BasePlugin(
         manifest =
             PluginManifest(
                 id = "su.kidoz.jetaprog.kotlin",
@@ -58,6 +62,7 @@ public class KotlinPlugin :
     private var kotlinFormatter: KotlinFormatter? = null
     private var kotlinLanguageClient: LanguageClient? = null
     private var psiAnalyzer: KotlinPsiAnalyzer? = null
+    private var semanticAnalyzer: KotlinSemanticAnalyzer? = null
 
     override suspend fun onActivate() {
         logger.info { "Activating Kotlin plugin" }
@@ -83,6 +88,10 @@ public class KotlinPlugin :
         val analyzer = KotlinPsiAnalyzer()
         psiAnalyzer = analyzer
 
+        // Classpath-aware semantic analyzer (diagnostics + member completion)
+        val semantics = KotlinSemanticAnalyzer(classpathProvider)
+        semanticAnalyzer = semantics
+
         // Register completion provider
         val selector = DocumentSelector(languages = listOf(LanguageId.KOTLIN))
         val nativeProvider = KotlinCompletionProvider(service)
@@ -96,6 +105,14 @@ public class KotlinPlugin :
                 selector = selector,
                 provider = configurableProvider,
                 triggerCharacters = listOf('.', ':', '@'),
+            ).also { context.subscriptions.add(it) }
+
+        // Register classpath-aware member completion (after '.')
+        context.languages
+            .registerCompletionProvider(
+                selector = selector,
+                provider = KotlinSemanticCompletionProvider(semantics),
+                triggerCharacters = listOf('.'),
             ).also { context.subscriptions.add(it) }
 
         // Register hover provider
@@ -153,6 +170,9 @@ public class KotlinPlugin :
         // Register Kotlin syntax diagnostics (parser-backed)
         context.lint.registerProvider(KotlinSyntaxLintProvider(analyzer)).also { context.subscriptions.add(it) }
 
+        // Register Kotlin semantic diagnostics (classpath-aware)
+        context.lint.registerProvider(KotlinSemanticLintProvider(semantics)).also { context.subscriptions.add(it) }
+
         logger.info { "Kotlin plugin activated" }
     }
 
@@ -162,10 +182,12 @@ public class KotlinPlugin :
         kotlinLanguageService?.dispose()
         kotlinLanguageClient?.stop()
         psiAnalyzer?.dispose()
+        semanticAnalyzer?.dispose()
         kotlinLanguageService = null
         kotlinFormatter = null
         kotlinLanguageClient = null
         psiAnalyzer = null
+        semanticAnalyzer = null
 
         logger.info { "Kotlin plugin deactivated" }
     }
