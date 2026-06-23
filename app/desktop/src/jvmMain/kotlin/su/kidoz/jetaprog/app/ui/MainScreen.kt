@@ -66,6 +66,7 @@ import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.toolbar.RunConfigurationSelector
 import su.kidoz.jetaprog.app.viewmodel.TerminalIntent
+import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.configuration.ConfigurationEffect
 import su.kidoz.jetaprog.configuration.ConfigurationIntent
 import su.kidoz.jetaprog.editor.state.EditorEffect
@@ -528,8 +529,12 @@ private fun MainScreenContent(
                     state = gradleState,
                     onIntent = { intent -> session.gradleViewModel.dispatch(intent) },
                     onOpenDiagnostic = { diagnostic ->
-                        session.editorViewModel.dispatch(EditorIntent.OpenFile(diagnostic.filePath))
-                        session.editorViewModel.dispatch(EditorIntent.GoToLine(diagnostic.position.line + 1))
+                        session.editorViewModel.dispatch(
+                            EditorIntent.NavigateTo(
+                                path = diagnostic.filePath,
+                                position = TextPosition(diagnostic.position.line, diagnostic.position.column),
+                            ),
+                        )
                     },
                 )
 

@@ -970,6 +970,7 @@ public class EditorViewModel(
         navigationService?.recordNavigation(path, position)
         openFile(path)
         goToLine(position.line + 1)
+        moveCursor(position)
     }
 
     private fun tokenize(
