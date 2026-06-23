@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -33,8 +34,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.build.gradle.GradleDiagnostic
+import su.kidoz.jetaprog.build.gradle.GradleDiagnosticSeverity
+import su.kidoz.jetaprog.build.gradle.GradleTask
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.build.gradle.state.GradleState
 import su.kidoz.jetaprog.build.gradle.state.OutputLine
@@ -47,6 +52,7 @@ import su.kidoz.jetaprog.build.gradle.state.OutputType
 public fun BuildOutputPanel(
     state: GradleState,
     onIntent: (GradleIntent) -> Unit,
+    onOpenDiagnostic: (GradleDiagnostic) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (!state.isVisible) return
@@ -71,12 +77,142 @@ public fun BuildOutputPanel(
             onRefresh = { onIntent(GradleIntent.RefreshTasks) },
         )
 
+        DiscoveredTasksStrip(
+            tasks = state.project?.tasks.orEmpty(),
+            favoriteTasks = state.favoriteTasks,
+            isRunning = state.isRunning,
+            runningTask = state.runningTask,
+            onRunTask = { task -> onIntent(GradleIntent.RunTask(task)) },
+        )
+
+        DiagnosticsList(
+            diagnostics = state.diagnostics,
+            onOpenDiagnostic = onOpenDiagnostic,
+        )
+
         // Output area
         BuildOutputArea(
             output = state.output,
             modifier = Modifier.weight(1f),
         )
     }
+}
+
+@Composable
+private fun DiscoveredTasksStrip(
+    tasks: List<GradleTask>,
+    favoriteTasks: List<String>,
+    isRunning: Boolean,
+    runningTask: String?,
+    onRunTask: (String) -> Unit,
+) {
+    val visibleTasks = tasks.prioritizedForToolbar(favoriteTasks)
+    if (visibleTasks.isEmpty()) return
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(34.dp)
+                .background(Color(0xFF202124))
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = "Tasks",
+            color = Color.Gray,
+            style = MaterialTheme.typography.labelSmall,
+        )
+
+        visibleTasks.forEach { task ->
+            TaskButton(
+                taskName = task.path,
+                isRunning = isRunning && runningTask == task.path,
+                enabled = !isRunning,
+                onClick = { onRunTask(task.path) },
+            )
+        }
+    }
+}
+
+private fun List<GradleTask>.prioritizedForToolbar(favoriteTasks: List<String>): List<GradleTask> {
+    val priority =
+        listOf(
+            ":app:desktop:run",
+            "build",
+            "test",
+            "ktlintCheck",
+            "detekt",
+            "clean",
+            ":app:desktop:packageDistributionForCurrentOS",
+        )
+    return distinctBy { it.path }
+        .sortedWith(
+            compareBy<GradleTask> { task ->
+                val favoriteIndex = favoriteTasks.indexOf(task.path)
+                if (favoriteIndex >= 0) favoriteIndex else Int.MAX_VALUE
+            }.thenBy { task ->
+                val priorityIndex = priority.indexOf(task.path)
+                if (priorityIndex >= 0) priorityIndex else Int.MAX_VALUE
+            }.thenBy { it.group ?: "" }
+                .thenBy { it.path },
+        ).take(MAX_DISCOVERED_TASK_BUTTONS)
+}
+
+@Composable
+private fun DiagnosticsList(
+    diagnostics: List<GradleDiagnostic>,
+    onOpenDiagnostic: (GradleDiagnostic) -> Unit,
+) {
+    if (diagnostics.isEmpty()) return
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF241F1F))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        diagnostics.take(MAX_VISIBLE_DIAGNOSTICS).forEach { diagnostic ->
+            DiagnosticRow(
+                diagnostic = diagnostic,
+                onClick = { onOpenDiagnostic(diagnostic) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticRow(
+    diagnostic: GradleDiagnostic,
+    onClick: () -> Unit,
+) {
+    val severityColor =
+        when (diagnostic.severity) {
+            GradleDiagnosticSeverity.ERROR -> Color(0xFFE74C3C)
+            GradleDiagnosticSeverity.WARNING -> Color(0xFFDCDCAA)
+            GradleDiagnosticSeverity.INFO -> Color(0xFF569CD6)
+        }
+    val displayPath =
+        diagnostic.filePath.substringAfterLast('/')
+    val line = diagnostic.position.line + 1
+    val column = diagnostic.position.column + 1
+
+    Text(
+        text = "$displayPath:$line:$column ${diagnostic.message}",
+        color = severityColor,
+        fontFamily = FontFamily.Monospace,
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 2.dp),
+    )
 }
 
 @Composable
@@ -233,6 +369,7 @@ private fun TaskButton(
             Modifier
                 .background(backgroundColor, RoundedCornerShape(4.dp))
                 .clickable(enabled = enabled, onClick = onClick)
+                .widthIn(max = 220.dp)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -247,6 +384,8 @@ private fun TaskButton(
             text = taskName,
             color = textColor,
             style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -297,3 +436,6 @@ private fun OutputLineRow(line: OutputLine) {
         modifier = Modifier.padding(vertical = 1.dp),
     )
 }
+
+private const val MAX_DISCOVERED_TASK_BUTTONS = 40
+private const val MAX_VISIBLE_DIAGNOSTICS = 5

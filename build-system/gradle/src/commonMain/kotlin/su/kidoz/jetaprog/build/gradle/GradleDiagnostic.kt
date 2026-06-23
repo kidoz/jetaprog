@@ -40,7 +40,7 @@ public object GradleDiagnosticsParser {
     // Gradle task failure pattern: > Task :module:task FAILED
     private val taskFailedPattern =
         Regex(
-            """^>\s*Task\s+([:\w]+)\s+FAILED$""",
+            """^>\s*Task\s+([:A-Za-z0-9_.-]+)\s+FAILED$""",
         )
 
     /**

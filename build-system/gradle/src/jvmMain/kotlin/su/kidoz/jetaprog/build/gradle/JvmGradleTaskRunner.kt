@@ -93,6 +93,7 @@ public class JvmGradleTaskRunner(
             project.copy(
                 name = projectName,
                 tasks = tasks,
+                subprojects = parseSubprojects(tasks),
             )
         }
 
@@ -104,8 +105,8 @@ public class JvmGradleTaskRunner(
 
     private fun parseOutputLine(line: String): GradleOutput {
         // Check for task execution patterns
-        val taskStartPattern = Regex("""^>\s*Task\s+([:\w]+)$""")
-        val taskCompletedPattern = Regex("""^>\s*Task\s+([:\w]+)\s+(\w+)$""")
+        val taskStartPattern = Regex("""^>\s*Task\s+($GRADLE_TASK_PATH_PATTERN)$""")
+        val taskCompletedPattern = Regex("""^>\s*Task\s+($GRADLE_TASK_PATH_PATTERN)\s+([A-Z-]+)$""")
 
         taskCompletedPattern.matchEntire(line.trim())?.let { match ->
             val taskPath = match.groupValues[1]
@@ -133,8 +134,8 @@ public class JvmGradleTaskRunner(
         val tasks = mutableListOf<GradleTask>()
         var currentGroup: String? = null
 
-        val groupPattern = Regex("""^(\w[\w\s]+) tasks$""")
-        val taskPattern = Regex("""^([:\w]+)\s*-\s*(.+)$""")
+        val groupPattern = Regex("""^(.+?) tasks$""")
+        val taskPattern = Regex("""^($GRADLE_TASK_PATH_PATTERN)\s*-\s*(.+)$""")
 
         for (line in output.lines()) {
             groupPattern.matchEntire(line)?.let { match ->
@@ -158,8 +159,19 @@ public class JvmGradleTaskRunner(
             }
         }
 
-        return tasks
+        return tasks.distinctBy { it.path }
     }
+
+    private fun parseSubprojects(tasks: List<GradleTask>): List<String> =
+        tasks
+            .mapNotNull { task ->
+                task.path
+                    .takeIf { it.startsWith(":") && it.count { character -> character == ':' } > 1 }
+                    ?.substringBeforeLast(":")
+                    ?.removePrefix(":")
+                    ?.replace(':', '/')
+            }.distinct()
+            .sorted()
 
     private fun parseProjectName(projectPath: String): String {
         val settingsFile =
@@ -177,5 +189,9 @@ public class JvmGradleTaskRunner(
         }
 
         return File(projectPath).name
+    }
+
+    private companion object {
+        private const val GRADLE_TASK_PATH_PATTERN = "[:A-Za-z0-9_.-]+"
     }
 }

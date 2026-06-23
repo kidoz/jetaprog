@@ -526,6 +526,10 @@ private fun MainScreenContent(
                 BuildOutputPanel(
                     state = gradleState,
                     onIntent = { intent -> session.gradleViewModel.dispatch(intent) },
+                    onOpenDiagnostic = { diagnostic ->
+                        session.editorViewModel.dispatch(EditorIntent.OpenFile(diagnostic.filePath))
+                        session.editorViewModel.dispatch(EditorIntent.GoToLine(diagnostic.position.line + 1))
+                    },
                 )
 
                 // Terminal panel

@@ -22,7 +22,7 @@ public data class GradleState(
     /** Whether the panel is visible. */
     val isVisible: Boolean = false,
     /** Favorite/pinned tasks for quick access. */
-    val favoriteTasks: List<String> = listOf("build", "clean", "test"),
+    val favoriteTasks: List<String> = listOf(":app:desktop:run", "build", "test", "ktlintCheck", "detekt"),
 )
 
 /**
