@@ -25,6 +25,7 @@ include(":core:lint")
 include(":core:platform")
 include(":core:project")
 include(":core:settings")
+include(":core:vcs")
 
 // Editor
 include(":editor:core")
