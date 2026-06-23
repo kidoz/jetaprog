@@ -61,6 +61,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
@@ -476,13 +477,16 @@ private fun TerminalContent(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        // Output area
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .clickable { focusRequester.requestFocus() },
+    ) {
         LazyColumn(
             modifier =
                 Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .padding(Spacing.sm.dp),
             state = listState,
         ) {
@@ -491,61 +495,54 @@ private fun TerminalContent(
             }
         }
 
-        TerminalInput(
+        TerminalInputCapture(
             onInput = onInput,
             focusRequester = focusRequester,
+            modifier = Modifier.align(Alignment.BottomStart),
         )
     }
 }
 
 @Composable
-private fun TerminalInput(
+private fun TerminalInputCapture(
     onInput: (String) -> Unit,
     focusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
 ) {
-    Row(
+    BasicTextField(
+        value = "",
+        onValueChange = { value ->
+            if (value.isNotEmpty()) {
+                onInput(value)
+            }
+        },
+        textStyle =
+            TextStyle(
+                fontFamily = JetaProgFonts.codeFont,
+                fontSize = 1.sp,
+                color = Color.Transparent,
+            ),
+        cursorBrush = SolidColor(Color.Transparent),
+        singleLine = true,
         modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(IntelliJColors.terminalInputBackground)
-                .padding(Spacing.sm.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BasicTextField(
-            value = "",
-            onValueChange = { value ->
-                if (value.isNotEmpty()) {
-                    onInput(value)
-                }
-            },
-            textStyle =
-                TextStyle(
-                    fontFamily = JetaProgFonts.codeFont,
-                    fontSize = 14.sp,
-                    color = IntelliJColors.terminalForeground,
-                ),
-            cursorBrush = SolidColor(IntelliJColors.terminalForeground),
-            singleLine = true,
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequester)
-                    .onPreviewKeyEvent { keyEvent ->
-                        val input = keyEvent.toTerminalInput()
-                        if (input != null) {
-                            onInput(input)
-                            true
-                        } else {
-                            false
-                        }
-                    },
-            decorationBox = { innerTextField ->
-                Box {
-                    innerTextField()
-                }
-            },
-        )
-    }
+            modifier
+                .size(1.dp)
+                .focusRequester(focusRequester)
+                .onPreviewKeyEvent { keyEvent ->
+                    val input = keyEvent.toTerminalInput()
+                    if (input != null) {
+                        onInput(input)
+                        true
+                    } else {
+                        false
+                    }
+                },
+        decorationBox = { innerTextField ->
+            Box {
+                innerTextField()
+            }
+        },
+    )
 }
 
 private fun KeyEvent.toTerminalInput(): String? {
@@ -644,6 +641,7 @@ private fun TerminalOutputLine(line: TerminalLine) {
                 fontFamily = JetaProgFonts.codeFont,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
+                lineHeight = 1.25.em,
                 modifier = Modifier.padding(vertical = 1.dp),
             )
         }
@@ -651,10 +649,11 @@ private fun TerminalOutputLine(line: TerminalLine) {
         line.isError -> {
             // Error output
             Text(
-                text = line.text,
+                text = line.text.ifEmpty { " " },
                 color = IntelliJColors.terminalRed,
                 fontFamily = JetaProgFonts.codeFont,
                 fontSize = 13.sp,
+                lineHeight = 1.25.em,
                 modifier = Modifier.padding(vertical = 1.dp),
             )
         }
@@ -662,10 +661,11 @@ private fun TerminalOutputLine(line: TerminalLine) {
         else -> {
             // Normal output
             Text(
-                text = line.text,
+                text = line.text.ifEmpty { " " },
                 color = IntelliJColors.terminalForeground,
                 fontFamily = JetaProgFonts.codeFont,
                 fontSize = 13.sp,
+                lineHeight = 1.25.em,
                 modifier = Modifier.padding(vertical = 1.dp),
             )
         }

@@ -12,6 +12,8 @@ import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.app.terminal.PtyTerminalBackend
 import su.kidoz.jetaprog.app.terminal.TerminalBackend
 import su.kidoz.jetaprog.app.terminal.TerminalBackendOutput
+import su.kidoz.jetaprog.app.terminal.TerminalEmulator
+import su.kidoz.jetaprog.app.terminal.TerminalScreenSnapshot
 import su.kidoz.jetaprog.common.Disposable
 
 /**
@@ -147,6 +149,7 @@ public class TerminalViewModel(
     private var nextTabId = 1
     private val terminalBackends = mutableMapOf<Int, TerminalBackend>()
     private val backendJobs = mutableMapOf<Int, Job>()
+    private val terminalEmulators = mutableMapOf<Int, TerminalEmulator>()
 
     private val _state = MutableStateFlow(TerminalState())
     public val state: StateFlow<TerminalState> = _state.asStateFlow()
@@ -190,11 +193,14 @@ public class TerminalViewModel(
     ) {
         val id = nextTabId++
         val cwd = workingDirectory ?: defaultWorkingDirectory
+        val emulator = TerminalEmulator()
+        terminalEmulators[id] = emulator
         val tab =
             TerminalTab(
                 id = id,
                 name = "$name $id",
                 workingDirectory = cwd,
+                output = emulator.snapshot().toTerminalLines(),
                 isRunning = true,
             )
 
@@ -215,6 +221,7 @@ public class TerminalViewModel(
         backendJobs[tabId]?.cancel()
         terminalBackends.remove(tabId)
         backendJobs.remove(tabId)
+        terminalEmulators.remove(tabId)
 
         _state.update { state ->
             val tabIndex = state.tabs.indexOfFirst { it.id == tabId }
@@ -269,7 +276,7 @@ public class TerminalViewModel(
                 backendFactory(workingDirectory)
             }
         if (backendResult.isFailure) {
-            appendOutput(
+            appendGridOutput(
                 tabId = tabId,
                 text = "Failed to start terminal: ${backendResult.exceptionOrNull()?.message}",
                 isError = true,
@@ -286,11 +293,11 @@ public class TerminalViewModel(
                 backend.output.collect { output ->
                     when (output) {
                         is TerminalBackendOutput.Text -> {
-                            appendOutput(tabId, output.value, isError = false)
+                            applyTerminalOutput(tabId, output.value)
                         }
 
                         is TerminalBackendOutput.Error -> {
-                            appendOutput(tabId, output.message, isError = true)
+                            appendGridOutput(tabId, output.message, isError = true)
                         }
 
                         is TerminalBackendOutput.Exited -> {
@@ -311,7 +318,10 @@ public class TerminalViewModel(
 
     private fun clearOutput() {
         val activeTab = _state.value.activeTab ?: return
-        updateTab(activeTab.id) { it.copy(output = emptyList()) }
+        val snapshot = terminalEmulators[activeTab.id]?.clear()
+        updateTab(activeTab.id) { tab ->
+            tab.copy(output = snapshot?.toTerminalLines() ?: emptyList())
+        }
     }
 
     private fun toggleVisibility() {
@@ -374,32 +384,58 @@ public class TerminalViewModel(
     }
 
     private fun resizePanel(height: Int) {
-        _state.update { it.copy(panelHeight = height.coerceIn(100, 600)) }
+        val panelHeight = height.coerceIn(100, 600)
+        val rows = ((panelHeight - TERMINAL_CHROME_HEIGHT) / TERMINAL_ROW_HEIGHT).coerceAtLeast(MIN_TERMINAL_ROWS)
+        val activeTab = _state.value.activeTab
+
+        if (activeTab != null) {
+            terminalBackends[activeTab.id]?.resize(DEFAULT_TERMINAL_COLUMNS, rows)
+            val snapshot = terminalEmulators[activeTab.id]?.resize(DEFAULT_TERMINAL_COLUMNS, rows)
+            if (snapshot != null) {
+                updateTab(activeTab.id) { it.copy(output = snapshot.toTerminalLines()) }
+            }
+        }
+
+        _state.update { it.copy(panelHeight = panelHeight) }
     }
 
-    private fun appendOutput(
+    private fun applyTerminalOutput(
+        tabId: Int,
+        text: String,
+    ) {
+        val snapshot = terminalEmulators[tabId]?.accept(text) ?: return
+        updateTab(tabId) { tab -> tab.copy(output = snapshot.toTerminalLines()) }
+    }
+
+    private fun appendGridOutput(
         tabId: Int,
         text: String,
         isError: Boolean = false,
-        isCommand: Boolean = false,
     ) {
+        val emulator = terminalEmulators[tabId]
+        val snapshot =
+            if (emulator != null) {
+                emulator.accept("$text\n")
+            } else {
+                TerminalScreenSnapshot(
+                    lines = listOf(text),
+                    cursorRow = 0,
+                    cursorColumn = 0,
+                )
+            }
         updateTab(tabId) { tab ->
-            val newOutput =
-                tab.output +
-                    TerminalLine(
-                        text = text,
-                        isError = isError,
-                        isCommand = isCommand,
-                    )
-            val trimmedOutput =
-                if (newOutput.size > 10000) {
-                    newOutput.takeLast(10000)
-                } else {
-                    newOutput
-                }
-            tab.copy(output = trimmedOutput)
+            tab.copy(output = snapshot.toTerminalLines(isError = isError))
         }
     }
+
+    private fun TerminalScreenSnapshot.toTerminalLines(isError: Boolean = false): List<TerminalLine> =
+        lines.mapIndexed { index, line ->
+            TerminalLine(
+                text = line,
+                isError = isError,
+                timestamp = index.toLong(),
+            )
+        }
 
     private fun updateTab(
         tabId: Int,
@@ -420,6 +456,14 @@ public class TerminalViewModel(
         backendJobs.values.forEach { it.cancel() }
         terminalBackends.clear()
         backendJobs.clear()
+        terminalEmulators.clear()
         viewModelScope.cancel()
+    }
+
+    private companion object {
+        private const val DEFAULT_TERMINAL_COLUMNS = 120
+        private const val MIN_TERMINAL_ROWS = 5
+        private const val TERMINAL_CHROME_HEIGHT = 68
+        private const val TERMINAL_ROW_HEIGHT = 18
     }
 }
