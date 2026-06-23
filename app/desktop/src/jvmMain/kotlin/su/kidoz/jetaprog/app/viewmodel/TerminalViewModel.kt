@@ -1,16 +1,18 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import su.kidoz.jetaprog.app.terminal.PtyTerminalBackend
+import su.kidoz.jetaprog.app.terminal.TerminalBackend
+import su.kidoz.jetaprog.app.terminal.TerminalBackendOutput
 import su.kidoz.jetaprog.common.Disposable
-import su.kidoz.jetaprog.platform.process.ProcessConfig
-import su.kidoz.jetaprog.platform.process.ProcessExecutor
-import su.kidoz.jetaprog.platform.process.ProcessOutput
-import su.kidoz.jetaprog.platform.process.RunningProcess
 
 /**
  * Represents a single terminal tab.
@@ -135,16 +137,16 @@ public sealed interface TerminalEffect {
 /**
  * ViewModel for the terminal panel.
  *
- * @param processExecutor The executor for running terminal processes.
  * @param defaultWorkingDirectory The default working directory for new terminals.
+ * @param backendFactory Creates terminal backends.
  */
 public class TerminalViewModel(
-    private val processExecutor: ProcessExecutor,
     private val defaultWorkingDirectory: String = System.getProperty("user.dir"),
+    private val backendFactory: (String) -> Result<TerminalBackend> = { PtyTerminalBackend.start(it) },
 ) : Disposable {
     private var nextTabId = 1
-    private val runningProcesses = mutableMapOf<Int, RunningProcess>()
-    private val processJobs = mutableMapOf<Int, Job>()
+    private val terminalBackends = mutableMapOf<Int, TerminalBackend>()
+    private val backendJobs = mutableMapOf<Int, Job>()
 
     private val _state = MutableStateFlow(TerminalState())
     public val state: StateFlow<TerminalState> = _state.asStateFlow()
@@ -182,7 +184,7 @@ public class TerminalViewModel(
         }
     }
 
-    private fun createTerminal(
+    private suspend fun createTerminal(
         name: String,
         workingDirectory: String?,
     ) {
@@ -193,6 +195,7 @@ public class TerminalViewModel(
                 id = id,
                 name = "$name $id",
                 workingDirectory = cwd,
+                isRunning = true,
             )
 
         _state.update { state ->
@@ -203,13 +206,15 @@ public class TerminalViewModel(
                 isVisible = true,
             )
         }
+
+        startTerminalBackend(id, cwd)
     }
 
     private fun closeTerminal(tabId: Int) {
-        runningProcesses[tabId]?.kill()
-        processJobs[tabId]?.cancel()
-        runningProcesses.remove(tabId)
-        processJobs.remove(tabId)
+        terminalBackends[tabId]?.kill()
+        backendJobs[tabId]?.cancel()
+        terminalBackends.remove(tabId)
+        backendJobs.remove(tabId)
 
         _state.update { state ->
             val tabIndex = state.tabs.indexOfFirst { it.id == tabId }
@@ -252,66 +257,56 @@ public class TerminalViewModel(
             )
         }
 
-        // Kill existing process if any
-        runningProcesses[tabId]?.kill()
-        processJobs[tabId]?.cancel()
+        terminalBackends[tabId]?.write("$command\r".encodeToByteArray())
+    }
 
-        // Add command to output
-        appendOutput(tabId, "$ $command", isError = false, isCommand = true)
-
-        // Update state to show running
-        updateTab(tabId) { it.copy(isRunning = true, exitCode = null) }
-
-        // Start the process
-        val shell =
-            if (System.getProperty("os.name").lowercase().contains("win")) {
-                listOf("cmd", "/c", command)
-            } else {
-                listOf("/bin/sh", "-c", command)
+    private suspend fun startTerminalBackend(
+        tabId: Int,
+        workingDirectory: String,
+    ) {
+        val backendResult =
+            withContext(Dispatchers.IO) {
+                backendFactory(workingDirectory)
             }
-
-        val config =
-            ProcessConfig(
-                command = shell,
-                workingDirectory = activeTab.workingDirectory,
+        if (backendResult.isFailure) {
+            appendOutput(
+                tabId = tabId,
+                text = "Failed to start terminal: ${backendResult.exceptionOrNull()?.message}",
+                isError = true,
             )
-
-        val processResult = processExecutor.start(config)
-        if (processResult.isFailure) {
-            appendOutput(tabId, "Failed to start process: ${processResult.exceptionOrNull()?.message}", isError = true)
             updateTab(tabId) { it.copy(isRunning = false) }
             return
         }
 
-        val process = processResult.getOrThrow()
-        runningProcesses[tabId] = process
+        val backend = backendResult.getOrThrow()
+        terminalBackends[tabId] = backend
 
         val job =
             viewModelScope.launch {
-                process.output.collect { output ->
+                backend.output.collect { output ->
                     when (output) {
-                        is ProcessOutput.Stdout -> {
-                            appendOutput(tabId, output.line, isError = false)
+                        is TerminalBackendOutput.Text -> {
+                            appendOutput(tabId, output.value, isError = false)
                         }
 
-                        is ProcessOutput.Stderr -> {
-                            appendOutput(tabId, output.line, isError = true)
+                        is TerminalBackendOutput.Error -> {
+                            appendOutput(tabId, output.message, isError = true)
                         }
 
-                        is ProcessOutput.Exited -> {
+                        is TerminalBackendOutput.Exited -> {
                             updateTab(tabId) { it.copy(isRunning = false, exitCode = output.exitCode) }
-                            runningProcesses.remove(tabId)
+                            terminalBackends.remove(tabId)
                         }
                     }
                 }
             }
-        processJobs[tabId] = job
+        backendJobs[tabId] = job
     }
 
     private suspend fun sendInput(text: String) {
         val activeTab = _state.value.activeTab ?: return
-        val process = runningProcesses[activeTab.id] ?: return
-        process.writeStdin(text + "\n")
+        val backend = terminalBackends[activeTab.id] ?: return
+        backend.write(text.encodeToByteArray())
     }
 
     private fun clearOutput() {
@@ -325,13 +320,12 @@ public class TerminalViewModel(
 
     private fun killCurrentProcess() {
         val activeTab = _state.value.activeTab ?: return
-        val process = runningProcesses[activeTab.id]
-        val job = processJobs[activeTab.id]
+        val backend = terminalBackends[activeTab.id]
+        val job = backendJobs[activeTab.id]
 
-        process?.kill()
+        backend?.kill()
         job?.cancel()
 
-        appendOutput(activeTab.id, "^C Process terminated", isError = true)
         updateTab(activeTab.id) { it.copy(isRunning = false) }
     }
 
@@ -422,10 +416,10 @@ public class TerminalViewModel(
     }
 
     override fun dispose() {
-        runningProcesses.values.forEach { it.kill() }
-        processJobs.values.forEach { it.cancel() }
-        runningProcesses.clear()
-        processJobs.clear()
-        viewModelScope.launch { }.cancel()
+        terminalBackends.values.forEach { it.kill() }
+        backendJobs.values.forEach { it.cancel() }
+        terminalBackends.clear()
+        backendJobs.clear()
+        viewModelScope.cancel()
     }
 }

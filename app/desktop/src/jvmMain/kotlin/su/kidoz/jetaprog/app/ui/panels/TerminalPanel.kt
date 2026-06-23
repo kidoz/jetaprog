@@ -38,9 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,8 +47,16 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -79,14 +85,13 @@ public fun TerminalPanel(
     if (!state.isVisible) return
 
     val focusRequester = remember { FocusRequester() }
-    var command by remember { mutableStateOf("") }
 
     // Handle effects (command history)
     val effect by effects.collectAsState()
     LaunchedEffect(effect) {
         when (val currentEffect = effect) {
             is TerminalEffect.HistoryCommand -> {
-                command = currentEffect.command
+                onIntent(TerminalIntent.SendInput(currentEffect.command))
             }
 
             else -> {}
@@ -134,14 +139,7 @@ public fun TerminalPanel(
             TerminalContent(
                 tab = activeTab,
                 filteredOutput = state.filteredOutput,
-                command = command,
-                onCommandChange = { command = it },
-                onCommand = { cmd ->
-                    onIntent(TerminalIntent.ExecuteCommand(cmd))
-                    command = ""
-                },
-                onHistoryUp = { onIntent(TerminalIntent.HistoryUp) },
-                onHistoryDown = { onIntent(TerminalIntent.HistoryDown) },
+                onInput = { input -> onIntent(TerminalIntent.SendInput(input)) },
                 focusRequester = focusRequester,
                 modifier = Modifier.weight(1f),
             )
@@ -461,15 +459,15 @@ private fun SearchBar(
 private fun TerminalContent(
     tab: TerminalTab,
     filteredOutput: List<TerminalLine>,
-    command: String,
-    onCommandChange: (String) -> Unit,
-    onCommand: (String) -> Unit,
-    onHistoryUp: () -> Unit,
-    onHistoryDown: () -> Unit,
+    onInput: (String) -> Unit,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+
+    LaunchedEffect(tab.id) {
+        focusRequester.requestFocus()
+    }
 
     // Auto-scroll to bottom when new output arrives
     LaunchedEffect(filteredOutput.size) {
@@ -493,27 +491,16 @@ private fun TerminalContent(
             }
         }
 
-        // Input area
-        if (!tab.isRunning || tab.output.isEmpty()) {
-            TerminalInput(
-                command = command,
-                onCommandChange = onCommandChange,
-                onCommand = onCommand,
-                onHistoryUp = onHistoryUp,
-                onHistoryDown = onHistoryDown,
-                focusRequester = focusRequester,
-            )
-        }
+        TerminalInput(
+            onInput = onInput,
+            focusRequester = focusRequester,
+        )
     }
 }
 
 @Composable
 private fun TerminalInput(
-    command: String,
-    onCommandChange: (String) -> Unit,
-    onCommand: (String) -> Unit,
-    onHistoryUp: () -> Unit,
-    onHistoryDown: () -> Unit,
+    onInput: (String) -> Unit,
     focusRequester: FocusRequester,
 ) {
     Row(
@@ -524,16 +511,13 @@ private fun TerminalInput(
                 .padding(Spacing.sm.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "$ ",
-            color = IntelliJColors.terminalGreen,
-            fontFamily = JetaProgFonts.codeFont,
-            fontSize = 14.sp,
-        )
-
         BasicTextField(
-            value = command,
-            onValueChange = onCommandChange,
+            value = "",
+            onValueChange = { value ->
+                if (value.isNotEmpty()) {
+                    onInput(value)
+                }
+            },
             textStyle =
                 TextStyle(
                     fontFamily = JetaProgFonts.codeFont,
@@ -546,44 +530,106 @@ private fun TerminalInput(
                 Modifier
                     .weight(1f)
                     .focusRequester(focusRequester)
-                    .onKeyEvent { keyEvent ->
-                        when (keyEvent.key) {
-                            Key.Enter -> {
-                                if (command.isNotBlank()) {
-                                    onCommand(command)
-                                }
-                                true
-                            }
-
-                            Key.DirectionUp -> {
-                                onHistoryUp()
-                                true
-                            }
-
-                            Key.DirectionDown -> {
-                                onHistoryDown()
-                                true
-                            }
-
-                            else -> {
-                                false
-                            }
+                    .onPreviewKeyEvent { keyEvent ->
+                        val input = keyEvent.toTerminalInput()
+                        if (input != null) {
+                            onInput(input)
+                            true
+                        } else {
+                            false
                         }
                     },
             decorationBox = { innerTextField ->
                 Box {
-                    if (command.isEmpty()) {
-                        Text(
-                            text = "Enter command...",
-                            color = IntelliJColors.textMuted,
-                            fontFamily = JetaProgFonts.codeFont,
-                            fontSize = 14.sp,
-                        )
-                    }
                     innerTextField()
                 }
             },
         )
+    }
+}
+
+private fun KeyEvent.toTerminalInput(): String? {
+    if (type != KeyEventType.KeyDown) return null
+
+    if (isCtrlPressed && !isAltPressed && !isMetaPressed) {
+        return when (key) {
+            Key.A -> "\u0001"
+            Key.B -> "\u0002"
+            Key.C -> "\u0003"
+            Key.D -> "\u0004"
+            Key.E -> "\u0005"
+            Key.F -> "\u0006"
+            Key.K -> "\u000b"
+            Key.L -> "\u000c"
+            Key.R -> "\u0012"
+            Key.U -> "\u0015"
+            Key.W -> "\u0017"
+            Key.Z -> "\u001a"
+            else -> null
+        }
+    }
+
+    return when (key) {
+        Key.Enter -> {
+            "\r"
+        }
+
+        Key.Backspace -> {
+            "\u007f"
+        }
+
+        Key.Tab -> {
+            "\t"
+        }
+
+        Key.Escape -> {
+            "\u001b"
+        }
+
+        Key.DirectionUp -> {
+            "\u001b[A"
+        }
+
+        Key.DirectionDown -> {
+            "\u001b[B"
+        }
+
+        Key.DirectionRight -> {
+            "\u001b[C"
+        }
+
+        Key.DirectionLeft -> {
+            "\u001b[D"
+        }
+
+        Key.MoveHome -> {
+            "\u001b[H"
+        }
+
+        Key.MoveEnd -> {
+            "\u001b[F"
+        }
+
+        Key.Delete -> {
+            "\u001b[3~"
+        }
+
+        Key.PageUp -> {
+            "\u001b[5~"
+        }
+
+        Key.PageDown -> {
+            "\u001b[6~"
+        }
+
+        else -> {
+            val codePoint = utf16CodePoint
+            when {
+                isMetaPressed || isCtrlPressed -> null
+                codePoint == 0 -> null
+                else -> codePoint.toChar().toString()
+            }
+        }
     }
 }
 

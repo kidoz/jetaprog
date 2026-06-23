@@ -47,6 +47,7 @@ kotlin {
                 implementation(libs.serialization.json)
                 implementation(libs.kotlin.logging)
                 implementation(libs.logback)
+                implementation(libs.pty4j)
             }
         }
     }

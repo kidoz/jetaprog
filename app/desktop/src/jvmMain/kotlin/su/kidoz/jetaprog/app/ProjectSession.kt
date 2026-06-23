@@ -195,7 +195,7 @@ public class ProjectSession(
      * The terminal view model.
      */
     public val terminalViewModel: TerminalViewModel =
-        TerminalViewModel(processExecutor, projectPath)
+        TerminalViewModel(defaultWorkingDirectory = projectPath)
 
     /**
      * The Gradle view model.
