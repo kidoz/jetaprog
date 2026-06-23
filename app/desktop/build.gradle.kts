@@ -28,6 +28,8 @@ kotlin {
                 implementation(projects.plugins.bundled.vala)
                 implementation(projects.mcp.server)
                 implementation(projects.mcp.bridge)
+                implementation(project(":acp:client"))
+                implementation(project(":acp:agent"))
                 implementation(projects.buildSystem.cargo)
                 implementation(project(":build-system:dotnet"))
                 implementation(projects.buildSystem.gradle)

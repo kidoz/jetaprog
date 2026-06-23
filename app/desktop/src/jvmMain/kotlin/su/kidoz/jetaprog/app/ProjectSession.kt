@@ -6,6 +6,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
+import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
 import su.kidoz.jetaprog.app.viewmodel.ConfigurationViewModel
 import su.kidoz.jetaprog.app.viewmodel.EditorViewModel
 import su.kidoz.jetaprog.app.viewmodel.GradleViewModel
@@ -202,6 +203,12 @@ public class ProjectSession(
      */
     public val gradleViewModel: GradleViewModel = GradleViewModel(gradleTaskRunner)
 
+    /**
+     * The agent (ACP) session view model, driving an external coding agent.
+     */
+    public val agentSessionViewModel: AgentSessionViewModel =
+        AgentSessionViewModel(projectPath = projectPath, fileSystem = fileSystem)
+
     // ========================================================================
     // Configuration
     // ========================================================================
@@ -278,6 +285,7 @@ public class ProjectSession(
         editorViewModel.dispose()
         terminalViewModel.dispose()
         gradleViewModel.dispose()
+        agentSessionViewModel.dispose()
         configurationViewModel.dispose()
         debugService.dispose()
         embeddedServerRegistry.dispose()

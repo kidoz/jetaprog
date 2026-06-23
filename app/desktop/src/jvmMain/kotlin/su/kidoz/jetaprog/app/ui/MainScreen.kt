@@ -58,6 +58,7 @@ import su.kidoz.jetaprog.app.ui.editor.CodeEditor
 import su.kidoz.jetaprog.app.ui.editor.EmptyEditorPlaceholder
 import su.kidoz.jetaprog.app.ui.editor.MarkdownEditor
 import su.kidoz.jetaprog.app.ui.navigation.NavigationHost
+import su.kidoz.jetaprog.app.ui.panels.AgentPanel
 import su.kidoz.jetaprog.app.ui.panels.BuildOutputPanel
 import su.kidoz.jetaprog.app.ui.panels.ProjectPanel
 import su.kidoz.jetaprog.app.ui.panels.TerminalPanel
@@ -538,6 +539,23 @@ private fun MainScreenContent(
                     effects = session.terminalViewModel.effects,
                     onIntent = { intent -> session.terminalViewModel.dispatch(intent) },
                 )
+
+                // AI Agent (ACP) panel - collapsible to avoid taking space when unused
+                var agentExpanded by remember { mutableStateOf(false) }
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { agentExpanded = !agentExpanded }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(text = if (agentExpanded) "▾ AI Agent" else "▸ AI Agent")
+                }
+                if (agentExpanded) {
+                    Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
+                        AgentPanel(viewModel = session.agentSessionViewModel)
+                    }
+                }
             }
 
             // Status bar
