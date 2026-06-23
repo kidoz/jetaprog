@@ -23,7 +23,10 @@ import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedDeclaration
+import org.jetbrains.kotlin.psi.KtReferenceExpression
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import su.kidoz.jetaprog.common.Disposable
 import java.io.File
 import java.nio.file.Files
@@ -34,6 +37,14 @@ public enum class KotlinDiagnosticSeverity {
     WARNING,
     INFO,
 }
+
+/** A resolved definition target within the analyzed source, by character offsets. */
+public data class KotlinDefinitionLocation(
+    /** Inclusive start offset of the target declaration's name. */
+    val startOffset: Int,
+    /** Exclusive end offset of the target declaration's name. */
+    val endOffset: Int,
+)
 
 /** A semantic diagnostic produced by frontend analysis, with character offsets. */
 public data class KotlinSemanticDiagnostic(
@@ -112,6 +123,31 @@ public class KotlinSemanticAnalyzer(
                         .mapNotNull { it.toDeclaration() }
                         .distinctBy { it.name to it.kind }
                 } ?: emptyList()
+            }
+        }
+
+    /**
+     * Resolves the reference at [offset] to its declaration and returns the
+     * declaration's name range when the target has source in the analyzed file.
+     * Returns null for references into compiled/library code (no source).
+     */
+    public fun definition(
+        text: String,
+        offset: Int,
+    ): KotlinDefinitionLocation? =
+        synchronized(lock) {
+            withAnalysis(text) { file, bindingContext ->
+                val reference =
+                    PsiTreeUtil.getParentOfType(
+                        file.findElementAt(offset.coerceIn(0, maxOf(0, file.textLength - 1))),
+                        KtReferenceExpression::class.java,
+                        false,
+                    ) ?: return@withAnalysis null
+                val target = bindingContext.get(BindingContext.REFERENCE_TARGET, reference) ?: return@withAnalysis null
+                val declaration = DescriptorToSourceUtils.descriptorToDeclaration(target) ?: return@withAnalysis null
+                if (declaration.containingFile != file) return@withAnalysis null
+                val range = (declaration as? KtNamedDeclaration)?.nameIdentifier?.textRange ?: declaration.textRange
+                KotlinDefinitionLocation(range.startOffset, range.endOffset)
             }
         }
 

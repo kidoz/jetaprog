@@ -19,6 +19,7 @@ import su.kidoz.jetaprog.plugins.kotlin.providers.ConfigurableKotlinCompletionPr
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinCompletionProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinPsiCompletionProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinSemanticCompletionProvider
+import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinSemanticDefinitionProvider
 import su.kidoz.jetaprog.plugins.support.formatters.FormatterRegistry
 import java.io.File
 
@@ -113,6 +114,13 @@ public class KotlinPlugin(
                 selector = selector,
                 provider = KotlinSemanticCompletionProvider(semantics),
                 triggerCharacters = listOf('.'),
+            ).also { context.subscriptions.add(it) }
+
+        // Register resolution-based go-to-definition (same-file precise)
+        context.languages
+            .registerDefinitionProvider(
+                selector = selector,
+                provider = KotlinSemanticDefinitionProvider(semantics),
             ).also { context.subscriptions.add(it) }
 
         // Register hover provider

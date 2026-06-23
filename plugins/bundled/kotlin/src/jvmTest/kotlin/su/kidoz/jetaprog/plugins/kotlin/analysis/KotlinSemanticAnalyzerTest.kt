@@ -3,6 +3,8 @@ package su.kidoz.jetaprog.plugins.kotlin.analysis
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class KotlinSemanticAnalyzerTest {
@@ -74,6 +76,21 @@ class KotlinSemanticAnalyzerTest {
         assertTrue(cleanFirst.isEmpty(), "first clean analysis should have no errors: $cleanFirst")
         assertTrue(broken.isNotEmpty(), "broken analysis should report an error")
         assertTrue(cleanAgain.isEmpty(), "later clean analysis should have no errors: $cleanAgain")
+    }
+
+    @Test
+    fun goToDefinitionResolvesSameFileDeclaration() {
+        val source =
+            """
+            fun helper(): Int = 1
+            fun caller(): Int = helper()
+            """.trimIndent()
+        val callOffset = source.lastIndexOf("helper") + 1
+
+        val location = analyzer.definition(source, callOffset)
+
+        assertNotNull(location, "expected the call to resolve to a declaration")
+        assertEquals(source.indexOf("helper"), location.startOffset)
     }
 
     @Test
