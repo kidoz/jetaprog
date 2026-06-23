@@ -9,11 +9,14 @@ import su.kidoz.jetaprog.plugins.api.PluginManifest
 import su.kidoz.jetaprog.plugins.api.language.CompletionList
 import su.kidoz.jetaprog.plugins.api.language.DocumentSelector
 import su.kidoz.jetaprog.plugins.api.services.CompletionProvider
+import su.kidoz.jetaprog.plugins.api.services.LanguageClient
 import su.kidoz.jetaprog.plugins.api.services.LanguageConfiguration
+import su.kidoz.jetaprog.plugins.api.services.LanguageServerConfig
 import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinStyleProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.ConfigurableKotlinCompletionProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinCompletionProvider
 import su.kidoz.jetaprog.plugins.support.formatters.FormatterRegistry
+import java.io.File
 
 private val logger = KotlinLogging.logger {}
 
@@ -58,6 +61,7 @@ public class KotlinPlugin :
     ) {
     private var kotlinLanguageService: KotlinLanguageService? = null
     private var kotlinFormatter: KotlinFormatter? = null
+    private var kotlinLanguageClient: LanguageClient? = null
 
     override suspend fun onActivate() {
         logger.info { "Activating Kotlin plugin" }
@@ -83,6 +87,8 @@ public class KotlinPlugin :
         val selector = DocumentSelector(languages = listOf(LanguageId.KOTLIN))
         val nativeProvider = KotlinCompletionProvider(service)
         val configurableProvider = ConfigurableKotlinCompletionProvider(nativeProvider, dummyLspProvider)
+
+        startKotlinLanguageServerIfAvailable(workspacePath, selector)
 
         context.languages
             .registerCompletionProvider(
@@ -150,9 +156,71 @@ public class KotlinPlugin :
         logger.info { "Deactivating Kotlin plugin" }
 
         kotlinLanguageService?.dispose()
+        kotlinLanguageClient?.stop()
         kotlinLanguageService = null
         kotlinFormatter = null
+        kotlinLanguageClient = null
 
         logger.info { "Kotlin plugin deactivated" }
+    }
+
+    private suspend fun startKotlinLanguageServerIfAvailable(
+        workspacePath: String,
+        selector: DocumentSelector,
+    ) {
+        val configuredCommand = System.getenv(KOTLIN_LSP_ENV)?.takeIf { it.isNotBlank() }
+        val command = configuredCommand ?: DEFAULT_KOTLIN_LSP_COMMAND
+        if (!isCommandAvailable(command)) {
+            logger.info { "Kotlin LSP command '$command' is not available; using native Kotlin providers only" }
+            return
+        }
+
+        runCatching {
+            context.languages.startLanguageServer(
+                LanguageServerConfig(
+                    name = DEFAULT_KOTLIN_LSP_COMMAND,
+                    command = listOf(command),
+                    documentSelector = selector,
+                    workingDirectory = workspacePath,
+                ),
+            )
+        }.onSuccess { client ->
+            kotlinLanguageClient = client
+            logger.info { "Kotlin LSP started with command '$command'" }
+        }.onFailure { error ->
+            logger.warn(error) { "Failed to start Kotlin LSP with command '$command'" }
+        }
+    }
+
+    private fun isCommandAvailable(command: String): Boolean {
+        val file = File(command)
+        if (file.isAbsolute || command.contains(File.separatorChar)) {
+            return file.canExecute()
+        }
+
+        val path = System.getenv("PATH").orEmpty()
+        if (path.isBlank()) return false
+
+        val executableNames =
+            if (System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+                val extensions = System.getenv("PATHEXT")?.split(File.pathSeparator).orEmpty()
+                listOf(command) + extensions.map { extension -> "$command$extension" }
+            } else {
+                listOf(command)
+            }
+
+        return path
+            .split(File.pathSeparator)
+            .filter { it.isNotBlank() }
+            .any { directory ->
+                executableNames.any { executableName ->
+                    File(directory, executableName).canExecute()
+                }
+            }
+    }
+
+    private companion object {
+        private const val DEFAULT_KOTLIN_LSP_COMMAND = "kotlin-language-server"
+        private const val KOTLIN_LSP_ENV = "JETAPROG_KOTLIN_LSP"
     }
 }
