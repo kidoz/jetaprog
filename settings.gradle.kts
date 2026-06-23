@@ -44,6 +44,11 @@ include(":plugins:bundled:vala")
 include(":mcp:bridge")
 include(":mcp:server")
 
+// ACP (Agent Client Protocol)
+include(":acp:protocol")
+include(":acp:client")
+include(":acp:agent")
+
 // LSP
 include(":lsp:client")
 include(":lsp:protocol")
