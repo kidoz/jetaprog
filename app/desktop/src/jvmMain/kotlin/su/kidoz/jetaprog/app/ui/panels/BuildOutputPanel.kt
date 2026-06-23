@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,6 +32,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,6 +43,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.build.gradle.GradleDiagnostic
 import su.kidoz.jetaprog.build.gradle.GradleDiagnosticSeverity
 import su.kidoz.jetaprog.build.gradle.GradleTask
@@ -106,24 +113,34 @@ private fun DiscoveredTasksStrip(
     runningTask: String?,
     onRunTask: (String) -> Unit,
 ) {
-    val visibleTasks = tasks.prioritizedForToolbar(favoriteTasks)
-    if (visibleTasks.isEmpty()) return
+    var query by remember(tasks) { mutableStateOf("") }
+    val visibleTasks = tasks.prioritizedForToolbar(favoriteTasks, query)
+    if (tasks.isEmpty()) return
 
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(34.dp)
+                .height(44.dp)
                 .background(Color(0xFF202124))
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(
-            text = "Tasks",
-            color = Color.Gray,
-            style = MaterialTheme.typography.labelSmall,
+        Icon(
+            imageVector = Icons.Default.Search,
+            contentDescription = "Search tasks",
+            tint = Color.Gray,
+            modifier = Modifier.size(16.dp),
+        )
+
+        IntelliJTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = "Task",
+            singleLine = true,
+            modifier = Modifier.width(160.dp),
         )
 
         visibleTasks.forEach { task ->
@@ -137,7 +154,10 @@ private fun DiscoveredTasksStrip(
     }
 }
 
-private fun List<GradleTask>.prioritizedForToolbar(favoriteTasks: List<String>): List<GradleTask> {
+private fun List<GradleTask>.prioritizedForToolbar(
+    favoriteTasks: List<String>,
+    query: String,
+): List<GradleTask> {
     val priority =
         listOf(
             ":app:desktop:run",
@@ -148,8 +168,15 @@ private fun List<GradleTask>.prioritizedForToolbar(favoriteTasks: List<String>):
             "clean",
             ":app:desktop:packageDistributionForCurrentOS",
         )
+    val normalizedQuery = query.trim().lowercase()
     return distinctBy { it.path }
-        .sortedWith(
+        .filter { task ->
+            normalizedQuery.isEmpty() ||
+                task.path.lowercase().contains(normalizedQuery) ||
+                task.name.lowercase().contains(normalizedQuery) ||
+                task.group?.lowercase()?.contains(normalizedQuery) == true ||
+                task.description?.lowercase()?.contains(normalizedQuery) == true
+        }.sortedWith(
             compareBy<GradleTask> { task ->
                 val favoriteIndex = favoriteTasks.indexOf(task.path)
                 if (favoriteIndex >= 0) favoriteIndex else Int.MAX_VALUE
