@@ -7,7 +7,9 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.File
+import java.io.InputStream
 import java.io.InputStreamReader
+import java.io.OutputStream
 import java.io.OutputStreamWriter
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -109,6 +111,12 @@ private class JvmRunningProcess(
     private val process: Process,
 ) : RunningProcess {
     private val stdinWriter = OutputStreamWriter(process.outputStream)
+
+    override val inputStream: InputStream
+        get() = process.inputStream
+
+    override val outputStream: OutputStream
+        get() = process.outputStream
 
     override suspend fun writeStdin(text: String) {
         withContext(Dispatchers.IO) {

@@ -1,6 +1,8 @@
 package su.kidoz.jetaprog.platform.process
 
 import kotlinx.coroutines.flow.Flow
+import java.io.InputStream
+import java.io.OutputStream
 
 /**
  * Represents the result of a process execution.
@@ -81,6 +83,18 @@ public data class ProcessConfig(
  * A running process that can be interacted with.
  */
 public interface RunningProcess {
+    /**
+     * Raw stdout stream for protocols that require byte-framed communication.
+     */
+    public val inputStream: InputStream?
+        get() = null
+
+    /**
+     * Raw stdin stream for protocols that require byte-framed communication.
+     */
+    public val outputStream: OutputStream?
+        get() = null
+
     /**
      * Writes to the process's stdin.
      * @param text The text to write
