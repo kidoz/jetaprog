@@ -53,4 +53,22 @@ class TerminalEmulatorTest {
         assertEquals("three", snapshot.lines[2])
         assertEquals("four", snapshot.lines[3])
     }
+
+    @Test
+    fun oscTitleSequenceIsNotRendered() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        val snapshot = emulator.accept("before\u001b]0;title\u0007after")
+
+        assertEquals("beforeafter", snapshot.lines.first())
+    }
+
+    @Test
+    fun oscHyperlinkSequenceWithStringTerminatorIsNotRendered() {
+        val emulator = TerminalEmulator(columns = 40, rows = 5)
+
+        val snapshot = emulator.accept("a\u001b]8;;https://example.com\u001b\\link\u001b]8;;\u001b\\b")
+
+        assertEquals("alinkb", snapshot.lines.first())
+    }
 }

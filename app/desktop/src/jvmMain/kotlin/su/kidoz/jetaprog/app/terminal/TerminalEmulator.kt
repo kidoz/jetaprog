@@ -111,6 +111,8 @@ internal class TerminalEmulator(
             ParserState.Ground -> acceptGround(character)
             ParserState.Escape -> acceptEscape(character)
             ParserState.Csi -> acceptCsi(character)
+            ParserState.ControlString -> acceptControlString(character)
+            ParserState.ControlStringEscape -> acceptControlStringEscape(character)
         }
     }
 
@@ -132,6 +134,10 @@ internal class TerminalEmulator(
             '[' -> {
                 csiBuffer.clear()
                 parserState = ParserState.Csi
+            }
+
+            ']', 'P', '^', '_' -> {
+                parserState = ParserState.ControlString
             }
 
             'c' -> {
@@ -162,6 +168,22 @@ internal class TerminalEmulator(
         if (parserState == ParserState.Escape) {
             parserState = ParserState.Ground
         }
+    }
+
+    private fun acceptControlString(character: Char) {
+        when (character) {
+            BEL -> parserState = ParserState.Ground
+            ESC -> parserState = ParserState.ControlStringEscape
+        }
+    }
+
+    private fun acceptControlStringEscape(character: Char) {
+        parserState =
+            if (character == '\\') {
+                ParserState.Ground
+            } else {
+                ParserState.ControlString
+            }
     }
 
     private fun acceptCsi(character: Char) {
@@ -431,6 +453,8 @@ internal class TerminalEmulator(
         Ground,
         Escape,
         Csi,
+        ControlString,
+        ControlStringEscape,
     }
 
     private companion object {
