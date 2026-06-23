@@ -7,6 +7,7 @@ internal data class TerminalScreenSnapshot(
     val lines: List<String>,
     val cursorRow: Int,
     val cursorColumn: Int,
+    val cursorLineIndex: Int,
 )
 
 /**
@@ -92,10 +93,18 @@ internal class TerminalEmulator(
      */
     internal fun snapshot(): TerminalScreenSnapshot =
         TerminalScreenSnapshot(
-            lines = scrollback.toList() + screen.map { row -> row.concatToString().trimEnd() },
+            lines = scrollback.toList() + visibleScreenLines(),
             cursorRow = cursorRow,
             cursorColumn = cursorColumn,
+            cursorLineIndex = scrollback.size + cursorRow,
         )
+
+    private fun visibleScreenLines(): List<String> {
+        val rows = screen.map { row -> row.concatToString().trimEnd() }
+        val lastContentRow = rows.indexOfLast { row -> row.isNotEmpty() }
+        val lastVisibleRow = maxOf(lastContentRow, cursorRow)
+        return rows.take(lastVisibleRow + 1)
+    }
 
     private fun accept(character: Char) {
         when (parserState) {

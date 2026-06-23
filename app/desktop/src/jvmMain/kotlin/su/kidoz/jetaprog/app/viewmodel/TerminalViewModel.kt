@@ -421,6 +421,7 @@ public class TerminalViewModel(
                     lines = listOf(text),
                     cursorRow = 0,
                     cursorColumn = 0,
+                    cursorLineIndex = 0,
                 )
             }
         updateTab(tabId) { tab ->
@@ -431,11 +432,30 @@ public class TerminalViewModel(
     private fun TerminalScreenSnapshot.toTerminalLines(isError: Boolean = false): List<TerminalLine> =
         lines.mapIndexed { index, line ->
             TerminalLine(
-                text = line,
+                text =
+                    if (index == cursorLineIndex) {
+                        line.withCursor(cursorColumn)
+                    } else {
+                        line
+                    },
                 isError = isError,
                 timestamp = index.toLong(),
             )
         }
+
+    private fun String.withCursor(column: Int): String {
+        val safeColumn = column.coerceAtLeast(0)
+        val text = StringBuilder(this)
+        while (text.length < safeColumn) {
+            text.append(' ')
+        }
+        if (safeColumn < text.length) {
+            text.setCharAt(safeColumn, CURSOR_GLYPH)
+        } else {
+            text.append(CURSOR_GLYPH)
+        }
+        return text.toString()
+    }
 
     private fun updateTab(
         tabId: Int,
@@ -465,5 +485,6 @@ public class TerminalViewModel(
         private const val MIN_TERMINAL_ROWS = 5
         private const val TERMINAL_CHROME_HEIGHT = 68
         private const val TERMINAL_ROW_HEIGHT = 18
+        private const val CURSOR_GLYPH = '\u2588'
     }
 }

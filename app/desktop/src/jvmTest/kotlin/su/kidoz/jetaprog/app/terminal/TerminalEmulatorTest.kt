@@ -5,6 +5,16 @@ import kotlin.test.assertEquals
 
 class TerminalEmulatorTest {
     @Test
+    fun blankScreenSnapshotKeepsOnlyCursorRow() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        val snapshot = emulator.snapshot()
+
+        assertEquals(listOf(""), snapshot.lines)
+        assertEquals(0, snapshot.cursorLineIndex)
+    }
+
+    @Test
     fun carriageReturnOverwritesCurrentLine() {
         val emulator = TerminalEmulator(columns = 20, rows = 5)
 
