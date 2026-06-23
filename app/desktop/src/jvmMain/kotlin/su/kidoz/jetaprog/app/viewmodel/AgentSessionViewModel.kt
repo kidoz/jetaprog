@@ -299,9 +299,7 @@ public class AgentSessionViewModel(
                 }
             }
 
-            is SessionUpdate.AvailableCommandsUpdate -> {
-                Unit
-            }
+            is SessionUpdate.AvailableCommandsUpdate -> {}
         }
     }
 
