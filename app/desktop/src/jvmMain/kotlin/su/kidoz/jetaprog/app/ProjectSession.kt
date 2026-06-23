@@ -13,6 +13,7 @@ import su.kidoz.jetaprog.app.viewmodel.ConfigurationViewModel
 import su.kidoz.jetaprog.app.viewmodel.EditorViewModel
 import su.kidoz.jetaprog.app.viewmodel.GradleViewModel
 import su.kidoz.jetaprog.app.viewmodel.TerminalViewModel
+import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
 import su.kidoz.jetaprog.build.gradle.GradleTaskRunner
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.common.Disposable
@@ -226,6 +227,12 @@ public class ProjectSession(
     public val agentSessionViewModel: AgentSessionViewModel =
         AgentSessionViewModel(projectPath = projectPath, fileSystem = fileSystem)
 
+    /**
+     * The project-wide full-text search ("Find in Files") view model.
+     */
+    public val textSearchViewModel: TextSearchViewModel =
+        TextSearchViewModel(projectPath = projectPath, fileSystem = fileSystem)
+
     // ========================================================================
     // Configuration
     // ========================================================================
@@ -315,6 +322,7 @@ public class ProjectSession(
         terminalViewModel.dispose()
         gradleViewModel.dispose()
         agentSessionViewModel.dispose()
+        textSearchViewModel.dispose()
         configurationViewModel.dispose()
         debugService.dispose()
         embeddedServerRegistry.dispose()

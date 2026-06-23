@@ -60,6 +60,7 @@ import su.kidoz.jetaprog.app.ui.editor.MarkdownEditor
 import su.kidoz.jetaprog.app.ui.navigation.NavigationHost
 import su.kidoz.jetaprog.app.ui.panels.AgentPanel
 import su.kidoz.jetaprog.app.ui.panels.BuildOutputPanel
+import su.kidoz.jetaprog.app.ui.panels.FindInFilesPanel
 import su.kidoz.jetaprog.app.ui.panels.ProjectPanel
 import su.kidoz.jetaprog.app.ui.panels.TerminalPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
@@ -559,6 +560,33 @@ private fun MainScreenContent(
                 if (agentExpanded) {
                     Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
                         AgentPanel(viewModel = session.agentSessionViewModel)
+                    }
+                }
+
+                // Find in Files (project-wide text search) - collapsible
+                var searchExpanded by remember { mutableStateOf(false) }
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { searchExpanded = !searchExpanded }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(text = if (searchExpanded) "▾ Find in Files" else "▸ Find in Files")
+                }
+                if (searchExpanded) {
+                    Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
+                        FindInFilesPanel(
+                            viewModel = session.textSearchViewModel,
+                            onOpenMatch = { path, line, column ->
+                                session.editorViewModel.dispatch(
+                                    EditorIntent.NavigateTo(
+                                        path = path,
+                                        position = TextPosition(line, column),
+                                    ),
+                                )
+                            },
+                        )
                     }
                 }
             }
