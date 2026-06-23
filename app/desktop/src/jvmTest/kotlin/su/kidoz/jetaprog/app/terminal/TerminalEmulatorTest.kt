@@ -71,4 +71,30 @@ class TerminalEmulatorTest {
 
         assertEquals("alinkb", snapshot.lines.first())
     }
+
+    @Test
+    fun alternateScreenRestoresPrimaryScreen() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        emulator.accept("prompt")
+        emulator.accept("\u001b[?1049h")
+        assertEquals("alternate", emulator.accept("alternate").lines.first())
+
+        val snapshot = emulator.accept("\u001b[?1049l")
+
+        assertEquals("prompt", snapshot.lines.first())
+    }
+
+    @Test
+    fun alternateScreenDoesNotAppendToScrollback() {
+        val emulator = TerminalEmulator(columns = 20, rows = 2)
+
+        emulator.accept("main")
+        emulator.accept("\u001b[?1049h")
+        emulator.accept("one\r\ntwo\r\nthree")
+
+        val snapshot = emulator.accept("\u001b[?1049l")
+
+        assertEquals(listOf("main"), snapshot.lines)
+    }
 }

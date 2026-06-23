@@ -24,10 +24,14 @@ internal class TerminalEmulator(
     private var cursorColumn: Int = 0
     private var savedCursorRow: Int = 0
     private var savedCursorColumn: Int = 0
+    private var primaryCursorRow: Int = 0
+    private var primaryCursorColumn: Int = 0
     private var parserState: ParserState = ParserState.Ground
     private val csiBuffer: StringBuilder = StringBuilder()
     private val scrollback: ArrayDeque<String> = ArrayDeque()
-    private val screen: MutableList<CharArray> = MutableList(this.rows) { blankLine() }
+    private val primaryScreen: MutableList<CharArray> = MutableList(this.rows) { blankLine() }
+    private var alternateScreen: MutableList<CharArray>? = null
+    private var screen: MutableList<CharArray> = primaryScreen
 
     /**
      * Apply terminal output to the screen grid and return the updated snapshot.
@@ -69,9 +73,9 @@ internal class TerminalEmulator(
         val oldLines = screen.map { row -> row.concatToString().trimEnd() }
         this.columns = newColumns
         this.rows = newRows
-        screen.clear()
 
         val visibleLines = oldLines.takeLast(newRows)
+        screen.clear()
         repeat(newRows - visibleLines.size) {
             screen += blankLine()
         }
@@ -200,6 +204,11 @@ internal class TerminalEmulator(
         final: Char,
         sequence: String,
     ) {
+        if ((final == 'h' || final == 'l') && sequence.startsWith('?')) {
+            executePrivateMode(sequence, enabled = final == 'h')
+            return
+        }
+
         val params = parseCsiParams(sequence)
         when (final) {
             'A' -> {
@@ -285,6 +294,21 @@ internal class TerminalEmulator(
         }
     }
 
+    private fun executePrivateMode(
+        sequence: String,
+        enabled: Boolean,
+    ) {
+        sequence
+            .removePrefix("?")
+            .split(';')
+            .mapNotNull { mode -> mode.toIntOrNull() }
+            .forEach { mode ->
+                when (mode) {
+                    47, 1047, 1049 -> setAlternateScreen(enabled)
+                }
+            }
+    }
+
     private fun putPrintable(character: Char) {
         if (cursorColumn >= columns) {
             cursorColumn = 0
@@ -315,9 +339,12 @@ internal class TerminalEmulator(
     }
 
     private fun scrollUp() {
-        scrollback.addLast(screen.removeAt(0).concatToString().trimEnd())
-        while (scrollback.size > maxScrollbackLines) {
-            scrollback.removeFirst()
+        val removedLine = screen.removeAt(0).concatToString().trimEnd()
+        if (!isAlternateScreenActive()) {
+            scrollback.addLast(removedLine)
+            while (scrollback.size > maxScrollbackLines) {
+                scrollback.removeFirst()
+            }
         }
         screen += blankLine()
     }
@@ -343,6 +370,25 @@ internal class TerminalEmulator(
     private fun restoreCursor() {
         moveCursor(savedCursorRow, savedCursorColumn)
     }
+
+    private fun setAlternateScreen(enabled: Boolean) {
+        if (enabled) {
+            if (isAlternateScreenActive()) return
+            primaryCursorRow = cursorRow
+            primaryCursorColumn = cursorColumn
+            alternateScreen = MutableList(rows) { blankLine() }
+            screen = alternateScreen ?: primaryScreen
+            cursorRow = 0
+            cursorColumn = 0
+        } else {
+            if (!isAlternateScreenActive()) return
+            alternateScreen = null
+            screen = primaryScreen
+            moveCursor(primaryCursorRow, primaryCursorColumn)
+        }
+    }
+
+    private fun isAlternateScreenActive(): Boolean = alternateScreen != null
 
     private fun eraseDisplay(mode: Int) {
         when (mode) {
