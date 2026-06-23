@@ -7,14 +7,14 @@ import kotlin.test.assertTrue
 
 class KotlinSemanticAnalyzerTest {
     // Seed the analyzer with the kotlin-stdlib jar from the test classpath so that
-    // basic types and functions resolve — exercising the classpath-aware path.
+    // basic types and members resolve — exercising the classpath-aware path.
     private val stdlibPath: String =
         File(
             Unit::class.java.protectionDomain.codeSource.location
                 .toURI(),
         ).absolutePath
 
-    private val analyzer = KotlinSemanticAnalyzer(classpath = listOf(stdlibPath))
+    private val analyzer = KotlinSemanticAnalyzer(classpathProvider = { listOf(stdlibPath) })
 
     @AfterTest
     fun tearDown() {
@@ -53,5 +53,15 @@ class KotlinSemanticAnalyzerTest {
 
         assertTrue(errors.isNotEmpty(), "expected an unresolved-reference error")
         assertTrue(errors.all { it.endOffset > it.startOffset })
+    }
+
+    @Test
+    fun memberCompletionResolvesClasspathTypeMembers() {
+        val source = "val length = \"hello\".length"
+        val offset = source.length // cursor at the end of `.length`
+
+        val members = analyzer.memberCompletions(source, offset).map { it.name }
+
+        assertTrue("length" in members, "expected String members from the classpath, got $members")
     }
 }
