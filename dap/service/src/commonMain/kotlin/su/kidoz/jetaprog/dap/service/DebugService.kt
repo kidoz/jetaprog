@@ -12,6 +12,7 @@ import su.kidoz.jetaprog.dap.protocol.InitializeRequestArguments
 import su.kidoz.jetaprog.dap.protocol.LaunchRequestArguments
 import su.kidoz.jetaprog.platform.process.ProcessConfig
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
+import java.io.File
 
 /**
  * Debug adapter configuration.
@@ -70,12 +71,12 @@ public class DebugService(
             )
 
         return processExecutor.start(processConfig).mapCatching { process ->
-            // Create the DAP client
-            // Note: This is a simplified implementation that assumes the process
-            // provides stdin/stdout streams. In a real implementation, this would
-            // need to properly access the process streams.
-            val inputStream = ProcessInputStream(process)
-            val outputStream = ProcessOutputStream(process)
+            val inputStream =
+                process.inputStream
+                    ?: error("Debug adapter process does not expose stdout stream")
+            val outputStream =
+                process.outputStream
+                    ?: error("Debug adapter process does not expose stdin stream")
 
             val client = DapClient(inputStream, outputStream, scope)
             client.start()
@@ -86,6 +87,7 @@ public class DebugService(
                     configuration = configuration,
                     client = client,
                     scope = scope,
+                    adapterProcess = process,
                 )
 
             // Initialize the debug adapter
@@ -104,7 +106,7 @@ public class DebugService(
             session.startEventListener()
 
             // Launch or attach based on configuration
-            val launchArgs = buildLaunchArgs(configuration, workspacePath, adapterConfig)
+            val launchArgs = buildLaunchArgs(configuration, workspacePath).getOrThrow()
             client.launch(launchArgs).getOrThrow()
 
             session.setRunning()
@@ -144,7 +146,7 @@ public class DebugService(
         configuration: RunConfiguration,
         workspacePath: String,
     ): DebugAdapterConfig? =
-        when (configuration.settings) {
+        when (val settings = configuration.settings) {
             is ConfigurationSettings.Python -> getPythonDebugAdapter(workspacePath)
 
             is ConfigurationSettings.CargoRun,
@@ -154,7 +156,8 @@ public class DebugService(
 
             is ConfigurationSettings.Application -> getGenericDebugAdapter(workspacePath)
 
-            // Add more configuration types as needed
+            is ConfigurationSettings.DotNetDebug -> getDotNetDebugAdapter(settings, workspacePath)
+
             else -> null
         }
 
@@ -177,6 +180,15 @@ public class DebugService(
             workingDirectory = workspacePath,
         )
 
+    private fun getDotNetDebugAdapter(
+        settings: ConfigurationSettings.DotNetDebug,
+        workspacePath: String,
+    ): DebugAdapterConfig =
+        DebugAdapterConfig(
+            command = listOf(settings.adapterCommand) + settings.adapterArguments,
+            workingDirectory = settings.workingDirectory ?: workspacePath,
+        )
+
     private fun getAdapterId(configuration: RunConfiguration): String =
         when (configuration.settings) {
             is ConfigurationSettings.Python -> "debugpy"
@@ -186,54 +198,122 @@ public class DebugService(
             is ConfigurationSettings.CargoTest,
             -> "codelldb"
 
+            is ConfigurationSettings.DotNetDebug -> "coreclr"
+
             else -> "generic"
         }
 
     private fun buildLaunchArgs(
         configuration: RunConfiguration,
         workspacePath: String,
-        adapterConfig: DebugAdapterConfig,
-    ): LaunchRequestArguments {
+    ): Result<LaunchRequestArguments> {
         val settings = configuration.settings
 
         return when (settings) {
             is ConfigurationSettings.Python -> {
-                LaunchRequestArguments(
-                    program = settings.scriptPath,
-                    args = settings.scriptArguments,
-                    cwd = settings.workingDirectory ?: workspacePath,
-                    env = settings.environment,
-                    stopOnEntry = false,
+                Result.success(
+                    LaunchRequestArguments(
+                        program = settings.scriptPath,
+                        args = settings.scriptArguments,
+                        cwd = settings.workingDirectory ?: workspacePath,
+                        env = settings.environment,
+                        stopOnEntry = false,
+                    ),
                 )
             }
 
             is ConfigurationSettings.CargoRun -> {
-                LaunchRequestArguments(
-                    program = "$workspacePath/target/debug/${configuration.name}",
-                    args = settings.programArguments,
-                    cwd = settings.workingDirectory ?: workspacePath,
-                    env = settings.environment,
-                    stopOnEntry = false,
+                Result.success(
+                    LaunchRequestArguments(
+                        program = "$workspacePath/target/debug/${configuration.name}",
+                        args = settings.programArguments,
+                        cwd = settings.workingDirectory ?: workspacePath,
+                        env = settings.environment,
+                        stopOnEntry = false,
+                    ),
                 )
             }
 
             is ConfigurationSettings.Application -> {
-                LaunchRequestArguments(
-                    program = settings.executablePath,
-                    args = settings.programArguments,
-                    cwd = settings.workingDirectory ?: workspacePath,
-                    env = settings.environment,
-                    stopOnEntry = false,
+                Result.success(
+                    LaunchRequestArguments(
+                        program = settings.executablePath,
+                        args = settings.programArguments,
+                        cwd = settings.workingDirectory ?: workspacePath,
+                        env = settings.environment,
+                        stopOnEntry = false,
+                    ),
                 )
             }
 
+            is ConfigurationSettings.DotNetDebug -> {
+                buildDotNetLaunchArgs(settings, workspacePath)
+            }
+
             else -> {
-                LaunchRequestArguments(
-                    stopOnEntry = false,
+                Result.success(
+                    LaunchRequestArguments(
+                        stopOnEntry = false,
+                    ),
                 )
             }
         }
     }
+
+    private fun buildDotNetLaunchArgs(
+        settings: ConfigurationSettings.DotNetDebug,
+        workspacePath: String,
+    ): Result<LaunchRequestArguments> {
+        val cwd = settings.workingDirectory ?: workspacePath
+        val program =
+            settings.programPath?.takeIf { it.isNotBlank() }
+                ?: inferDotNetProgramPath(settings)
+                ?: return Result.failure(
+                    IllegalArgumentException(
+                        ".NET debug requires a program path or a project path with a target framework",
+                    ),
+                )
+
+        return Result.success(
+            LaunchRequestArguments(
+                program = program,
+                args = settings.programArguments,
+                cwd = cwd,
+                env = settings.environment,
+                stopOnEntry = settings.stopAtEntry,
+                stopAtEntry = settings.stopAtEntry,
+                console = "internalConsole",
+            ),
+        )
+    }
+
+    private fun inferDotNetProgramPath(settings: ConfigurationSettings.DotNetDebug): String? {
+        val projectPath = settings.projectPath?.takeIf { it.isNotBlank() } ?: return null
+        val projectFile = File(projectPath)
+        val targetFramework =
+            settings.targetFramework?.takeIf { it.isNotBlank() }
+                ?: readTargetFramework(projectFile)
+                ?: return null
+        val outputDirectory =
+            projectFile.parentFile
+                ?: return null
+
+        return File(
+            outputDirectory,
+            "bin/${settings.configuration.value}/$targetFramework/${projectFile.nameWithoutExtension}.dll",
+        ).path
+    }
+
+    private fun readTargetFramework(projectFile: File): String? =
+        runCatching {
+            val content = projectFile.readText()
+            targetFrameworkRegex.find(content)?.groupValues?.get(1)
+                ?: targetFrameworksRegex
+                    .find(content)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.substringBefore(";")
+        }.getOrNull()
 
     override fun dispose() {
         if (disposed) return
@@ -242,26 +322,9 @@ public class DebugService(
         _sessions.value.values.forEach { it.dispose() }
         _sessions.value = emptyMap()
     }
-}
 
-/**
- * Wrapper to provide InputStream from a running process.
- */
-private class ProcessInputStream(
-    private val process: su.kidoz.jetaprog.platform.process.RunningProcess,
-) : java.io.InputStream() {
-    // This is a placeholder - actual implementation would need to properly
-    // access the process stdout stream
-    override fun read(): Int = -1
-}
-
-/**
- * Wrapper to provide OutputStream to a running process.
- */
-private class ProcessOutputStream(
-    private val process: su.kidoz.jetaprog.platform.process.RunningProcess,
-) : java.io.OutputStream() {
-    // This is a placeholder - actual implementation would need to properly
-    // access the process stdin stream
-    override fun write(b: Int) {}
+    private companion object {
+        private val targetFrameworkRegex = Regex("<TargetFramework>\\s*([^<\\s]+)\\s*</TargetFramework>")
+        private val targetFrameworksRegex = Regex("<TargetFrameworks>\\s*([^<\\s]+)\\s*</TargetFrameworks>")
+    }
 }

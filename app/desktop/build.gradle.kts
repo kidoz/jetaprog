@@ -34,6 +34,7 @@ kotlin {
                 implementation(projects.lsp.client)
                 implementation(projects.lsp.protocol)
                 implementation(project(":lsp:server"))
+                implementation(project(":dap:service"))
 
                 implementation(compose.desktop.currentOs)
                 implementation(compose.material3)

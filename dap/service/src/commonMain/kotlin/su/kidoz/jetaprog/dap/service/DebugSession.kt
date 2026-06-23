@@ -20,6 +20,7 @@ import su.kidoz.jetaprog.dap.protocol.ExitedEventBody
 import su.kidoz.jetaprog.dap.protocol.OutputEventBody
 import su.kidoz.jetaprog.dap.protocol.StoppedEventBody
 import su.kidoz.jetaprog.dap.protocol.ThreadEventBody
+import su.kidoz.jetaprog.platform.process.RunningProcess
 
 /**
  * State of a debug session.
@@ -65,6 +66,7 @@ public class DebugSession(
     /** The DAP client for this session. */
     public val client: DapClient,
     private val scope: CoroutineScope,
+    private val adapterProcess: RunningProcess? = null,
 ) : Disposable {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -348,6 +350,7 @@ public class DebugSession(
 
         eventJob?.cancel()
         client.dispose()
+        adapterProcess?.kill()
     }
 
     public companion object {

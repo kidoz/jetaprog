@@ -81,6 +81,9 @@ public sealed interface ConfigurationIntent : Intent {
     /** Run the active configuration. */
     public data object RunActive : ConfigurationIntent
 
+    /** Debug the active configuration. */
+    public data object DebugActive : ConfigurationIntent
+
     /** Run a specific configuration. */
     public data class Run(
         val id: ConfigurationId,

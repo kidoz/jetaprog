@@ -65,6 +65,8 @@ public data class LaunchRequestArguments(
     val env: Map<String, String>? = null,
     /** Stop at entry point. */
     val stopOnEntry: Boolean = false,
+    /** Stop at entry point for adapters that use the VS Code C# field name. */
+    val stopAtEntry: Boolean? = null,
     /** Console type (integratedTerminal, externalTerminal, internalConsole). */
     val console: String? = null,
 )

@@ -87,6 +87,10 @@ public enum class ConfigurationType(
     @SerialName("dotnet_test")
     DOTNET_TEST(".NET Test", "dotnet"),
 
+    /** .NET debug. */
+    @SerialName("dotnet_debug")
+    DOTNET_DEBUG(".NET Debug", "dotnet"),
+
     /** Direct application/executable. */
     @SerialName("application")
     APPLICATION("Application", "application"),
@@ -417,6 +421,34 @@ public sealed interface ConfigurationSettings {
         val environment: Map<String, String> = emptyMap(),
         /** Working directory. */
         val workingDirectory: String? = null,
+    ) : ConfigurationSettings
+
+    /**
+     * .NET debug configuration using NetCoreDbg-compatible DAP.
+     */
+    @Serializable
+    @SerialName("dotnet_debug")
+    public data class DotNetDebug(
+        /** Project file used to infer the debug target. */
+        val projectPath: String? = null,
+        /** Explicit DLL or executable to debug. */
+        val programPath: String? = null,
+        /** Target framework moniker used when inferring the DLL path. */
+        val targetFramework: String? = null,
+        /** Build configuration. */
+        val configuration: DotNetConfigurationType = DotNetConfigurationType.DEBUG,
+        /** Program arguments. */
+        val programArguments: List<String> = emptyList(),
+        /** Environment variables passed to the debuggee. */
+        val environment: Map<String, String> = emptyMap(),
+        /** Working directory. */
+        val workingDirectory: String? = null,
+        /** Debug adapter executable. */
+        val adapterCommand: String = "netcoredbg",
+        /** Debug adapter arguments. */
+        val adapterArguments: List<String> = listOf("--interpreter=vscode"),
+        /** Stop at the program entry point. */
+        val stopAtEntry: Boolean = false,
     ) : ConfigurationSettings
 
     /**

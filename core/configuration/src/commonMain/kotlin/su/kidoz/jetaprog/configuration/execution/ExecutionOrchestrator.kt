@@ -267,6 +267,8 @@ public class ExecutionOrchestrator(
 
             is ConfigurationSettings.DotNetTest -> buildDotNetTestConfig(settings, workspacePath)
 
+            is ConfigurationSettings.DotNetDebug -> null
+
             is ConfigurationSettings.Application -> buildApplicationConfig(settings, workspacePath)
 
             is ConfigurationSettings.ShellScript -> buildShellScriptConfig(settings, workspacePath)

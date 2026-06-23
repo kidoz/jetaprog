@@ -1,6 +1,8 @@
 package su.kidoz.jetaprog.app.viewmodel
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.build.gradle.GradleProject
 import su.kidoz.jetaprog.build.gradle.GradleTaskRunner
@@ -23,6 +25,8 @@ import su.kidoz.jetaprog.configuration.SpringBootSettings
 import su.kidoz.jetaprog.configuration.TomcatLocalSettings
 import su.kidoz.jetaprog.configuration.TomcatRemoteSettings
 import su.kidoz.jetaprog.configuration.discovery.ConfigurationDiscovery
+import su.kidoz.jetaprog.dap.service.DebugService
+import su.kidoz.jetaprog.dap.service.DebugState
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import java.io.File
 
@@ -34,14 +38,17 @@ public class ConfigurationViewModel(
     private val processExecutor: ProcessExecutor,
     private val gradleTaskRunner: GradleTaskRunner,
     private val configurationDiscovery: ConfigurationDiscovery,
+    private val debugService: DebugService,
 ) : MviViewModel<ConfigurationIntent, ConfigurationState, ConfigurationEffect>(ConfigurationState()) {
     private var projectPath: String = ""
+    private var debugSessionId: String? = null
 
     override suspend fun handleIntent(intent: ConfigurationIntent) {
         when (intent) {
             is ConfigurationIntent.Initialize -> initialize(intent.projectPath)
             is ConfigurationIntent.SelectConfiguration -> selectConfiguration(intent.id)
             is ConfigurationIntent.RunActive -> runActiveConfiguration()
+            is ConfigurationIntent.DebugActive -> debugActiveConfiguration()
             is ConfigurationIntent.Run -> runConfiguration(intent.id)
             is ConfigurationIntent.Stop -> stopConfiguration()
             is ConfigurationIntent.Create -> createConfiguration(intent.configuration)
@@ -106,6 +113,68 @@ public class ConfigurationViewModel(
     private suspend fun runActiveConfiguration() {
         val activeConfig = currentState.activeConfiguration ?: return
         runConfiguration(activeConfig.id)
+    }
+
+    private suspend fun debugActiveConfiguration() {
+        val activeConfig = currentState.activeConfiguration ?: return
+        val config = currentState.configurations.find { it.id == activeConfig.id } ?: return
+
+        selectConfiguration(config.id)
+
+        updateState {
+            copy(
+                runningConfigurationId = config.id,
+                isRunning = true,
+            )
+        }
+
+        emitEffect(ConfigurationEffect.ConfigurationStarted(config))
+
+        debugService
+            .startDebugSession(
+                configuration = config,
+                workspacePath = projectPath,
+            ).onSuccess { session ->
+                debugSessionId = session.id
+                emitEffect(ConfigurationEffect.ShowSuccess("Debug session started: ${config.name}"))
+                viewModelScope.launch {
+                    session.state
+                        .filter { it == DebugState.STOPPED }
+                        .first()
+                    if (debugSessionId == session.id) {
+                        debugSessionId = null
+                        updateState {
+                            copy(
+                                runningConfigurationId = null,
+                                isRunning = false,
+                            )
+                        }
+                        emitEffect(
+                            ConfigurationEffect.ConfigurationFinished(
+                                configuration = config,
+                                success = true,
+                                exitCode = session.exitCode.value ?: 0,
+                            ),
+                        )
+                    }
+                }
+            }.onFailure { error ->
+                updateState {
+                    copy(
+                        runningConfigurationId = null,
+                        isRunning = false,
+                        error = error.message,
+                    )
+                }
+                emitEffect(ConfigurationEffect.ShowError("Failed to start debug session: ${error.message}"))
+                emitEffect(
+                    ConfigurationEffect.ConfigurationFinished(
+                        configuration = config,
+                        success = false,
+                        exitCode = -1,
+                    ),
+                )
+            }
     }
 
     private suspend fun runConfiguration(id: ConfigurationId) {
@@ -194,6 +263,10 @@ public class ConfigurationViewModel(
 
             is ConfigurationSettings.DotNetTest -> {
                 executeDotNetTest(settings)
+            }
+
+            is ConfigurationSettings.DotNetDebug -> {
+                Result.failure(UnsupportedOperationException(".NET debug requires the debug action"))
             }
 
             is ConfigurationSettings.Application -> {
@@ -580,8 +653,12 @@ public class ConfigurationViewModel(
             ).map { it.exitCode }
     }
 
-    private fun stopConfiguration() {
+    private suspend fun stopConfiguration() {
         gradleTaskRunner.cancelTask()
+        debugSessionId?.let { sessionId ->
+            debugService.stopSession(sessionId)
+            debugSessionId = null
+        }
         updateState {
             copy(
                 runningConfigurationId = null,
@@ -886,6 +963,21 @@ public class ConfigurationViewModel(
                 )
             }
 
+            ConfigurationType.DOTNET_DEBUG -> {
+                val projectFile = findDotNetProjectPath()
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = name,
+                    type = ConfigurationType.DOTNET_DEBUG,
+                    settings =
+                        ConfigurationSettings.DotNetDebug(
+                            projectPath = projectFile,
+                            targetFramework = projectFile?.let { readDotNetTargetFramework(File(it)) },
+                            workingDirectory = projectPath.ifBlank { null },
+                        ),
+                )
+            }
+
             ConfigurationType.TOMCAT_LOCAL -> {
                 RunConfiguration(
                     id = ConfigurationId.generate(),
@@ -973,6 +1065,7 @@ public class ConfigurationViewModel(
             ConfigurationType.DOTNET_BUILD -> "New .NET Build"
             ConfigurationType.DOTNET_RUN -> "New .NET Run"
             ConfigurationType.DOTNET_TEST -> "New .NET Test"
+            ConfigurationType.DOTNET_DEBUG -> "New .NET Debug"
             ConfigurationType.TOMCAT_LOCAL -> "New Tomcat Local"
             ConfigurationType.TOMCAT_REMOTE -> "New Tomcat Remote"
             ConfigurationType.SPRING_BOOT -> "New Spring Boot"
@@ -999,6 +1092,7 @@ public class ConfigurationViewModel(
             ConfigurationType.DOTNET_BUILD -> ".NET Build"
             ConfigurationType.DOTNET_RUN -> ".NET Run"
             ConfigurationType.DOTNET_TEST -> ".NET Test"
+            ConfigurationType.DOTNET_DEBUG -> ".NET Debug"
             ConfigurationType.TOMCAT_LOCAL -> "Tomcat Local"
             ConfigurationType.TOMCAT_REMOTE -> "Tomcat Remote"
             ConfigurationType.SPRING_BOOT -> "Spring Boot"
@@ -1024,6 +1118,17 @@ public class ConfigurationViewModel(
             ?.firstOrNull { file ->
                 file.isFile && extensions.any { file.name.endsWith(it) }
             }?.path
+
+    private fun readDotNetTargetFramework(projectFile: File): String? =
+        runCatching {
+            val content = projectFile.readText()
+            targetFrameworkRegex.find(content)?.groupValues?.get(1)
+                ?: targetFrameworksRegex
+                    .find(content)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.substringBefore(";")
+        }.getOrNull()
 
     private fun closeDialog() {
         updateState { copy(isDialogOpen = false, editingConfiguration = null) }
@@ -1085,3 +1190,6 @@ public class ConfigurationViewModel(
         return null // Would need to track the flow from execution
     }
 }
+
+private val targetFrameworkRegex = Regex("<TargetFramework>\\s*([^<\\s]+)\\s*</TargetFramework>")
+private val targetFrameworksRegex = Regex("<TargetFrameworks>\\s*([^<\\s]+)\\s*</TargetFrameworks>")

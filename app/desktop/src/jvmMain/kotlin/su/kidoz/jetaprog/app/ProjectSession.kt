@@ -18,6 +18,7 @@ import su.kidoz.jetaprog.configuration.ConfigurationManager
 import su.kidoz.jetaprog.configuration.JvmConfigurationStorage
 import su.kidoz.jetaprog.configuration.discovery.ConfigurationDiscovery
 import su.kidoz.jetaprog.configuration.discovery.ProjectDetector
+import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.lint.engine.DefaultLintEngine
 import su.kidoz.jetaprog.lint.provider.LintProviderRegistry
@@ -215,6 +216,12 @@ public class ProjectSession(
     private val configurationDiscovery: ConfigurationDiscovery =
         ConfigurationDiscovery(projectDetector)
 
+    private val debugService: DebugService =
+        DebugService(
+            processExecutor = processExecutor,
+            scope = sessionScope,
+        )
+
     /**
      * The configuration view model.
      */
@@ -224,6 +231,7 @@ public class ProjectSession(
             processExecutor = processExecutor,
             gradleTaskRunner = gradleTaskRunner,
             configurationDiscovery = configurationDiscovery,
+            debugService = debugService,
         )
 
     // ========================================================================
@@ -271,11 +279,13 @@ public class ProjectSession(
         terminalViewModel.dispose()
         gradleViewModel.dispose()
         configurationViewModel.dispose()
+        debugService.dispose()
         embeddedServerRegistry.dispose()
         sessionScope.cancel()
     }
 
     override fun dispose() {
+        debugService.dispose()
         sessionScope.cancel()
     }
 }

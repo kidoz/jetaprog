@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -60,6 +61,7 @@ public fun RunConfigurationSelector(
     state: ConfigurationState,
     onSelect: (ConfigurationId) -> Unit,
     onRun: () -> Unit,
+    onDebug: () -> Unit,
     onStop: () -> Unit,
     onEditConfigurations: () -> Unit,
     onCreateRecommended: () -> Unit,
@@ -99,6 +101,15 @@ public fun RunConfigurationSelector(
             enabled = state.activeConfiguration != null && !state.isRunning,
             onClick = onRun,
             tint = IntelliJColors.success,
+        )
+
+        // Debug button
+        ToolbarButton(
+            icon = Icons.Default.BugReport,
+            contentDescription = "Debug",
+            enabled = state.activeConfiguration != null && !state.isRunning,
+            onClick = onDebug,
+            tint = IntelliJColors.accent,
         )
 
         // Stop button
@@ -384,23 +395,78 @@ private fun ToolbarButton(
  */
 private fun RunConfiguration.subtitle(): String? =
     when (val s = settings) {
-        is ConfigurationSettings.Gradle -> s.taskPath
-        is ConfigurationSettings.MesonBuild -> s.target ?: s.buildDirectory
-        is ConfigurationSettings.MesonRun -> s.executable
-        is ConfigurationSettings.Python -> s.module ?: s.scriptPath.substringAfterLast('/')
-        is ConfigurationSettings.Poetry -> "poetry ${s.command.value}"
-        is ConfigurationSettings.Uv -> "uv ${s.command.value}"
-        is ConfigurationSettings.CargoBuild -> s.package_ ?: s.profile.displayName
-        is ConfigurationSettings.CargoRun -> s.bin ?: s.profile.displayName
-        is ConfigurationSettings.CargoTest -> s.testName ?: "all tests"
-        is ConfigurationSettings.CargoClippy -> if (s.fix) "fix" else null
-        is ConfigurationSettings.DotNetBuild -> s.targetPath?.substringAfterLast('/') ?: s.configuration.displayName
-        is ConfigurationSettings.DotNetRun -> s.projectPath?.substringAfterLast('/') ?: s.configuration.displayName
-        is ConfigurationSettings.DotNetTest -> s.filter ?: s.targetPath?.substringAfterLast('/') ?: "all tests"
-        is ConfigurationSettings.Application -> s.executablePath.substringAfterLast('/')
-        is ConfigurationSettings.ShellScript -> s.script.substringAfterLast('/').take(SUBTITLE_MAX_LENGTH)
-        is ConfigurationSettings.Compound -> "${s.configurationIds.size} configuration(s)"
-        else -> null
+        is ConfigurationSettings.Gradle -> {
+            s.taskPath
+        }
+
+        is ConfigurationSettings.MesonBuild -> {
+            s.target ?: s.buildDirectory
+        }
+
+        is ConfigurationSettings.MesonRun -> {
+            s.executable
+        }
+
+        is ConfigurationSettings.Python -> {
+            s.module ?: s.scriptPath.substringAfterLast('/')
+        }
+
+        is ConfigurationSettings.Poetry -> {
+            "poetry ${s.command.value}"
+        }
+
+        is ConfigurationSettings.Uv -> {
+            "uv ${s.command.value}"
+        }
+
+        is ConfigurationSettings.CargoBuild -> {
+            s.package_ ?: s.profile.displayName
+        }
+
+        is ConfigurationSettings.CargoRun -> {
+            s.bin ?: s.profile.displayName
+        }
+
+        is ConfigurationSettings.CargoTest -> {
+            s.testName ?: "all tests"
+        }
+
+        is ConfigurationSettings.CargoClippy -> {
+            if (s.fix) "fix" else null
+        }
+
+        is ConfigurationSettings.DotNetBuild -> {
+            s.targetPath?.substringAfterLast('/') ?: s.configuration.displayName
+        }
+
+        is ConfigurationSettings.DotNetRun -> {
+            s.projectPath?.substringAfterLast('/') ?: s.configuration.displayName
+        }
+
+        is ConfigurationSettings.DotNetTest -> {
+            s.filter ?: s.targetPath?.substringAfterLast('/') ?: "all tests"
+        }
+
+        is ConfigurationSettings.DotNetDebug -> {
+            s.programPath?.substringAfterLast('/')
+                ?: s.projectPath?.substringAfterLast('/')
+        }
+
+        is ConfigurationSettings.Application -> {
+            s.executablePath.substringAfterLast('/')
+        }
+
+        is ConfigurationSettings.ShellScript -> {
+            s.script.substringAfterLast('/').take(SUBTITLE_MAX_LENGTH)
+        }
+
+        is ConfigurationSettings.Compound -> {
+            "${s.configurationIds.size} configuration(s)"
+        }
+
+        else -> {
+            null
+        }
     }
 
 private fun ConfigurationType.toIcon(): ImageVector =
@@ -418,6 +484,7 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
         ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
         ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow
+        ConfigurationType.DOTNET_DEBUG -> Icons.Default.BugReport
         ConfigurationType.APPLICATION -> Icons.Default.PlayArrow
         ConfigurationType.SHELL_SCRIPT -> Icons.Default.Terminal
         ConfigurationType.COMPOUND -> Icons.Default.PlayArrow

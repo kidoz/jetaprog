@@ -365,6 +365,23 @@ public class ConfigurationDiscovery(
                     ),
                 )
             }
+
+            val debugName = "$baseName Debug"
+            if (debugName !in existingNames) {
+                configs.add(
+                    RunConfiguration(
+                        id = ConfigurationId.generate(),
+                        name = debugName,
+                        type = ConfigurationType.DOTNET_DEBUG,
+                        isTemporary = false,
+                        settings =
+                            ConfigurationSettings.DotNetDebug(
+                                projectPath = projectPath,
+                                workingDirectory = project.rootPath,
+                            ),
+                    ),
+                )
+            }
         }
 
         val testName = "$baseName Test"

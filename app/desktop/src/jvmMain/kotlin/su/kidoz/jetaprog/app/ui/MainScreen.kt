@@ -304,6 +304,9 @@ private fun MainScreenContent(
                 onRunConfiguration = {
                     session.configurationViewModel.dispatch(ConfigurationIntent.RunActive)
                 },
+                onDebugConfiguration = {
+                    session.configurationViewModel.dispatch(ConfigurationIntent.DebugActive)
+                },
                 onStopConfiguration = {
                     session.configurationViewModel.dispatch(ConfigurationIntent.Stop)
                 },
@@ -679,6 +682,7 @@ private fun MainToolbar(
     configurationState: su.kidoz.jetaprog.configuration.ConfigurationState,
     onSelectConfiguration: (su.kidoz.jetaprog.configuration.ConfigurationId) -> Unit,
     onRunConfiguration: () -> Unit,
+    onDebugConfiguration: () -> Unit,
     onStopConfiguration: () -> Unit,
     onEditConfigurations: () -> Unit,
     onCreateRecommended: () -> Unit,
@@ -700,6 +704,7 @@ private fun MainToolbar(
                 state = configurationState,
                 onSelect = onSelectConfiguration,
                 onRun = onRunConfiguration,
+                onDebug = onDebugConfiguration,
                 onStop = onStopConfiguration,
                 onEditConfigurations = onEditConfigurations,
                 onCreateRecommended = onCreateRecommended,

@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -542,6 +543,13 @@ private fun ConfigurationEditorPanel(
 
             is ConfigurationSettings.DotNetTest -> {
                 DotNetTestSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
+                )
+            }
+
+            is ConfigurationSettings.DotNetDebug -> {
+                DotNetDebugSettingsEditor(
                     settings = settings,
                     onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
                 )
@@ -1162,6 +1170,90 @@ private fun DotNetTestSettingsEditor(
 }
 
 @Composable
+private fun DotNetDebugSettingsEditor(
+    settings: ConfigurationSettings.DotNetDebug,
+    onSettingsChange: (ConfigurationSettings.DotNetDebug) -> Unit,
+) {
+    DotNetConfigurationSelector(
+        configuration = settings.configuration,
+        onConfigurationChange = { onSettingsChange(settings.copy(configuration = it)) },
+    )
+
+    IntelliJTextField(
+        value = settings.projectPath ?: "",
+        onValueChange = { onSettingsChange(settings.copy(projectPath = it.ifBlank { null })) },
+        label = "Project:",
+        placeholder = "Used to infer bin/Debug/<tfm>/<project>.dll",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
+        value = settings.programPath ?: "",
+        onValueChange = { onSettingsChange(settings.copy(programPath = it.ifBlank { null })) },
+        label = "Program:",
+        placeholder = "Optional DLL or executable path",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
+        value = settings.targetFramework ?: "",
+        onValueChange = { onSettingsChange(settings.copy(targetFramework = it.ifBlank { null })) },
+        label = "Target framework:",
+        placeholder = "Inferred from project when empty",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
+        value = settings.programArguments.joinToString(" "),
+        onValueChange = { onSettingsChange(settings.copy(programArguments = parseArguments(it))) },
+        label = "Program arguments:",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
+        value = settings.adapterCommand,
+        onValueChange = { onSettingsChange(settings.copy(adapterCommand = it.ifBlank { "netcoredbg" })) },
+        label = "Adapter command:",
+        placeholder = "netcoredbg",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
+        value = settings.adapterArguments.joinToString(" "),
+        onValueChange = { onSettingsChange(settings.copy(adapterArguments = parseArguments(it))) },
+        label = "Adapter arguments:",
+        placeholder = "--interpreter=vscode",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(
+            checked = settings.stopAtEntry,
+            onCheckedChange = { onSettingsChange(settings.copy(stopAtEntry = it)) },
+            colors =
+                CheckboxDefaults.colors(
+                    checkedColor = IntelliJColors.accent,
+                    uncheckedColor = IntelliJColors.textSecondary,
+                ),
+        )
+        Spacer(modifier = Modifier.width(Spacing.xs.dp))
+        Text(
+            text = "Stop at entry",
+            color = IntelliJColors.textPrimary,
+            fontSize = 12.sp,
+        )
+    }
+
+    IntelliJTextField(
+        value = settings.workingDirectory ?: "",
+        onValueChange = { onSettingsChange(settings.copy(workingDirectory = it.ifBlank { null })) },
+        label = "Working directory:",
+        placeholder = "Project root by default",
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
 private fun DotNetConfigurationSelector(
     configuration: DotNetConfigurationType,
     onConfigurationChange: (DotNetConfigurationType) -> Unit,
@@ -1284,6 +1376,7 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
         ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
         ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow
+        ConfigurationType.DOTNET_DEBUG -> Icons.Default.BugReport
         ConfigurationType.APPLICATION -> Icons.Default.PlayArrow
         ConfigurationType.SHELL_SCRIPT -> Icons.Default.Terminal
         ConfigurationType.COMPOUND -> Icons.Default.PlayArrow
@@ -1304,6 +1397,7 @@ private val configurationCreationTypes =
         ConfigurationType.CARGO_TEST,
         ConfigurationType.CARGO_CLIPPY,
         ConfigurationType.DOTNET_RUN,
+        ConfigurationType.DOTNET_DEBUG,
         ConfigurationType.DOTNET_BUILD,
         ConfigurationType.DOTNET_TEST,
         ConfigurationType.GRADLE,
