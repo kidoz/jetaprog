@@ -56,6 +56,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -510,11 +511,7 @@ private fun TerminalInputCapture(
 ) {
     BasicTextField(
         value = "",
-        onValueChange = { value ->
-            if (value.isNotEmpty()) {
-                onInput(value)
-            }
-        },
+        onValueChange = {},
         textStyle =
             TextStyle(
                 fontFamily = JetaProgFonts.codeFont,
@@ -528,7 +525,7 @@ private fun TerminalInputCapture(
                 .size(1.dp)
                 .focusRequester(focusRequester)
                 .onPreviewKeyEvent { keyEvent ->
-                    val input = keyEvent.toTerminalControlInput()
+                    val input = keyEvent.toTerminalInput()
                     if (input != null) {
                         onInput(input)
                         true
@@ -544,7 +541,7 @@ private fun TerminalInputCapture(
     )
 }
 
-private fun KeyEvent.toTerminalControlInput(): String? {
+private fun KeyEvent.toTerminalInput(): String? {
     if (type != KeyEventType.KeyDown) return null
 
     if (isCtrlPressed && !isAltPressed && !isMetaPressed) {
@@ -619,7 +616,12 @@ private fun KeyEvent.toTerminalControlInput(): String? {
         }
 
         else -> {
-            null
+            val codePoint = utf16CodePoint
+            when {
+                isMetaPressed || isCtrlPressed -> null
+                codePoint == 0 -> null
+                else -> codePoint.toChar().toString()
+            }
         }
     }
 }
