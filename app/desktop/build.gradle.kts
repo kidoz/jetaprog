@@ -26,6 +26,7 @@ kotlin {
                 implementation(projects.plugins.bundled.python)
                 implementation(projects.plugins.bundled.rust)
                 implementation(projects.plugins.bundled.vala)
+                implementation(projects.core.vcs)
                 implementation(projects.mcp.server)
                 implementation(projects.mcp.bridge)
                 implementation(project(":acp:client"))

@@ -61,6 +61,7 @@ import su.kidoz.jetaprog.app.ui.navigation.NavigationHost
 import su.kidoz.jetaprog.app.ui.panels.AgentPanel
 import su.kidoz.jetaprog.app.ui.panels.BuildOutputPanel
 import su.kidoz.jetaprog.app.ui.panels.FindInFilesPanel
+import su.kidoz.jetaprog.app.ui.panels.GitPanel
 import su.kidoz.jetaprog.app.ui.panels.ProjectPanel
 import su.kidoz.jetaprog.app.ui.panels.TerminalPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
@@ -587,6 +588,23 @@ private fun MainScreenContent(
                                 )
                             },
                         )
+                    }
+                }
+
+                // Git workflow (status/diff/stage/commit) - collapsible
+                var gitExpanded by remember { mutableStateOf(false) }
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { gitExpanded = !gitExpanded }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(text = if (gitExpanded) "▾ Git" else "▸ Git")
+                }
+                if (gitExpanded) {
+                    Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
+                        GitPanel(viewModel = session.gitViewModel)
                     }
                 }
             }

@@ -11,6 +11,7 @@ import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
 import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
 import su.kidoz.jetaprog.app.viewmodel.ConfigurationViewModel
 import su.kidoz.jetaprog.app.viewmodel.EditorViewModel
+import su.kidoz.jetaprog.app.viewmodel.GitViewModel
 import su.kidoz.jetaprog.app.viewmodel.GradleViewModel
 import su.kidoz.jetaprog.app.viewmodel.TerminalViewModel
 import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
@@ -233,6 +234,12 @@ public class ProjectSession(
     public val textSearchViewModel: TextSearchViewModel =
         TextSearchViewModel(projectPath = projectPath, fileSystem = fileSystem)
 
+    /**
+     * The Git workflow view model (status, diff, stage/unstage, commit).
+     */
+    public val gitViewModel: GitViewModel =
+        GitViewModel(processExecutor = processExecutor, projectPath = projectPath)
+
     // ========================================================================
     // Configuration
     // ========================================================================
@@ -323,6 +330,7 @@ public class ProjectSession(
         gradleViewModel.dispose()
         agentSessionViewModel.dispose()
         textSearchViewModel.dispose()
+        gitViewModel.dispose()
         configurationViewModel.dispose()
         debugService.dispose()
         embeddedServerRegistry.dispose()
