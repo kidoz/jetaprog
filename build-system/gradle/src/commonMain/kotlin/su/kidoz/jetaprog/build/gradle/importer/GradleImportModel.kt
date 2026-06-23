@@ -21,6 +21,8 @@ public data class GradleModuleModel(
     val generatedRoots: List<String> = emptyList(),
     /** Names of other Gradle modules this module depends on. */
     val moduleDependencies: List<String> = emptyList(),
+    /** Absolute paths of resolved library dependencies (jars) on the module classpath. */
+    val classpath: List<String> = emptyList(),
 )
 
 /**

@@ -8,6 +8,7 @@ import org.gradle.tooling.model.idea.IdeaContentRoot
 import org.gradle.tooling.model.idea.IdeaModule
 import org.gradle.tooling.model.idea.IdeaModuleDependency
 import org.gradle.tooling.model.idea.IdeaProject
+import org.gradle.tooling.model.idea.IdeaSingleEntryLibraryDependency
 import org.gradle.tooling.model.idea.IdeaSourceDirectory
 import java.io.File
 
@@ -93,6 +94,13 @@ public class GradleProjectImporter {
                 .distinct()
                 .sorted()
 
+        val classpath =
+            module.dependencies
+                .filterIsInstance<IdeaSingleEntryLibraryDependency>()
+                .mapNotNull { it.file?.absolutePath }
+                .distinct()
+                .sorted()
+
         return GradleModuleModel(
             path = relativePath,
             name = module.name,
@@ -101,6 +109,7 @@ public class GradleProjectImporter {
             resourceRoots = resourceRoots.distinct().sorted(),
             generatedRoots = generatedRoots.distinct().sorted(),
             moduleDependencies = dependencies,
+            classpath = classpath,
         )
     }
 
