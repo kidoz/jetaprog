@@ -19,6 +19,7 @@ junit5 = "6.1.0"
 mockk = "1.14.11"
 turbine = "1.2.1"
 pty4j = "0.13.12"
+gradleToolingApi = "9.6.0"
 
 [libraries]
 # Coroutines
@@ -59,6 +60,7 @@ logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 jsch = { module = "com.github.mwiede:jsch", version.ref = "jsch" }
+gradle-tooling-api = { module = "org.gradle:gradle-tooling-api", version.ref = "gradleToolingApi" }
 pty4j = { module = "org.jetbrains.pty4j:pty4j", version.ref = "pty4j" }
 
 # Kotlin Compiler

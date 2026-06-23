@@ -13,7 +13,13 @@ kotlin {
         }
         jvmMain {
             dependencies {
-                // JVM-specific dependencies if needed
+                implementation(libs.gradle.tooling.api)
+                implementation(libs.kotlin.logging)
+            }
+        }
+        commonTest {
+            dependencies {
+                implementation(libs.bundles.testing)
             }
         }
     }

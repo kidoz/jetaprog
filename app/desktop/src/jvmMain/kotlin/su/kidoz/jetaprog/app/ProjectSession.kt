@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
 import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
@@ -202,6 +203,13 @@ public class ProjectSession(
      * The Gradle view model.
      */
     public val gradleViewModel: GradleViewModel = GradleViewModel(gradleTaskRunner)
+
+    /**
+     * Imports the project structure from Gradle (Tooling API) and reconciles it
+     * against `.jetaprog` metadata to surface stale or missing modules.
+     */
+    public val gradleImportCoordinator: GradleImportCoordinator =
+        GradleImportCoordinator(projectPath = projectPath, fileSystem = fileSystem)
 
     /**
      * The agent (ACP) session view model, driving an external coding agent.

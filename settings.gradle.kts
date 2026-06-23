@@ -11,6 +11,10 @@ dependencyResolutionManagement {
         mavenCentral()
         google()
         maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
+        // Gradle Tooling API is published here, not to Maven Central.
+        maven("https://repo.gradle.org/gradle/libs-releases") {
+            content { includeGroup("org.gradle") }
+        }
     }
 }
 
