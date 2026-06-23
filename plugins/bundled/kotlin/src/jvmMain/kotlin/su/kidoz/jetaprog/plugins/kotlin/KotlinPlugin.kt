@@ -6,25 +6,20 @@ import su.kidoz.jetaprog.plugins.api.BasePlugin
 import su.kidoz.jetaprog.plugins.api.Contributions
 import su.kidoz.jetaprog.plugins.api.LanguageContribution
 import su.kidoz.jetaprog.plugins.api.PluginManifest
-import su.kidoz.jetaprog.plugins.api.language.CompletionList
 import su.kidoz.jetaprog.plugins.api.language.DocumentSelector
-import su.kidoz.jetaprog.plugins.api.services.CompletionProvider
 import su.kidoz.jetaprog.plugins.api.services.LanguageClient
 import su.kidoz.jetaprog.plugins.api.services.LanguageConfiguration
 import su.kidoz.jetaprog.plugins.api.services.LanguageServerConfig
+import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinPsiAnalyzer
 import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinStyleProvider
+import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinSyntaxLintProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.ConfigurableKotlinCompletionProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinCompletionProvider
+import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinPsiCompletionProvider
 import su.kidoz.jetaprog.plugins.support.formatters.FormatterRegistry
 import java.io.File
 
 private val logger = KotlinLogging.logger {}
-
-/**
- * A dummy completion provider that returns an empty list.
- * Used as a placeholder for the real LSP-based provider.
- */
-private val dummyLspProvider = CompletionProvider { _, _, _ -> CompletionList(emptyList(), false) }
 
 /**
  * Kotlin language support plugin for JetaProg.
@@ -62,6 +57,7 @@ public class KotlinPlugin :
     private var kotlinLanguageService: KotlinLanguageService? = null
     private var kotlinFormatter: KotlinFormatter? = null
     private var kotlinLanguageClient: LanguageClient? = null
+    private var psiAnalyzer: KotlinPsiAnalyzer? = null
 
     override suspend fun onActivate() {
         logger.info { "Activating Kotlin plugin" }
@@ -83,10 +79,15 @@ public class KotlinPlugin :
         service.initialize(workspacePath)
         kotlinLanguageService = service
 
+        // PSI-backed analyzer (parser-level completion + syntax diagnostics)
+        val analyzer = KotlinPsiAnalyzer()
+        psiAnalyzer = analyzer
+
         // Register completion provider
         val selector = DocumentSelector(languages = listOf(LanguageId.KOTLIN))
         val nativeProvider = KotlinCompletionProvider(service)
-        val configurableProvider = ConfigurableKotlinCompletionProvider(nativeProvider, dummyLspProvider)
+        val configurableProvider =
+            ConfigurableKotlinCompletionProvider(nativeProvider, KotlinPsiCompletionProvider(analyzer))
 
         startKotlinLanguageServerIfAvailable(workspacePath, selector)
 
@@ -149,6 +150,9 @@ public class KotlinPlugin :
         val lintProvider = KotlinStyleProvider()
         context.lint.registerProvider(lintProvider).also { context.subscriptions.add(it) }
 
+        // Register Kotlin syntax diagnostics (parser-backed)
+        context.lint.registerProvider(KotlinSyntaxLintProvider(analyzer)).also { context.subscriptions.add(it) }
+
         logger.info { "Kotlin plugin activated" }
     }
 
@@ -157,9 +161,11 @@ public class KotlinPlugin :
 
         kotlinLanguageService?.dispose()
         kotlinLanguageClient?.stop()
+        psiAnalyzer?.dispose()
         kotlinLanguageService = null
         kotlinFormatter = null
         kotlinLanguageClient = null
+        psiAnalyzer = null
 
         logger.info { "Kotlin plugin deactivated" }
     }
