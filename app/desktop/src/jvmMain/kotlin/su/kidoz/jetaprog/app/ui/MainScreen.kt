@@ -77,6 +77,15 @@ import su.kidoz.jetaprog.editor.state.NotificationType
 import java.io.File
 import javax.swing.JFileChooser
 
+/** Activity-bar items that render a panel in the left tool window. */
+private val SIDEBAR_PANEL_ITEMS =
+    setOf(
+        ActivityBarItem.PROJECT,
+        ActivityBarItem.SEARCH,
+        ActivityBarItem.VCS,
+        ActivityBarItem.AGENT,
+    )
+
 /**
  * Main screen of the JetaProg IDE - IntelliJ IDEA style.
  */
@@ -87,7 +96,6 @@ public fun MainScreen(app: JetaProgApplication) {
     val coroutineScope = rememberCoroutineScope()
 
     var selectedActivityItem by remember { mutableStateOf<ActivityBarItem?>(ActivityBarItem.PROJECT) }
-    var showProjectPanel by remember { mutableStateOf(true) }
 
     // Handle New Project effects
     LaunchedEffect(app) {
@@ -161,8 +169,6 @@ public fun MainScreen(app: JetaProgApplication) {
         settingsState = settingsState,
         selectedActivityItem = selectedActivityItem,
         onSelectedActivityItemChange = { selectedActivityItem = it },
-        showProjectPanel = showProjectPanel,
-        onShowProjectPanelChange = { showProjectPanel = it },
         browseLocation = browseLocation,
         coroutineScope = coroutineScope,
     )
@@ -179,8 +185,6 @@ private fun MainScreenContent(
     settingsState: su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsState,
     selectedActivityItem: ActivityBarItem?,
     onSelectedActivityItemChange: (ActivityBarItem?) -> Unit,
-    showProjectPanel: Boolean,
-    onShowProjectPanelChange: (Boolean) -> Unit,
     browseLocation: () -> Unit,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
 ) {
@@ -329,10 +333,12 @@ private fun MainScreenContent(
                     selectedItem = selectedActivityItem,
                     onItemClick = { item ->
                         when (item) {
-                            ActivityBarItem.PROJECT -> {
-                                val newShow = !showProjectPanel
-                                onShowProjectPanelChange(newShow)
-                                onSelectedActivityItemChange(if (newShow) item else null)
+                            ActivityBarItem.PROJECT,
+                            ActivityBarItem.SEARCH,
+                            ActivityBarItem.VCS,
+                            ActivityBarItem.AGENT,
+                            -> {
+                                onSelectedActivityItemChange(if (selectedActivityItem == item) null else item)
                             }
 
                             ActivityBarItem.TERMINAL -> {
@@ -358,19 +364,45 @@ private fun MainScreenContent(
                 // Vertical divider between activity bar and project panel
                 VerticalSplitter(modifier = Modifier.fillMaxHeight())
 
-                // Project panel (left sidebar) — resizable
-                if (showProjectPanel) {
+                // Left tool window (resizable) — content switches with the activity bar
+                val sidebarItem = selectedActivityItem
+                if (sidebarItem in SIDEBAR_PANEL_ITEMS) {
                     val minWidth = Dimensions.toolWindowMinWidth.dp
                     val maxWidth = Dimensions.toolWindowMaxWidth.dp
-                    var projectPanelWidth by remember { mutableStateOf(Dimensions.toolWindowDefaultWidth.dp) }
-                    ProjectPanel(
-                        projectPath = currentProjectPath,
-                        onFileOpen = { path -> session.editorViewModel.dispatch(EditorIntent.OpenFile(path)) },
-                        modifier = Modifier.width(projectPanelWidth),
-                    )
+                    var leftPanelWidth by remember { mutableStateOf(Dimensions.toolWindowDefaultWidth.dp) }
+                    val panelModifier = Modifier.width(leftPanelWidth).fillMaxHeight()
+                    when (sidebarItem) {
+                        ActivityBarItem.SEARCH -> {
+                            FindInFilesPanel(
+                                viewModel = session.textSearchViewModel,
+                                onOpenMatch = { path, line, column ->
+                                    session.editorViewModel.dispatch(
+                                        EditorIntent.NavigateTo(path = path, position = TextPosition(line, column)),
+                                    )
+                                },
+                                modifier = panelModifier,
+                            )
+                        }
+
+                        ActivityBarItem.VCS -> {
+                            GitPanel(viewModel = session.gitViewModel, modifier = panelModifier)
+                        }
+
+                        ActivityBarItem.AGENT -> {
+                            AgentPanel(viewModel = session.agentSessionViewModel, modifier = panelModifier)
+                        }
+
+                        else -> {
+                            ProjectPanel(
+                                projectPath = currentProjectPath,
+                                onFileOpen = { path -> session.editorViewModel.dispatch(EditorIntent.OpenFile(path)) },
+                                modifier = panelModifier,
+                            )
+                        }
+                    }
                     VerticalDragHandle(
                         onDelta = { delta ->
-                            projectPanelWidth = (projectPanelWidth + delta).coerceInDp(minWidth, maxWidth)
+                            leftPanelWidth = (leftPanelWidth + delta).coerceInDp(minWidth, maxWidth)
                         },
                     )
                 }
@@ -546,67 +578,6 @@ private fun MainScreenContent(
                     effects = session.terminalViewModel.effects,
                     onIntent = { intent -> session.terminalViewModel.dispatch(intent) },
                 )
-
-                // AI Agent (ACP) panel - collapsible to avoid taking space when unused
-                var agentExpanded by remember { mutableStateOf(false) }
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { agentExpanded = !agentExpanded }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(text = if (agentExpanded) "▾ AI Agent" else "▸ AI Agent")
-                }
-                if (agentExpanded) {
-                    Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
-                        AgentPanel(viewModel = session.agentSessionViewModel)
-                    }
-                }
-
-                // Find in Files (project-wide text search) - collapsible
-                var searchExpanded by remember { mutableStateOf(false) }
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { searchExpanded = !searchExpanded }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(text = if (searchExpanded) "▾ Find in Files" else "▸ Find in Files")
-                }
-                if (searchExpanded) {
-                    Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
-                        FindInFilesPanel(
-                            viewModel = session.textSearchViewModel,
-                            onOpenMatch = { path, line, column ->
-                                session.editorViewModel.dispatch(
-                                    EditorIntent.NavigateTo(
-                                        path = path,
-                                        position = TextPosition(line, column),
-                                    ),
-                                )
-                            },
-                        )
-                    }
-                }
-
-                // Git workflow (status/diff/stage/commit) - collapsible
-                var gitExpanded by remember { mutableStateOf(false) }
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { gitExpanded = !gitExpanded }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(text = if (gitExpanded) "▾ Git" else "▸ Git")
-                }
-                if (gitExpanded) {
-                    Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
-                        GitPanel(viewModel = session.gitViewModel)
-                    }
-                }
             }
 
             // Status bar

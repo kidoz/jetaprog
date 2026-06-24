@@ -15,11 +15,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -50,6 +52,8 @@ public enum class ActivityBarItem(
     BUILD(Icons.Default.Build, "Build", "Alt+3"),
     DEBUG(Icons.Default.BugReport, "Debug", "Alt+4"),
     TERMINAL(Icons.Default.Terminal, "Terminal", "Alt+5"),
+    VCS(Icons.Default.AccountTree, "Git", "Alt+6"),
+    AGENT(Icons.Default.SmartToy, "AI Agent", "Alt+7"),
     SETTINGS(Icons.Default.Settings, "Settings", ""),
 }
 
