@@ -392,4 +392,14 @@ public class AgentSessionViewModel(
     override fun dispose() {
         scope.cancel()
     }
+
+    public companion object {
+        /**
+         * Default launch command driving Claude Code over ACP via the Zed
+         * adapter. `npx -y` resolves and runs the published adapter without an
+         * interactive install prompt, so the agent process starts unattended.
+         * The adapter reuses the user's existing Claude Code authentication.
+         */
+        public const val DEFAULT_CLAUDE_CODE_COMMAND: String = "npx -y @zed-industries/claude-code-acp"
+    }
 }

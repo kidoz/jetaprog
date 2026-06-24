@@ -226,7 +226,11 @@ public class ProjectSession(
      * The agent (ACP) session view model, driving an external coding agent.
      */
     public val agentSessionViewModel: AgentSessionViewModel =
-        AgentSessionViewModel(projectPath = projectPath, fileSystem = fileSystem)
+        AgentSessionViewModel(
+            projectPath = projectPath,
+            fileSystem = fileSystem,
+            defaultAgentCommand = AgentSessionViewModel.DEFAULT_CLAUDE_CODE_COMMAND,
+        )
 
     /**
      * The project-wide full-text search ("Find in Files") view model.
