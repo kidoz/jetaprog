@@ -91,7 +91,7 @@ public class PtyTerminalBackend private constructor(
                 val process =
                     PtyProcessBuilder()
                         .setCommand(defaultShellCommand().toTypedArray())
-                        .setEnvironment(System.getenv())
+                        .setEnvironment(defaultTerminalEnvironment())
                         .setDirectory(File(workingDirectory).absolutePath)
                         .setInitialColumns(columns)
                         .setInitialRows(rows)
@@ -106,10 +106,19 @@ public class PtyTerminalBackend private constructor(
                 listOf(System.getenv("SHELL") ?: "/bin/sh")
             }
 
+        private fun defaultTerminalEnvironment(): Map<String, String> =
+            System.getenv().toMutableMap().apply {
+                val term = this["TERM"]
+                if (term.isNullOrBlank() || term == "dumb") {
+                    this["TERM"] = DEFAULT_TERM
+                }
+            }
+
         private fun isWindows(): Boolean = System.getProperty("os.name").contains("win", ignoreCase = true)
 
         private const val DEFAULT_COLUMNS = 120
         private const val DEFAULT_ROWS = 30
         private const val READ_BUFFER_SIZE = 8192
+        private const val DEFAULT_TERM = "xterm-256color"
     }
 }
