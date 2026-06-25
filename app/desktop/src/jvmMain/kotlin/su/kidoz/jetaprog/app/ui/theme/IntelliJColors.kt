@@ -286,6 +286,12 @@ public object Dimensions {
     public val menuBarHeight: Int = 32
     public val mainToolbarHeight: Int = 32
 
+    /** Taller toolbar used when filled with chips and the Search Everywhere field. */
+    public val mainToolbarHeightFilled: Int = 36
+
+    /** Default width of the project tool window. */
+    public val projectPanelWidth: Int = 264
+
     // Welcome hub
     public val welcomeRailWidth: Int = 230
     public val welcomeRailItemHeight: Int = 34

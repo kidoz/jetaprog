@@ -430,7 +430,7 @@ private fun MainScreenContent(
                 if (sidebarItem in SIDEBAR_PANEL_ITEMS) {
                     val minWidth = Dimensions.toolWindowMinWidth.dp
                     val maxWidth = Dimensions.toolWindowMaxWidth.dp
-                    var leftPanelWidth by remember { mutableStateOf(Dimensions.toolWindowDefaultWidth.dp) }
+                    var leftPanelWidth by remember { mutableStateOf(Dimensions.projectPanelWidth.dp) }
                     val panelModifier = Modifier.width(leftPanelWidth).fillMaxHeight()
                     when (sidebarItem) {
                         ActivityBarItem.SEARCH -> {
@@ -653,6 +653,16 @@ private fun MainScreenContent(
                     } else {
                         null
                     },
+                indentInfo =
+                    if (editorState.activeTab != null) {
+                        if (editorSettings.editor.useTabs) {
+                            "Tab"
+                        } else {
+                            "${editorSettings.editor.tabSize} spaces"
+                        }
+                    } else {
+                        null
+                    },
                 languageInfo =
                     if (editorState.activeTab != null) {
                         editorState.languageId.displayName
@@ -803,7 +813,7 @@ private fun MainToolbar(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(Dimensions.mainToolbarHeight.dp)
+                    .height(Dimensions.mainToolbarHeightFilled.dp)
                     .background(IntelliJColors.background)
                     .padding(horizontal = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
