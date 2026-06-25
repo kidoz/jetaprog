@@ -58,6 +58,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -586,6 +587,9 @@ private fun TerminalOutputLine(line: TerminalLine) {
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 lineHeight = 1.25.em,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                softWrap = false,
                 modifier = Modifier.padding(vertical = 1.dp),
             )
         }
@@ -598,6 +602,9 @@ private fun TerminalOutputLine(line: TerminalLine) {
                 fontFamily = JetaProgFonts.codeFont,
                 fontSize = 13.sp,
                 lineHeight = 1.25.em,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                softWrap = false,
                 modifier = Modifier.padding(vertical = 1.dp),
             )
         }
@@ -610,6 +617,9 @@ private fun TerminalOutputLine(line: TerminalLine) {
                 fontFamily = JetaProgFonts.codeFont,
                 fontSize = 13.sp,
                 lineHeight = 1.25.em,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                softWrap = false,
                 modifier = Modifier.padding(vertical = 1.dp),
             )
         }

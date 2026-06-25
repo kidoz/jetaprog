@@ -12,6 +12,15 @@ internal data class TerminalScreenSnapshot(
     val isCursorVisible: Boolean = true,
 )
 
+internal fun terminalCellWidth(character: Char): Int =
+    when {
+        character == WIDE_CONTINUATION -> 0
+        ZERO_WIDTH_RANGES.any { character in it } -> 0
+        Character.getType(character).isZeroWidthCharacterType() -> 0
+        WIDE_CHARACTER_RANGES.any { character in it } -> 2
+        else -> 1
+    }
+
 /**
  * Small VT-style terminal emulator for the first grid-rendering phase.
  */
@@ -43,7 +52,7 @@ internal class TerminalEmulator(
      * Apply terminal output to the screen grid and return the updated snapshot.
      */
     internal fun accept(text: String): TerminalScreenSnapshot {
-        text.forEach { character -> accept(character) }
+        text.codePoints().forEach { codePoint -> acceptCodePoint(codePoint) }
         return snapshot()
     }
 
@@ -77,7 +86,7 @@ internal class TerminalEmulator(
             return snapshot()
         }
 
-        val oldLines = screen.map { row -> row.concatToString().trimEnd() }
+        val oldLines = screen.map { row -> row.toTerminalString() }
         this.columns = newColumns
         this.rows = newRows
 
@@ -87,11 +96,7 @@ internal class TerminalEmulator(
             screen += blankLine()
         }
         visibleLines.forEach { line ->
-            val row = blankLine()
-            line.take(newColumns).forEachIndexed { index, character ->
-                row[index] = character
-            }
-            screen += row
+            screen += line.toTerminalRow(newColumns)
         }
 
         cursorRow = cursorRow.coerceIn(0, newRows - 1)
@@ -114,10 +119,18 @@ internal class TerminalEmulator(
         )
 
     private fun visibleScreenLines(): List<String> {
-        val rows = screen.map { row -> row.concatToString().trimEnd() }
+        val rows = screen.map { row -> row.toTerminalString() }
         val lastContentRow = rows.indexOfLast { row -> row.isNotEmpty() }
         val lastVisibleRow = maxOf(lastContentRow, cursorRow)
         return rows.take(lastVisibleRow + 1)
+    }
+
+    private fun acceptCodePoint(codePoint: Int) {
+        if (codePoint <= Char.MAX_VALUE.code) {
+            accept(codePoint.toChar())
+        } else {
+            putPrintable(REPLACEMENT_CHARACTER)
+        }
     }
 
     private fun accept(character: Char) {
@@ -337,12 +350,22 @@ internal class TerminalEmulator(
     }
 
     private fun putPrintable(character: Char) {
+        val cellWidth = terminalCellWidth(character)
+        if (cellWidth == 0) return
         if (cursorColumn >= columns) {
             cursorColumn = 0
             lineFeed()
         }
+        if (cellWidth == WIDE_CELL_WIDTH && cursorColumn == columns - 1) {
+            cursorColumn = 0
+            lineFeed()
+        }
+        clearCell(cursorRow, cursorColumn)
         screen[cursorRow][cursorColumn] = character
-        cursorColumn += 1
+        if (cellWidth == WIDE_CELL_WIDTH && cursorColumn + 1 < columns) {
+            screen[cursorRow][cursorColumn + 1] = WIDE_CONTINUATION
+        }
+        cursorColumn += cellWidth
         if (cursorColumn >= columns) {
             cursorColumn = columns
         }
@@ -365,7 +388,7 @@ internal class TerminalEmulator(
     }
 
     private fun scrollUp() {
-        val removedLine = screen.removeAt(scrollTop).concatToString().trimEnd()
+        val removedLine = screen.removeAt(scrollTop).toTerminalString()
         if (!isAlternateScreenActive() && scrollTop == 0) {
             scrollback.addLast(removedLine)
             while (scrollback.size > maxScrollbackLines) {
@@ -378,6 +401,20 @@ internal class TerminalEmulator(
     private fun scrollDown() {
         screen.add(scrollTop, blankLine())
         screen.removeAt(scrollBottom + 1)
+    }
+
+    private fun clearCell(
+        row: Int,
+        column: Int,
+    ) {
+        val line = screen[row]
+        if (line[column] == WIDE_CONTINUATION && column > 0) {
+            line[column - 1] = ' '
+        }
+        if (column + 1 < columns && line[column + 1] == WIDE_CONTINUATION) {
+            line[column + 1] = ' '
+        }
+        line[column] = ' '
     }
 
     private fun moveCursor(
@@ -524,11 +561,40 @@ internal class TerminalEmulator(
         value: Char,
     ) {
         for (column in fromColumn.coerceAtLeast(0) until toColumnExclusive.coerceAtMost(columns)) {
-            screen[row][column] = value
+            clearCell(row, column)
+            if (value != ' ') {
+                screen[row][column] = value
+            }
         }
     }
 
     private fun blankLine(): CharArray = CharArray(columns) { ' ' }
+
+    private fun String.toTerminalRow(columns: Int): CharArray {
+        val row = CharArray(columns) { ' ' }
+        var column = 0
+        for (character in this) {
+            val cellWidth = terminalCellWidth(character)
+            if (cellWidth == 0) continue
+            if (column >= columns) break
+            if (cellWidth == WIDE_CELL_WIDTH && column == columns - 1) break
+            row[column] = character
+            if (cellWidth == WIDE_CELL_WIDTH) {
+                row[column + 1] = WIDE_CONTINUATION
+            }
+            column += cellWidth
+        }
+        return row
+    }
+
+    private fun CharArray.toTerminalString(): String =
+        buildString {
+            this@toTerminalString.forEach { character ->
+                if (character != WIDE_CONTINUATION) {
+                    append(character)
+                }
+            }
+        }.trimEnd()
 
     private fun parseCsiParams(sequence: String): List<Int?> {
         val parameterText =
@@ -561,7 +627,39 @@ internal class TerminalEmulator(
         private const val TAB_WIDTH = 8
         private const val ESC = '\u001b'
         private const val BEL = '\u0007'
+        private const val REPLACEMENT_CHARACTER = '\u25a1'
+        private const val WIDE_CELL_WIDTH = 2
         private val C0_CONTROLS: CharRange = '\u0000'..'\u001f'
         private val CSI_FINAL_RANGE: IntRange = 0x40..0x7e
     }
 }
+
+private const val WIDE_CONTINUATION = '\u0000'
+
+private val ZERO_WIDTH_RANGES: List<CharRange> =
+    listOf(
+        '\u0300'..'\u036f',
+        '\ufe00'..'\ufe0f',
+        '\u200b'..'\u200f',
+    )
+
+private val WIDE_CHARACTER_RANGES: List<CharRange> =
+    listOf(
+        '\u1100'..'\u115f',
+        '\u231a'..'\u231b',
+        '\u2329'..'\u232a',
+        '\u2600'..'\u27bf',
+        '\u2b00'..'\u2bff',
+        '\u2e80'..'\ua4cf',
+        '\uac00'..'\ud7a3',
+        '\uf900'..'\ufaff',
+        '\ufe10'..'\ufe19',
+        '\ufe30'..'\ufe6f',
+        '\uff00'..'\uff60',
+        '\uffe0'..'\uffe6',
+    )
+
+private fun Int.isZeroWidthCharacterType(): Boolean =
+    this == Character.NON_SPACING_MARK.toInt() ||
+        this == Character.ENCLOSING_MARK.toInt() ||
+        this == Character.FORMAT.toInt()

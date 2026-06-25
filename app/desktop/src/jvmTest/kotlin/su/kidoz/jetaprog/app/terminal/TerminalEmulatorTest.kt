@@ -135,4 +135,23 @@ class TerminalEmulatorTest {
         assertEquals(false, emulator.accept("\u001b[?25l").isCursorVisible)
         assertEquals(true, emulator.accept("\u001b[?25h").isCursorVisible)
     }
+
+    @Test
+    fun wideSymbolsAdvanceCursorByTwoCells() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        val snapshot = emulator.accept("✅|")
+
+        assertEquals("✅|", snapshot.lines.first())
+        assertEquals(3, snapshot.cursorColumn)
+    }
+
+    @Test
+    fun overwritingWideSymbolClearsContinuationCell() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        val snapshot = emulator.accept("✅|\r A")
+
+        assertEquals(" A|", snapshot.lines.first())
+    }
 }
