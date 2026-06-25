@@ -2,15 +2,19 @@ package su.kidoz.jetaprog.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +32,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.FrameWindowScope
@@ -41,6 +48,9 @@ import org.jetbrains.skia.Image
 import su.kidoz.jetaprog.app.ui.MainScreen
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
+import java.awt.Cursor
+import java.awt.Window
+import kotlin.math.roundToInt
 
 /**
  * Main entry point for the JetaProg IDE desktop application.
@@ -87,14 +97,20 @@ public fun main(): Unit =
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        IdeTitleBar(
-                            app = app,
-                            onMinimize = { windowState.isMinimized = true },
-                            onToggleMaximize = { toggleMaximize(windowState) },
-                            onClose = ::exitApplication,
-                        )
-                        MainScreen(app)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            IdeTitleBar(
+                                app = app,
+                                onMinimize = { windowState.isMinimized = true },
+                                onToggleMaximize = { toggleMaximize(windowState) },
+                                onClose = ::exitApplication,
+                            )
+                            MainScreen(app)
+                        }
+                        // Edge/corner handles that resize the undecorated window.
+                        if (windowState.placement == WindowPlacement.Floating) {
+                            WindowResizeHandles(window)
+                        }
                     }
                 }
             }
@@ -192,4 +208,104 @@ private fun sessionTitle(session: ProjectSession): String {
     val project = session.projectPath.substringAfterLast('/')
     val fileName = editorState.activeTab?.name
     return if (fileName != null) "$project — $fileName" else project
+}
+
+private const val RESIZE_BORDER = 5
+private const val RESIZE_CORNER = 10
+private const val MIN_WINDOW_WIDTH = 640
+private const val MIN_WINDOW_HEIGHT = 420
+
+/**
+ * Overlays thin drag handles on the window's four edges and four corners so the
+ * (undecorated) window can be resized, restoring the behavior native chrome gives.
+ */
+@Composable
+private fun BoxScope.WindowResizeHandles(window: Window) {
+    // Edges
+    ResizeHandle(
+        Modifier.align(Alignment.CenterStart).fillMaxHeight().width(RESIZE_BORDER.dp),
+        Cursor.W_RESIZE_CURSOR,
+    ) { dx, _ -> window.resizeWindow(left = true, dx = dx) }
+    ResizeHandle(
+        Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(RESIZE_BORDER.dp),
+        Cursor.E_RESIZE_CURSOR,
+    ) { dx, _ -> window.resizeWindow(right = true, dx = dx) }
+    ResizeHandle(
+        Modifier.align(Alignment.TopCenter).fillMaxWidth().height(RESIZE_BORDER.dp),
+        Cursor.N_RESIZE_CURSOR,
+    ) { _, dy -> window.resizeWindow(top = true, dy = dy) }
+    ResizeHandle(
+        Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(RESIZE_BORDER.dp),
+        Cursor.S_RESIZE_CURSOR,
+    ) { _, dy -> window.resizeWindow(bottom = true, dy = dy) }
+    // Corners
+    ResizeHandle(
+        Modifier.align(Alignment.TopStart).size(RESIZE_CORNER.dp),
+        Cursor.NW_RESIZE_CURSOR,
+    ) { dx, dy -> window.resizeWindow(left = true, top = true, dx = dx, dy = dy) }
+    ResizeHandle(
+        Modifier.align(Alignment.TopEnd).size(RESIZE_CORNER.dp),
+        Cursor.NE_RESIZE_CURSOR,
+    ) { dx, dy -> window.resizeWindow(right = true, top = true, dx = dx, dy = dy) }
+    ResizeHandle(
+        Modifier.align(Alignment.BottomStart).size(RESIZE_CORNER.dp),
+        Cursor.SW_RESIZE_CURSOR,
+    ) { dx, dy -> window.resizeWindow(left = true, bottom = true, dx = dx, dy = dy) }
+    ResizeHandle(
+        Modifier.align(Alignment.BottomEnd).size(RESIZE_CORNER.dp),
+        Cursor.SE_RESIZE_CURSOR,
+    ) { dx, dy -> window.resizeWindow(right = true, bottom = true, dx = dx, dy = dy) }
+}
+
+@Composable
+private fun ResizeHandle(
+    modifier: Modifier,
+    cursorType: Int,
+    onDrag: (dx: Int, dy: Int) -> Unit,
+) {
+    Box(
+        modifier =
+            modifier
+                .pointerHoverIcon(PointerIcon(Cursor(cursorType)))
+                .pointerInput(Unit) {
+                    detectDragGestures { _, dragAmount ->
+                        onDrag(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
+                    }
+                },
+    )
+}
+
+/** Adjusts this window's bounds (in screen pixels) for the dragged edge(s). */
+private fun Window.resizeWindow(
+    left: Boolean = false,
+    top: Boolean = false,
+    right: Boolean = false,
+    bottom: Boolean = false,
+    dx: Int = 0,
+    dy: Int = 0,
+) {
+    val b = bounds
+    var x = b.x
+    var y = b.y
+    var w = b.width
+    var h = b.height
+    if (right) w += dx
+    if (bottom) h += dy
+    if (left) {
+        w -= dx
+        x += dx
+    }
+    if (top) {
+        h -= dy
+        y += dy
+    }
+    if (w < MIN_WINDOW_WIDTH) {
+        if (left) x -= MIN_WINDOW_WIDTH - w
+        w = MIN_WINDOW_WIDTH
+    }
+    if (h < MIN_WINDOW_HEIGHT) {
+        if (top) y -= MIN_WINDOW_HEIGHT - h
+        h = MIN_WINDOW_HEIGHT
+    }
+    setBounds(x, y, w, h)
 }
