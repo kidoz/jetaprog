@@ -83,8 +83,9 @@ public class McpDispatcher(
         id: JsonElement,
         params: JsonObject?,
     ): JsonObject {
-        val name = (params?.get("name") as? kotlinx.serialization.json.JsonPrimitive)?.content
-            ?: return errorResponse(id, McpErrorCodes.INVALID_PARAMS, "Missing tool name")
+        val name =
+            (params?.get("name") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                ?: return errorResponse(id, McpErrorCodes.INVALID_PARAMS, "Missing tool name")
         val arguments = params["arguments"] as? JsonObject ?: JsonObject(emptyMap())
         val result = tools.execute(name, arguments)
         return success(id, result.toToolCallResult())
@@ -92,35 +93,49 @@ public class McpDispatcher(
 
     private fun ToolResult.toToolCallResult(): JsonObject =
         when (this) {
-            is ToolResult.Success ->
+            is ToolResult.Success -> {
                 buildJsonObject {
                     put("content", content.toContentArray())
                     put("isError", false)
                 }
+            }
 
-            is ToolResult.Error ->
+            is ToolResult.Error -> {
                 buildJsonObject {
                     putJsonArray("content") {
-                        add(buildJsonObject { put("type", "text"); put("text", message) })
+                        add(
+                            buildJsonObject {
+                                put("type", "text")
+                                put("text", message)
+                            },
+                        )
                     }
                     put("isError", true)
                 }
+            }
         }
 
     private fun List<ToolContent>.toContentArray() =
         buildJsonArray {
             this@toContentArray.forEach { item ->
                 when (item) {
-                    is ToolContent.Text ->
-                        add(buildJsonObject { put("type", "text"); put("text", item.text) })
+                    is ToolContent.Text -> {
+                        add(
+                            buildJsonObject {
+                                put("type", "text")
+                                put("text", item.text)
+                            },
+                        )
+                    }
 
-                    is ToolContent.Image ->
+                    is ToolContent.Image -> {
                         add(
                             buildJsonObject {
                                 put("type", "image")
                                 put("mimeType", item.mimeType)
                             },
                         )
+                    }
                 }
             }
         }

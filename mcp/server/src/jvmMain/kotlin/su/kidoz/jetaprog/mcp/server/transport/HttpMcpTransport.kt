@@ -38,7 +38,11 @@ public class HttpMcpTransport(
     private val host: String,
     private val port: Int,
 ) : McpTransport {
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
     private val sessionId = UUID.randomUUID().toString()
     private var server: EmbeddedServer<*, *>? = null
 
