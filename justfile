@@ -48,6 +48,10 @@ rebuild: clean build
 package:
     ./gradlew :app:desktop:packageDistributionForCurrentOS
 
+# Build a release installer for the current OS (DMG/MSI/DEB, ready to install)
+install:
+    ./gradlew :app:desktop:packageReleaseDistributionForCurrentOS
+
 # Create DMG (macOS only)
 package-dmg:
     ./gradlew :app:desktop:packageDmg
@@ -98,3 +102,4 @@ alias r := run
 alias t := test
 alias c := check
 alias f := format
+alias i := install
