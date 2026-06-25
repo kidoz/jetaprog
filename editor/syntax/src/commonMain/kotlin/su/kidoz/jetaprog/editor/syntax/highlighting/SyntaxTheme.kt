@@ -87,11 +87,11 @@ public interface SyntaxTheme {
 public object DarkSyntaxTheme : SyntaxTheme {
     override val name: String = "Dark+"
     override val isDark: Boolean = true
-    override val defaultForeground: SyntaxColor = SyntaxColor.fromHex("D4D4D4")
+    override val defaultForeground: SyntaxColor = SyntaxColor.fromHex("D7DBE0")
     override val background: SyntaxColor = SyntaxColor.fromHex("1E1E1E")
-    override val lineNumber: SyntaxColor = SyntaxColor.fromHex("858585")
-    override val currentLineHighlight: SyntaxColor = SyntaxColor.fromHex("282828")
-    override val selection: SyntaxColor = SyntaxColor.fromHex("264F78")
+    override val lineNumber: SyntaxColor = SyntaxColor.fromHex("5A5D63")
+    override val currentLineHighlight: SyntaxColor = SyntaxColor.fromHex("20242B")
+    override val selection: SyntaxColor = SyntaxColor.fromHex("2D4A6B")
     override val cursor: SyntaxColor = SyntaxColor.fromHex("AEAFAD")
 
     private val keyword = TokenStyle(SyntaxColor.fromHex("569CD6"))
@@ -103,8 +103,8 @@ public object DarkSyntaxTheme : SyntaxTheme {
     private val type = TokenStyle(SyntaxColor.fromHex("4EC9B0"))
     private val function = TokenStyle(SyntaxColor.fromHex("DCDCAA"))
     private val property = TokenStyle(SyntaxColor.fromHex("9CDCFE"))
-    private val operator = TokenStyle(SyntaxColor.fromHex("D4D4D4"))
-    private val default = TokenStyle(SyntaxColor.fromHex("D4D4D4"))
+    private val operator = TokenStyle(SyntaxColor.fromHex("D7DBE0"))
+    private val default = TokenStyle(SyntaxColor.fromHex("D7DBE0"))
 
     override fun styleFor(tokenType: TokenType): TokenStyle =
         when (tokenType) {

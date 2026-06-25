@@ -65,6 +65,18 @@ public object IntelliJColors {
     public val editorSelection: Color = Color(0xFF264F78)
     public val editorCaretRow: Color = Color(0xFF1E2126)
 
+    /** Caret-line background highlight (brighter than [editorCaretRow]). */
+    public val editorCurrentLine: Color = Color(0xFF20242B)
+
+    /** Blinking caret bar color. */
+    public val editorCaret: Color = Color(0xFFAEAFAD)
+
+    /** Active text-selection background inside the editor. */
+    public val editorSelectionActive: Color = Color(0xFF2D4A6B)
+
+    /** Default identifier/body text — slightly brighter than [textPrimary] for code. */
+    public val editorIdentifier: Color = Color(0xFFD7DBE0)
+
     // ============================================================
     // TAB COLORS (modern flat style)
     // ============================================================
@@ -91,6 +103,12 @@ public object IntelliJColors {
     public val treeSelectionInactive: Color = Color(0xFF2A2D30)
     public val treeForeground: Color = textPrimary
     public val treeHoverBackground: Color = Color(0xFF252629)
+
+    /** Vertical indent-guide line in the project tree (one per depth level). */
+    public val treeIndentGuide: Color = Color(0xFF2A2C30)
+
+    /** Left accent bar drawn on the selected tree row. */
+    public val treeSelectionAccent: Color = accent
 
     // ============================================================
     // STATUS BAR
@@ -161,7 +179,7 @@ public object IntelliJColors {
     // ============================================================
     public val gutterBackground: Color = editorGutter
     public val lineNumberForeground: Color = Color(0xFF5A5D63)
-    public val lineNumberForegroundActive: Color = Color(0xFF9D9FA3)
+    public val lineNumberForegroundActive: Color = Color(0xFFC9CDD2)
 
     // ============================================================
     // BREADCRUMBS
@@ -229,6 +247,19 @@ public object IntelliJColors {
     public val notificationSuccessStripe: Color = success
     public val notificationWarningStripe: Color = warning
     public val notificationErrorStripe: Color = error
+
+    // ============================================================
+    // WELCOME HUB
+    // ============================================================
+
+    /** Background of a hovered / first recent-project row. */
+    public val welcomeRecentRowHover: Color = Color(0xFF232831)
+
+    /** Brand "J" tile gradient — start color. */
+    public val brandGradientStart: Color = Color(0xFF5B9BD5)
+
+    /** Brand "J" tile gradient — end color. */
+    public val brandGradientEnd: Color = Color(0xFF7F52FF)
 }
 
 /**
@@ -254,6 +285,11 @@ public object Dimensions {
     public val statusBarHeight: Int = 24
     public val menuBarHeight: Int = 32
     public val mainToolbarHeight: Int = 32
+
+    // Welcome hub
+    public val welcomeRailWidth: Int = 230
+    public val welcomeRailItemHeight: Int = 34
+    public val welcomeRecentRowHeight: Int = 60
 
     // Tool windows
     public val toolWindowHeaderHeight: Int = 24
@@ -378,6 +414,10 @@ public object IntelliJLightColors {
     public val editorLineHighlight: Color = Color(0xFFEEF6FB)
     public val editorSelection: Color = Color(0xFFCFE0F4)
     public val editorCaretRow: Color = Color(0xFFEEF6FB)
+    public val editorCurrentLine: Color = Color(0xFFEAF3FA)
+    public val editorCaret: Color = Color(0xFF333333)
+    public val editorSelectionActive: Color = Color(0xFFBBD6F2)
+    public val editorIdentifier: Color = Color(0xFF1F1F1F)
 
     // Tabs
     public val tabBackground: Color = Color.Transparent
@@ -399,6 +439,8 @@ public object IntelliJLightColors {
     public val treeSelectionInactive: Color = Color(0xFFE2E2E2)
     public val treeForeground: Color = textPrimary
     public val treeHoverBackground: Color = Color(0xFFEDEDED)
+    public val treeIndentGuide: Color = Color(0xFFE2E2E2)
+    public val treeSelectionAccent: Color = accent
 
     // Status bar
     public val statusBarBackground: Color = Color(0xFFEBEBEB)
@@ -510,4 +552,9 @@ public object IntelliJLightColors {
     public val notificationSuccessStripe: Color = success
     public val notificationWarningStripe: Color = warning
     public val notificationErrorStripe: Color = error
+
+    // Welcome hub
+    public val welcomeRecentRowHover: Color = Color(0xFFE9EFF6)
+    public val brandGradientStart: Color = Color(0xFF5B9BD5)
+    public val brandGradientEnd: Color = Color(0xFF7F52FF)
 }
