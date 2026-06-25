@@ -35,6 +35,7 @@ public data class TerminalTab(
     val historyIndex: Int = -1,
     val columns: Int = DEFAULT_TERMINAL_COLUMNS,
     val rows: Int = DEFAULT_TERMINAL_ROWS,
+    val applicationCursorKeys: Boolean = false,
 )
 
 /**
@@ -334,7 +335,10 @@ public class TerminalViewModel(
         val activeTab = _state.value.activeTab ?: return
         val snapshot = terminalEmulators[activeTab.id]?.clear()
         updateTab(activeTab.id) { tab ->
-            tab.copy(output = snapshot?.toTerminalLines() ?: emptyList())
+            tab.copy(
+                output = snapshot?.toTerminalLines() ?: emptyList(),
+                applicationCursorKeys = snapshot?.inputMode?.applicationCursorKeys ?: tab.applicationCursorKeys,
+            )
         }
     }
 
@@ -406,7 +410,13 @@ public class TerminalViewModel(
             terminalBackends[activeTab.id]?.resize(activeTab.columns, rows)
             val snapshot = terminalEmulators[activeTab.id]?.resize(activeTab.columns, rows)
             if (snapshot != null) {
-                updateTab(activeTab.id) { it.copy(output = snapshot.toTerminalLines(), rows = rows) }
+                updateTab(activeTab.id) {
+                    it.copy(
+                        output = snapshot.toTerminalLines(),
+                        rows = rows,
+                        applicationCursorKeys = snapshot.inputMode.applicationCursorKeys,
+                    )
+                }
             }
         }
 
@@ -429,6 +439,7 @@ public class TerminalViewModel(
                 output = snapshot?.toTerminalLines() ?: tab.output,
                 columns = safeColumns,
                 rows = safeRows,
+                applicationCursorKeys = snapshot?.inputMode?.applicationCursorKeys ?: tab.applicationCursorKeys,
             )
         }
     }
@@ -438,7 +449,12 @@ public class TerminalViewModel(
         text: String,
     ) {
         val snapshot = terminalEmulators[tabId]?.accept(text) ?: return
-        updateTab(tabId) { tab -> tab.copy(output = snapshot.toTerminalLines()) }
+        updateTab(tabId) { tab ->
+            tab.copy(
+                output = snapshot.toTerminalLines(),
+                applicationCursorKeys = snapshot.inputMode.applicationCursorKeys,
+            )
+        }
     }
 
     private fun appendGridOutput(
@@ -459,7 +475,10 @@ public class TerminalViewModel(
                 )
             }
         updateTab(tabId) { tab ->
-            tab.copy(output = snapshot.toTerminalLines(isError = isError))
+            tab.copy(
+                output = snapshot.toTerminalLines(isError = isError),
+                applicationCursorKeys = snapshot.inputMode.applicationCursorKeys,
+            )
         }
     }
 

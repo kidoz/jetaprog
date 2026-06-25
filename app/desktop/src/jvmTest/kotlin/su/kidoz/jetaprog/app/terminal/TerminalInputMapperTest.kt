@@ -30,6 +30,16 @@ class TerminalInputMapperTest {
     }
 
     @Test
+    fun arrowsUseSs3SequencesInApplicationCursorMode() {
+        val mode = TerminalInputMode(applicationCursorKeys = true)
+
+        assertEquals("\u001bOA", terminalInputForKey(Key.DirectionUp, KeyEventType.KeyDown, mode = mode))
+        assertEquals("\u001bOB", terminalInputForKey(Key.DirectionDown, KeyEventType.KeyDown, mode = mode))
+        assertEquals("\u001bOC", terminalInputForKey(Key.DirectionRight, KeyEventType.KeyDown, mode = mode))
+        assertEquals("\u001bOD", terminalInputForKey(Key.DirectionLeft, KeyEventType.KeyDown, mode = mode))
+    }
+
+    @Test
     fun ctrlLettersUseControlCharacters() {
         assertEquals("\u0003", terminalInputForKey(Key.C, KeyEventType.KeyDown, isCtrlPressed = true))
         assertEquals("\u0004", terminalInputForKey(Key.D, KeyEventType.KeyDown, isCtrlPressed = true))

@@ -11,9 +11,16 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.utf16CodePoint
 
 /**
+ * Terminal modes that change keyboard escape sequences.
+ */
+internal data class TerminalInputMode(
+    val applicationCursorKeys: Boolean = false,
+)
+
+/**
  * Converts Compose key events into byte-oriented terminal input sequences.
  */
-internal fun KeyEvent.toTerminalInput(): String? =
+internal fun KeyEvent.toTerminalInput(mode: TerminalInputMode = TerminalInputMode()): String? =
     terminalInputForKey(
         key = key,
         type = type,
@@ -21,6 +28,7 @@ internal fun KeyEvent.toTerminalInput(): String? =
         isCtrlPressed = isCtrlPressed,
         isAltPressed = isAltPressed,
         isMetaPressed = isMetaPressed,
+        mode = mode,
     )
 
 internal fun terminalInputForKey(
@@ -30,6 +38,7 @@ internal fun terminalInputForKey(
     isCtrlPressed: Boolean = false,
     isAltPressed: Boolean = false,
     isMetaPressed: Boolean = false,
+    mode: TerminalInputMode = TerminalInputMode(),
 ): String? {
     if (type != KeyEventType.KeyDown) return null
 
@@ -56,10 +65,10 @@ internal fun terminalInputForKey(
         Key.Backspace -> "\u007f"
         Key.Tab -> "\t"
         Key.Escape -> "\u001b"
-        Key.DirectionUp -> "\u001b[A"
-        Key.DirectionDown -> "\u001b[B"
-        Key.DirectionRight -> "\u001b[C"
-        Key.DirectionLeft -> "\u001b[D"
+        Key.DirectionUp -> cursorKey(normalFinal = 'A', applicationFinal = 'A', mode = mode)
+        Key.DirectionDown -> cursorKey(normalFinal = 'B', applicationFinal = 'B', mode = mode)
+        Key.DirectionRight -> cursorKey(normalFinal = 'C', applicationFinal = 'C', mode = mode)
+        Key.DirectionLeft -> cursorKey(normalFinal = 'D', applicationFinal = 'D', mode = mode)
         Key.MoveHome -> "\u001b[H"
         Key.MoveEnd -> "\u001b[F"
         Key.Delete -> "\u001b[3~"
@@ -68,6 +77,17 @@ internal fun terminalInputForKey(
         else -> printableInput(utf16CodePoint, isCtrlPressed, isMetaPressed)
     }
 }
+
+private fun cursorKey(
+    normalFinal: Char,
+    applicationFinal: Char,
+    mode: TerminalInputMode,
+): String =
+    if (mode.applicationCursorKeys) {
+        "\u001bO$applicationFinal"
+    } else {
+        "\u001b[$normalFinal"
+    }
 
 private fun printableInput(
     utf16CodePoint: Int,

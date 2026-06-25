@@ -8,6 +8,7 @@ internal data class TerminalScreenSnapshot(
     val cursorRow: Int,
     val cursorColumn: Int,
     val cursorLineIndex: Int,
+    val inputMode: TerminalInputMode = TerminalInputMode(),
 )
 
 /**
@@ -32,6 +33,7 @@ internal class TerminalEmulator(
     private val primaryScreen: MutableList<CharArray> = MutableList(this.rows) { blankLine() }
     private var alternateScreen: MutableList<CharArray>? = null
     private var screen: MutableList<CharArray> = primaryScreen
+    private var applicationCursorKeys: Boolean = false
 
     /**
      * Apply terminal output to the screen grid and return the updated snapshot.
@@ -101,6 +103,7 @@ internal class TerminalEmulator(
             cursorRow = cursorRow,
             cursorColumn = cursorColumn,
             cursorLineIndex = scrollback.size + cursorRow,
+            inputMode = TerminalInputMode(applicationCursorKeys = applicationCursorKeys),
         )
 
     private fun visibleScreenLines(): List<String> {
@@ -167,6 +170,14 @@ internal class TerminalEmulator(
 
             'M' -> {
                 reverseIndex()
+            }
+
+            '=' -> {
+                // Application keypad mode. Keypad support is not modeled yet.
+            }
+
+            '>' -> {
+                // Numeric keypad mode. Keypad support is not modeled yet.
             }
         }
         if (parserState == ParserState.Escape) {
@@ -304,6 +315,7 @@ internal class TerminalEmulator(
             .mapNotNull { mode -> mode.toIntOrNull() }
             .forEach { mode ->
                 when (mode) {
+                    1 -> applicationCursorKeys = enabled
                     47, 1047, 1049 -> setAlternateScreen(enabled)
                 }
             }

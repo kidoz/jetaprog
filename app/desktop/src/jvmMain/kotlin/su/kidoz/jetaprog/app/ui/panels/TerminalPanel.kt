@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
+import su.kidoz.jetaprog.app.terminal.TerminalInputMode
 import su.kidoz.jetaprog.app.terminal.toTerminalInput
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
@@ -527,6 +528,7 @@ private fun TerminalContent(
 
         TerminalInputCapture(
             onInput = onInput,
+            inputMode = TerminalInputMode(applicationCursorKeys = tab.applicationCursorKeys),
             focusRequester = focusRequester,
             modifier = Modifier.align(Alignment.BottomStart),
         )
@@ -536,6 +538,7 @@ private fun TerminalContent(
 @Composable
 private fun TerminalInputCapture(
     onInput: (String) -> Unit,
+    inputMode: TerminalInputMode,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
@@ -555,7 +558,7 @@ private fun TerminalInputCapture(
                 .size(1.dp)
                 .focusRequester(focusRequester)
                 .onPreviewKeyEvent { keyEvent ->
-                    val input = keyEvent.toTerminalInput()
+                    val input = keyEvent.toTerminalInput(inputMode)
                     if (input != null) {
                         onInput(input)
                         true

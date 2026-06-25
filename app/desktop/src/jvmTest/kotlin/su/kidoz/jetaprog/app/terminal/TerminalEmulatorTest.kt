@@ -97,4 +97,13 @@ class TerminalEmulatorTest {
 
         assertEquals(listOf("main"), snapshot.lines)
     }
+
+    @Test
+    fun privateModeTracksApplicationCursorKeys() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        assertEquals(false, emulator.snapshot().inputMode.applicationCursorKeys)
+        assertEquals(true, emulator.accept("\u001b[?1h").inputMode.applicationCursorKeys)
+        assertEquals(false, emulator.accept("\u001b[?1l").inputMode.applicationCursorKeys)
+    }
 }
