@@ -177,7 +177,7 @@ private fun CompletionItemRow(
 
     val backgroundColor =
         when {
-            isSelected -> IntelliJColors.selectionBackground
+            isSelected -> IntelliJColors.menuItemHover
             isHovered -> IntelliJColors.surfaceHover
             else -> Color.Transparent
         }
