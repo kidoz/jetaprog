@@ -9,6 +9,7 @@ internal data class TerminalScreenSnapshot(
     val cursorColumn: Int,
     val cursorLineIndex: Int,
     val inputMode: TerminalInputMode = TerminalInputMode(),
+    val isCursorVisible: Boolean = true,
 )
 
 /**
@@ -27,6 +28,9 @@ internal class TerminalEmulator(
     private var savedCursorColumn: Int = 0
     private var primaryCursorRow: Int = 0
     private var primaryCursorColumn: Int = 0
+    private var scrollTop: Int = 0
+    private var scrollBottom: Int = this.rows - 1
+    private var isCursorVisible: Boolean = true
     private var parserState: ParserState = ParserState.Ground
     private val csiBuffer: StringBuilder = StringBuilder()
     private val scrollback: ArrayDeque<String> = ArrayDeque()
@@ -55,6 +59,7 @@ internal class TerminalEmulator(
         cursorRow = 0
         cursorColumn = 0
         parserState = ParserState.Ground
+        resetScrollRegion()
         csiBuffer.clear()
         return snapshot()
     }
@@ -91,6 +96,7 @@ internal class TerminalEmulator(
 
         cursorRow = cursorRow.coerceIn(0, newRows - 1)
         cursorColumn = cursorColumn.coerceIn(0, newColumns - 1)
+        resetScrollRegion()
         return snapshot()
     }
 
@@ -104,6 +110,7 @@ internal class TerminalEmulator(
             cursorColumn = cursorColumn,
             cursorLineIndex = scrollback.size + cursorRow,
             inputMode = TerminalInputMode(applicationCursorKeys = applicationCursorKeys),
+            isCursorVisible = isCursorVisible,
         )
 
     private fun visibleScreenLines(): List<String> {
@@ -301,7 +308,14 @@ internal class TerminalEmulator(
                 restoreCursor()
             }
 
-            'm', 'h', 'l', 'n', 'r' -> {}
+            'r' -> {
+                setScrollRegion(
+                    top = params.valueOrDefault(0, 1) - 1,
+                    bottom = params.valueOrDefault(1, rows) - 1,
+                )
+            }
+
+            'm', 'h', 'l', 'n' -> {}
         }
     }
 
@@ -316,6 +330,7 @@ internal class TerminalEmulator(
             .forEach { mode ->
                 when (mode) {
                     1 -> applicationCursorKeys = enabled
+                    25 -> isCursorVisible = enabled
                     47, 1047, 1049 -> setAlternateScreen(enabled)
                 }
             }
@@ -334,36 +349,35 @@ internal class TerminalEmulator(
     }
 
     private fun lineFeed() {
-        if (cursorRow >= rows - 1) {
+        if (cursorRow == scrollBottom) {
             scrollUp()
-        } else {
+        } else if (cursorRow < rows - 1) {
             cursorRow += 1
         }
     }
 
     private fun reverseIndex() {
-        if (cursorRow == 0) {
-            screen.add(0, blankLine())
-            screen.removeAt(screen.lastIndex)
+        if (cursorRow == scrollTop) {
+            scrollDown()
         } else {
             cursorRow -= 1
         }
     }
 
     private fun scrollUp() {
-        val removedLine = screen.removeAt(0).concatToString().trimEnd()
-        if (!isAlternateScreenActive()) {
+        val removedLine = screen.removeAt(scrollTop).concatToString().trimEnd()
+        if (!isAlternateScreenActive() && scrollTop == 0) {
             scrollback.addLast(removedLine)
             while (scrollback.size > maxScrollbackLines) {
                 scrollback.removeFirst()
             }
         }
-        screen += blankLine()
+        screen.add(scrollBottom, blankLine())
     }
 
     private fun scrollDown() {
-        screen.add(0, blankLine())
-        screen.removeAt(screen.lastIndex)
+        screen.add(scrollTop, blankLine())
+        screen.removeAt(scrollBottom + 1)
     }
 
     private fun moveCursor(
@@ -392,11 +406,13 @@ internal class TerminalEmulator(
             screen = alternateScreen ?: primaryScreen
             cursorRow = 0
             cursorColumn = 0
+            resetScrollRegion()
         } else {
             if (!isAlternateScreenActive()) return
             alternateScreen = null
             screen = primaryScreen
             moveCursor(primaryCursorRow, primaryCursorColumn)
+            resetScrollRegion()
         }
     }
 
@@ -465,19 +481,40 @@ internal class TerminalEmulator(
     }
 
     private fun insertLines(count: Int) {
-        val safeCount = count.coerceIn(0, rows - cursorRow)
+        if (cursorRow !in scrollTop..scrollBottom) return
+        val safeCount = count.coerceIn(0, scrollBottom - cursorRow + 1)
         repeat(safeCount) {
             screen.add(cursorRow, blankLine())
-            screen.removeAt(screen.lastIndex)
+            screen.removeAt(scrollBottom + 1)
         }
     }
 
     private fun deleteLines(count: Int) {
-        val safeCount = count.coerceIn(0, rows - cursorRow)
+        if (cursorRow !in scrollTop..scrollBottom) return
+        val safeCount = count.coerceIn(0, scrollBottom - cursorRow + 1)
         repeat(safeCount) {
             screen.removeAt(cursorRow)
-            screen += blankLine()
+            screen.add(scrollBottom, blankLine())
         }
+    }
+
+    private fun setScrollRegion(
+        top: Int,
+        bottom: Int,
+    ) {
+        if (top !in 0 until rows || bottom !in 0 until rows || top >= bottom) {
+            resetScrollRegion()
+            return
+        }
+
+        scrollTop = top
+        scrollBottom = bottom
+        moveCursor(row = 0, column = 0)
+    }
+
+    private fun resetScrollRegion() {
+        scrollTop = 0
+        scrollBottom = rows - 1
     }
 
     private fun fillRow(

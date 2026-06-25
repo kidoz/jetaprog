@@ -106,4 +106,33 @@ class TerminalEmulatorTest {
         assertEquals(true, emulator.accept("\u001b[?1h").inputMode.applicationCursorKeys)
         assertEquals(false, emulator.accept("\u001b[?1l").inputMode.applicationCursorKeys)
     }
+
+    @Test
+    fun scrollRegionKeepsRowsOutsideMarginsStable() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        emulator.accept("top\u001b[2;1Hone\u001b[3;1Htwo\u001b[4;1Hthree\u001b[5;1Hbottom")
+        val snapshot = emulator.accept("\u001b[2;4r\u001b[4;1H\n")
+
+        assertEquals(listOf("top", "two", "three", "", "bottom"), snapshot.lines)
+    }
+
+    @Test
+    fun insertLinesRespectScrollRegionBottom() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        emulator.accept("top\u001b[2;1Hone\u001b[3;1Htwo\u001b[4;1Hthree\u001b[5;1Hbottom")
+        val snapshot = emulator.accept("\u001b[2;4r\u001b[3;1H\u001b[L")
+
+        assertEquals(listOf("top", "one", "", "two", "bottom"), snapshot.lines)
+    }
+
+    @Test
+    fun privateModeTracksCursorVisibility() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        assertEquals(true, emulator.snapshot().isCursorVisible)
+        assertEquals(false, emulator.accept("\u001b[?25l").isCursorVisible)
+        assertEquals(true, emulator.accept("\u001b[?25h").isCursorVisible)
+    }
 }

@@ -486,7 +486,7 @@ public class TerminalViewModel(
         lines.mapIndexed { index, line ->
             TerminalLine(
                 text =
-                    if (index == cursorLineIndex) {
+                    if (isCursorVisible && index == cursorLineIndex) {
                         line.withCursor(cursorColumn)
                     } else {
                         line
