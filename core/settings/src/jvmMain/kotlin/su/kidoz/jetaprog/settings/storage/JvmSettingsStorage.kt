@@ -94,10 +94,7 @@ public class JvmSettingsStorage : SettingsStorage {
             }
         }
 
-    private fun getIdeSettingsFile(): File {
-        val ideHome = System.getProperty("jetaprog.home", System.getProperty("user.dir"))
-        return File(ideHome, IDE_SETTINGS_PATH)
-    }
+    private fun getIdeSettingsFile(): File = File(JvmIdeHome.current(), IDE_SETTINGS_PATH)
 
     private fun getUserSettingsFile(): File {
         val userHome = System.getProperty("user.home")

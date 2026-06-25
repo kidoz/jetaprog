@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import su.kidoz.jetaprog.settings.storage.JvmIdeHome
 import java.io.File
 
 /**
@@ -97,10 +98,7 @@ public class RecentProjectsService {
         file.writeText(json.encodeToString(RecentProjectsFile(projects)))
     }
 
-    private fun storeFile(): File {
-        val ideHome = System.getProperty("jetaprog.home", System.getProperty("user.dir"))
-        return File(ideHome, STORE_PATH)
-    }
+    private fun storeFile(): File = File(JvmIdeHome.current(), STORE_PATH)
 
     private companion object {
         const val STORE_PATH = "config/recent-projects.json"
