@@ -13,6 +13,7 @@ import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.vcs.DefaultGitService
 import su.kidoz.jetaprog.vcs.GitChange
+import su.kidoz.jetaprog.vcs.GitCommit
 import su.kidoz.jetaprog.vcs.GitService
 
 /** State of the Git panel. */
@@ -33,6 +34,8 @@ public data class GitState(
     val selected: GitChange? = null,
     /** The unified diff of [selected]. */
     val diff: String = "",
+    /** Recent commit history, newest first. */
+    val commitLog: List<GitCommit> = emptyList(),
     /** The pending commit message. */
     val commitMessage: String = "",
     /** Whether a git operation is in progress. */
@@ -85,6 +88,9 @@ public class GitViewModel(
                             unstaged = status.unstaged,
                         )
                     }
+                    service
+                        .log(LOG_LIMIT)
+                        .onSuccess { log -> _state.update { it.copy(commitLog = log) } }
                 }.onFailure { error -> fail(error) }
         }
     }
@@ -110,6 +116,23 @@ public class GitViewModel(
         runThenRefresh { service.unstage(listOf(change.path)) }
     }
 
+    /** Stages [change] if unstaged, otherwise unstages it. */
+    public fun toggleStage(change: GitChange) {
+        if (change.staged) unstage(change) else stage(change)
+    }
+
+    /** Stages all changes when [staged], otherwise unstages all staged changes. */
+    public fun setAllStaged(staged: Boolean) {
+        val paths =
+            if (staged) {
+                _state.value.unstaged.map { it.path }
+            } else {
+                _state.value.staged.map { it.path }
+            }
+        if (paths.isEmpty()) return
+        runThenRefresh { if (staged) service.stage(paths) else service.unstage(paths) }
+    }
+
     /** Updates the commit message. */
     public fun setCommitMessage(message: String) {
         _state.update { it.copy(commitMessage = message) }
@@ -130,6 +153,46 @@ public class GitViewModel(
         }
     }
 
+    /** Commits the staged changes, then pushes to the upstream. */
+    public fun commitAndPush() {
+        val message = _state.value.commitMessage.trim()
+        if (message.isEmpty() || _state.value.staged.isEmpty()) return
+        scope.launch {
+            _state.update { it.copy(isBusy = true, error = null) }
+            service
+                .commit(message)
+                .onSuccess {
+                    _state.update { it.copy(commitMessage = "", diff = "", selected = null) }
+                    service
+                        .push()
+                        .onSuccess { refresh() }
+                        .onFailure { error -> fail(error) }
+                }.onFailure { error -> fail(error) }
+        }
+    }
+
+    /** Pushes the current branch to its upstream. */
+    public fun push() {
+        scope.launch {
+            _state.update { it.copy(isBusy = true, error = null) }
+            service
+                .push()
+                .onSuccess { refresh() }
+                .onFailure { error -> fail(error) }
+        }
+    }
+
+    /** Updates (fast-forwards) the current branch from its upstream. */
+    public fun pull() {
+        scope.launch {
+            _state.update { it.copy(isBusy = true, error = null) }
+            service
+                .pull()
+                .onSuccess { refresh() }
+                .onFailure { error -> fail(error) }
+        }
+    }
+
     private fun runThenRefresh(action: suspend () -> Result<Unit>) {
         scope.launch {
             _state.update { it.copy(isBusy = true, error = null) }
@@ -145,5 +208,9 @@ public class GitViewModel(
 
     override fun dispose() {
         scope.cancel()
+    }
+
+    private companion object {
+        const val LOG_LIMIT = 50
     }
 }
