@@ -24,7 +24,9 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.North
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.South
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -78,6 +81,7 @@ import su.kidoz.jetaprog.app.ui.panels.GitPanel
 import su.kidoz.jetaprog.app.ui.panels.ProblemsContent
 import su.kidoz.jetaprog.app.ui.panels.ProjectPanel
 import su.kidoz.jetaprog.app.ui.panels.TerminalPanel
+import su.kidoz.jetaprog.app.ui.panels.VcsMainArea
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -396,6 +400,9 @@ private fun MainScreenContent(
             MainToolbar(
                 projectName = currentProjectPath.substringAfterLast('/'),
                 branchName = gitState.branch,
+                ahead = gitState.ahead,
+                onUpdate = { session.gitViewModel.pull() },
+                onPush = { session.gitViewModel.push() },
                 configurationState = configurationState,
                 onSelectConfiguration = { id ->
                     session.configurationViewModel.dispatch(ConfigurationIntent.SelectConfiguration(id))
@@ -493,150 +500,157 @@ private fun MainScreenContent(
                     )
                 }
 
-                // Editor area
+                // Editor area — replaced by the VCS perspective when Version Control is active
                 Column(modifier = Modifier.weight(1f)) {
-                    // Editor tabs
-                    if (editorState.tabs.isNotEmpty()) {
-                        IntelliJEditorTabs(
-                            tabs = editorState.tabs,
-                            activeTabIndex = editorState.activeTabIndex,
-                            onTabClick = { index ->
-                                session.editorViewModel.dispatch(EditorIntent.SwitchTab(index))
-                            },
-                            onTabClose = { index ->
-                                session.editorViewModel.dispatch(EditorIntent.CloseTab(index))
-                            },
+                    if (selectedActivityItem == ActivityBarItem.VCS) {
+                        VcsMainArea(
+                            viewModel = session.gitViewModel,
+                            modifier = Modifier.fillMaxSize(),
                         )
-                    }
+                    } else {
+                        // Editor tabs
+                        if (editorState.tabs.isNotEmpty()) {
+                            IntelliJEditorTabs(
+                                tabs = editorState.tabs,
+                                activeTabIndex = editorState.activeTabIndex,
+                                onTabClick = { index ->
+                                    session.editorViewModel.dispatch(EditorIntent.SwitchTab(index))
+                                },
+                                onTabClose = { index ->
+                                    session.editorViewModel.dispatch(EditorIntent.CloseTab(index))
+                                },
+                            )
+                        }
 
-                    // Breadcrumbs navigation
-                    val activeTab = editorState.activeTab
-                    if (activeTab != null) {
-                        val projectName = currentProjectPath.substringAfterLast('/')
-                        val filePath = activeTab.uri.value.removePrefix("file://")
-                        val breadcrumbs =
-                            remember(filePath, currentProjectPath) {
-                                createBreadcrumbsFromPath(currentProjectPath, projectName, filePath)
-                            }
-                        Breadcrumbs(
-                            segments = breadcrumbs,
-                            onSegmentClick = { _ ->
-                                // Navigate to directory or file
-                            },
-                        )
-                    }
-
-                    // Editor content
-                    Box(modifier = Modifier.weight(1f)) {
-                        @Suppress("NAME_SHADOWING")
+                        // Breadcrumbs navigation
                         val activeTab = editorState.activeTab
                         if (activeTab != null) {
-                            val isMarkdown =
-                                editorState.activeDocumentUri?.value?.let { path ->
-                                    path.endsWith(".md") || path.endsWith(".markdown")
-                                } ?: false
+                            val projectName = currentProjectPath.substringAfterLast('/')
+                            val filePath = activeTab.uri.value.removePrefix("file://")
+                            val breadcrumbs =
+                                remember(filePath, currentProjectPath) {
+                                    createBreadcrumbsFromPath(currentProjectPath, projectName, filePath)
+                                }
+                            Breadcrumbs(
+                                segments = breadcrumbs,
+                                onSegmentClick = { _ ->
+                                    // Navigate to directory or file
+                                },
+                            )
+                        }
 
-                            if (isMarkdown) {
-                                MarkdownEditor(
-                                    state = editorState,
-                                    onContentChange = { content ->
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.UpdateContent(content),
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            } else {
-                                CodeEditor(
-                                    state = editorState,
-                                    onContentChange = { content ->
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.UpdateContent(content),
-                                        )
-                                    },
-                                    onCompletionRequest = { triggerKind, triggerChar, filterText ->
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.RequestCompletion(
-                                                triggerKind = triggerKind,
-                                                triggerCharacter = triggerChar,
-                                                filterText = filterText,
-                                            ),
-                                        )
-                                    },
-                                    onCompletionSelect = { item ->
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.ApplyCompletion(item),
-                                        )
-                                    },
-                                    onCompletionMoveUp = {
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.CompletionMoveUp,
-                                        )
-                                    },
-                                    onCompletionMoveDown = {
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.CompletionMoveDown,
-                                        )
-                                    },
-                                    onCompletionDismiss = {
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.DismissCompletion,
-                                        )
-                                    },
-                                    onCompletionFilterChange = { filterText ->
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.UpdateCompletionFilter(filterText),
-                                        )
-                                    },
-                                    onCursorMove = { position ->
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.MoveCursor(position),
-                                        )
-                                    },
-                                    onHoverRequest = { position ->
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.RequestHover(position),
-                                        )
-                                    },
-                                    onHoverDismiss = {
-                                        session.editorViewModel.dispatch(EditorIntent.DismissHover)
-                                    },
-                                    onSignatureHelpRequest = { triggerChar ->
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.RequestSignatureHelp(
-                                                triggerCharacter = triggerChar,
-                                                isRetrigger = false,
-                                            ),
-                                        )
-                                    },
-                                    onSignatureHelpNextSignature = {
-                                        session.editorViewModel.dispatch(EditorIntent.NextSignature)
-                                    },
-                                    onSignatureHelpPreviousSignature = {
-                                        session.editorViewModel.dispatch(EditorIntent.PreviousSignature)
-                                    },
-                                    onSignatureHelpDismiss = {
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.DismissSignatureHelp,
-                                        )
-                                    },
-                                    onFormatDocument = {
-                                        session.editorViewModel.dispatch(EditorIntent.FormatDocument)
-                                    },
-                                    onIntent = { intent ->
-                                        session.editorViewModel.dispatch(intent)
-                                    },
-                                    indentUnit =
-                                        if (editorSettings.editor.useTabs) {
-                                            "\t"
-                                        } else {
-                                            " ".repeat(editorSettings.editor.tabSize)
+                        // Editor content
+                        Box(modifier = Modifier.weight(1f)) {
+                            @Suppress("NAME_SHADOWING")
+                            val activeTab = editorState.activeTab
+                            if (activeTab != null) {
+                                val isMarkdown =
+                                    editorState.activeDocumentUri?.value?.let { path ->
+                                        path.endsWith(".md") || path.endsWith(".markdown")
+                                    } ?: false
+
+                                if (isMarkdown) {
+                                    MarkdownEditor(
+                                        state = editorState,
+                                        onContentChange = { content ->
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.UpdateContent(content),
+                                            )
                                         },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                } else {
+                                    CodeEditor(
+                                        state = editorState,
+                                        onContentChange = { content ->
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.UpdateContent(content),
+                                            )
+                                        },
+                                        onCompletionRequest = { triggerKind, triggerChar, filterText ->
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.RequestCompletion(
+                                                    triggerKind = triggerKind,
+                                                    triggerCharacter = triggerChar,
+                                                    filterText = filterText,
+                                                ),
+                                            )
+                                        },
+                                        onCompletionSelect = { item ->
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.ApplyCompletion(item),
+                                            )
+                                        },
+                                        onCompletionMoveUp = {
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.CompletionMoveUp,
+                                            )
+                                        },
+                                        onCompletionMoveDown = {
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.CompletionMoveDown,
+                                            )
+                                        },
+                                        onCompletionDismiss = {
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.DismissCompletion,
+                                            )
+                                        },
+                                        onCompletionFilterChange = { filterText ->
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.UpdateCompletionFilter(filterText),
+                                            )
+                                        },
+                                        onCursorMove = { position ->
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.MoveCursor(position),
+                                            )
+                                        },
+                                        onHoverRequest = { position ->
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.RequestHover(position),
+                                            )
+                                        },
+                                        onHoverDismiss = {
+                                            session.editorViewModel.dispatch(EditorIntent.DismissHover)
+                                        },
+                                        onSignatureHelpRequest = { triggerChar ->
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.RequestSignatureHelp(
+                                                    triggerCharacter = triggerChar,
+                                                    isRetrigger = false,
+                                                ),
+                                            )
+                                        },
+                                        onSignatureHelpNextSignature = {
+                                            session.editorViewModel.dispatch(EditorIntent.NextSignature)
+                                        },
+                                        onSignatureHelpPreviousSignature = {
+                                            session.editorViewModel.dispatch(EditorIntent.PreviousSignature)
+                                        },
+                                        onSignatureHelpDismiss = {
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.DismissSignatureHelp,
+                                            )
+                                        },
+                                        onFormatDocument = {
+                                            session.editorViewModel.dispatch(EditorIntent.FormatDocument)
+                                        },
+                                        onIntent = { intent ->
+                                            session.editorViewModel.dispatch(intent)
+                                        },
+                                        indentUnit =
+                                            if (editorSettings.editor.useTabs) {
+                                                "\t"
+                                            } else {
+                                                " ".repeat(editorSettings.editor.tabSize)
+                                            },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                            } else {
+                                EmptyEditorPlaceholder(modifier = Modifier.fillMaxSize())
                             }
-                        } else {
-                            EmptyEditorPlaceholder(modifier = Modifier.fillMaxSize())
                         }
                     }
                 }
@@ -852,6 +866,9 @@ private fun IntelliJMenuBar(
 private fun MainToolbar(
     projectName: String,
     branchName: String?,
+    ahead: Int,
+    onUpdate: () -> Unit,
+    onPush: () -> Unit,
     configurationState: su.kidoz.jetaprog.configuration.ConfigurationState,
     onSelectConfiguration: (su.kidoz.jetaprog.configuration.ConfigurationId) -> Unit,
     onRunConfiguration: () -> Unit,
@@ -892,6 +909,9 @@ private fun MainToolbar(
                     label = branchName,
                     trailingIcon = Icons.Filled.ExpandMore,
                 )
+                ToolbarDivider()
+                ToolbarAction(icon = Icons.Filled.South, label = "Update", onClick = onUpdate)
+                ToolbarAction(icon = Icons.Filled.North, label = "Push", badge = ahead, onClick = onPush)
             }
             androidx.compose.foundation.layout
                 .Spacer(modifier = Modifier.weight(1f))
@@ -958,6 +978,51 @@ private fun ToolbarChip(
                 tint = IntelliJColors.textMuted,
                 modifier = Modifier.size(16.dp),
             )
+        }
+    }
+}
+
+/** A toolbar text action (icon + label), optionally with a count badge. */
+@Composable
+private fun ToolbarAction(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    badge: Int = 0,
+) {
+    Row(
+        modifier =
+            Modifier
+                .height(26.dp)
+                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = IntelliJColors.textSecondary,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(text = label, color = IntelliJColors.textPrimary, fontSize = 12.sp)
+        if (badge > 0) {
+            Box(
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(IntelliJColors.accent)
+                        .padding(horizontal = 5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = badge.toString(),
+                    color = IntelliJColors.background,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
     }
 }
