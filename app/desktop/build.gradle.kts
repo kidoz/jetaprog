@@ -66,13 +66,19 @@ compose.desktop {
                 "-Dapple.awt.application.name=JetaProg",
             )
 
+        // ProGuard 7.7 cannot read this project's Java 25 (class v69) bytecode, so the
+        // release distribution skips minification. Re-enable once ProGuard supports Java 25.
+        buildTypes.release.proguard {
+            isEnabled.set(false)
+        }
+
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "JetaProg"
             packageVersion = "1.0.0"
             description = "JetaProg IDE - Modern Cross-Platform IDE"
             vendor = "Aleksandr Pavlov"
-            licenseFile.set(project.file("LICENSE"))
+            licenseFile.set(rootProject.file("LICENSE"))
 
             macOS {
                 bundleID = "su.kidoz.jetaprog"
