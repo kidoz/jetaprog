@@ -16,6 +16,11 @@ import su.kidoz.jetaprog.app.terminal.TerminalEmulator
 import su.kidoz.jetaprog.app.terminal.TerminalScreenSnapshot
 import su.kidoz.jetaprog.common.Disposable
 
+private const val DEFAULT_TERMINAL_COLUMNS = 120
+private const val DEFAULT_TERMINAL_ROWS = 30
+private const val MIN_TERMINAL_COLUMNS = 1
+private const val MIN_TERMINAL_ROWS = 5
+
 /**
  * Represents a single terminal tab.
  */
@@ -28,6 +33,8 @@ public data class TerminalTab(
     val exitCode: Int? = null,
     val commandHistory: List<String> = emptyList(),
     val historyIndex: Int = -1,
+    val columns: Int = DEFAULT_TERMINAL_COLUMNS,
+    val rows: Int = DEFAULT_TERMINAL_ROWS,
 )
 
 /**
@@ -117,6 +124,11 @@ public sealed interface TerminalIntent {
     public data class ResizePanel(
         val height: Int,
     ) : TerminalIntent
+
+    public data class ResizeTerminal(
+        val columns: Int,
+        val rows: Int,
+    ) : TerminalIntent
 }
 
 /**
@@ -184,6 +196,7 @@ public class TerminalViewModel(
             is TerminalIntent.ToggleSearch -> toggleSearch()
             is TerminalIntent.SetSearchQuery -> setSearchQuery(intent.query)
             is TerminalIntent.ResizePanel -> resizePanel(intent.height)
+            is TerminalIntent.ResizeTerminal -> resizeTerminal(intent.columns, intent.rows)
         }
     }
 
@@ -193,7 +206,7 @@ public class TerminalViewModel(
     ) {
         val id = nextTabId++
         val cwd = workingDirectory ?: defaultWorkingDirectory
-        val emulator = TerminalEmulator()
+        val emulator = TerminalEmulator(columns = DEFAULT_TERMINAL_COLUMNS, rows = DEFAULT_TERMINAL_ROWS)
         terminalEmulators[id] = emulator
         val tab =
             TerminalTab(
@@ -303,6 +316,7 @@ public class TerminalViewModel(
                         is TerminalBackendOutput.Exited -> {
                             updateTab(tabId) { it.copy(isRunning = false, exitCode = output.exitCode) }
                             terminalBackends.remove(tabId)
+                            backendJobs.remove(tabId)
                         }
                     }
                 }
@@ -389,14 +403,34 @@ public class TerminalViewModel(
         val activeTab = _state.value.activeTab
 
         if (activeTab != null) {
-            terminalBackends[activeTab.id]?.resize(DEFAULT_TERMINAL_COLUMNS, rows)
-            val snapshot = terminalEmulators[activeTab.id]?.resize(DEFAULT_TERMINAL_COLUMNS, rows)
+            terminalBackends[activeTab.id]?.resize(activeTab.columns, rows)
+            val snapshot = terminalEmulators[activeTab.id]?.resize(activeTab.columns, rows)
             if (snapshot != null) {
-                updateTab(activeTab.id) { it.copy(output = snapshot.toTerminalLines()) }
+                updateTab(activeTab.id) { it.copy(output = snapshot.toTerminalLines(), rows = rows) }
             }
         }
 
         _state.update { it.copy(panelHeight = panelHeight) }
+    }
+
+    private fun resizeTerminal(
+        columns: Int,
+        rows: Int,
+    ) {
+        val activeTab = _state.value.activeTab ?: return
+        val safeColumns = columns.coerceAtLeast(MIN_TERMINAL_COLUMNS)
+        val safeRows = rows.coerceAtLeast(MIN_TERMINAL_ROWS)
+        if (activeTab.columns == safeColumns && activeTab.rows == safeRows) return
+
+        terminalBackends[activeTab.id]?.resize(safeColumns, safeRows)
+        val snapshot = terminalEmulators[activeTab.id]?.resize(safeColumns, safeRows)
+        updateTab(activeTab.id) { tab ->
+            tab.copy(
+                output = snapshot?.toTerminalLines() ?: tab.output,
+                columns = safeColumns,
+                rows = safeRows,
+            )
+        }
     }
 
     private fun applyTerminalOutput(
@@ -481,8 +515,6 @@ public class TerminalViewModel(
     }
 
     private companion object {
-        private const val DEFAULT_TERMINAL_COLUMNS = 120
-        private const val MIN_TERMINAL_ROWS = 5
         private const val TERMINAL_CHROME_HEIGHT = 68
         private const val TERMINAL_ROW_HEIGHT = 18
         private const val CURSOR_GLYPH = '\u2588'

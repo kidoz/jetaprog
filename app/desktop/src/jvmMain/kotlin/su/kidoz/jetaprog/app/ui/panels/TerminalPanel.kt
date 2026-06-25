@@ -47,23 +47,22 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isAltPressed
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
+import su.kidoz.jetaprog.app.terminal.toTerminalInput
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -144,6 +143,7 @@ public fun TerminalPanel(
                 tab = activeTab,
                 filteredOutput = state.filteredOutput,
                 onInput = { input -> onIntent(TerminalIntent.SendInput(input)) },
+                onViewportResize = { columns, rows -> onIntent(TerminalIntent.ResizeTerminal(columns, rows)) },
                 focusRequester = focusRequester,
                 modifier = Modifier.weight(1f),
             )
@@ -464,10 +464,29 @@ private fun TerminalContent(
     tab: TerminalTab,
     filteredOutput: List<TerminalLine>,
     onInput: (String) -> Unit,
+    onViewportResize: (Int, Int) -> Unit,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val terminalTextStyle =
+        remember {
+            TextStyle(
+                fontFamily = JetaProgFonts.codeFont,
+                fontSize = TERMINAL_FONT_SIZE.sp,
+                lineHeight = TERMINAL_LINE_HEIGHT.em,
+            )
+        }
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val cellSize =
+        remember(terminalTextStyle, textMeasurer) {
+            val measurement = textMeasurer.measure(AnnotatedString("M"), style = terminalTextStyle)
+            TerminalCellSize(
+                width = measurement.size.width.coerceAtLeast(1),
+                height = measurement.size.height.coerceAtLeast(1),
+            )
+        }
 
     LaunchedEffect(tab.id) {
         focusRequester.requestFocus()
@@ -484,7 +503,15 @@ private fun TerminalContent(
         modifier =
             modifier
                 .fillMaxSize()
-                .clickable { focusRequester.requestFocus() },
+                .onSizeChanged { size ->
+                    val horizontalPadding = with(density) { (Spacing.sm * 2).dp.roundToPx() }
+                    val verticalPadding = with(density) { (Spacing.sm * 2).dp.roundToPx() }
+                    val columns = ((size.width - horizontalPadding) / cellSize.width).coerceAtLeast(1)
+                    val rows = ((size.height - verticalPadding) / cellSize.height).coerceAtLeast(1)
+                    if (columns != tab.columns || rows != tab.rows) {
+                        onViewportResize(columns, rows)
+                    }
+                }.clickable { focusRequester.requestFocus() },
     ) {
         LazyColumn(
             modifier =
@@ -544,91 +571,6 @@ private fun TerminalInputCapture(
     )
 }
 
-private fun KeyEvent.toTerminalInput(): String? {
-    if (type != KeyEventType.KeyDown) return null
-
-    if (isCtrlPressed && !isAltPressed && !isMetaPressed) {
-        return when (key) {
-            Key.A -> "\u0001"
-            Key.B -> "\u0002"
-            Key.C -> "\u0003"
-            Key.D -> "\u0004"
-            Key.E -> "\u0005"
-            Key.F -> "\u0006"
-            Key.K -> "\u000b"
-            Key.L -> "\u000c"
-            Key.R -> "\u0012"
-            Key.U -> "\u0015"
-            Key.W -> "\u0017"
-            Key.Z -> "\u001a"
-            else -> null
-        }
-    }
-
-    return when (key) {
-        Key.Enter -> {
-            "\r"
-        }
-
-        Key.Backspace -> {
-            "\u007f"
-        }
-
-        Key.Tab -> {
-            "\t"
-        }
-
-        Key.Escape -> {
-            "\u001b"
-        }
-
-        Key.DirectionUp -> {
-            "\u001b[A"
-        }
-
-        Key.DirectionDown -> {
-            "\u001b[B"
-        }
-
-        Key.DirectionRight -> {
-            "\u001b[C"
-        }
-
-        Key.DirectionLeft -> {
-            "\u001b[D"
-        }
-
-        Key.MoveHome -> {
-            "\u001b[H"
-        }
-
-        Key.MoveEnd -> {
-            "\u001b[F"
-        }
-
-        Key.Delete -> {
-            "\u001b[3~"
-        }
-
-        Key.PageUp -> {
-            "\u001b[5~"
-        }
-
-        Key.PageDown -> {
-            "\u001b[6~"
-        }
-
-        else -> {
-            val codePoint = utf16CodePoint
-            when {
-                isMetaPressed || isCtrlPressed -> null
-                codePoint == 0 -> null
-                else -> codePoint.toChar().toString()
-            }
-        }
-    }
-}
-
 @Composable
 private fun TerminalOutputLine(line: TerminalLine) {
     when {
@@ -670,3 +612,11 @@ private fun TerminalOutputLine(line: TerminalLine) {
         }
     }
 }
+
+private data class TerminalCellSize(
+    val width: Int,
+    val height: Int,
+)
+
+private const val TERMINAL_FONT_SIZE = 13
+private const val TERMINAL_LINE_HEIGHT = 1.25f

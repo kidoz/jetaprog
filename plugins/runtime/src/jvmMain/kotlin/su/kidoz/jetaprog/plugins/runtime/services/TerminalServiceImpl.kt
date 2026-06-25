@@ -45,6 +45,7 @@ public class TerminalServiceImpl(
         val terminalName = options.name ?: "Terminal $id"
         val terminalCwd = options.cwd ?: workspacePath
         val terminalEnv = options.env
+        val terminalHidden = options.hideFromUser
 
         val terminal =
             TerminalImpl(
@@ -53,12 +54,30 @@ public class TerminalServiceImpl(
                 cwd = terminalCwd,
                 processExecutor = processExecutor,
                 env = terminalEnv,
+                shellPath = options.shellPath,
+                shellArgs = options.shellArgs,
+                hideFromUser = terminalHidden,
+                onShow = { shownTerminal ->
+                    _activeTerminal.value = shownTerminal
+                    scope.launch {
+                        changeHandlers.forEach { it(shownTerminal) }
+                    }
+                },
+                onHide = { hiddenTerminal ->
+                    if (_activeTerminal.value == hiddenTerminal) {
+                        val newActive = terminalMap.values.firstOrNull { it.isVisibleToUser }
+                        _activeTerminal.value = newActive
+                        scope.launch {
+                            changeHandlers.forEach { it(newActive) }
+                        }
+                    }
+                },
                 onDispose = { closedTerminal ->
                     terminalMap.remove(id)
                     scope.launch {
                         closeHandlers.forEach { it(closedTerminal) }
                         if (_activeTerminal.value == closedTerminal) {
-                            val newActive = terminalMap.values.firstOrNull()
+                            val newActive = terminalMap.values.firstOrNull { it.isVisibleToUser }
                             _activeTerminal.value = newActive
                             changeHandlers.forEach { it(newActive) }
                         }
@@ -68,7 +87,7 @@ public class TerminalServiceImpl(
 
         terminalMap[id] = terminal
 
-        if (_activeTerminal.value == null) {
+        if (_activeTerminal.value == null && !terminalHidden) {
             _activeTerminal.value = terminal
             changeHandlers.forEach { it(terminal) }
         }
@@ -99,8 +118,6 @@ public class TerminalServiceImpl(
 
         if (options.focus) {
             terminal.show()
-            _activeTerminal.value = terminal
-            changeHandlers.forEach { it(terminal) }
         }
 
         return terminal
@@ -131,15 +148,23 @@ private class TerminalImpl(
     private val cwd: String,
     private val processExecutor: ProcessExecutor,
     private val env: Map<String, String> = emptyMap(),
+    private val shellPath: String?,
+    private val shellArgs: List<String>,
+    hideFromUser: Boolean,
+    private val onShow: (Terminal) -> Unit,
+    private val onHide: (Terminal) -> Unit,
     private val onDispose: (Terminal) -> Unit,
 ) : Terminal {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var _processId: Long? = null
     private var _exitStatus: Int? = null
     private var disposed = false
+    private var visible = !hideFromUser
     private var currentProcess: Process? = null
 
     private val _output = MutableSharedFlow<String>(extraBufferCapacity = 1024)
+
+    val isVisibleToUser: Boolean get() = visible
 
     override val processId: Long? get() = _processId
 
@@ -151,16 +176,14 @@ private class TerminalImpl(
         text: String,
         addNewLine: Boolean,
     ) {
-        val command = text.trim()
+        val commandText = if (addNewLine) text.trimEnd('\r', '\n') else text
 
         withContext(Dispatchers.IO) {
             try {
                 // Build process with proper command parsing
                 val processBuilder =
                     ProcessBuilder().apply {
-                        // Use shell for command parsing
-                        val shell = System.getenv("SHELL") ?: "/bin/sh"
-                        command(shell, "-c", command)
+                        command(shellCommand(commandText))
                         directory(java.io.File(cwd))
                         environment().putAll(env)
                         redirectErrorStream(false)
@@ -209,11 +232,13 @@ private class TerminalImpl(
     }
 
     override fun show(preserveFocus: Boolean) {
-        // In a full implementation, this would show the terminal panel
+        visible = true
+        onShow(this)
     }
 
     override fun hide() {
-        // In a full implementation, this would hide the terminal panel
+        visible = false
+        onHide(this)
     }
 
     override fun dispose() {
@@ -222,4 +247,19 @@ private class TerminalImpl(
         currentProcess?.destroyForcibly()
         onDispose(this)
     }
+
+    private fun shellCommand(command: String): List<String> {
+        val shell = shellPath ?: defaultShell()
+        val commandFlag = if (isWindows()) "/c" else "-c"
+        return listOf(shell) + shellArgs + listOf(commandFlag, command)
+    }
+
+    private fun defaultShell(): String =
+        if (isWindows()) {
+            System.getenv("COMSPEC") ?: "cmd.exe"
+        } else {
+            System.getenv("SHELL") ?: "/bin/sh"
+        }
+
+    private fun isWindows(): Boolean = System.getProperty("os.name").contains("win", ignoreCase = true)
 }
