@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.ui.panels
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Icon
@@ -26,7 +29,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +49,12 @@ import su.kidoz.jetaprog.app.viewmodel.GitViewModel
 import su.kidoz.jetaprog.vcs.GitChange
 import su.kidoz.jetaprog.vcs.GitCommit
 
-private const val LOG_SECTION_HEIGHT = 230
+private const val LOG_SECTION_EXPANDED_HEIGHT = 230
+private const val LOG_SECTION_COLLAPSED_HEIGHT = 32
+private const val LOG_TAB_STRIP_HEIGHT = 30
+private const val LOG_COLUMN_HEADER_HEIGHT = 24
+private const val LOG_FILTER_HEIGHT = 24
+private const val LOG_ROW_HEIGHT = 28
 private const val AUTHOR_COLUMN_WIDTH = 150
 private const val DATE_COLUMN_WIDTH = 120
 
@@ -78,6 +89,7 @@ public fun VcsMainArea(
 ) {
     val state by viewModel.state.collectAsState()
     val selected = state.selected
+    var isLogExpanded by rememberSaveable { mutableStateOf(false) }
     val (oldLines, newLines) =
         remember(state.diff, selected) {
             if (selected == null) emptyList<DiffLine>() to emptyList() else parseUnifiedDiff(state.diff)
@@ -115,7 +127,11 @@ public fun VcsMainArea(
                 }
             }
         }
-        GitLogTable(commits = state.commitLog)
+        GitLogTable(
+            commits = state.commitLog,
+            expanded = isLogExpanded,
+            onToggleExpanded = { isLogExpanded = !isLogExpanded },
+        )
     }
 }
 
@@ -250,54 +266,98 @@ private fun DiffRow(
 }
 
 @Composable
-private fun GitLogTable(commits: List<GitCommit>) {
+private fun GitLogTable(
+    commits: List<GitCommit>,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+) {
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(LOG_SECTION_HEIGHT.dp)
+                .height(if (expanded) LOG_SECTION_EXPANDED_HEIGHT.dp else LOG_SECTION_COLLAPSED_HEIGHT.dp)
                 .background(IntelliJColors.background),
     ) {
-        // Tab strip
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(Dimensions.splitterThickness.dp)
+                    .background(IntelliJColors.divider),
+        )
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(30.dp)
+                    .height(LOG_TAB_STRIP_HEIGHT.dp)
                     .background(IntelliJColors.surface)
                     .padding(horizontal = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp),
         ) {
             LogTab(icon = Icons.Filled.AccountTree, label = "Log", selected = true)
-            LogTab(icon = Icons.Filled.History, label = "File History", selected = false)
+            if (expanded) {
+                LogTab(icon = Icons.Filled.History, label = "File History", selected = false)
+            } else {
+                Text(
+                    text = "${commits.size} commits",
+                    color = IntelliJColors.textMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                )
+            }
             Spacer(modifier = Modifier.weight(1f))
-            Row(
+            if (expanded) {
+                LogFilterChip()
+            }
+            Icon(
+                imageVector = if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ExpandLess,
+                contentDescription = if (expanded) "Collapse log" else "Expand log",
+                tint = IntelliJColors.textSecondary,
                 modifier =
                     Modifier
-                        .height(24.dp)
-                        .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                        .background(IntelliJColors.inputBackground)
-                        .padding(horizontal = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.FilterList,
-                    contentDescription = null,
-                    tint = IntelliJColors.textMuted,
-                    modifier = Modifier.size(14.dp),
-                )
-                Text(text = "Branch · User · Date", color = IntelliJColors.textSecondary, fontSize = 11.sp)
-            }
+                        .size(Dimensions.iconMd.dp)
+                        .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
+                        .clickable(onClick = onToggleExpanded),
+            )
         }
-        // Column header
+        if (expanded) {
+            GitLogRows(commits = commits)
+        }
+    }
+}
+
+@Composable
+private fun LogFilterChip() {
+    Row(
+        modifier =
+            Modifier
+                .height(LOG_FILTER_HEIGHT.dp)
+                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                .background(IntelliJColors.inputBackground)
+                .padding(horizontal = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.FilterList,
+            contentDescription = null,
+            tint = IntelliJColors.textMuted,
+            modifier = Modifier.size(Dimensions.iconSm.dp),
+        )
+        Text(text = "Branch · User · Date", color = IntelliJColors.textSecondary, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun GitLogRows(commits: List<GitCommit>) {
+    Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(24.dp)
-                    .padding(start = 14.dp),
+                    .height(LOG_COLUMN_HEADER_HEIGHT.dp)
+                    .padding(start = Spacing.md.dp + Spacing.xs.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -333,9 +393,9 @@ private fun LogTab(
     label: String,
     selected: Boolean,
 ) {
-    Box(modifier = Modifier.height(30.dp)) {
+    Box(modifier = Modifier.height(LOG_TAB_STRIP_HEIGHT.dp)) {
         Row(
-            modifier = Modifier.height(30.dp).padding(horizontal = Spacing.sm.dp),
+            modifier = Modifier.height(LOG_TAB_STRIP_HEIGHT.dp).padding(horizontal = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -367,7 +427,11 @@ private fun LogTab(
 @Composable
 private fun LogRow(commit: GitCommit) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(28.dp).padding(start = 14.dp, end = Spacing.md.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(LOG_ROW_HEIGHT.dp)
+                .padding(start = Spacing.md.dp + Spacing.xs.dp, end = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
