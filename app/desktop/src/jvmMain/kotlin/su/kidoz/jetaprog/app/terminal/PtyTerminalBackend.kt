@@ -11,6 +11,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.InputStreamReader
 
 /**
  * Pty4J-backed interactive terminal backend.
@@ -25,13 +26,15 @@ public class PtyTerminalBackend private constructor(
         callbackFlow {
             val readJob =
                 launch(Dispatchers.IO) {
-                    val buffer = ByteArray(READ_BUFFER_SIZE)
-                    while (isActive && process.isAlive) {
-                        val read = process.inputStream.read(buffer)
-                        if (read < 0) break
-                        if (read > 0) {
-                            val text = buffer.decodeToString(endIndex = read)
-                            trySend(TerminalBackendOutput.Text(text))
+                    val buffer = CharArray(READ_BUFFER_SIZE)
+                    InputStreamReader(process.inputStream, Charsets.UTF_8).use { reader ->
+                        while (isActive && process.isAlive) {
+                            val read = reader.read(buffer)
+                            if (read < 0) break
+                            if (read > 0) {
+                                val text = buffer.concatToString(endIndex = read)
+                                trySend(TerminalBackendOutput.Text(text))
+                            }
                         }
                     }
                 }
@@ -40,6 +43,7 @@ public class PtyTerminalBackend private constructor(
                 launch(Dispatchers.IO) {
                     val exitCode = process.waitFor()
                     trySend(TerminalBackendOutput.Exited(exitCode))
+                    close()
                 }
 
             awaitClose {
