@@ -29,6 +29,15 @@ public interface GitService {
 
     /** Commits the staged changes with [message]; returns git's output. */
     public suspend fun commit(message: String): Result<String>
+
+    /** Returns the most recent commits, newest first, up to [limit]. */
+    public suspend fun log(limit: Int): Result<List<GitCommit>>
+
+    /** Pushes the current branch to its upstream; returns git's output. */
+    public suspend fun push(): Result<String>
+
+    /** Fast-forwards the current branch from its upstream; returns git's output. */
+    public suspend fun pull(): Result<String>
 }
 
 /**
@@ -74,6 +83,24 @@ public class DefaultGitService(
         run("commit", "-m", message).mapCatching { result ->
             if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git commit failed" } })
             result.stdout
+        }
+
+    override suspend fun log(limit: Int): Result<List<GitCommit>> =
+        run("log", "-n", limit.toString(), "--pretty=format:${GitLogParser.PRETTY_FORMAT}").mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { "git log failed" })
+            GitLogParser.parse(result.stdout)
+        }
+
+    override suspend fun push(): Result<String> =
+        run("push").mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git push failed" } })
+            result.stderr.ifBlank { result.stdout }
+        }
+
+    override suspend fun pull(): Result<String> =
+        run("pull", "--ff-only").mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git pull failed" } })
+            result.stdout.ifBlank { result.stderr }
         }
 
     private suspend fun mutate(

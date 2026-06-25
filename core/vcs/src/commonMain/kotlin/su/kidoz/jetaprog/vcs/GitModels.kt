@@ -47,3 +47,23 @@ public data class GitRepositoryStatus(
     /** Whether the working tree is clean. */
     public val isClean: Boolean get() = changes.isEmpty()
 }
+
+/**
+ * A single entry in the commit history.
+ */
+public data class GitCommit(
+    /** Full commit hash. */
+    val hash: String,
+    /** Abbreviated commit hash. */
+    val shortHash: String,
+    /** Commit subject line. */
+    val message: String,
+    /** Author display name. */
+    val author: String,
+    /** Author email address. */
+    val authorEmail: String,
+    /** Human-readable relative date (e.g. "2 hours ago"). */
+    val relativeDate: String,
+    /** Branch and tag names pointing at this commit. */
+    val refs: List<String> = emptyList(),
+)
