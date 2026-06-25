@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,8 +14,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -42,7 +54,6 @@ import su.kidoz.jetaprog.app.ui.components.FileMenu
 import su.kidoz.jetaprog.app.ui.components.IntelliJEditorTabs
 import su.kidoz.jetaprog.app.ui.components.IntelliJStatusBar
 import su.kidoz.jetaprog.app.ui.components.NotificationOverlay
-import su.kidoz.jetaprog.app.ui.components.SessionSkeleton
 import su.kidoz.jetaprog.app.ui.components.VerticalDragHandle
 import su.kidoz.jetaprog.app.ui.components.VerticalSplitter
 import su.kidoz.jetaprog.app.ui.components.coerceInDp
@@ -66,11 +77,15 @@ import su.kidoz.jetaprog.app.ui.panels.ProjectPanel
 import su.kidoz.jetaprog.app.ui.panels.TerminalPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.ui.toolbar.RunConfigurationSelector
+import su.kidoz.jetaprog.app.ui.welcome.WelcomeEffect
+import su.kidoz.jetaprog.app.ui.welcome.WelcomeScreen
 import su.kidoz.jetaprog.app.viewmodel.TerminalIntent
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.configuration.ConfigurationEffect
 import su.kidoz.jetaprog.configuration.ConfigurationIntent
+import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.editor.state.EditorEffect
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.editor.state.NotificationType
@@ -153,11 +168,54 @@ public fun MainScreen(app: JetaProgApplication) {
         }
     }
 
+    // Open an existing project from the Welcome Hub via a directory picker.
+    val openProjectFromWelcome: () -> Unit = {
+        val chooser =
+            JFileChooser().apply {
+                fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                dialogTitle = "Open Project"
+                currentDirectory = File(System.getProperty("user.home"))
+            }
+        if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+            coroutineScope.launch { app.openProject(chooser.selectedFile.absolutePath) }
+        }
+    }
+
+    // Handle Welcome Hub effects
+    LaunchedEffect(app) {
+        app.welcomeViewModel.effects.collect { effect ->
+            when (effect) {
+                is WelcomeEffect.OpenProject -> {
+                    app.openProject(effect.path)
+                }
+
+                is WelcomeEffect.ShowNewProject -> {
+                    app.newProjectViewModel.dispatch(NewProjectIntent.Show)
+                }
+
+                is WelcomeEffect.BrowseToOpen -> {
+                    openProjectFromWelcome()
+                }
+
+                is WelcomeEffect.StartClone -> {
+                    app.notificationCenter.info(
+                        title = "Clone Repository",
+                        message = "Repository cloning is coming soon.",
+                    )
+                }
+            }
+        }
+    }
+
     val currentSession = session
     if (currentSession == null) {
-        // No project session yet — show skeleton in the shape of the shell.
+        // No project open — show the Welcome Hub.
         Box(modifier = Modifier.fillMaxSize().background(IntelliJColors.background)) {
-            SessionSkeleton(modifier = Modifier.fillMaxSize())
+            WelcomeScreen(
+                viewModel = app.welcomeViewModel,
+                nowEpochMillis = System.currentTimeMillis(),
+                modifier = Modifier.fillMaxSize(),
+            )
             NotificationOverlay(center = app.notificationCenter)
         }
         return
@@ -193,6 +251,7 @@ private fun MainScreenContent(
     val terminalState by session.terminalViewModel.state.collectAsState()
     val gradleState by session.gradleViewModel.state.collectAsState()
     val configurationState by session.configurationViewModel.state.collectAsState()
+    val gitState by session.gitViewModel.state.collectAsState()
 
     val currentProjectPath = session.projectPath
     val notificationCenter = app.notificationCenter
@@ -289,7 +348,7 @@ private fun MainScreenContent(
                 onOpenFile = openFile,
                 onSave = { session.editorViewModel.dispatch(EditorIntent.Save) },
                 onCloseProject = {
-                    coroutineScope.launch { app.openProject(System.getProperty("user.dir")) }
+                    coroutineScope.launch { app.closeProject() }
                 },
                 onSettings = { app.settingsViewModel.dispatch(SettingsIntent.Show) },
                 onToggleBuild = {
@@ -303,8 +362,10 @@ private fun MainScreenContent(
                 },
             )
 
-            // Main toolbar (run configuration + future VCS/search-everywhere)
+            // Main toolbar (project chip + branch + search-everywhere + run configuration)
             MainToolbar(
+                projectName = currentProjectPath.substringAfterLast('/'),
+                branchName = gitState.branch,
                 configurationState = configurationState,
                 onSelectConfiguration = { id ->
                     session.configurationViewModel.dispatch(ConfigurationIntent.SelectConfiguration(id))
@@ -582,7 +643,10 @@ private fun MainScreenContent(
 
             // Status bar
             IntelliJStatusBar(
-                gitBranch = "master",
+                gitBranch = gitState.branch,
+                isDirty = editorState.activeTab?.isDirty == true,
+                errorCount = editorState.diagnostics.count { it.severity == DiagnosticSeverity.ERROR },
+                warningCount = editorState.diagnostics.count { it.severity == DiagnosticSeverity.WARNING },
                 lineInfo =
                     if (editorState.activeTab != null) {
                         "${editorState.currentLine}:${editorState.currentColumn}"
@@ -722,7 +786,10 @@ private fun IntelliJMenuBar(
  * the canonical home for high-frequency global actions, per the UI/UX guide.
  */
 @Composable
+@Suppress("LongParameterList")
 private fun MainToolbar(
+    projectName: String,
+    branchName: String?,
     configurationState: su.kidoz.jetaprog.configuration.ConfigurationState,
     onSelectConfiguration: (su.kidoz.jetaprog.configuration.ConfigurationId) -> Unit,
     onRunConfiguration: () -> Unit,
@@ -738,12 +805,36 @@ private fun MainToolbar(
                     .fillMaxWidth()
                     .height(Dimensions.mainToolbarHeight.dp)
                     .background(IntelliJColors.background)
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
         ) {
-            // Left cluster reserved for project switcher / future controls.
+            Icon(
+                imageVector = Icons.Filled.ChevronLeft,
+                contentDescription = "Navigate back",
+                tint = IntelliJColors.iconDefault,
+                modifier = Modifier.size(Dimensions.iconLg.dp),
+            )
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = "Navigate forward",
+                tint = IntelliJColors.iconDefault,
+                modifier = Modifier.size(Dimensions.iconLg.dp),
+            )
+            ToolbarDivider()
+            ToolbarChip(icon = Icons.Filled.Folder, iconTint = IntelliJColors.iconFolder, label = projectName)
+            if (!branchName.isNullOrBlank()) {
+                ToolbarChip(
+                    icon = Icons.Filled.AccountTree,
+                    iconTint = IntelliJColors.success,
+                    label = branchName,
+                    trailingIcon = Icons.Filled.ExpandMore,
+                )
+            }
             androidx.compose.foundation.layout
                 .Spacer(modifier = Modifier.weight(1f))
+            SearchEverywhereField()
+            ToolbarDivider()
             RunConfigurationSelector(
                 state = configurationState,
                 onSelect = onSelectConfiguration,
@@ -762,6 +853,88 @@ private fun MainToolbar(
                     .height(Dimensions.splitterThickness.dp)
                     .background(IntelliJColors.divider),
         )
+    }
+}
+
+/** A 1dp × 16dp vertical separator used between toolbar clusters. */
+@Composable
+private fun ToolbarDivider() {
+    Box(
+        modifier =
+            Modifier
+                .padding(horizontal = Spacing.xs.dp)
+                .width(Dimensions.splitterThickness.dp)
+                .height(16.dp)
+                .background(IntelliJColors.divider),
+    )
+}
+
+/** A rounded toolbar chip: leading icon + label, optional trailing chevron. */
+@Composable
+private fun ToolbarChip(
+    icon: ImageVector,
+    iconTint: Color,
+    label: String,
+    trailingIcon: ImageVector? = null,
+) {
+    Row(
+        modifier =
+            Modifier
+                .height(26.dp)
+                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                .background(IntelliJColors.surfaceElevated)
+                .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 3.dp),
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(15.dp))
+        Text(text = label, color = IntelliJColors.textPrimary, fontSize = 12.sp, maxLines = 1)
+        trailingIcon?.let {
+            Icon(
+                imageVector = it,
+                contentDescription = null,
+                tint = IntelliJColors.textMuted,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+/** The "Search Everywhere" entry point shown on the right of the toolbar. */
+@Composable
+private fun SearchEverywhereField() {
+    Row(
+        modifier =
+            Modifier
+                .height(26.dp)
+                .widthIn(min = 190.dp)
+                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                .background(IntelliJColors.inputBackground)
+                .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Search,
+            contentDescription = null,
+            tint = IntelliJColors.textMuted,
+            modifier = Modifier.size(15.dp),
+        )
+        Text(
+            text = "Search Everywhere",
+            color = IntelliJColors.textMuted,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(IntelliJColors.surfaceContainer)
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+        ) {
+            Text(text = "⇧⇧", color = IntelliJColors.iconDefault, fontSize = 10.sp)
+        }
     }
 }
 

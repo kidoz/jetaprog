@@ -4,6 +4,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import su.kidoz.jetaprog.app.notification.NotificationCenter
+import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
+import su.kidoz.jetaprog.app.ui.welcome.WelcomeViewModel
 import su.kidoz.jetaprog.app.viewmodel.NewProjectViewModel
 import su.kidoz.jetaprog.app.viewmodel.SettingsViewModel
 import su.kidoz.jetaprog.build.gradle.JvmGradleTaskRunner
@@ -17,6 +19,7 @@ import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
 import su.kidoz.jetaprog.platform.process.JvmProcessExecutor
 import su.kidoz.jetaprog.plugins.support.LanguageServerManager
 import su.kidoz.jetaprog.settings.DefaultSettingsService
+import su.kidoz.jetaprog.settings.recent.RecentProjectsService
 import su.kidoz.jetaprog.settings.storage.JvmSettingsStorage
 
 /**
@@ -88,6 +91,16 @@ public class JetaProgApplication {
     public val newProjectViewModel: NewProjectViewModel = NewProjectViewModel(fileSystem)
 
     /**
+     * IDE-scoped persistence for the Welcome Hub's recent-projects list.
+     */
+    private val recentProjectsService: RecentProjectsService = RecentProjectsService()
+
+    /**
+     * The Welcome Hub view model (global). Shown when no project is open.
+     */
+    public val welcomeViewModel: WelcomeViewModel = WelcomeViewModel(recentProjectsService)
+
+    /**
      * Process-wide notification hub. ViewModels push toasts here; the UI
      * overlay subscribes for rendering.
      */
@@ -131,15 +144,29 @@ public class JetaProgApplication {
             )
         _session.value = newSession
         newSession.initialize()
+
+        // Record the project in the recent list and refresh the Welcome Hub.
+        recentProjectsService.push(projectPath, System.currentTimeMillis())
+        welcomeViewModel.dispatch(WelcomeIntent.Refresh)
+    }
+
+    /**
+     * Closes the current project (if any) and returns to the Welcome Hub.
+     */
+    public suspend fun closeProject() {
+        _session.value?.shutdown()
+        _session.value = null
+        welcomeViewModel.dispatch(WelcomeIntent.Refresh)
     }
 
     /**
      * Initializes the application.
-     * Starts the MCP server and opens the default project.
+     *
+     * Starts the MCP server. No project is opened automatically — the app launches
+     * into the Welcome Hub ([session] is `null`) until the user opens a project.
      */
     public suspend fun initialize() {
         mcpServer.start()
-        openProject(System.getProperty("user.dir"))
     }
 
     /**
@@ -148,6 +175,7 @@ public class JetaProgApplication {
     public suspend fun shutdown() {
         _session.value?.shutdown()
         mcpServer.stop()
+        welcomeViewModel.dispose()
         newProjectViewModel.dispose()
         settingsViewModel.dispose()
     }
