@@ -69,6 +69,13 @@ public fun ProjectPanel(
     var rootFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     val expandedDirs = remember { mutableStateMapOf<String, Boolean>() }
     val childrenCache = remember { mutableStateMapOf<String, List<File>>() }
+    var selectedPath by remember { mutableStateOf<String?>(null) }
+
+    // Mark the clicked file as selected, then open it.
+    val handleFileClick: (String) -> Unit = { path ->
+        selectedPath = path
+        onFileOpen(path)
+    }
 
     LaunchedEffect(projectPath) {
         rootFiles = File(projectPath)
@@ -124,6 +131,7 @@ public fun ProjectPanel(
                     isRoot = true,
                     isExpanded = true,
                     indent = 0,
+                    isSelected = false,
                     onFileClick = { }, // Root is always a directory, so no file click action
                     onToggleExpand = { },
                 )
@@ -136,7 +144,8 @@ public fun ProjectPanel(
                     indent = 1,
                     expandedDirs = expandedDirs,
                     childrenCache = childrenCache,
-                    onFileClick = onFileOpen,
+                    selectedPath = selectedPath,
+                    onFileClick = handleFileClick,
                 )
             }
         }
@@ -149,6 +158,7 @@ private fun FileTreeNode(
     indent: Int,
     expandedDirs: MutableMap<String, Boolean>,
     childrenCache: MutableMap<String, List<File>>,
+    selectedPath: String?,
     onFileClick: (String) -> Unit,
 ) {
     val isDirectory = file.isDirectory
@@ -172,6 +182,7 @@ private fun FileTreeNode(
             isRoot = false,
             isExpanded = isExpanded,
             indent = indent,
+            isSelected = !isDirectory && file.absolutePath == selectedPath,
             onFileClick = { onFileClick(file.absolutePath) },
             onToggleExpand = {
                 if (isDirectory) {
@@ -188,6 +199,7 @@ private fun FileTreeNode(
                     indent = indent + 1,
                     expandedDirs = expandedDirs,
                     childrenCache = childrenCache,
+                    selectedPath = selectedPath,
                     onFileClick = onFileClick,
                 )
             }
@@ -196,12 +208,14 @@ private fun FileTreeNode(
 }
 
 @Composable
+@Suppress("LongParameterList")
 private fun ProjectTreeNode(
     file: File,
     displayName: String,
     isRoot: Boolean,
     isExpanded: Boolean,
     indent: Int,
+    isSelected: Boolean,
     onFileClick: () -> Unit,
     onToggleExpand: () -> Unit,
 ) {
@@ -211,60 +225,104 @@ private fun ProjectTreeNode(
 
     val backgroundColor =
         when {
+            isSelected -> IntelliJColors.treeSelectionBackground
             isHovered -> IntelliJColors.treeHoverBackground
             else -> Color.Transparent
         }
 
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = Dimensions.treeNodeHeight.dp)
-                .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .background(backgroundColor)
-                .hoverable(interactionSource)
-                .clickable { if (isDirectory) onToggleExpand() else onFileClick() }
-                .padding(start = (Spacing.sm + indent * Spacing.lg).dp, end = Spacing.sm.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Expand/Collapse icon
-        if (isDirectory) {
-            Icon(
-                imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
-                contentDescription = if (isExpanded) "Collapse" else "Expand",
-                tint = IntelliJColors.textSecondary,
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = Dimensions.treeNodeHeight.dp)
+                    .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
+                    .background(backgroundColor)
+                    .hoverable(interactionSource)
+                    .clickable { if (isDirectory) onToggleExpand() else onFileClick() }
+                    .padding(start = Spacing.xs.dp, end = Spacing.sm.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Indent guides — one vertical line per depth level.
+            repeat(indent) {
+                IndentGuide()
+            }
+            // Expand/Collapse icon
+            if (isDirectory) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    tint = IntelliJColors.textSecondary,
+                    modifier =
+                        Modifier
+                            .size(18.dp)
+                            .clickable(onClick = onToggleExpand),
+                )
+            } else {
+                Box(modifier = Modifier.width(18.dp))
+            }
+
+            // File/Folder icon
+            if (isDirectory) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = IntelliJColors.iconFolder,
+                    modifier = Modifier.size(18.dp).padding(end = Spacing.xs.dp),
+                )
+            } else {
+                FileTypeIcon(
+                    fileName = file.name,
+                    modifier = Modifier.size(18.dp).padding(end = Spacing.xs.dp),
+                )
+            }
+
+            // Name
+            Text(
+                text = displayName,
+                color =
+                    when {
+                        isSelected -> Color.White
+                        isRoot -> IntelliJColors.textPrimary
+                        else -> IntelliJColors.treeForeground
+                    },
+                fontSize = 13.sp,
+                fontWeight = if (isRoot) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        // Left accent bar on the selected row.
+        if (isSelected) {
+            Box(
                 modifier =
                     Modifier
-                        .size(18.dp)
-                        .clickable(onClick = onToggleExpand),
-            )
-        } else {
-            Box(modifier = Modifier.width(18.dp))
-        }
-
-        // File/Folder icon
-        if (isDirectory) {
-            Icon(
-                imageVector = if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
-                contentDescription = null,
-                tint = IntelliJColors.iconFolder,
-                modifier = Modifier.size(18.dp).padding(end = Spacing.xs.dp),
-            )
-        } else {
-            FileTypeIcon(
-                fileName = file.name,
-                modifier = Modifier.size(18.dp).padding(end = Spacing.xs.dp),
+                        .align(Alignment.CenterStart)
+                        .width(2.dp)
+                        .height(Dimensions.treeNodeHeight.dp)
+                        .background(IntelliJColors.treeSelectionAccent),
             )
         }
+    }
+}
 
-        // Name
-        Text(
-            text = displayName,
-            color = if (isRoot) IntelliJColors.textPrimary else IntelliJColors.treeForeground,
-            fontSize = 13.sp,
-            fontWeight = if (isRoot) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+/** A single tree indent guide: a 16dp-wide cell with a 1px vertical line on its left. */
+@Composable
+private fun IndentGuide() {
+    Box(
+        modifier =
+            Modifier
+                .width(Spacing.lg.dp)
+                .height(Dimensions.treeNodeHeight.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(IntelliJColors.treeIndentGuide),
         )
     }
 }

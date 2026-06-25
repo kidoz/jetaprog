@@ -49,6 +49,31 @@ public enum class BreadcrumbType {
     DIRECTORY,
     FILE,
     SYMBOL,
+
+    /** Non-interactive placeholder rendered when middle crumbs are collapsed. */
+    ELLIPSIS,
+}
+
+/** Maximum crumbs shown before the middle is collapsed to an ellipsis. */
+private const val MAX_VISIBLE_CRUMBS = 5
+
+/** Number of trailing crumbs always kept visible (so the filename is never hidden). */
+private const val TAIL_CRUMBS = 3
+
+private val ELLIPSIS_SEGMENT =
+    BreadcrumbSegment(name = "…", path = "", type = BreadcrumbType.ELLIPSIS)
+
+/**
+ * Middle-truncates a deep breadcrumb trail to `first › … › …tail`, always keeping
+ * the project root and the trailing [TAIL_CRUMBS] (including the filename).
+ */
+private fun collapseSegments(segments: List<BreadcrumbSegment>): List<BreadcrumbSegment> {
+    if (segments.size <= MAX_VISIBLE_CRUMBS) return segments
+    return buildList {
+        add(segments.first())
+        add(ELLIPSIS_SEGMENT)
+        addAll(segments.takeLast(TAIL_CRUMBS))
+    }
 }
 
 /**
@@ -62,6 +87,8 @@ public fun Breadcrumbs(
 ) {
     if (segments.isEmpty()) return
 
+    val visible = remember(segments) { collapseSegments(segments) }
+
     Row(
         modifier =
             modifier
@@ -73,13 +100,13 @@ public fun Breadcrumbs(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
     ) {
-        segments.forEachIndexed { index, segment ->
+        visible.forEachIndexed { index, segment ->
             BreadcrumbItem(
                 segment = segment,
-                onClick = { onSegmentClick(segment) },
+                onClick = { if (segment.type != BreadcrumbType.ELLIPSIS) onSegmentClick(segment) },
             )
 
-            if (index < segments.lastIndex) {
+            if (index < visible.lastIndex) {
                 BreadcrumbSeparator()
             }
         }

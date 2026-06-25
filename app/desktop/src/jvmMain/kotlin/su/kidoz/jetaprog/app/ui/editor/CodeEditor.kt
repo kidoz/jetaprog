@@ -358,7 +358,7 @@ public fun CodeEditor(
                                         )
                                     }.fillMaxWidth()
                                     .height(21.dp)
-                                    .background(IntelliJColors.editorCaretRow),
+                                    .background(IntelliJColors.editorCurrentLine),
                         )
                     }
 
