@@ -1,8 +1,10 @@
 package su.kidoz.jetaprog.app
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import su.kidoz.jetaprog.app.mcp.registerIdeTools
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeViewModel
@@ -21,6 +23,8 @@ import su.kidoz.jetaprog.plugins.support.LanguageServerManager
 import su.kidoz.jetaprog.settings.DefaultSettingsService
 import su.kidoz.jetaprog.settings.recent.RecentProjectsService
 import su.kidoz.jetaprog.settings.storage.JvmSettingsStorage
+import java.io.File
+import java.io.IOException
 
 /**
  * Main application class for JetaProg IDE.
@@ -146,8 +150,10 @@ public class JetaProgApplication {
         newSession.initialize()
 
         // Record the project in the recent list and refresh the Welcome Hub.
-        recentProjectsService.push(projectPath, System.currentTimeMillis())
-        welcomeViewModel.dispatch(WelcomeIntent.Refresh)
+        recordRecentProject(projectPath)
+
+        // Drop an MCP config so a terminal agent (claude/codex) can reach the IDE.
+        writeMcpConfig(projectPath)
     }
 
     /**
@@ -166,7 +172,34 @@ public class JetaProgApplication {
      * into the Welcome Hub ([session] is `null`) until the user opens a project.
      */
     public suspend fun initialize() {
+        registerIdeTools(mcpServer, fileSystem) { _session.value }
         mcpServer.start()
+    }
+
+    /**
+     * Writes a project-level `.mcp.json` pointing a terminal MCP client (e.g. Claude
+     * Code) at the IDE's embedded server. Skips if the project already has one.
+     */
+    private fun writeMcpConfig(projectPath: String) {
+        val endpoint = mcpServer.endpoint ?: return
+        val configFile = File(projectPath, ".mcp.json")
+        if (configFile.exists()) return
+        try {
+            configFile.writeText(
+                """
+                {
+                  "mcpServers": {
+                    "jetaprog": {
+                      "type": "http",
+                      "url": "$endpoint"
+                    }
+                  }
+                }
+                """.trimIndent() + "\n",
+            )
+        } catch (exception: IOException) {
+            notificationCenter.warning(title = "MCP config not written", message = exception.message)
+        }
     }
 
     /**
@@ -178,5 +211,25 @@ public class JetaProgApplication {
         welcomeViewModel.dispose()
         newProjectViewModel.dispose()
         settingsViewModel.dispose()
+    }
+
+    private suspend fun recordRecentProject(projectPath: String) {
+        try {
+            recentProjectsService.push(projectPath, System.currentTimeMillis())
+            welcomeViewModel.dispatch(WelcomeIntent.Refresh)
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: IOException) {
+            warnRecentProjectNotUpdated(exception)
+        } catch (exception: RuntimeException) {
+            warnRecentProjectNotUpdated(exception)
+        }
+    }
+
+    private fun warnRecentProjectNotUpdated(exception: Exception) {
+        notificationCenter.warning(
+            title = "Recent projects were not updated",
+            message = exception.message,
+        )
     }
 }
