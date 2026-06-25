@@ -82,8 +82,9 @@ public fun TerminalPanel(
     effects: StateFlow<TerminalEffect?>,
     onIntent: (TerminalIntent) -> Unit,
     modifier: Modifier = Modifier,
+    embedded: Boolean = false,
 ) {
-    if (!state.isVisible) return
+    if (!embedded && !state.isVisible) return
 
     val focusRequester = remember { FocusRequester() }
 
@@ -103,13 +104,15 @@ public fun TerminalPanel(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(state.panelHeight.dp)
+                .then(if (embedded) Modifier.fillMaxSize() else Modifier.height(state.panelHeight.dp))
                 .background(IntelliJColors.terminalBackground),
     ) {
-        // Resize handle at top
-        ResizeHandle(
-            onResize = { delta -> onIntent(TerminalIntent.ResizePanel(state.panelHeight - delta.toInt())) },
-        )
+        // Resize handle at top (the unified bottom panel supplies its own when embedded)
+        if (!embedded) {
+            ResizeHandle(
+                onResize = { delta -> onIntent(TerminalIntent.ResizePanel(state.panelHeight - delta.toInt())) },
+            )
+        }
 
         // Terminal tabs bar with actions
         TerminalTabBar(

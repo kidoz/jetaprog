@@ -70,9 +70,12 @@ import su.kidoz.jetaprog.app.ui.editor.EmptyEditorPlaceholder
 import su.kidoz.jetaprog.app.ui.editor.MarkdownEditor
 import su.kidoz.jetaprog.app.ui.navigation.NavigationHost
 import su.kidoz.jetaprog.app.ui.panels.AgentPanel
+import su.kidoz.jetaprog.app.ui.panels.BottomPanel
+import su.kidoz.jetaprog.app.ui.panels.BottomTab
 import su.kidoz.jetaprog.app.ui.panels.BuildOutputPanel
 import su.kidoz.jetaprog.app.ui.panels.FindInFilesPanel
 import su.kidoz.jetaprog.app.ui.panels.GitPanel
+import su.kidoz.jetaprog.app.ui.panels.ProblemsContent
 import su.kidoz.jetaprog.app.ui.panels.ProjectPanel
 import su.kidoz.jetaprog.app.ui.panels.TerminalPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
@@ -256,6 +259,33 @@ private fun MainScreenContent(
     val currentProjectPath = session.projectPath
     val notificationCenter = app.notificationCenter
 
+    // Unified bottom tool window (Terminal / Build / Problems). null = hidden.
+    var selectedBottomTab by remember { mutableStateOf<BottomTab?>(null) }
+    val openTerminalTab: () -> Unit = {
+        if (!terminalState.isVisible) {
+            session.terminalViewModel.dispatch(TerminalIntent.ToggleVisibility)
+        }
+        if (terminalState.tabs.isEmpty()) {
+            session.terminalViewModel.dispatch(TerminalIntent.CreateTerminal())
+        }
+        selectedBottomTab = BottomTab.TERMINAL
+    }
+    val openBuildTab: () -> Unit = {
+        if (!gradleState.isVisible) {
+            session.gradleViewModel.dispatch(su.kidoz.jetaprog.build.gradle.state.GradleIntent.ToggleVisibility)
+        }
+        selectedBottomTab = BottomTab.BUILD
+    }
+    val closeBottomPanel: () -> Unit = {
+        if (terminalState.isVisible) {
+            session.terminalViewModel.dispatch(TerminalIntent.ToggleVisibility)
+        }
+        if (gradleState.isVisible) {
+            session.gradleViewModel.dispatch(su.kidoz.jetaprog.build.gradle.state.GradleIntent.ToggleVisibility)
+        }
+        selectedBottomTab = null
+    }
+
     // Session-scoped effect collectors: surface ShowError/ShowNotification toasts.
     LaunchedEffect(session) {
         session.editorViewModel.effects.collect { effect ->
@@ -403,16 +433,11 @@ private fun MainScreenContent(
                             }
 
                             ActivityBarItem.TERMINAL -> {
-                                session.terminalViewModel.dispatch(TerminalIntent.ToggleVisibility)
-                                if (!terminalState.isVisible) {
-                                    session.terminalViewModel.dispatch(TerminalIntent.CreateTerminal())
-                                }
+                                if (selectedBottomTab == BottomTab.TERMINAL) closeBottomPanel() else openTerminalTab()
                             }
 
                             ActivityBarItem.BUILD -> {
-                                session.gradleViewModel.dispatch(
-                                    su.kidoz.jetaprog.build.gradle.state.GradleIntent.ToggleVisibility,
-                                )
+                                if (selectedBottomTab == BottomTab.BUILD) closeBottomPanel() else openBuildTab()
                             }
 
                             else -> {
@@ -617,28 +642,55 @@ private fun MainScreenContent(
                 }
             }
 
-            // Bottom panels
-            Column {
-                // Build output panel
-                BuildOutputPanel(
-                    state = gradleState,
-                    onIntent = { intent -> session.gradleViewModel.dispatch(intent) },
-                    onOpenDiagnostic = { diagnostic ->
-                        session.editorViewModel.dispatch(
-                            EditorIntent.NavigateTo(
-                                path = diagnostic.filePath,
-                                position = TextPosition(diagnostic.position.line, diagnostic.position.column),
-                            ),
-                        )
+            // Unified bottom tool window (Terminal / Build / Problems)
+            selectedBottomTab?.let { tab ->
+                BottomPanel(
+                    selectedTab = tab,
+                    problemsCount = editorState.diagnostics.size,
+                    onSelectTab = { newTab ->
+                        when (newTab) {
+                            BottomTab.TERMINAL -> openTerminalTab()
+                            BottomTab.BUILD -> openBuildTab()
+                            BottomTab.PROBLEMS -> selectedBottomTab = BottomTab.PROBLEMS
+                        }
                     },
-                )
+                    onClose = closeBottomPanel,
+                ) { currentTab ->
+                    when (currentTab) {
+                        BottomTab.TERMINAL -> {
+                            TerminalPanel(
+                                state = terminalState,
+                                effects = session.terminalViewModel.effects,
+                                onIntent = { intent -> session.terminalViewModel.dispatch(intent) },
+                                embedded = true,
+                            )
+                        }
 
-                // Terminal panel
-                TerminalPanel(
-                    state = terminalState,
-                    effects = session.terminalViewModel.effects,
-                    onIntent = { intent -> session.terminalViewModel.dispatch(intent) },
-                )
+                        BottomTab.BUILD -> {
+                            BuildOutputPanel(
+                                state = gradleState,
+                                onIntent = { intent -> session.gradleViewModel.dispatch(intent) },
+                                onOpenDiagnostic = { diagnostic ->
+                                    session.editorViewModel.dispatch(
+                                        EditorIntent.NavigateTo(
+                                            path = diagnostic.filePath,
+                                            position =
+                                                TextPosition(
+                                                    diagnostic.position.line,
+                                                    diagnostic.position.column,
+                                                ),
+                                        ),
+                                    )
+                                },
+                                embedded = true,
+                            )
+                        }
+
+                        BottomTab.PROBLEMS -> {
+                            ProblemsContent(diagnostics = editorState.diagnostics)
+                        }
+                    }
+                }
             }
 
             // Status bar

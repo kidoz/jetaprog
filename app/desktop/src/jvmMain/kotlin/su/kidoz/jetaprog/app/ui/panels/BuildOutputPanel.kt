@@ -61,14 +61,15 @@ public fun BuildOutputPanel(
     onIntent: (GradleIntent) -> Unit,
     onOpenDiagnostic: (GradleDiagnostic) -> Unit = {},
     modifier: Modifier = Modifier,
+    embedded: Boolean = false,
 ) {
-    if (!state.isVisible) return
+    if (!embedded && !state.isVisible) return
 
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(250.dp)
+                .then(if (embedded) Modifier.fillMaxSize() else Modifier.height(250.dp))
                 .background(Color(0xFF1E1E1E)),
     ) {
         // Build toolbar
