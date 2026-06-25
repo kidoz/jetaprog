@@ -41,6 +41,7 @@ internal fun terminalInputForKey(
     mode: TerminalInputMode = TerminalInputMode(),
 ): String? {
     if (type != KeyEventType.KeyDown) return null
+    if (key.isModifierOnlyKey()) return null
 
     if (isCtrlPressed && !isAltPressed && !isMetaPressed) {
         return when (key) {
@@ -99,3 +100,13 @@ private fun printableInput(
         utf16CodePoint == 0 -> null
         else -> utf16CodePoint.toChar().toString()
     }
+
+private fun Key.isModifierOnlyKey(): Boolean =
+    this == Key.ShiftLeft ||
+        this == Key.ShiftRight ||
+        this == Key.CtrlLeft ||
+        this == Key.CtrlRight ||
+        this == Key.AltLeft ||
+        this == Key.AltRight ||
+        this == Key.MetaLeft ||
+        this == Key.MetaRight

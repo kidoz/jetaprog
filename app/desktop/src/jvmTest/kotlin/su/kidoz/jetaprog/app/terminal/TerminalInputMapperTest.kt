@@ -61,4 +61,14 @@ class TerminalInputMapperTest {
         assertNull(terminalInputForKey(Key.A, KeyEventType.KeyUp, utf16CodePoint = 'a'.code))
         assertNull(terminalInputForKey(Key.A, KeyEventType.KeyDown, utf16CodePoint = 'a'.code, isMetaPressed = true))
     }
+
+    @Test
+    fun modifierOnlyKeysAreIgnoredEvenWithPlaceholderCodePoint() {
+        assertNull(terminalInputForKey(Key.ShiftLeft, KeyEventType.KeyDown, utf16CodePoint = UNKNOWN_CODE_POINT))
+        assertNull(terminalInputForKey(Key.ShiftRight, KeyEventType.KeyDown, utf16CodePoint = UNKNOWN_CODE_POINT))
+    }
+
+    private companion object {
+        private const val UNKNOWN_CODE_POINT = 0xfffd
+    }
 }
