@@ -102,6 +102,7 @@ public fun CodeEditor(
     indentUnit: String = TextEditingOps.DEFAULT_INDENT_UNIT,
     modifier: Modifier = Modifier,
     syntaxTheme: SyntaxTheme = DarkSyntaxTheme,
+    debug: EditorDebugInfo? = null,
 ) {
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
@@ -288,6 +289,9 @@ public fun CodeEditor(
                         scrollState = verticalScrollState,
                         theme = syntaxTheme,
                         modifier = Modifier.fillMaxHeight(),
+                        breakpointLines = debug?.breakpointLines ?: emptySet(),
+                        executionLine = debug?.executionLine,
+                        onToggleBreakpoint = { line -> debug?.onToggleBreakpoint?.invoke(line) },
                     )
                 }
 
@@ -360,6 +364,54 @@ public fun CodeEditor(
                                     .height(21.dp)
                                     .background(IntelliJColors.editorCurrentLine),
                         )
+                    }
+
+                    // Current execution line wash (debugger)
+                    debug?.executionLine?.let { execLine ->
+                        Box(
+                            modifier =
+                                Modifier
+                                    .offset {
+                                        IntOffset(
+                                            0,
+                                            editorPaddingTopPx + (execLine - 1) * lineHeightPx -
+                                                verticalScrollState.value,
+                                        )
+                                    }.fillMaxWidth()
+                                    .height(21.dp)
+                                    .background(IntelliJColors.executionLineBackground),
+                        )
+                    }
+
+                    // End-of-line inline variable values (debugger)
+                    if (debug?.showInlineValues == true && debug.executionLine != null) {
+                        val docLines = textFieldValue.text.lines()
+                        val inlineHints =
+                            remember(textFieldValue.text, debug.variableValues, debug.executionLine) {
+                                computeInlineHints(docLines, debug.variableValues)
+                            }
+                        inlineHints.forEach { (lineIndex, hint) ->
+                            val column = docLines.getOrNull(lineIndex)?.length ?: 0
+                            Box(
+                                modifier =
+                                    Modifier.offset {
+                                        IntOffset(
+                                            editorPaddingStartPx + (column + 2) * charWidthPx -
+                                                horizontalScrollState.value,
+                                            editorPaddingTopPx + lineIndex * lineHeightPx -
+                                                verticalScrollState.value,
+                                        )
+                                    },
+                            ) {
+                                Text(
+                                    text = hint,
+                                    color = IntelliJColors.inlineValueText,
+                                    fontStyle = FontStyle.Italic,
+                                    fontFamily = JetaProgFonts.codeFont,
+                                    fontSize = 13.sp,
+                                )
+                            }
+                        }
                     }
 
                     // Matching bracket highlights (behind the text layer)
@@ -725,6 +777,54 @@ public fun CodeEditor(
             }
         }
     }
+}
+
+/**
+ * Debugger decorations overlaid on the editor for the active file.
+ *
+ * @property breakpointLines 1-based lines that have an enabled breakpoint.
+ * @property executionLine The 1-based current execution line, or null when not paused here.
+ * @property variableValues In-scope locals (name → value) used to render inline hints.
+ * @property showInlineValues Whether end-of-line inline value hints are shown.
+ * @property onToggleBreakpoint Toggles a breakpoint at the given 1-based line.
+ */
+public data class EditorDebugInfo(
+    val breakpointLines: Set<Int>,
+    val executionLine: Int?,
+    val variableValues: Map<String, String>,
+    val showInlineValues: Boolean,
+    val onToggleBreakpoint: (Int) -> Unit,
+)
+
+/** Maximum lines scanned for inline value hints, to bound work on large files. */
+private const val MAX_INLINE_SCAN_LINES = 4000
+
+private val IDENTIFIER_REGEX = Regex("[A-Za-z_][A-Za-z0-9_]*")
+
+/**
+ * Compute end-of-line inline value hints by matching in-scope variable names that
+ * appear as whole-word identifiers on each line.
+ */
+private fun computeInlineHints(
+    lines: List<String>,
+    variableValues: Map<String, String>,
+): Map<Int, String> {
+    if (variableValues.isEmpty()) return emptyMap()
+    val hints = mutableMapOf<Int, String>()
+    lines.take(MAX_INLINE_SCAN_LINES).forEachIndexed { index, line ->
+        val names =
+            IDENTIFIER_REGEX
+                .findAll(line)
+                .map { it.value }
+                .filter { it in variableValues }
+                .distinct()
+                .take(2)
+                .toList()
+        if (names.isNotEmpty()) {
+            hints[index] = names.joinToString("  ") { "$it = ${variableValues[it]}" }
+        }
+    }
+    return hints
 }
 
 /**

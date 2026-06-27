@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowRightAlt
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Icon
@@ -26,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -56,6 +59,9 @@ public fun LineNumbers(
     modifier: Modifier = Modifier,
     foldRegions: List<FoldRegion> = emptyList(),
     onToggleFold: (FoldRegion) -> Unit = {},
+    breakpointLines: Set<Int> = emptySet(),
+    executionLine: Int? = null,
+    onToggleBreakpoint: (Int) -> Unit = {},
 ) {
     // Calculate width based on number of digits
     val digits = lineCount.toString().length.coerceAtLeast(3)
@@ -94,38 +100,56 @@ public fun LineNumbers(
                         modifier =
                             Modifier
                                 .height(21.dp)
-                                .width(16.dp),
+                                .width(16.dp)
+                                .then(
+                                    if (foldRegion == null) {
+                                        Modifier.clickable { onToggleBreakpoint(lineNumber) }
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (foldRegion != null) {
-                            val interactionSource = remember { MutableInteractionSource() }
-                            val isHovered by interactionSource.collectIsHoveredAsState()
+                        when {
+                            foldRegion != null -> {
+                                val interactionSource = remember { MutableInteractionSource() }
+                                val isHovered by interactionSource.collectIsHoveredAsState()
 
-                            Icon(
-                                imageVector =
-                                    if (foldRegion.isFolded) {
-                                        Icons.AutoMirrored.Filled.KeyboardArrowRight
-                                    } else {
-                                        Icons.Default.KeyboardArrowDown
-                                    },
-                                contentDescription =
-                                    if (foldRegion.isFolded) {
-                                        "Expand"
-                                    } else {
-                                        "Collapse"
-                                    },
-                                tint =
-                                    if (isHovered) {
-                                        IntelliJColors.textPrimary
-                                    } else {
-                                        IntelliJColors.textSecondary
-                                    },
-                                modifier =
-                                    Modifier
-                                        .size(12.dp)
-                                        .hoverable(interactionSource)
-                                        .clickable { onToggleFold(foldRegion) },
-                            )
+                                Icon(
+                                    imageVector =
+                                        if (foldRegion.isFolded) {
+                                            Icons.AutoMirrored.Filled.KeyboardArrowRight
+                                        } else {
+                                            Icons.Default.KeyboardArrowDown
+                                        },
+                                    contentDescription = if (foldRegion.isFolded) "Expand" else "Collapse",
+                                    tint = if (isHovered) IntelliJColors.textPrimary else IntelliJColors.textSecondary,
+                                    modifier =
+                                        Modifier
+                                            .size(12.dp)
+                                            .hoverable(interactionSource)
+                                            .clickable { onToggleFold(foldRegion) },
+                                )
+                            }
+
+                            lineNumber == executionLine -> {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowRightAlt,
+                                    contentDescription = "Execution line",
+                                    tint = IntelliJColors.warning,
+                                    modifier = Modifier.size(15.dp),
+                                )
+                            }
+
+                            lineNumber in breakpointLines -> {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(IntelliJColors.breakpointRed),
+                                )
+                            }
                         }
                     }
                 }
