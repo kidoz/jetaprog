@@ -229,7 +229,6 @@ public class ProjectSession(
         AgentSessionViewModel(
             projectPath = projectPath,
             fileSystem = fileSystem,
-            defaultAgentCommand = AgentSessionViewModel.DEFAULT_CLAUDE_CODE_COMMAND,
         )
 
     /**

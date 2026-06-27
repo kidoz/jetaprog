@@ -49,6 +49,8 @@ import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.JetaProgApplication
 import su.kidoz.jetaprog.app.ProjectSession
 import su.kidoz.jetaprog.app.notification.NotificationCenter
+import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
+import su.kidoz.jetaprog.app.ui.agent.AgentToolWindow
 import su.kidoz.jetaprog.app.ui.components.ActivityBar
 import su.kidoz.jetaprog.app.ui.components.ActivityBarItem
 import su.kidoz.jetaprog.app.ui.components.Breadcrumbs
@@ -72,7 +74,6 @@ import su.kidoz.jetaprog.app.ui.editor.CodeEditor
 import su.kidoz.jetaprog.app.ui.editor.EmptyEditorPlaceholder
 import su.kidoz.jetaprog.app.ui.editor.MarkdownEditor
 import su.kidoz.jetaprog.app.ui.navigation.NavigationHost
-import su.kidoz.jetaprog.app.ui.panels.AgentPanel
 import su.kidoz.jetaprog.app.ui.panels.BottomPanel
 import su.kidoz.jetaprog.app.ui.panels.BottomTab
 import su.kidoz.jetaprog.app.ui.panels.BuildOutputPanel
@@ -459,7 +460,9 @@ private fun MainScreenContent(
 
                 // Left tool window (resizable) — content switches with the activity bar
                 val sidebarItem = selectedActivityItem
-                if (sidebarItem in SIDEBAR_PANEL_ITEMS) {
+                val agentState by session.agentSessionViewModel.state.collectAsState()
+                val agentInPerspective = sidebarItem == ActivityBarItem.AGENT && !agentState.docked
+                if (sidebarItem in SIDEBAR_PANEL_ITEMS && !agentInPerspective) {
                     val minWidth = Dimensions.toolWindowMinWidth.dp
                     val maxWidth = Dimensions.toolWindowMaxWidth.dp
                     var leftPanelWidth by remember { mutableStateOf(Dimensions.projectPanelWidth.dp) }
@@ -482,7 +485,7 @@ private fun MainScreenContent(
                         }
 
                         ActivityBarItem.AGENT -> {
-                            AgentPanel(viewModel = session.agentSessionViewModel, modifier = panelModifier)
+                            AgentToolWindow(viewModel = session.agentSessionViewModel, modifier = panelModifier)
                         }
 
                         else -> {
@@ -500,9 +503,14 @@ private fun MainScreenContent(
                     )
                 }
 
-                // Editor area — replaced by the VCS perspective when Version Control is active
+                // Editor area — replaced by a full perspective when VCS or the Agent is active
                 Column(modifier = Modifier.weight(1f)) {
-                    if (selectedActivityItem == ActivityBarItem.VCS) {
+                    if (agentInPerspective) {
+                        AgentPerspective(
+                            viewModel = session.agentSessionViewModel,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (selectedActivityItem == ActivityBarItem.VCS) {
                         VcsMainArea(
                             viewModel = session.gitViewModel,
                             modifier = Modifier.fillMaxSize(),
