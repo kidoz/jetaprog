@@ -260,6 +260,61 @@ public object IntelliJColors {
 
     /** Brand "J" tile gradient — end color. */
     public val brandGradientEnd: Color = Color(0xFF7F52FF)
+
+    // ============================================================
+    // AGENT SURFACE
+    // ============================================================
+    // The AI agent reuses the brand gradient (brandGradientStart/End) as its
+    // signature accent. Tokens below cover the conversation cards, inline diffs,
+    // approval gate and presence bar. Keep in lockstep with IntelliJLightColors.
+
+    /** Background of tool-call / diff / approval cards. */
+    public val toolCardBackground: Color = Color(0xFF1C1D20)
+
+    /** Purple-tinted border for agent cards and the model/effort chip. */
+    public val agentCardBorder: Color = Color(0xFF34303F)
+
+    /** Background of the monospace result / command code blocks inside cards. */
+    public val codeBlockBackground: Color = Color(0xFF16191A)
+
+    /** Effort-level text in the model/effort chip. */
+    public val agentEffortText: Color = Color(0xFFB49BE0)
+
+    /** Border of the "Proposed" diff pill. */
+    public val agentPillBorder: Color = Color(0xFF463C66)
+
+    /** Text of the "Proposed" diff pill. */
+    public val agentPillText: Color = Color(0xFFC9B8F0)
+
+    /** Filled background of the diff Accept button. */
+    public val diffAcceptBackground: Color = Color(0xFF3D7A4E)
+
+    /** Added-line background in an inline diff. */
+    public val diffAddedBackground: Color = Color(0xFF1E2D22)
+
+    /** Removed-line background in an inline diff. */
+    public val diffRemovedBackground: Color = Color(0xFF2E2122)
+
+    /** Added-line text in an inline diff. */
+    public val diffAddedText: Color = Color(0xFFA6C9A0)
+
+    /** Removed-line text in an inline diff. */
+    public val diffRemovedText: Color = Color(0xFFD26B6B)
+
+    /** Added-line gutter sign in an inline diff. */
+    public val diffAddedGutter: Color = Color(0xFF7FB97A)
+
+    /** Border of the approval (permission gate) card. */
+    public val approvalBorder: Color = Color(0xFF4A4326)
+
+    /** Body text of the approval (permission gate) card. */
+    public val approvalText: Color = Color(0xFFE8D9A8)
+
+    /** Border of the agent Stop button. */
+    public val agentStopBorder: Color = Color(0xFF5A3A3A)
+
+    /** Text/icon of the agent Stop button. */
+    public val agentStopText: Color = Color(0xFFE0A0A0)
 }
 
 /**
@@ -563,4 +618,22 @@ public object IntelliJLightColors {
     public val welcomeRecentRowHover: Color = Color(0xFFE9EFF6)
     public val brandGradientStart: Color = Color(0xFF5B9BD5)
     public val brandGradientEnd: Color = Color(0xFF7F52FF)
+
+    // Agent surface (parity with IntelliJColors)
+    public val toolCardBackground: Color = Color(0xFFF2F2F2)
+    public val agentCardBorder: Color = Color(0xFFD8CEEC)
+    public val codeBlockBackground: Color = Color(0xFFF1F2F4)
+    public val agentEffortText: Color = Color(0xFF6A4BB0)
+    public val agentPillBorder: Color = Color(0xFFB7A4E8)
+    public val agentPillText: Color = Color(0xFF6A4BB0)
+    public val diffAcceptBackground: Color = Color(0xFF2EA043)
+    public val diffAddedBackground: Color = Color(0xFFE2F4E6)
+    public val diffRemovedBackground: Color = Color(0xFFFBE3E4)
+    public val diffAddedText: Color = Color(0xFF2E7D43)
+    public val diffRemovedText: Color = Color(0xFFC0392B)
+    public val diffAddedGutter: Color = Color(0xFF2EA043)
+    public val approvalBorder: Color = Color(0xFFE6D9A6)
+    public val approvalText: Color = Color(0xFF7A6A20)
+    public val agentStopBorder: Color = Color(0xFFE0B4B4)
+    public val agentStopText: Color = Color(0xFFB23B3B)
 }
