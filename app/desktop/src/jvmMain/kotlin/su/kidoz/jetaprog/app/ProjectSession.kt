@@ -10,6 +10,7 @@ import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
 import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
 import su.kidoz.jetaprog.app.viewmodel.ConfigurationViewModel
+import su.kidoz.jetaprog.app.viewmodel.DebugViewModel
 import su.kidoz.jetaprog.app.viewmodel.EditorViewModel
 import su.kidoz.jetaprog.app.viewmodel.GitViewModel
 import su.kidoz.jetaprog.app.viewmodel.GradleViewModel
@@ -264,6 +265,16 @@ public class ProjectSession(
         )
 
     /**
+     * The debugger view model, driving the Debug perspective from [debugService].
+     */
+    public val debugViewModel: DebugViewModel =
+        DebugViewModel(
+            debugService = debugService,
+            projectPath = projectPath,
+            fileSystem = fileSystem,
+        )
+
+    /**
      * The configuration view model.
      */
     public val configurationViewModel: ConfigurationViewModel =
@@ -335,6 +346,7 @@ public class ProjectSession(
         textSearchViewModel.dispose()
         gitViewModel.dispose()
         configurationViewModel.dispose()
+        debugViewModel.dispose()
         debugService.dispose()
         embeddedServerRegistry.dispose()
         sessionScope.cancel()

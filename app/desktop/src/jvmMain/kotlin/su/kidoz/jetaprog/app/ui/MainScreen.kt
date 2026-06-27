@@ -63,6 +63,9 @@ import su.kidoz.jetaprog.app.ui.components.VerticalDragHandle
 import su.kidoz.jetaprog.app.ui.components.VerticalSplitter
 import su.kidoz.jetaprog.app.ui.components.coerceInDp
 import su.kidoz.jetaprog.app.ui.components.createBreadcrumbsFromPath
+import su.kidoz.jetaprog.app.ui.debug.DebugBottomContent
+import su.kidoz.jetaprog.app.ui.debug.DebugIntent
+import su.kidoz.jetaprog.app.ui.debug.DebugSidePanel
 import su.kidoz.jetaprog.app.ui.dialogs.configuration.RunConfigurationDialog
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectDialog
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectEffect
@@ -71,6 +74,7 @@ import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsDialog
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsEffect
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
 import su.kidoz.jetaprog.app.ui.editor.CodeEditor
+import su.kidoz.jetaprog.app.ui.editor.EditorDebugInfo
 import su.kidoz.jetaprog.app.ui.editor.EmptyEditorPlaceholder
 import su.kidoz.jetaprog.app.ui.editor.MarkdownEditor
 import su.kidoz.jetaprog.app.ui.navigation.NavigationHost
@@ -107,6 +111,7 @@ private val SIDEBAR_PANEL_ITEMS =
         ActivityBarItem.SEARCH,
         ActivityBarItem.VCS,
         ActivityBarItem.AGENT,
+        ActivityBarItem.DEBUG,
     )
 
 /**
@@ -260,6 +265,7 @@ private fun MainScreenContent(
     val gradleState by session.gradleViewModel.state.collectAsState()
     val configurationState by session.configurationViewModel.state.collectAsState()
     val gitState by session.gitViewModel.state.collectAsState()
+    val debugState by session.debugViewModel.state.collectAsState()
 
     val currentProjectPath = session.projectPath
     val notificationCenter = app.notificationCenter
@@ -280,6 +286,9 @@ private fun MainScreenContent(
             session.gradleViewModel.dispatch(su.kidoz.jetaprog.build.gradle.state.GradleIntent.ToggleVisibility)
         }
         selectedBottomTab = BottomTab.BUILD
+    }
+    val openDebuggerTab: () -> Unit = {
+        selectedBottomTab = BottomTab.DEBUGGER
     }
     val closeBottomPanel: () -> Unit = {
         if (terminalState.isVisible) {
@@ -440,6 +449,12 @@ private fun MainScreenContent(
                                 onSelectedActivityItemChange(if (selectedActivityItem == item) null else item)
                             }
 
+                            ActivityBarItem.DEBUG -> {
+                                val selecting = selectedActivityItem != ActivityBarItem.DEBUG
+                                onSelectedActivityItemChange(if (selecting) ActivityBarItem.DEBUG else null)
+                                if (selecting) openDebuggerTab()
+                            }
+
                             ActivityBarItem.TERMINAL -> {
                                 if (selectedBottomTab == BottomTab.TERMINAL) closeBottomPanel() else openTerminalTab()
                             }
@@ -486,6 +501,14 @@ private fun MainScreenContent(
 
                         ActivityBarItem.AGENT -> {
                             AgentToolWindow(viewModel = session.agentSessionViewModel, modifier = panelModifier)
+                        }
+
+                        ActivityBarItem.DEBUG -> {
+                            DebugSidePanel(
+                                state = debugState,
+                                dispatch = { intent -> session.debugViewModel.dispatch(intent) },
+                                modifier = panelModifier,
+                            )
                         }
 
                         else -> {
@@ -653,6 +676,30 @@ private fun MainScreenContent(
                                             } else {
                                                 " ".repeat(editorSettings.editor.tabSize)
                                             },
+                                        debug =
+                                            editorState.activeDocumentUri
+                                                ?.value
+                                                ?.removePrefix("file://")
+                                                ?.let { path ->
+                                                    EditorDebugInfo(
+                                                        breakpointLines =
+                                                            debugState.breakpoints
+                                                                .filter { it.file == path && it.enabled }
+                                                                .map { it.line }
+                                                                .toSet(),
+                                                        executionLine =
+                                                            debugState.stoppedAt
+                                                                ?.takeIf { it.path == path }
+                                                                ?.line,
+                                                        variableValues = debugState.variableValues,
+                                                        showInlineValues = debugState.showInlineValues,
+                                                        onToggleBreakpoint = { line ->
+                                                            session.debugViewModel.dispatch(
+                                                                DebugIntent.ToggleBreakpoint(path, line),
+                                                            )
+                                                        },
+                                                    )
+                                                },
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 }
@@ -674,6 +721,7 @@ private fun MainScreenContent(
                             BottomTab.TERMINAL -> openTerminalTab()
                             BottomTab.BUILD -> openBuildTab()
                             BottomTab.PROBLEMS -> selectedBottomTab = BottomTab.PROBLEMS
+                            BottomTab.DEBUGGER -> openDebuggerTab()
                         }
                     },
                     onClose = closeBottomPanel,
@@ -710,6 +758,13 @@ private fun MainScreenContent(
 
                         BottomTab.PROBLEMS -> {
                             ProblemsContent(diagnostics = editorState.diagnostics)
+                        }
+
+                        BottomTab.DEBUGGER -> {
+                            DebugBottomContent(
+                                state = debugState,
+                                dispatch = { intent -> session.debugViewModel.dispatch(intent) },
+                            )
                         }
                     }
                 }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
@@ -53,6 +54,7 @@ public enum class BottomTab {
     TERMINAL,
     BUILD,
     PROBLEMS,
+    DEBUGGER,
 }
 
 private const val MIN_PANEL_HEIGHT = 120
@@ -134,6 +136,12 @@ public fun BottomPanel(
                 iconTint = IntelliJColors.warning,
                 badgeCount = problemsCount,
                 onClick = { onSelectTab(BottomTab.PROBLEMS) },
+            )
+            BottomTabItem(
+                icon = Icons.Filled.BugReport,
+                label = "Debugger",
+                selected = selectedTab == BottomTab.DEBUGGER,
+                onClick = { onSelectTab(BottomTab.DEBUGGER) },
             )
             Spacer(modifier = Modifier.weight(1f))
             Icon(
