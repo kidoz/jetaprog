@@ -1,5 +1,7 @@
 package su.kidoz.jetaprog.acp.protocol
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -16,9 +18,14 @@ public data class Implementation(
 /**
  * Parameters of the `initialize` request sent by the client.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class InitializeRequest(
-    /** The protocol version the client wishes to use. */
+    /**
+     * The protocol version the client wishes to use. Always serialized — the
+     * agent rejects `initialize` when it is absent, even at its default value.
+     */
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val protocolVersion: Int = AcpMethod.PROTOCOL_VERSION,
     /** Capabilities the client provides to the agent. */
     val clientCapabilities: ClientCapabilities = ClientCapabilities(),

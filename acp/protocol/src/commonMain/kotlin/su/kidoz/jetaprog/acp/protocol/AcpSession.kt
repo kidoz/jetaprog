@@ -1,5 +1,7 @@
 package su.kidoz.jetaprog.acp.protocol
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -31,11 +33,13 @@ public data class EnvVariable(
 /**
  * Parameters of the `session/new` request.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class NewSessionRequest(
     /** The working directory for the session, as an absolute path. */
     val cwd: String,
-    /** MCP servers the agent may use during the session. */
+    /** MCP servers the agent may use during the session. Always serialized (the agent requires the array). */
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val mcpServers: List<McpServer> = emptyList(),
 )
 
