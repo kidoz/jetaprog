@@ -315,6 +315,37 @@ public object IntelliJColors {
 
     /** Text/icon of the agent Stop button. */
     public val agentStopText: Color = Color(0xFFE0A0A0)
+
+    // ============================================================
+    // DEBUGGER
+    // ============================================================
+
+    /** Filled breakpoint dot. */
+    public val breakpointRed: Color = Color(0xFFDB5C5C)
+
+    /** Full-width wash on the current execution line (warning at ~13% alpha). */
+    public val executionLineBackground: Color = Color(0x21DBA800)
+
+    /** End-of-line inline variable value hint. */
+    public val inlineValueText: Color = Color(0xFF6E7E6B)
+
+    /** PAUSED state chip text. */
+    public val debugPausedText: Color = Color(0xFFE0C060)
+
+    /** RUNNING state chip text. */
+    public val debugRunningText: Color = Color(0xFF7FCB8C)
+
+    /** Variable name in the variables/watches tree. */
+    public val debugVarName: Color = Color(0xFF9876AA)
+
+    /** String variable value. */
+    public val debugVarString: Color = Color(0xFF6A8759)
+
+    /** Numeric variable value. */
+    public val debugVarNumber: Color = Color(0xFF6897BB)
+
+    /** Type/identifier variable value. */
+    public val debugVarType: Color = Color(0xFF52B8B0)
 }
 
 /**
@@ -636,4 +667,15 @@ public object IntelliJLightColors {
     public val approvalText: Color = Color(0xFF7A6A20)
     public val agentStopBorder: Color = Color(0xFFE0B4B4)
     public val agentStopText: Color = Color(0xFFB23B3B)
+
+    // Debugger (parity with IntelliJColors)
+    public val breakpointRed: Color = Color(0xFFDB5C5C)
+    public val executionLineBackground: Color = Color(0x29B58800)
+    public val inlineValueText: Color = Color(0xFF5E7A5B)
+    public val debugPausedText: Color = Color(0xFF8A6D00)
+    public val debugRunningText: Color = Color(0xFF2E7D43)
+    public val debugVarName: Color = Color(0xFF6A4BA0)
+    public val debugVarString: Color = Color(0xFF2E7D43)
+    public val debugVarNumber: Color = Color(0xFF1E66A8)
+    public val debugVarType: Color = Color(0xFF2A8A86)
 }
