@@ -34,12 +34,16 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +62,8 @@ import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.Spacing
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 
 private const val MINUTE_MILLIS = 60_000L
 private const val HOUR_MILLIS = 3_600_000L
@@ -81,15 +87,26 @@ public fun WelcomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
+    var selectedRailIndex by remember { mutableStateOf(0) }
 
     Row(modifier = modifier.fillMaxSize().background(IntelliJColors.background)) {
-        WelcomeRail()
-        MainPane(
-            state = state,
-            nowEpochMillis = nowEpochMillis,
-            onIntent = viewModel::dispatch,
-            modifier = Modifier.weight(1f),
+        WelcomeRail(
+            selectedIndex = selectedRailIndex,
+            onSelect = { selectedRailIndex = it },
         )
+        if (selectedRailIndex == 0) {
+            MainPane(
+                state = state,
+                nowEpochMillis = nowEpochMillis,
+                onIntent = viewModel::dispatch,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            RailPlaceholderPane(
+                entry = RAIL_ENTRIES[selectedRailIndex],
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -102,19 +119,20 @@ private data class RailEntry(
     val icon: ImageVector,
 )
 
-@Composable
-private fun WelcomeRail() {
-    val entries =
-        remember {
-            listOf(
-                RailEntry("Projects", Icons.Filled.Folder),
-                RailEntry("Remote Development", Icons.Filled.Cloud),
-                RailEntry("Plugins", Icons.Filled.Extension),
-                RailEntry("Customize", Icons.Filled.Tune),
-                RailEntry("Learn", Icons.Filled.School),
-            )
-        }
+private val RAIL_ENTRIES =
+    listOf(
+        RailEntry("Projects", Icons.Filled.Folder),
+        RailEntry("Remote Development", Icons.Filled.Cloud),
+        RailEntry("Plugins", Icons.Filled.Extension),
+        RailEntry("Customize", Icons.Filled.Tune),
+        RailEntry("Learn", Icons.Filled.School),
+    )
 
+@Composable
+private fun WelcomeRail(
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
     Column(
         modifier =
             Modifier
@@ -125,8 +143,12 @@ private fun WelcomeRail() {
     ) {
         BrandHeader()
         Spacer(Modifier.height(22.dp))
-        entries.forEachIndexed { index, entry ->
-            RailItem(entry = entry, selected = index == 0)
+        RAIL_ENTRIES.forEachIndexed { index, entry ->
+            RailItem(
+                entry = entry,
+                selected = index == selectedIndex,
+                onClick = { onSelect(index) },
+            )
             Spacer(Modifier.height(2.dp))
         }
         Spacer(Modifier.weight(1f))
@@ -181,6 +203,7 @@ private fun RailItem(
     entry: RailEntry,
     selected: Boolean,
     muted: Boolean = false,
+    onClick: (() -> Unit)? = null,
 ) {
     val contentColor =
         when {
@@ -195,6 +218,7 @@ private fun RailItem(
                 .height(Dimensions.welcomeRailItemHeight.dp)
                 .clip(RoundedCornerShape(7.dp))
                 .background(if (selected) IntelliJColors.accentSubtle else Color.Transparent)
+                .let { base -> if (onClick != null) base.clickable(onClick = onClick) else base }
                 .padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -213,6 +237,45 @@ private fun RailItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/** Placeholder main pane for rail tabs that are not implemented yet. */
+@Composable
+private fun RailPlaceholderPane(
+    entry: RailEntry,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxHeight()
+                .background(IntelliJColors.background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = entry.icon,
+                contentDescription = null,
+                tint = IntelliJColors.textMuted,
+                modifier = Modifier.size(32.dp),
+            )
+            Spacer(Modifier.height(Spacing.md.dp))
+            Text(
+                text = entry.label,
+                color = IntelliJColors.textSecondary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = JetaProgFonts.jetBrainsMono,
+            )
+            Spacer(Modifier.height(Spacing.xs.dp))
+            Text(
+                text = "Coming soon.",
+                color = IntelliJColors.textMuted,
+                fontSize = 12.sp,
+                fontFamily = JetaProgFonts.jetBrainsMono,
+            )
+        }
     }
 }
 
@@ -253,6 +316,7 @@ private fun MainPane(
                         project = project,
                         nowEpochMillis = nowEpochMillis,
                         onOpen = { onIntent(WelcomeIntent.Open(project.path)) },
+                        onOpenInNewWindow = { onIntent(WelcomeIntent.OpenInNewWindow(project.path)) },
                         onRemove = { onIntent(WelcomeIntent.Remove(project.path)) },
                     )
                 }
@@ -354,10 +418,12 @@ private fun RecentRow(
     project: RecentProject,
     nowEpochMillis: Long,
     onOpen: () -> Unit,
+    onOpenInNewWindow: () -> Unit,
     onRemove: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    var menuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier =
             Modifier
@@ -412,13 +478,77 @@ private fun RecentRow(
             fontSize = 12.sp,
             fontFamily = JetaProgFonts.jetBrainsMono,
         )
-        Icon(
-            imageVector = Icons.Filled.MoreVert,
-            contentDescription = "Remove from recent projects",
-            tint = IntelliJColors.scrollbarThumb,
-            modifier = Modifier.size(18.dp).clip(RoundedCornerShape(4.dp)).clickable(onClick = onRemove),
-        )
+        Box {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = "Project options",
+                tint = IntelliJColors.scrollbarThumb,
+                modifier =
+                    Modifier
+                        .size(18.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable(onClick = { menuExpanded = true }),
+            )
+            RecentRowMenu(
+                expanded = menuExpanded,
+                onDismiss = { menuExpanded = false },
+                onOpenInNewWindow = onOpenInNewWindow,
+                onCopyPath = { copyToClipboard(project.path) },
+                onRemove = onRemove,
+            )
+        }
     }
+}
+
+@Composable
+private fun RecentRowMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onOpenInNewWindow: () -> Unit,
+    onCopyPath: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        modifier = Modifier.background(IntelliJColors.surface),
+    ) {
+        RecentRowMenuItem(text = "Remove from list") {
+            onDismiss()
+            onRemove()
+        }
+        RecentRowMenuItem(text = "Open in new window") {
+            onDismiss()
+            onOpenInNewWindow()
+        }
+        RecentRowMenuItem(text = "Copy path") {
+            onDismiss()
+            onCopyPath()
+        }
+    }
+}
+
+@Composable
+private fun RecentRowMenuItem(
+    text: String,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = text,
+                color = IntelliJColors.textPrimary,
+                fontSize = 12.sp,
+                fontFamily = JetaProgFonts.jetBrainsMono,
+            )
+        },
+        onClick = onClick,
+    )
+}
+
+/** Puts [text] on the system clipboard. */
+private fun copyToClipboard(text: String) {
+    Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
 }
 
 @Composable

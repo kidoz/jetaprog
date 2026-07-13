@@ -48,6 +48,10 @@ public class WelcomeViewModel(
                 updateState { copy(recents = updated.toRecentProjects()) }
             }
 
+            is WelcomeIntent.OpenInNewWindow -> {
+                emitEffect(WelcomeEffect.OpenInNewWindow(intent.path))
+            }
+
             is WelcomeIntent.Refresh -> {
                 val loaded = recentProjectsService.load()
                 updateState { copy(recents = loaded.toRecentProjects()) }

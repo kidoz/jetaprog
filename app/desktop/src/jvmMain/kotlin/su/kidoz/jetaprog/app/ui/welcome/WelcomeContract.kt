@@ -72,6 +72,11 @@ public sealed interface WelcomeIntent : Intent {
         val path: String,
     ) : WelcomeIntent
 
+    /** Open the project at [path] in a new window (recent-row context menu). */
+    public data class OpenInNewWindow(
+        val path: String,
+    ) : WelcomeIntent
+
     /** Reload the recent list from persistent storage. */
     public data object Refresh : WelcomeIntent
 }
@@ -91,4 +96,9 @@ public sealed interface WelcomeEffect : Effect {
 
     /** Request the host to start a clone-repository flow. */
     public data object StartClone : WelcomeEffect
+
+    /** Request the host to open the project at [path] in a new window. */
+    public data class OpenInNewWindow(
+        val path: String,
+    ) : WelcomeEffect
 }

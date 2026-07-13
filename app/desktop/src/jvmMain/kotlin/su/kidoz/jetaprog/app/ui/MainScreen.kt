@@ -216,6 +216,13 @@ public fun MainScreen(app: JetaProgApplication) {
                         message = "Repository cloning is coming soon.",
                     )
                 }
+
+                is WelcomeEffect.OpenInNewWindow -> {
+                    app.notificationCenter.info(
+                        title = "Open in New Window",
+                        message = "Multiple windows are coming soon.",
+                    )
+                }
             }
         }
     }
