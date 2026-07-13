@@ -301,6 +301,7 @@ public data class Presence(
  * @property effort The selected effort preference.
  * @property docked Whether the surface is docked beside the editor (vs full perspective).
  * @property error The most recent error message, if any.
+ * @property composerInput The current text in the composer input field.
  */
 @Immutable
 public data class AgentUiState(
@@ -319,6 +320,7 @@ public data class AgentUiState(
     val effort: Effort = Effort.HIGH,
     val docked: Boolean = false,
     val error: String? = null,
+    val composerInput: String = "",
 ) {
     /** Files the agent changed in the latest agent turn, for the session rail. */
     val sessionChanges: List<SessionFileChange>
@@ -411,4 +413,9 @@ public sealed interface AgentIntent {
 
     /** Dock the perspective back to a tool window. */
     public data object DockToToolWindow : AgentIntent
+
+    /** Update the composer input text. */
+    public data class SetComposerInput(
+        val text: String,
+    ) : AgentIntent
 }

@@ -451,11 +451,10 @@ private fun AgentComposer(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
 ) {
-    var input by remember { mutableStateOf("") }
+    val input = state.composerInput
     val send: () -> Unit = {
         if (input.isNotBlank()) {
             dispatch(AgentIntent.Send(input.trim()))
-            input = ""
         }
     }
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(IntelliJColors.divider))
@@ -480,7 +479,7 @@ private fun AgentComposer(
                 }
                 BasicTextField(
                     value = input,
-                    onValueChange = { input = it },
+                    onValueChange = { dispatch(AgentIntent.SetComposerInput(it)) },
                     textStyle =
                         TextStyle(
                             color = IntelliJColors.textPrimary,

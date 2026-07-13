@@ -167,6 +167,10 @@ public class AgentSessionViewModel(
                 _state.update { it.copy(docked = true) }
                 persist()
             }
+
+            is AgentIntent.SetComposerInput -> {
+                _state.update { it.copy(composerInput = intent.text) }
+            }
         }
     }
 
@@ -255,6 +259,7 @@ public class AgentSessionViewModel(
                 isStreaming = true,
                 error = null,
                 presence = Presence(action = "Thinking", fileName = null, startedAtEpochMillis = now()),
+                composerInput = "",
             )
         }
 
