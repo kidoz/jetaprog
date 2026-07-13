@@ -56,9 +56,12 @@ public class PtyTerminalBackend private constructor(
         }
 
     override suspend fun write(bytes: ByteArray) {
+        if (!process.isAlive) return
         withContext(Dispatchers.IO) {
-            process.outputStream.write(bytes)
-            process.outputStream.flush()
+            runCatching {
+                process.outputStream.write(bytes)
+                process.outputStream.flush()
+            }
         }
     }
 

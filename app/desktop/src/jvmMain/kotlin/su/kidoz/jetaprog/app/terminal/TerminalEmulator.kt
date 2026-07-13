@@ -60,6 +60,7 @@ internal class TerminalEmulator(
      * Clear visible output and scrollback.
      */
     internal fun clear(): TerminalScreenSnapshot {
+        setAlternateScreen(false)
         scrollback.clear()
         screen.clear()
         repeat(rows) {

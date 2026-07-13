@@ -730,7 +730,6 @@ private fun MainScreenContent(
                         BottomTab.TERMINAL -> {
                             TerminalPanel(
                                 state = terminalState,
-                                effects = session.terminalViewModel.effects,
                                 onIntent = { intent -> session.terminalViewModel.dispatch(intent) },
                                 embedded = true,
                             )

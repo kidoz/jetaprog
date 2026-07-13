@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.ui.panels
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -18,7 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,7 +37,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -50,27 +50,24 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.flow.StateFlow
 import su.kidoz.jetaprog.app.terminal.TerminalInputMode
 import su.kidoz.jetaprog.app.terminal.toTerminalInput
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.Spacing
-import su.kidoz.jetaprog.app.viewmodel.TerminalEffect
 import su.kidoz.jetaprog.app.viewmodel.TerminalIntent
-import su.kidoz.jetaprog.app.viewmodel.TerminalLine
 import su.kidoz.jetaprog.app.viewmodel.TerminalState
 import su.kidoz.jetaprog.app.viewmodel.TerminalTab
 
@@ -80,7 +77,6 @@ import su.kidoz.jetaprog.app.viewmodel.TerminalTab
 @Composable
 public fun TerminalPanel(
     state: TerminalState,
-    effects: StateFlow<TerminalEffect?>,
     onIntent: (TerminalIntent) -> Unit,
     modifier: Modifier = Modifier,
     embedded: Boolean = false,
@@ -88,18 +84,6 @@ public fun TerminalPanel(
     if (!embedded && !state.isVisible) return
 
     val focusRequester = remember { FocusRequester() }
-
-    // Handle effects (command history)
-    val effect by effects.collectAsState()
-    LaunchedEffect(effect) {
-        when (val currentEffect = effect) {
-            is TerminalEffect.HistoryCommand -> {
-                onIntent(TerminalIntent.SendInput(currentEffect.command))
-            }
-
-            else -> {}
-        }
-    }
 
     Column(
         modifier =
@@ -143,7 +127,8 @@ public fun TerminalPanel(
         if (activeTab != null) {
             TerminalContent(
                 tab = activeTab,
-                filteredOutput = state.filteredOutput,
+                lines = state.filteredLines,
+                showCursor = state.searchQuery.isEmpty() && activeTab.isCursorVisible,
                 onInput = { input -> onIntent(TerminalIntent.SendInput(input)) },
                 onViewportResize = { columns, rows -> onIntent(TerminalIntent.ResizeTerminal(columns, rows)) },
                 focusRequester = focusRequester,
@@ -464,13 +449,15 @@ private fun SearchBar(
 @Composable
 private fun TerminalContent(
     tab: TerminalTab,
-    filteredOutput: List<TerminalLine>,
+    lines: List<String>,
+    showCursor: Boolean,
     onInput: (String) -> Unit,
     onViewportResize: (Int, Int) -> Unit,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val horizontalScrollState = rememberScrollState()
     val terminalTextStyle =
         remember {
             TextStyle(
@@ -494,10 +481,13 @@ private fun TerminalContent(
         focusRequester.requestFocus()
     }
 
-    // Auto-scroll to bottom when new output arrives
-    LaunchedEffect(filteredOutput.size) {
-        if (filteredOutput.isNotEmpty()) {
-            listState.animateScrollToItem(filteredOutput.size - 1)
+    // Auto-scroll to bottom when content changes. Keyed on the cheap [revision] counter so it
+    // also fires when the last line updates in place (progress bars, spinners), and uses a
+    // non-animated jump to keep up with fast output.
+    val totalItems = lines.size + tab.errorMessages.size
+    LaunchedEffect(tab.revision) {
+        if (totalItems > 0) {
+            listState.scrollToItem(totalItems - 1)
         }
     }
 
@@ -522,8 +512,15 @@ private fun TerminalContent(
                     .padding(Spacing.sm.dp),
             state = listState,
         ) {
-            items(filteredOutput) { line ->
-                TerminalOutputLine(line = line)
+            itemsIndexed(lines, key = { index, _ -> "line$index" }) { index, text ->
+                TerminalOutputLine(
+                    text = text,
+                    cursorColumn = if (showCursor && index == tab.cursorLineIndex) tab.cursorColumn else -1,
+                    horizontalScrollState = horizontalScrollState,
+                )
+            }
+            itemsIndexed(tab.errorMessages, key = { index, _ -> "error$index" }) { _, message ->
+                TerminalErrorLine(text = message, horizontalScrollState = horizontalScrollState)
             }
         }
 
@@ -575,56 +572,78 @@ private fun TerminalInputCapture(
     )
 }
 
+/**
+ * A single grid row. When [cursorColumn] is non-negative the cell at that column is drawn in
+ * reverse video so the character beneath the cursor stays visible.
+ */
 @Composable
-private fun TerminalOutputLine(line: TerminalLine) {
-    when {
-        line.isCommand -> {
-            // Shell command
-            Text(
-                text = line.text,
-                color = IntelliJColors.terminalGreen,
-                fontFamily = JetaProgFonts.codeFont,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                lineHeight = 1.25.em,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                softWrap = false,
-                modifier = Modifier.padding(vertical = 1.dp),
-            )
-        }
-
-        line.isError -> {
-            // Error output
-            Text(
-                text = line.text.ifEmpty { " " },
-                color = IntelliJColors.terminalRed,
-                fontFamily = JetaProgFonts.codeFont,
-                fontSize = 13.sp,
-                lineHeight = 1.25.em,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                softWrap = false,
-                modifier = Modifier.padding(vertical = 1.dp),
-            )
-        }
-
-        else -> {
-            // Normal output
-            Text(
-                text = line.text.ifEmpty { " " },
-                color = IntelliJColors.terminalForeground,
-                fontFamily = JetaProgFonts.codeFont,
-                fontSize = 13.sp,
-                lineHeight = 1.25.em,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                softWrap = false,
-                modifier = Modifier.padding(vertical = 1.dp),
-            )
-        }
+private fun TerminalOutputLine(
+    text: String,
+    cursorColumn: Int,
+    horizontalScrollState: ScrollState,
+) {
+    val lineModifier = Modifier.horizontalScroll(horizontalScrollState).padding(vertical = 1.dp)
+    if (cursorColumn >= 0) {
+        Text(
+            text = text.withCursor(cursorColumn),
+            fontFamily = JetaProgFonts.codeFont,
+            fontSize = TERMINAL_FONT_SIZE.sp,
+            lineHeight = TERMINAL_LINE_HEIGHT.em,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            softWrap = false,
+            modifier = lineModifier,
+        )
+    } else {
+        Text(
+            text = text.ifEmpty { " " },
+            color = IntelliJColors.terminalForeground,
+            fontFamily = JetaProgFonts.codeFont,
+            fontSize = TERMINAL_FONT_SIZE.sp,
+            lineHeight = TERMINAL_LINE_HEIGHT.em,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            softWrap = false,
+            modifier = lineModifier,
+        )
     }
 }
+
+@Composable
+private fun TerminalErrorLine(
+    text: String,
+    horizontalScrollState: ScrollState,
+) {
+    Text(
+        text = text.ifEmpty { " " },
+        color = IntelliJColors.terminalRed,
+        fontFamily = JetaProgFonts.codeFont,
+        fontSize = TERMINAL_FONT_SIZE.sp,
+        lineHeight = TERMINAL_LINE_HEIGHT.em,
+        maxLines = 1,
+        overflow = TextOverflow.Clip,
+        softWrap = false,
+        modifier = Modifier.horizontalScroll(horizontalScrollState).padding(vertical = 1.dp),
+    )
+}
+
+private fun String.withCursor(column: Int): AnnotatedString =
+    buildAnnotatedString {
+        val safeColumn = column.coerceAtLeast(0)
+        val padded =
+            if (length <= safeColumn) {
+                this@withCursor + " ".repeat(safeColumn - length + 1)
+            } else {
+                this@withCursor
+            }
+        append(padded)
+        addStyle(SpanStyle(color = IntelliJColors.terminalForeground), 0, padded.length)
+        addStyle(
+            SpanStyle(color = IntelliJColors.terminalBackground, background = IntelliJColors.terminalForeground),
+            safeColumn,
+            safeColumn + 1,
+        )
+    }
 
 private data class TerminalCellSize(
     val width: Int,

@@ -1,7 +1,9 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,32 +22,32 @@ private const val DEFAULT_TERMINAL_COLUMNS = 120
 private const val DEFAULT_TERMINAL_ROWS = 30
 private const val MIN_TERMINAL_COLUMNS = 1
 private const val MIN_TERMINAL_ROWS = 5
+private const val MIN_PANEL_HEIGHT = 100
+private const val MAX_PANEL_HEIGHT = 600
 
 /**
  * Represents a single terminal tab.
+ *
+ * [lines] holds the raw grid rows produced by the emulator; the UI renders them
+ * directly and applies the cursor overlay lazily so no per-row wrapper objects are
+ * allocated on the output hot path. [revision] increments on every content change so
+ * observers can detect updates cheaply without comparing the whole [lines] list.
  */
 public data class TerminalTab(
     val id: Int,
     val name: String,
     val workingDirectory: String,
-    val output: List<TerminalLine> = emptyList(),
+    val lines: List<String> = emptyList(),
+    val cursorLineIndex: Int = 0,
+    val cursorColumn: Int = 0,
+    val isCursorVisible: Boolean = true,
+    val errorMessages: List<String> = emptyList(),
     val isRunning: Boolean = false,
     val exitCode: Int? = null,
-    val commandHistory: List<String> = emptyList(),
-    val historyIndex: Int = -1,
     val columns: Int = DEFAULT_TERMINAL_COLUMNS,
     val rows: Int = DEFAULT_TERMINAL_ROWS,
     val applicationCursorKeys: Boolean = false,
-)
-
-/**
- * A line of terminal output.
- */
-public data class TerminalLine(
-    val text: String,
-    val isError: Boolean = false,
-    val isCommand: Boolean = false,
-    val timestamp: Long = System.currentTimeMillis(),
+    val revision: Long = 0,
 )
 
 /**
@@ -62,13 +64,16 @@ public data class TerminalState(
     public val activeTab: TerminalTab?
         get() = if (activeTabIndex in tabs.indices) tabs[activeTabIndex] else null
 
-    public val filteredOutput: List<TerminalLine>
+    /**
+     * Visible grid lines for the active tab, filtered by [searchQuery] when a search is active.
+     */
+    public val filteredLines: List<String>
         get() {
             val tab = activeTab ?: return emptyList()
             return if (searchQuery.isEmpty()) {
-                tab.output
+                tab.lines
             } else {
-                tab.output.filter { it.text.contains(searchQuery, ignoreCase = true) }
+                tab.lines.filter { it.contains(searchQuery, ignoreCase = true) }
             }
         }
 }
@@ -95,10 +100,6 @@ public sealed interface TerminalIntent {
         val newName: String,
     ) : TerminalIntent
 
-    public data class ExecuteCommand(
-        val command: String,
-    ) : TerminalIntent
-
     public data class SendInput(
         val text: String,
     ) : TerminalIntent
@@ -108,11 +109,6 @@ public sealed interface TerminalIntent {
     public data object ToggleVisibility : TerminalIntent
 
     public data object KillProcess : TerminalIntent
-
-    // Command history navigation
-    public data object HistoryUp : TerminalIntent
-
-    public data object HistoryDown : TerminalIntent
 
     // Search
     public data object ToggleSearch : TerminalIntent
@@ -133,23 +129,6 @@ public sealed interface TerminalIntent {
 }
 
 /**
- * Effects for terminal side effects.
- */
-public sealed interface TerminalEffect {
-    public data class CommandCompleted(
-        val exitCode: Int,
-    ) : TerminalEffect
-
-    public data class CommandFailed(
-        val error: String,
-    ) : TerminalEffect
-
-    public data class HistoryCommand(
-        val command: String,
-    ) : TerminalEffect
-}
-
-/**
  * ViewModel for the terminal panel.
  *
  * @param defaultWorkingDirectory The default working directory for new terminals.
@@ -167,13 +146,7 @@ public class TerminalViewModel(
     private val _state = MutableStateFlow(TerminalState())
     public val state: StateFlow<TerminalState> = _state.asStateFlow()
 
-    private val _effects = MutableStateFlow<TerminalEffect?>(null)
-    public val effects: StateFlow<TerminalEffect?> = _effects.asStateFlow()
-
-    private val viewModelScope =
-        kotlinx.coroutines.CoroutineScope(
-            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main,
-        )
+    private val viewModelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     public fun dispatch(intent: TerminalIntent) {
         viewModelScope.launch {
@@ -187,13 +160,10 @@ public class TerminalViewModel(
             is TerminalIntent.CloseTerminal -> closeTerminal(intent.tabId)
             is TerminalIntent.SwitchTerminal -> switchTerminal(intent.tabIndex)
             is TerminalIntent.RenameTerminal -> renameTerminal(intent.tabId, intent.newName)
-            is TerminalIntent.ExecuteCommand -> executeCommand(intent.command)
             is TerminalIntent.SendInput -> sendInput(intent.text)
             is TerminalIntent.ClearOutput -> clearOutput()
             is TerminalIntent.ToggleVisibility -> toggleVisibility()
             is TerminalIntent.KillProcess -> killCurrentProcess()
-            is TerminalIntent.HistoryUp -> navigateHistoryUp()
-            is TerminalIntent.HistoryDown -> navigateHistoryDown()
             is TerminalIntent.ToggleSearch -> toggleSearch()
             is TerminalIntent.SetSearchQuery -> setSearchQuery(intent.query)
             is TerminalIntent.ResizePanel -> resizePanel(intent.height)
@@ -214,9 +184,8 @@ public class TerminalViewModel(
                 id = id,
                 name = "$name $id",
                 workingDirectory = cwd,
-                output = emulator.snapshot().toTerminalLines(),
                 isRunning = true,
-            )
+            ).applySnapshot(emulator.snapshot())
 
         _state.update { state ->
             val newTabs = state.tabs + tab
@@ -265,22 +234,6 @@ public class TerminalViewModel(
         updateTab(tabId) { it.copy(name = newName) }
     }
 
-    private suspend fun executeCommand(command: String) {
-        val activeTab = _state.value.activeTab ?: return
-        val tabId = activeTab.id
-
-        // Add to command history
-        val newHistory = (activeTab.commandHistory + command).takeLast(100)
-        updateTab(tabId) {
-            it.copy(
-                commandHistory = newHistory,
-                historyIndex = -1,
-            )
-        }
-
-        terminalBackends[tabId]?.write("$command\r".encodeToByteArray())
-    }
-
     private suspend fun startTerminalBackend(
         tabId: Int,
         workingDirectory: String,
@@ -290,10 +243,9 @@ public class TerminalViewModel(
                 backendFactory(workingDirectory)
             }
         if (backendResult.isFailure) {
-            appendGridOutput(
+            appendError(
                 tabId = tabId,
-                text = "Failed to start terminal: ${backendResult.exceptionOrNull()?.message}",
-                isError = true,
+                message = "Failed to start terminal: ${backendResult.exceptionOrNull()?.message}",
             )
             updateTab(tabId) { it.copy(isRunning = false) }
             return
@@ -311,7 +263,7 @@ public class TerminalViewModel(
                         }
 
                         is TerminalBackendOutput.Error -> {
-                            appendGridOutput(tabId, output.message, isError = true)
+                            appendError(tabId, output.message)
                         }
 
                         is TerminalBackendOutput.Exited -> {
@@ -328,18 +280,14 @@ public class TerminalViewModel(
     private suspend fun sendInput(text: String) {
         val activeTab = _state.value.activeTab ?: return
         val backend = terminalBackends[activeTab.id] ?: return
-        backend.write(text.encodeToByteArray())
+        if (!backend.isAlive) return
+        runCatching { backend.write(text.encodeToByteArray()) }
     }
 
     private fun clearOutput() {
         val activeTab = _state.value.activeTab ?: return
-        val snapshot = terminalEmulators[activeTab.id]?.clear()
-        updateTab(activeTab.id) { tab ->
-            tab.copy(
-                output = snapshot?.toTerminalLines() ?: emptyList(),
-                applicationCursorKeys = snapshot?.inputMode?.applicationCursorKeys ?: tab.applicationCursorKeys,
-            )
-        }
+        val snapshot = terminalEmulators[activeTab.id]?.clear() ?: return
+        updateTab(activeTab.id) { tab -> tab.copy(errorMessages = emptyList()).applySnapshot(snapshot) }
     }
 
     private fun toggleVisibility() {
@@ -357,37 +305,6 @@ public class TerminalViewModel(
         updateTab(activeTab.id) { it.copy(isRunning = false) }
     }
 
-    private fun navigateHistoryUp() {
-        val activeTab = _state.value.activeTab ?: return
-        val history = activeTab.commandHistory
-        if (history.isEmpty()) return
-
-        val newIndex =
-            if (activeTab.historyIndex < 0) {
-                history.size - 1
-            } else {
-                (activeTab.historyIndex - 1).coerceAtLeast(0)
-            }
-
-        updateTab(activeTab.id) { it.copy(historyIndex = newIndex) }
-        _effects.value = TerminalEffect.HistoryCommand(history[newIndex])
-    }
-
-    private fun navigateHistoryDown() {
-        val activeTab = _state.value.activeTab ?: return
-        val history = activeTab.commandHistory
-        if (history.isEmpty() || activeTab.historyIndex < 0) return
-
-        val newIndex = activeTab.historyIndex + 1
-        if (newIndex >= history.size) {
-            updateTab(activeTab.id) { it.copy(historyIndex = -1) }
-            _effects.value = TerminalEffect.HistoryCommand("")
-        } else {
-            updateTab(activeTab.id) { it.copy(historyIndex = newIndex) }
-            _effects.value = TerminalEffect.HistoryCommand(history[newIndex])
-        }
-    }
-
     private fun toggleSearch() {
         _state.update {
             it.copy(
@@ -402,25 +319,9 @@ public class TerminalViewModel(
     }
 
     private fun resizePanel(height: Int) {
-        val panelHeight = height.coerceIn(100, 600)
-        val rows = ((panelHeight - TERMINAL_CHROME_HEIGHT) / TERMINAL_ROW_HEIGHT).coerceAtLeast(MIN_TERMINAL_ROWS)
-        val activeTab = _state.value.activeTab
-
-        if (activeTab != null) {
-            terminalBackends[activeTab.id]?.resize(activeTab.columns, rows)
-            val snapshot = terminalEmulators[activeTab.id]?.resize(activeTab.columns, rows)
-            if (snapshot != null) {
-                updateTab(activeTab.id) {
-                    it.copy(
-                        output = snapshot.toTerminalLines(),
-                        rows = rows,
-                        applicationCursorKeys = snapshot.inputMode.applicationCursorKeys,
-                    )
-                }
-            }
-        }
-
-        _state.update { it.copy(panelHeight = panelHeight) }
+        // The panel only owns its height; the grid is resized from the measured viewport
+        // (ResizeTerminal) so there is a single authoritative sizing path.
+        _state.update { it.copy(panelHeight = height.coerceIn(MIN_PANEL_HEIGHT, MAX_PANEL_HEIGHT)) }
     }
 
     private fun resizeTerminal(
@@ -435,12 +336,8 @@ public class TerminalViewModel(
         terminalBackends[activeTab.id]?.resize(safeColumns, safeRows)
         val snapshot = terminalEmulators[activeTab.id]?.resize(safeColumns, safeRows)
         updateTab(activeTab.id) { tab ->
-            tab.copy(
-                output = snapshot?.toTerminalLines() ?: tab.output,
-                columns = safeColumns,
-                rows = safeRows,
-                applicationCursorKeys = snapshot?.inputMode?.applicationCursorKeys ?: tab.applicationCursorKeys,
-            )
+            val resized = tab.copy(columns = safeColumns, rows = safeRows)
+            if (snapshot != null) resized.applySnapshot(snapshot) else resized
         }
     }
 
@@ -449,66 +346,30 @@ public class TerminalViewModel(
         text: String,
     ) {
         val snapshot = terminalEmulators[tabId]?.accept(text) ?: return
-        updateTab(tabId) { tab ->
-            tab.copy(
-                output = snapshot.toTerminalLines(),
-                applicationCursorKeys = snapshot.inputMode.applicationCursorKeys,
-            )
-        }
+        updateTab(tabId) { tab -> tab.applySnapshot(snapshot) }
     }
 
-    private fun appendGridOutput(
+    private fun appendError(
         tabId: Int,
-        text: String,
-        isError: Boolean = false,
+        message: String,
     ) {
-        val emulator = terminalEmulators[tabId]
-        val snapshot =
-            if (emulator != null) {
-                emulator.accept("$text\n")
-            } else {
-                TerminalScreenSnapshot(
-                    lines = listOf(text),
-                    cursorRow = 0,
-                    cursorColumn = 0,
-                    cursorLineIndex = 0,
-                )
-            }
         updateTab(tabId) { tab ->
             tab.copy(
-                output = snapshot.toTerminalLines(isError = isError),
-                applicationCursorKeys = snapshot.inputMode.applicationCursorKeys,
+                errorMessages = tab.errorMessages + message,
+                revision = tab.revision + 1,
             )
         }
     }
 
-    private fun TerminalScreenSnapshot.toTerminalLines(isError: Boolean = false): List<TerminalLine> =
-        lines.mapIndexed { index, line ->
-            TerminalLine(
-                text =
-                    if (isCursorVisible && index == cursorLineIndex) {
-                        line.withCursor(cursorColumn)
-                    } else {
-                        line
-                    },
-                isError = isError,
-                timestamp = index.toLong(),
-            )
-        }
-
-    private fun String.withCursor(column: Int): String {
-        val safeColumn = column.coerceAtLeast(0)
-        val text = StringBuilder(this)
-        while (text.length < safeColumn) {
-            text.append(' ')
-        }
-        if (safeColumn < text.length) {
-            text.setCharAt(safeColumn, CURSOR_GLYPH)
-        } else {
-            text.append(CURSOR_GLYPH)
-        }
-        return text.toString()
-    }
+    private fun TerminalTab.applySnapshot(snapshot: TerminalScreenSnapshot): TerminalTab =
+        copy(
+            lines = snapshot.lines,
+            cursorLineIndex = snapshot.cursorLineIndex,
+            cursorColumn = snapshot.cursorColumn,
+            isCursorVisible = snapshot.isCursorVisible,
+            applicationCursorKeys = snapshot.inputMode.applicationCursorKeys,
+            revision = revision + 1,
+        )
 
     private fun updateTab(
         tabId: Int,
@@ -531,11 +392,5 @@ public class TerminalViewModel(
         backendJobs.clear()
         terminalEmulators.clear()
         viewModelScope.cancel()
-    }
-
-    private companion object {
-        private const val TERMINAL_CHROME_HEIGHT = 68
-        private const val TERMINAL_ROW_HEIGHT = 18
-        private const val CURSOR_GLYPH = '\u2588'
     }
 }
