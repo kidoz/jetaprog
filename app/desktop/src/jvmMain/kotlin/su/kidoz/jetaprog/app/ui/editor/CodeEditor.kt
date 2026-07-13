@@ -17,9 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -111,6 +114,13 @@ public fun CodeEditor(
             TextStyle(
                 fontFamily = JetaProgFonts.codeFont,
                 fontSize = 14.sp,
+            )
+        }
+    val editorSelectionColors =
+        remember {
+            TextSelectionColors(
+                handleColor = IntelliJColors.accent,
+                backgroundColor = IntelliJColors.editorSelectionActive.copy(alpha = SELECTION_OVERLAY_ALPHA),
             )
         }
     val density = LocalDensity.current
@@ -730,9 +740,15 @@ public fun CodeEditor(
                                             color = syntaxTheme.defaultForeground.toComposeColor(),
                                         ),
                                 )
-                                // Invisible input field on top (handles cursor and input)
-                                Box(modifier = Modifier.matchParentSize()) {
-                                    innerTextField()
+                                // Invisible input field on top (handles cursor and input). The
+                                // selection wash is translucent because it paints over the
+                                // highlighted layer below, not behind the glyphs.
+                                CompositionLocalProvider(
+                                    LocalTextSelectionColors provides editorSelectionColors,
+                                ) {
+                                    Box(modifier = Modifier.matchParentSize()) {
+                                        innerTextField()
+                                    }
                                 }
                             }
                         },
@@ -841,6 +857,9 @@ private val SIGNATURE_HELP_TRIGGER_CHARACTERS = setOf('(', ',')
  * Minimum identifier length to auto-trigger completion.
  */
 private const val MIN_AUTO_COMPLETION_LENGTH = 2
+
+/** Alpha for the selection wash, which overlays the highlighted text layer. */
+private const val SELECTION_OVERLAY_ALPHA = 0.55f
 
 /**
  * Extract the identifier prefix at the given cursor position.
