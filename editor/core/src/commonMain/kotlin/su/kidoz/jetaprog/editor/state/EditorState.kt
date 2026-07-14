@@ -81,6 +81,10 @@ public data class EditorState(
      */
     val diagnostics: List<Diagnostic> = emptyList(),
     /**
+     * VCS change markers for the active document, keyed by 0-based line index.
+     */
+    val lineChangeMarkers: Map<Int, LineChangeMarker> = emptyMap(),
+    /**
      * Whether line numbers are shown.
      */
     val showLineNumbers: Boolean = true,
@@ -170,6 +174,20 @@ public enum class DiagnosticSeverity {
     WARNING,
     INFORMATION,
     HINT,
+}
+
+/**
+ * The kind of VCS change shown as a gutter marker on a line.
+ */
+public enum class LineChangeMarker {
+    /** The line was added. */
+    ADDED,
+
+    /** The line was modified. */
+    MODIFIED,
+
+    /** Content was deleted next to this line. */
+    DELETED,
 }
 
 /**

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.editor.state.LineChangeMarker
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxColor
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
 
@@ -62,6 +63,7 @@ public fun LineNumbers(
     breakpointLines: Set<Int> = emptySet(),
     executionLine: Int? = null,
     onToggleBreakpoint: (Int) -> Unit = {},
+    lineChangeMarkers: Map<Int, LineChangeMarker> = emptyMap(),
 ) {
     // Calculate width based on number of digits
     val digits = lineCount.toString().length.coerceAtLeast(3)
@@ -188,6 +190,21 @@ public fun LineNumbers(
                             ),
                     contentAlignment = Alignment.CenterEnd,
                 ) {
+                    lineChangeMarkers[index]?.let { marker ->
+                        Box(
+                            modifier =
+                                Modifier
+                                    .align(
+                                        if (marker == LineChangeMarker.DELETED) {
+                                            Alignment.BottomStart
+                                        } else {
+                                            Alignment.CenterStart
+                                        },
+                                    ).width(3.dp)
+                                    .height(if (marker == LineChangeMarker.DELETED) 5.dp else 21.dp)
+                                    .background(marker.toGutterColor()),
+                        )
+                    }
                     Text(
                         text = lineNumber.toString(),
                         fontFamily = JetaProgFonts.codeFont,
@@ -221,3 +238,13 @@ public fun LineNumbers(
  * Convert SyntaxColor to Compose Color.
  */
 private fun SyntaxColor.toComposeColor(): Color = Color(red = red, green = green, blue = blue, alpha = alpha)
+
+/**
+ * Gutter bar color for a VCS line change marker.
+ */
+private fun LineChangeMarker.toGutterColor(): Color =
+    when (this) {
+        LineChangeMarker.ADDED -> IntelliJColors.diffAddedGutter
+        LineChangeMarker.MODIFIED -> IntelliJColors.accent
+        LineChangeMarker.DELETED -> IntelliJColors.diffRemovedText
+    }

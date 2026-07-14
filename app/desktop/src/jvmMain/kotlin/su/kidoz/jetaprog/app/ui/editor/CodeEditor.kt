@@ -302,6 +302,7 @@ public fun CodeEditor(
                         breakpointLines = debug?.breakpointLines ?: emptySet(),
                         executionLine = debug?.executionLine,
                         onToggleBreakpoint = { line -> debug?.onToggleBreakpoint?.invoke(line) },
+                        lineChangeMarkers = state.lineChangeMarkers,
                     )
                 }
 

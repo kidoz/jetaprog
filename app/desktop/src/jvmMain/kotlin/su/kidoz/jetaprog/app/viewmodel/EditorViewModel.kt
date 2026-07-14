@@ -190,6 +190,10 @@ public class EditorViewModel(
                 applySemanticTokens(intent.data, intent.tokenTypes)
             }
 
+            is EditorIntent.SetLineChangeMarkers -> {
+                updateState { copy(lineChangeMarkers = intent.markers) }
+            }
+
             is EditorIntent.InsertText -> {
                 insertText(intent.text)
             }

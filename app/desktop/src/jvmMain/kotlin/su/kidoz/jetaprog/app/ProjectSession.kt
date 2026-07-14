@@ -4,6 +4,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
@@ -28,6 +31,7 @@ import su.kidoz.jetaprog.configuration.discovery.ProjectDetector
 import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.state.EditorIntent
+import su.kidoz.jetaprog.editor.state.LineChangeMarker
 import su.kidoz.jetaprog.lint.JvmLintConfigurationStorage
 import su.kidoz.jetaprog.lint.engine.DefaultLintEngine
 import su.kidoz.jetaprog.lint.provider.LintProviderRegistry
@@ -65,6 +69,7 @@ import su.kidoz.jetaprog.project.state.CursorState
 import su.kidoz.jetaprog.project.state.TabState
 import su.kidoz.jetaprog.project.state.WorkspaceState
 import su.kidoz.jetaprog.settings.SettingsService
+import su.kidoz.jetaprog.vcs.GitLineChangeType
 
 /**
  * Encapsulates all project-scoped services for a single open project.
@@ -347,9 +352,55 @@ public class ProjectSession(
         // analysis becomes available once import completes.
         sessionScope.launch { loadKotlinClasspath() }
 
+        // Keep editor gutter VCS markers in sync with the active document and git state
+        sessionScope.launch { observeGitLineMarkers() }
+
         // Restore the previous editing session (open tabs, active tab, cursor)
         restoreWorkspaceState()
     }
+
+    private suspend fun observeGitLineMarkers() {
+        val activeDocument =
+            editorViewModel.state
+                .map { state ->
+                    val isDirty = state.tabs.getOrNull(state.activeTabIndex)?.isDirty ?: false
+                    state.activeDocumentUri?.value to isDirty
+                }.distinctUntilChanged()
+        val gitChanges =
+            gitViewModel.state
+                .map { it.staged to it.unstaged }
+                .distinctUntilChanged()
+
+        combine(activeDocument, gitChanges) { document, _ -> document }
+            .collect { (uri, isDirty) -> refreshGitLineMarkers(uri, isDirty) }
+    }
+
+    private suspend fun refreshGitLineMarkers(
+        uri: String?,
+        isDirty: Boolean,
+    ) {
+        if (uri == null || !uri.startsWith("file://")) {
+            editorViewModel.dispatch(EditorIntent.SetLineChangeMarkers(emptyMap()))
+            return
+        }
+        // While the document has unsaved edits the disk-based diff is stale;
+        // keep the last markers until the next save.
+        if (isDirty) return
+
+        val path = uri.removePrefix("file://").removePrefix("$projectPath/")
+        val markers =
+            gitViewModel
+                .lineChanges(path)
+                .associate { change -> change.line to change.type.toLineChangeMarker() }
+        editorViewModel.dispatch(EditorIntent.SetLineChangeMarkers(markers))
+    }
+
+    private fun GitLineChangeType.toLineChangeMarker(): LineChangeMarker =
+        when (this) {
+            GitLineChangeType.ADDED -> LineChangeMarker.ADDED
+            GitLineChangeType.MODIFIED -> LineChangeMarker.MODIFIED
+            GitLineChangeType.DELETED -> LineChangeMarker.DELETED
+        }
 
     private suspend fun restoreWorkspaceState() {
         val state = projectDirectoryService.loadWorkspaceState().getOrNull() ?: return

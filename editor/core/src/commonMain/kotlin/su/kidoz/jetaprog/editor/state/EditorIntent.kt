@@ -273,6 +273,13 @@ public sealed interface EditorIntent : Intent {
         val tokenTypes: List<String>,
     ) : EditorIntent
 
+    /**
+     * Set the VCS change markers of the active document, keyed by 0-based line index.
+     */
+    public data class SetLineChangeMarkers(
+        val markers: Map<Int, LineChangeMarker>,
+    ) : EditorIntent
+
     // Completion
 
     /**
