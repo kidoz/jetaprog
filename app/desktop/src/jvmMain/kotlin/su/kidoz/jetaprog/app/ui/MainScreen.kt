@@ -97,6 +97,7 @@ import su.kidoz.jetaprog.app.viewmodel.TerminalIntent
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.configuration.ConfigurationEffect
 import su.kidoz.jetaprog.configuration.ConfigurationIntent
+import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.editor.state.EditorEffect
 import su.kidoz.jetaprog.editor.state.EditorIntent
@@ -425,7 +426,22 @@ private fun MainScreenContent(
                     session.configurationViewModel.dispatch(ConfigurationIntent.SelectConfiguration(id))
                 },
                 onRunConfiguration = {
-                    session.configurationViewModel.dispatch(ConfigurationIntent.RunActive)
+                    val gradleSettings =
+                        configurationState.activeConfiguration?.settings as? ConfigurationSettings.Gradle
+                    if (gradleSettings != null) {
+                        // Route Gradle runs through the Build panel so output streams live
+                        session.gradleViewModel.dispatch(
+                            su.kidoz.jetaprog.build.gradle.state.GradleIntent.RunTask(
+                                taskPath = gradleSettings.taskPath,
+                                args =
+                                    gradleSettings.arguments +
+                                        gradleSettings.jvmArguments.map { "-D$it" },
+                            ),
+                        )
+                        openBuildTab()
+                    } else {
+                        session.configurationViewModel.dispatch(ConfigurationIntent.RunActive)
+                    }
                 },
                 onDebugConfiguration = {
                     session.configurationViewModel.dispatch(ConfigurationIntent.DebugActive)
