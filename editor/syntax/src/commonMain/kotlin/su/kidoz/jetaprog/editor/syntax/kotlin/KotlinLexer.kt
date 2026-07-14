@@ -377,7 +377,11 @@ public class KotlinLexer : Lexer {
 
         return Triple(
             Token(tokenType, baseOffset + pos, length, line),
-            if (closed) LexerState.Initial else state.copy(inBlockComment = true, blockCommentDepth = depth),
+            if (closed) {
+                LexerState.Initial
+            } else {
+                state.copy(inBlockComment = true, blockCommentDepth = depth, inDocComment = isDoc)
+            },
             length,
         )
     }
@@ -411,9 +415,10 @@ public class KotlinLexer : Lexer {
         }
 
         val closed = depth == 0
+        val tokenType = if (state.inDocComment) TokenType.COMMENT_DOC else TokenType.COMMENT_BLOCK
 
         return Triple(
-            Token(TokenType.COMMENT_BLOCK, baseOffset + pos, length, line),
+            Token(tokenType, baseOffset + pos, length, line),
             if (closed) LexerState.Initial else state.copy(blockCommentDepth = depth),
             length,
         )

@@ -34,6 +34,7 @@ import su.kidoz.jetaprog.editor.state.SignatureHelpState
 import su.kidoz.jetaprog.editor.state.SignatureInfo
 import su.kidoz.jetaprog.editor.state.SignatureParameter
 import su.kidoz.jetaprog.editor.syntax.Diagnostic
+import su.kidoz.jetaprog.editor.syntax.IncrementalTokenizer
 import su.kidoz.jetaprog.editor.syntax.Lexer
 import su.kidoz.jetaprog.editor.syntax.LexerRegistry
 import su.kidoz.jetaprog.editor.syntax.TokenList
@@ -95,6 +96,7 @@ public class EditorViewModel(
     private var lintJob: Job? = null
     private val lspOpenDocuments = mutableSetOf<String>()
     private val undoManagers = mutableMapOf<String, UndoManager>()
+    private val incrementalTokenizers = mutableMapOf<String, IncrementalTokenizer>()
     private val lspDiagnostics = mutableMapOf<String, List<Diagnostic>>()
     private val lintDiagnostics = mutableMapOf<String, List<Diagnostic>>()
 
@@ -412,7 +414,7 @@ public class EditorViewModel(
             }
 
             // Tokenize the content
-            val tokens = tokenize(content, languageId)
+            val tokens = tokenize(content, languageId, documentKey = uri.value)
 
             val newTab =
                 EditorTab(
@@ -566,6 +568,7 @@ public class EditorViewModel(
         }
 
         undoManagers.remove(tab.uri.value)
+        incrementalTokenizers.keys.removeAll { it.startsWith("${tab.uri.value}:") }
         clearDiagnostics(tab.uri)
         syncDocumentClosed(tab.uri, detectLanguage(tab.name))
         viewModelScope.launch {
@@ -578,6 +581,7 @@ public class EditorViewModel(
             syncDocumentClosed(tab.uri, detectLanguage(tab.name))
         }
         undoManagers.clear()
+        incrementalTokenizers.clear()
         lintJob?.cancel()
         lspDiagnostics.clear()
         lintDiagnostics.clear()
@@ -614,7 +618,7 @@ public class EditorViewModel(
                 }
 
             val languageId = detectLanguage(tab.name)
-            val tokens = tokenize(content, languageId)
+            val tokens = tokenize(content, languageId, documentKey = tab.uri.value)
 
             updateState {
                 copy(
@@ -659,7 +663,12 @@ public class EditorViewModel(
         newCursor: TextPosition? = null,
     ) {
         // Tokenize the new content
-        val tokens = tokenize(content, currentState.languageId)
+        val tokens =
+            tokenize(
+                content,
+                currentState.languageId,
+                documentKey = currentState.activeDocumentUri?.value,
+            )
 
         // Mark the current tab as dirty
         val updatedTabs =
@@ -1013,19 +1022,33 @@ public class EditorViewModel(
     private fun tokenize(
         content: String,
         languageId: LanguageId,
+        documentKey: String? = null,
     ): TokenList {
+        // Highlighting a very large document blocks the UI on every edit
+        if (content.length > MAX_HIGHLIGHT_CONTENT_LENGTH) {
+            layeredHighlighter.setBaseTokens(TokenList(emptyList()))
+            return TokenList(emptyList())
+        }
+
         val lexer = getLexerForLanguage(languageId)
+        if (lexer == null) {
+            layeredHighlighter.setBaseTokens(TokenList(emptyList()))
+            return TokenList(emptyList())
+        }
 
-        // Use the layered highlighter for token management
-        // This will:
-        // 1. Use hand-written lexers as base (Layer 1)
-        // 2. Apply Tree-sitter tokens when available (Layer 2)
-        // 3. Apply LSP semantic tokens when available (Layer 3)
-        layeredHighlighter.highlight(content, lexer, semanticTokenProvider = null)
-
-        // Return immediate lexer tokens for synchronous use
-        // The layered highlighter will asynchronously update with semantic tokens
-        return lexer?.tokenize(content) ?: TokenList(emptyList())
+        // Lex once — incrementally when the document is known — and feed the
+        // result to the layered highlighter, which overlays LSP semantic
+        // tokens when they arrive.
+        val tokens =
+            if (documentKey != null) {
+                incrementalTokenizers
+                    .getOrPut("$documentKey:${lexer.languageId}") { IncrementalTokenizer(lexer) }
+                    .tokenize(content)
+            } else {
+                lexer.tokenize(content)
+            }
+        layeredHighlighter.setBaseTokens(tokens)
+        return tokens
     }
 
     private fun getLexerForLanguage(languageId: LanguageId): Lexer? {
@@ -2073,5 +2096,11 @@ public class EditorViewModel(
          * Manual invocations (Ctrl+Space) are not debounced.
          */
         const val COMPLETION_DEBOUNCE_MS = 150L
+
+        /**
+         * Documents larger than this (in characters) are not syntax
+         * highlighted to keep editing responsive.
+         */
+        const val MAX_HIGHLIGHT_CONTENT_LENGTH = 1_000_000
     }
 }

@@ -81,6 +81,15 @@ public class LayeredHighlighter(
     }
 
     /**
+     * Set precomputed Layer 1 tokens (e.g. from incremental tokenization),
+     * merging any semantic tokens on top. Avoids re-lexing the content when
+     * the caller already has base tokens.
+     */
+    public fun setBaseTokens(tokens: TokenList) {
+        _tokens.value = mergeWithSemanticTokens(tokens)
+    }
+
+    /**
      * Apply semantic tokens received from LSP.
      *
      * @param data The encoded semantic token data

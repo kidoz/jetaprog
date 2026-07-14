@@ -13,6 +13,8 @@ public data class LexerState(
     val blockCommentDepth: Int = 0,
     /** String delimiter for raw strings (C++ R"delimiter(...)delimiter", Rust r#"..."#). */
     val stringDelimiter: String = "",
+    /** Whether the current block comment is a documentation comment. */
+    val inDocComment: Boolean = false,
 ) {
     public companion object {
         /** Initial lexer state. */
