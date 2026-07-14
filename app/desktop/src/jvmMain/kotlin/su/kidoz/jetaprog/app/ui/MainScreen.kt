@@ -19,10 +19,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.North
 import androidx.compose.material.icons.filled.Search
@@ -90,6 +88,7 @@ import su.kidoz.jetaprog.app.ui.panels.VcsMainArea
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
+import su.kidoz.jetaprog.app.ui.toolbar.BranchSelector
 import su.kidoz.jetaprog.app.ui.toolbar.RunConfigurationSelector
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeEffect
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeScreen
@@ -418,9 +417,12 @@ private fun MainScreenContent(
             MainToolbar(
                 projectName = currentProjectPath.substringAfterLast('/'),
                 branchName = gitState.branch,
+                branches = gitState.branches,
                 ahead = gitState.ahead,
                 onUpdate = { session.gitViewModel.pull() },
                 onPush = { session.gitViewModel.push() },
+                onCheckoutBranch = { name -> session.gitViewModel.checkoutBranch(name) },
+                onCreateBranch = { name -> session.gitViewModel.createBranch(name) },
                 configurationState = configurationState,
                 onSelectConfiguration = { id ->
                     session.configurationViewModel.dispatch(ConfigurationIntent.SelectConfiguration(id))
@@ -951,9 +953,12 @@ private fun IntelliJMenuBar(
 private fun MainToolbar(
     projectName: String,
     branchName: String?,
+    branches: List<su.kidoz.jetaprog.vcs.GitBranch>,
     ahead: Int,
     onUpdate: () -> Unit,
     onPush: () -> Unit,
+    onCheckoutBranch: (String) -> Unit,
+    onCreateBranch: (String) -> Unit,
     configurationState: su.kidoz.jetaprog.configuration.ConfigurationState,
     onSelectConfiguration: (su.kidoz.jetaprog.configuration.ConfigurationId) -> Unit,
     onRunConfiguration: () -> Unit,
@@ -988,11 +993,11 @@ private fun MainToolbar(
             ToolbarDivider()
             ToolbarChip(icon = Icons.Filled.Folder, iconTint = IntelliJColors.iconFolder, label = projectName)
             if (!branchName.isNullOrBlank()) {
-                ToolbarChip(
-                    icon = Icons.Filled.AccountTree,
-                    iconTint = IntelliJColors.success,
-                    label = branchName,
-                    trailingIcon = Icons.Filled.ExpandMore,
+                BranchSelector(
+                    branchName = branchName,
+                    branches = branches,
+                    onCheckoutBranch = onCheckoutBranch,
+                    onCreateBranch = onCreateBranch,
                 )
                 ToolbarDivider()
                 ToolbarAction(icon = Icons.Filled.South, label = "Update", onClick = onUpdate)
