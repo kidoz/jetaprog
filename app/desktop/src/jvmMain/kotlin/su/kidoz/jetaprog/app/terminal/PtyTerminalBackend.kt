@@ -28,7 +28,7 @@ public class PtyTerminalBackend private constructor(
                 launch(Dispatchers.IO) {
                     val buffer = CharArray(READ_BUFFER_SIZE)
                     InputStreamReader(process.inputStream, Charsets.UTF_8).use { reader ->
-                        while (isActive && process.isAlive) {
+                        while (isActive) {
                             val read = reader.read(buffer)
                             if (read < 0) break
                             if (read > 0) {
@@ -42,6 +42,7 @@ public class PtyTerminalBackend private constructor(
             val waitJob =
                 launch(Dispatchers.IO) {
                     val exitCode = process.waitFor()
+                    readJob.join()
                     trySend(TerminalBackendOutput.Exited(exitCode))
                     close()
                 }
@@ -131,6 +132,8 @@ internal object TerminalProcessConfiguration {
                 this[TERM_ENV] = DEFAULT_TERM
             }
             this[PATH_ENV] = augmentedPath(this[PATH_ENV])
+            this[TERM_PROGRAM_ENV] = TERM_PROGRAM_VALUE
+            this[COLORTERM_ENV] = TRUE_COLOR_VALUE
         }
 
     private fun loginShellCommand(shell: String): List<String> =
@@ -158,6 +161,8 @@ internal object TerminalProcessConfiguration {
     private const val COMSPEC_ENV = "COMSPEC"
     private const val TERM_ENV = "TERM"
     private const val PATH_ENV = "PATH"
+    private const val TERM_PROGRAM_ENV = "TERM_PROGRAM"
+    private const val COLORTERM_ENV = "COLORTERM"
     private const val DEFAULT_TERM = "xterm-256color"
     private const val DUMB_TERM = "dumb"
     private const val WINDOWS_OS_PREFIX = "win"
@@ -168,6 +173,8 @@ internal object TerminalProcessConfiguration {
     private const val FISH_SHELL = "fish"
     private const val LOGIN_FLAG = "-l"
     private const val FISH_LOGIN_FLAG = "--login"
+    private const val TERM_PROGRAM_VALUE = "JetaProg"
+    private const val TRUE_COLOR_VALUE = "truecolor"
 
     private val DEVELOPER_PATH_ENTRIES =
         listOf(

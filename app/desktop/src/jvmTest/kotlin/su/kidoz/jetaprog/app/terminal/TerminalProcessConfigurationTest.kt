@@ -55,6 +55,8 @@ class TerminalProcessConfigurationTest {
         val pathEntries = environment.getValue("PATH").split(File.pathSeparatorChar)
 
         assertEquals("xterm-256color", environment["TERM"])
+        assertEquals("JetaProg", environment["TERM_PROGRAM"])
+        assertEquals("truecolor", environment["COLORTERM"])
         assertEquals("/custom/bin", pathEntries.first())
         assertTrue("/opt/homebrew/bin" in pathEntries)
         assertTrue("/usr/local/bin" in pathEntries)
