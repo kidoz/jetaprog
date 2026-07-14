@@ -16,6 +16,7 @@ import su.kidoz.jetaprog.app.terminal.TerminalBackend
 import su.kidoz.jetaprog.app.terminal.TerminalBackendOutput
 import su.kidoz.jetaprog.app.terminal.TerminalEmulator
 import su.kidoz.jetaprog.app.terminal.TerminalScreenSnapshot
+import su.kidoz.jetaprog.app.terminal.TerminalStyledLine
 import su.kidoz.jetaprog.common.Disposable
 
 private const val DEFAULT_TERMINAL_COLUMNS = 120
@@ -38,6 +39,7 @@ public data class TerminalTab(
     val name: String,
     val workingDirectory: String,
     val lines: List<String> = emptyList(),
+    val styledLines: List<TerminalStyledLine> = emptyList(),
     val cursorLineIndex: Int = 0,
     val cursorColumn: Int = 0,
     val isCursorVisible: Boolean = true,
@@ -47,6 +49,10 @@ public data class TerminalTab(
     val columns: Int = DEFAULT_TERMINAL_COLUMNS,
     val rows: Int = DEFAULT_TERMINAL_ROWS,
     val applicationCursorKeys: Boolean = false,
+    val bracketedPaste: Boolean = false,
+    val focusReporting: Boolean = false,
+    val applicationKeypad: Boolean = false,
+    val terminalTitle: String? = null,
     val revision: Long = 0,
 )
 
@@ -74,6 +80,19 @@ public data class TerminalState(
                 tab.lines
             } else {
                 tab.lines.filter { it.contains(searchQuery, ignoreCase = true) }
+            }
+        }
+
+    /**
+     * Styled grid rows filtered with the same rules as [filteredLines].
+     */
+    public val filteredStyledLines: List<TerminalStyledLine>
+        get() {
+            val tab = activeTab ?: return emptyList()
+            return if (searchQuery.isEmpty()) {
+                tab.styledLines
+            } else {
+                tab.styledLines.filter { it.plainText.contains(searchQuery, ignoreCase = true) }
             }
         }
 }
@@ -253,6 +272,9 @@ public class TerminalViewModel(
 
         val backend = backendResult.getOrThrow()
         terminalBackends[tabId] = backend
+        _state.value.tabs.firstOrNull { it.id == tabId }?.let { tab ->
+            backend.resize(tab.columns, tab.rows)
+        }
 
         val job =
             viewModelScope.launch {
@@ -341,12 +363,19 @@ public class TerminalViewModel(
         }
     }
 
-    private fun applyTerminalOutput(
+    private suspend fun applyTerminalOutput(
         tabId: Int,
         text: String,
     ) {
-        val snapshot = terminalEmulators[tabId]?.accept(text) ?: return
+        val emulator = terminalEmulators[tabId] ?: return
+        val snapshot = emulator.accept(text)
         updateTab(tabId) { tab -> tab.applySnapshot(snapshot) }
+        val backend = terminalBackends[tabId]
+        if (backend != null && backend.isAlive) {
+            emulator.drainResponses().forEach { response ->
+                backend.write(response.encodeToByteArray())
+            }
+        }
     }
 
     private fun appendError(
@@ -364,10 +393,15 @@ public class TerminalViewModel(
     private fun TerminalTab.applySnapshot(snapshot: TerminalScreenSnapshot): TerminalTab =
         copy(
             lines = snapshot.lines,
+            styledLines = snapshot.styledLines,
             cursorLineIndex = snapshot.cursorLineIndex,
             cursorColumn = snapshot.cursorColumn,
             isCursorVisible = snapshot.isCursorVisible,
             applicationCursorKeys = snapshot.inputMode.applicationCursorKeys,
+            bracketedPaste = snapshot.inputMode.bracketedPaste,
+            focusReporting = snapshot.inputMode.focusReporting,
+            applicationKeypad = snapshot.inputMode.applicationKeypad,
+            terminalTitle = snapshot.title?.takeIf(String::isNotBlank),
             revision = revision + 1,
         )
 

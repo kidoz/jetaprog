@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
@@ -38,31 +39,49 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.terminal.TerminalColor
 import su.kidoz.jetaprog.app.terminal.TerminalInputMode
+import su.kidoz.jetaprog.app.terminal.TerminalStyledLine
+import su.kidoz.jetaprog.app.terminal.focusChanged
+import su.kidoz.jetaprog.app.terminal.paste
+import su.kidoz.jetaprog.app.terminal.terminalCellWidth
 import su.kidoz.jetaprog.app.terminal.toTerminalInput
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
@@ -70,6 +89,8 @@ import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.TerminalIntent
 import su.kidoz.jetaprog.app.viewmodel.TerminalState
 import su.kidoz.jetaprog.app.viewmodel.TerminalTab
+import java.awt.Toolkit
+import java.awt.datatransfer.DataFlavor
 
 /**
  * Terminal panel with tabs and search.
@@ -127,7 +148,7 @@ public fun TerminalPanel(
         if (activeTab != null) {
             TerminalContent(
                 tab = activeTab,
-                lines = state.filteredLines,
+                lines = state.filteredStyledLines,
                 showCursor = state.searchQuery.isEmpty() && activeTab.isCursorVisible,
                 onInput = { input -> onIntent(TerminalIntent.SendInput(input)) },
                 onViewportResize = { columns, rows -> onIntent(TerminalIntent.ResizeTerminal(columns, rows)) },
@@ -332,7 +353,7 @@ private fun TerminalTabItem(
         }
 
         Text(
-            text = tab.name,
+            text = tab.terminalTitle ?: tab.name,
             color = textColor,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -449,7 +470,7 @@ private fun SearchBar(
 @Composable
 private fun TerminalContent(
     tab: TerminalTab,
-    lines: List<String>,
+    lines: List<TerminalStyledLine>,
     showCursor: Boolean,
     onInput: (String) -> Unit,
     onViewportResize: (Int, Int) -> Unit,
@@ -505,28 +526,36 @@ private fun TerminalContent(
                     }
                 }.clickable { focusRequester.requestFocus() },
     ) {
-        LazyColumn(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(Spacing.sm.dp),
-            state = listState,
-        ) {
-            itemsIndexed(lines, key = { index, _ -> "line$index" }) { index, text ->
-                TerminalOutputLine(
-                    text = text,
-                    cursorColumn = if (showCursor && index == tab.cursorLineIndex) tab.cursorColumn else -1,
-                    horizontalScrollState = horizontalScrollState,
-                )
-            }
-            itemsIndexed(tab.errorMessages, key = { index, _ -> "error$index" }) { _, message ->
-                TerminalErrorLine(text = message, horizontalScrollState = horizontalScrollState)
+        SelectionContainer {
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(Spacing.sm.dp),
+                state = listState,
+            ) {
+                itemsIndexed(lines, key = { index, _ -> "line$index" }) { index, line ->
+                    TerminalOutputLine(
+                        line = line,
+                        cursorColumn = if (showCursor && index == tab.cursorLineIndex) tab.cursorColumn else -1,
+                        horizontalScrollState = horizontalScrollState,
+                    )
+                }
+                itemsIndexed(tab.errorMessages, key = { index, _ -> "error$index" }) { _, message ->
+                    TerminalErrorLine(text = message, horizontalScrollState = horizontalScrollState)
+                }
             }
         }
 
         TerminalInputCapture(
             onInput = onInput,
-            inputMode = TerminalInputMode(applicationCursorKeys = tab.applicationCursorKeys),
+            inputMode =
+                TerminalInputMode(
+                    applicationCursorKeys = tab.applicationCursorKeys,
+                    bracketedPaste = tab.bracketedPaste,
+                    focusReporting = tab.focusReporting,
+                    applicationKeypad = tab.applicationKeypad,
+                ),
             focusRequester = focusRequester,
             modifier = Modifier.align(Alignment.BottomStart),
         )
@@ -540,9 +569,22 @@ private fun TerminalInputCapture(
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
+    var inputValue by remember { mutableStateOf(TextFieldValue()) }
+    var hasFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(inputMode.focusReporting) {
+        if (inputMode.focusReporting && hasFocus) {
+            inputMode.focusChanged(focused = true)?.let(onInput)
+        }
+    }
     BasicTextField(
-        value = "",
-        onValueChange = {},
+        value = inputValue,
+        onValueChange = { value ->
+            inputValue = value
+            if (value.text.isNotEmpty() && value.composition == null) {
+                onInput(inputMode.paste(value.text))
+                inputValue = TextFieldValue()
+            }
+        },
         textStyle =
             TextStyle(
                 fontFamily = JetaProgFonts.codeFont,
@@ -555,8 +597,15 @@ private fun TerminalInputCapture(
             modifier
                 .size(1.dp)
                 .focusRequester(focusRequester)
-                .onPreviewKeyEvent { keyEvent ->
-                    val input = keyEvent.toTerminalInput(inputMode)
+                .onFocusChanged { focusState ->
+                    if (hasFocus != focusState.isFocused) {
+                        hasFocus = focusState.isFocused
+                        inputMode.focusChanged(focusState.isFocused)?.let(onInput)
+                    }
+                }.onPreviewKeyEvent { keyEvent ->
+                    val clipboardText =
+                        if (keyEvent.isTerminalPasteShortcut()) readClipboardText() else null
+                    val input = clipboardText?.let(inputMode::paste) ?: keyEvent.toTerminalInput(inputMode)
                     if (input != null) {
                         onInput(input)
                         true
@@ -578,35 +627,22 @@ private fun TerminalInputCapture(
  */
 @Composable
 private fun TerminalOutputLine(
-    text: String,
+    line: TerminalStyledLine,
     cursorColumn: Int,
     horizontalScrollState: ScrollState,
 ) {
     val lineModifier = Modifier.horizontalScroll(horizontalScrollState).padding(vertical = 1.dp)
-    if (cursorColumn >= 0) {
-        Text(
-            text = text.withCursor(cursorColumn),
-            fontFamily = JetaProgFonts.codeFont,
-            fontSize = TERMINAL_FONT_SIZE.sp,
-            lineHeight = TERMINAL_LINE_HEIGHT.em,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-            softWrap = false,
-            modifier = lineModifier,
-        )
-    } else {
-        Text(
-            text = text.ifEmpty { " " },
-            color = IntelliJColors.terminalForeground,
-            fontFamily = JetaProgFonts.codeFont,
-            fontSize = TERMINAL_FONT_SIZE.sp,
-            lineHeight = TERMINAL_LINE_HEIGHT.em,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-            softWrap = false,
-            modifier = lineModifier,
-        )
-    }
+    Text(
+        text = line.toAnnotatedString(cursorColumn),
+        color = IntelliJColors.terminalForeground,
+        fontFamily = JetaProgFonts.codeFont,
+        fontSize = TERMINAL_FONT_SIZE.sp,
+        lineHeight = TERMINAL_LINE_HEIGHT.em,
+        maxLines = 1,
+        overflow = TextOverflow.Clip,
+        softWrap = false,
+        modifier = lineModifier,
+    )
 }
 
 @Composable
@@ -627,23 +663,91 @@ private fun TerminalErrorLine(
     )
 }
 
-private fun String.withCursor(column: Int): AnnotatedString =
+private fun TerminalStyledLine.toAnnotatedString(cursorColumn: Int): AnnotatedString =
     buildAnnotatedString {
-        val safeColumn = column.coerceAtLeast(0)
-        val padded =
-            if (length <= safeColumn) {
-                this@withCursor + " ".repeat(safeColumn - length + 1)
-            } else {
-                this@withCursor
+        segments.forEach { segment ->
+            val start = length
+            append(segment.text)
+            val foreground = segment.style.foreground?.toComposeColor() ?: IntelliJColors.terminalForeground
+            val background = segment.style.background?.toComposeColor()
+            val effectiveForeground =
+                if (segment.style.isInverse) {
+                    background ?: IntelliJColors.terminalBackground
+                } else {
+                    foreground
+                }
+            val effectiveBackground =
+                if (segment.style.isInverse) {
+                    foreground
+                } else {
+                    background
+                }
+            val decorations =
+                buildList {
+                    if (segment.style.isUnderlined) add(TextDecoration.Underline)
+                    if (segment.style.isStrikethrough) add(TextDecoration.LineThrough)
+                }
+            addStyle(
+                SpanStyle(
+                    color =
+                        if (segment.style.isDim) {
+                            effectiveForeground.copy(
+                                alpha = DIM_TEXT_ALPHA,
+                            )
+                        } else {
+                            effectiveForeground
+                        },
+                    background = effectiveBackground ?: Color.Unspecified,
+                    fontWeight = if (segment.style.isBold) FontWeight.Bold else FontWeight.Normal,
+                    fontStyle = if (segment.style.isItalic) FontStyle.Italic else FontStyle.Normal,
+                    textDecoration = if (decorations.isEmpty()) null else TextDecoration.combine(decorations),
+                ),
+                start,
+                length,
+            )
+            segment.hyperlink?.let { destination ->
+                addLink(LinkAnnotation.Url(destination), start, length)
             }
-        append(padded)
-        addStyle(SpanStyle(color = IntelliJColors.terminalForeground), 0, padded.length)
-        addStyle(
-            SpanStyle(color = IntelliJColors.terminalBackground, background = IntelliJColors.terminalForeground),
-            safeColumn,
-            safeColumn + 1,
-        )
+        }
+        if (length == 0) append(" ")
+        if (cursorColumn >= 0) {
+            val cursorOffset = cursorTextOffset(toString(), cursorColumn)
+            while (length <= cursorOffset) append(" ")
+            addStyle(
+                SpanStyle(color = IntelliJColors.terminalBackground, background = IntelliJColors.terminalForeground),
+                cursorOffset,
+                cursorOffset + 1,
+            )
+        }
     }
+
+private fun cursorTextOffset(
+    text: String,
+    targetColumn: Int,
+): Int {
+    var offset = 0
+    var column = 0
+    while (offset < text.length && column < targetColumn) {
+        val codePoint = text.codePointAt(offset)
+        column += terminalCellWidth(codePoint)
+        offset += Character.charCount(codePoint)
+    }
+    return offset
+}
+
+private fun TerminalColor.toComposeColor(): Color = Color(red, green, blue)
+
+private fun androidx.compose.ui.input.key.KeyEvent.isTerminalPasteShortcut(): Boolean =
+    type == KeyEventType.KeyDown &&
+        (
+            (key == Key.V && (isMetaPressed || (isCtrlPressed && isShiftPressed))) ||
+                (key == Key.Insert && isShiftPressed)
+        )
+
+private fun readClipboardText(): String? =
+    runCatching {
+        Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String
+    }.getOrNull()
 
 private data class TerminalCellSize(
     val width: Int,
@@ -652,3 +756,4 @@ private data class TerminalCellSize(
 
 private const val TERMINAL_FONT_SIZE = 13
 private const val TERMINAL_LINE_HEIGHT = 1.25f
+private const val DIM_TEXT_ALPHA = 0.65f
