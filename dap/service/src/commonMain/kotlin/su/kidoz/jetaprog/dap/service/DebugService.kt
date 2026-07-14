@@ -154,12 +154,32 @@ public class DebugService(
             is ConfigurationSettings.CargoTest,
             -> getRustDebugAdapter(workspacePath)
 
+            is ConfigurationSettings.Gradle -> getJvmDebugAdapter(workspacePath)
+
             is ConfigurationSettings.Application -> getGenericDebugAdapter(workspacePath)
 
             is ConfigurationSettings.DotNetDebug -> getDotNetDebugAdapter(settings, workspacePath)
 
             else -> null
         }
+
+    /**
+     * The bundled JDI-based adapter, launched as a child JVM reusing this
+     * process's runtime and classpath.
+     */
+    private fun getJvmDebugAdapter(workspacePath: String): DebugAdapterConfig {
+        val javaBinary = File(File(System.getProperty("java.home"), "bin"), "java").absolutePath
+        return DebugAdapterConfig(
+            command =
+                listOf(
+                    javaBinary,
+                    "-cp",
+                    System.getProperty("java.class.path"),
+                    JVM_ADAPTER_MAIN_CLASS,
+                ),
+            workingDirectory = workspacePath,
+        )
+    }
 
     private fun getPythonDebugAdapter(workspacePath: String): DebugAdapterConfig =
         DebugAdapterConfig(
@@ -191,6 +211,8 @@ public class DebugService(
 
     private fun getAdapterId(configuration: RunConfiguration): String =
         when (configuration.settings) {
+            is ConfigurationSettings.Gradle -> "jetaprog-jvm"
+
             is ConfigurationSettings.Python -> "debugpy"
 
             is ConfigurationSettings.CargoRun,
@@ -210,6 +232,10 @@ public class DebugService(
         val settings = configuration.settings
 
         return when (settings) {
+            is ConfigurationSettings.Gradle -> {
+                buildGradleLaunchArgs(settings, workspacePath)
+            }
+
             is ConfigurationSettings.Python -> {
                 Result.success(
                     LaunchRequestArguments(
@@ -258,6 +284,49 @@ public class DebugService(
                 )
             }
         }
+    }
+
+    /**
+     * Launches the Gradle task with `--debug-jvm` so the forked JVM waits on
+     * the default JDWP port, then lets the adapter attach to it.
+     */
+    private fun buildGradleLaunchArgs(
+        settings: ConfigurationSettings.Gradle,
+        workspacePath: String,
+    ): Result<LaunchRequestArguments> {
+        val wrapper = File(workspacePath, "gradlew")
+        val gradleCommand = if (wrapper.canExecute()) wrapper.absolutePath else "gradle"
+        return Result.success(
+            LaunchRequestArguments(
+                program = gradleCommand,
+                args =
+                    listOf(settings.taskPath, "--debug-jvm") +
+                        settings.arguments +
+                        settings.jvmArguments.map { "-D$it" },
+                cwd = workspacePath,
+                attachPort = GRADLE_JDWP_PORT,
+                attachHost = "127.0.0.1",
+                attachTimeoutMs = GRADLE_ATTACH_TIMEOUT_MS,
+                sourceRoots = discoverSourceRoots(workspacePath),
+            ),
+        )
+    }
+
+    /**
+     * Collects conventional JVM source roots (`src/<sourceSet>/kotlin|java`)
+     * so the adapter can map compiled locations back to files.
+     */
+    private fun discoverSourceRoots(workspacePath: String): List<String> {
+        val root = File(workspacePath)
+        return root
+            .walkTopDown()
+            .onEnter { directory ->
+                directory == root ||
+                    (directory.name !in EXCLUDED_DIRECTORIES && !directory.name.startsWith("."))
+            }.maxDepth(SOURCE_ROOT_SCAN_DEPTH)
+            .filter { it.isDirectory && it.name in SOURCE_ROOT_NAMES && it.parentFile?.parentFile?.name == "src" }
+            .map { it.absolutePath }
+            .toList()
     }
 
     private fun buildDotNetLaunchArgs(
@@ -326,5 +395,17 @@ public class DebugService(
     private companion object {
         private val targetFrameworkRegex = Regex("<TargetFramework>\\s*([^<\\s]+)\\s*</TargetFramework>")
         private val targetFrameworksRegex = Regex("<TargetFrameworks>\\s*([^<\\s]+)\\s*</TargetFrameworks>")
+
+        private const val JVM_ADAPTER_MAIN_CLASS = "su.kidoz.jetaprog.dap.jvm.JvmDebugAdapterMainKt"
+
+        /** Default port used by Gradle's `--debug-jvm`. */
+        private const val GRADLE_JDWP_PORT = 5005
+
+        /** Gradle may compile before the debugged JVM starts listening. */
+        private const val GRADLE_ATTACH_TIMEOUT_MS = 300_000L
+
+        private const val SOURCE_ROOT_SCAN_DEPTH = 5
+        private val SOURCE_ROOT_NAMES = setOf("kotlin", "java")
+        private val EXCLUDED_DIRECTORIES = setOf("build", "node_modules", "out", "target")
     }
 }

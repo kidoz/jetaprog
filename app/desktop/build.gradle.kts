@@ -38,6 +38,7 @@ kotlin {
                 implementation(projects.lsp.protocol)
                 implementation(project(":lsp:server"))
                 implementation(project(":dap:service"))
+                runtimeOnly(project(":dap:jvm"))
 
                 implementation(compose.desktop.currentOs)
                 implementation(compose.material3)

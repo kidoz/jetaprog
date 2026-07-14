@@ -61,6 +61,7 @@ include(":lsp:server")
 
 // DAP
 include(":dap:client")
+include(":dap:jvm")
 include(":dap:protocol")
 include(":dap:service")
 

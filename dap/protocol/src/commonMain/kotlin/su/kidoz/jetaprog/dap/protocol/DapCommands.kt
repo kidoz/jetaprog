@@ -69,6 +69,14 @@ public data class LaunchRequestArguments(
     val stopAtEntry: Boolean? = null,
     /** Console type (integratedTerminal, externalTerminal, internalConsole). */
     val console: String? = null,
+    /** JDWP port the adapter attaches to after spawning the program (JVM adapter). */
+    val attachPort: Int? = null,
+    /** JDWP host the adapter attaches to (JVM adapter). */
+    val attachHost: String? = null,
+    /** Timeout in milliseconds for the JDWP attach (JVM adapter). */
+    val attachTimeoutMs: Long? = null,
+    /** Source roots used to resolve compiled locations back to files (JVM adapter). */
+    val sourceRoots: List<String>? = null,
 )
 
 /**
