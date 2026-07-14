@@ -47,6 +47,9 @@ class TerminalInputMapperTest {
         assertEquals("\u0015", terminalInputForKey(Key.U, KeyEventType.KeyDown, isCtrlPressed = true))
         assertEquals("\u0017", terminalInputForKey(Key.W, KeyEventType.KeyDown, isCtrlPressed = true))
         assertEquals("\u001a", terminalInputForKey(Key.Z, KeyEventType.KeyDown, isCtrlPressed = true))
+        assertEquals("\u0007", terminalInputForKey(Key.G, KeyEventType.KeyDown, isCtrlPressed = true))
+        assertEquals("\u000f", terminalInputForKey(Key.O, KeyEventType.KeyDown, isCtrlPressed = true))
+        assertEquals("\u0014", terminalInputForKey(Key.T, KeyEventType.KeyDown, isCtrlPressed = true))
     }
 
     @Test
@@ -66,6 +69,50 @@ class TerminalInputMapperTest {
     fun modifierOnlyKeysAreIgnoredEvenWithPlaceholderCodePoint() {
         assertNull(terminalInputForKey(Key.ShiftLeft, KeyEventType.KeyDown, utf16CodePoint = UNKNOWN_CODE_POINT))
         assertNull(terminalInputForKey(Key.ShiftRight, KeyEventType.KeyDown, utf16CodePoint = UNKNOWN_CODE_POINT))
+    }
+
+    @Test
+    fun shiftTabAndModifiedArrowsUseXtermSequences() {
+        assertEquals("\u001b[Z", terminalInputForKey(Key.Tab, KeyEventType.KeyDown, isShiftPressed = true))
+        assertEquals(
+            "\u001b[1;6A",
+            terminalInputForKey(
+                Key.DirectionUp,
+                KeyEventType.KeyDown,
+                isCtrlPressed = true,
+                isShiftPressed = true,
+            ),
+        )
+    }
+
+    @Test
+    fun altPrintableInputUsesEscapePrefix() {
+        val input =
+            terminalInputForKey(
+                Key.A,
+                KeyEventType.KeyDown,
+                utf16CodePoint = 'a'.code,
+                isAltPressed = true,
+            )
+
+        assertEquals("\u001ba", input)
+    }
+
+    @Test
+    fun supplementaryInputPreservesSurrogatePair() {
+        val input = terminalInputForKey(Key.Unknown, KeyEventType.KeyDown, utf16CodePoint = 0x1f680)
+
+        assertEquals("🚀", input)
+    }
+
+    @Test
+    fun bracketedPasteAndFocusReportsFollowTerminalModes() {
+        val mode = TerminalInputMode(bracketedPaste = true, focusReporting = true)
+
+        assertEquals("\u001b[200~one\ntwo\u001b[201~", mode.paste("one\ntwo"))
+        assertEquals("\u001b[I", mode.focusChanged(focused = true))
+        assertEquals("\u001b[O", mode.focusChanged(focused = false))
+        assertNull(TerminalInputMode().focusChanged(focused = true))
     }
 
     private companion object {
