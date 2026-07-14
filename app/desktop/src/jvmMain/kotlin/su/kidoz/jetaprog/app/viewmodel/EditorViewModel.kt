@@ -50,9 +50,11 @@ import su.kidoz.jetaprog.editor.syntax.vala.ValaLexer
 import su.kidoz.jetaprog.editor.syntax.xml.XmlLexer
 import su.kidoz.jetaprog.editor.undo.EditSnapshot
 import su.kidoz.jetaprog.editor.undo.UndoManager
+import su.kidoz.jetaprog.lint.integration.DiagnosticConverter
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.plugins.api.services.FormattingOptions
 import su.kidoz.jetaprog.plugins.api.services.LanguageDiagnostic
+import su.kidoz.jetaprog.plugins.api.services.LintService
 import su.kidoz.jetaprog.plugins.api.services.SignatureHelpContext
 import su.kidoz.jetaprog.plugins.api.services.SignatureHelpTriggerKind
 import su.kidoz.jetaprog.plugins.kotlin.KotlinFormatter
@@ -76,6 +78,7 @@ import java.io.File
  * @param navigationService Service for code navigation features.
  * @param languageRegistry Registry for language features (completion, hover, etc.).
  * @param activationEvents Service for firing activation triggers when documents open.
+ * @param lintService Service running registered lint rules to produce editor diagnostics.
  */
 public class EditorViewModel(
     private val fileSystem: FileSystem,
@@ -83,13 +86,17 @@ public class EditorViewModel(
     private val navigationService: NavigationService? = null,
     private val languageRegistry: LanguageRegistry? = null,
     private val activationEvents: ActivationEventService? = null,
+    private val lintService: LintService? = null,
 ) : MviViewModel<EditorIntent, EditorState, EditorEffect>(EditorState()) {
     private val completionController = CompletionController()
     private var completionJob: Job? = null
     private var hoverJob: Job? = null
     private var signatureHelpJob: Job? = null
+    private var lintJob: Job? = null
     private val lspOpenDocuments = mutableSetOf<String>()
     private val undoManagers = mutableMapOf<String, UndoManager>()
+    private val lspDiagnostics = mutableMapOf<String, List<Diagnostic>>()
+    private val lintDiagnostics = mutableMapOf<String, List<Diagnostic>>()
 
     /**
      * Layered highlighter that combines multiple token sources.
@@ -128,10 +135,9 @@ public class EditorViewModel(
         }
 
         languageRegistry?.onDiagnostics { uri, diagnostics ->
+            lspDiagnostics[uri] = diagnostics.map { it.toEditorDiagnostic() }
             if (uri != currentState.activeDocumentUri?.value) return@onDiagnostics
-            updateState {
-                copy(diagnostics = diagnostics.map { it.toEditorDiagnostic() })
-            }
+            refreshActiveDiagnostics()
         }
 
         // Observe settings changes
@@ -422,6 +428,7 @@ public class EditorViewModel(
             }
 
             syncDocumentOpened(uri, languageId, content)
+            scheduleLint(uri, languageId, content, LintTrigger.OPEN)
             emitEffect(EditorEffect.FileOpened(path))
         } catch (e: Exception) {
             updateState {
@@ -457,6 +464,7 @@ public class EditorViewModel(
 
             emitEffect(EditorEffect.FileSaved(path))
             syncDocumentSaved(uri, languageId, currentState.content)
+            scheduleLint(uri, languageId, currentState.content, LintTrigger.SAVE)
             emitEffect(EditorEffect.ShowNotification("File saved", NotificationType.SUCCESS))
         } catch (e: Exception) {
             updateState { copy(isSaving = false, error = "Failed to save: ${e.message}") }
@@ -495,6 +503,7 @@ public class EditorViewModel(
 
             syncDocumentOpened(uri, languageId, currentState.content)
             syncDocumentSaved(uri, languageId, currentState.content)
+            scheduleLint(uri, languageId, currentState.content, LintTrigger.SAVE)
             emitEffect(EditorEffect.FileSaved(path))
         } catch (e: Exception) {
             updateState { copy(isSaving = false) }
@@ -535,6 +544,7 @@ public class EditorViewModel(
         }
 
         undoManagers.remove(tab.uri.value)
+        clearDiagnostics(tab.uri)
         syncDocumentClosed(tab.uri, detectLanguage(tab.name))
         viewModelScope.launch {
             emitEffect(EditorEffect.FileClosed(tab.uri.value))
@@ -546,6 +556,9 @@ public class EditorViewModel(
             syncDocumentClosed(tab.uri, detectLanguage(tab.name))
         }
         undoManagers.clear()
+        lintJob?.cancel()
+        lspDiagnostics.clear()
+        lintDiagnostics.clear()
         updateState {
             copy(
                 tabs = emptyList(),
@@ -587,12 +600,13 @@ public class EditorViewModel(
                     content = content,
                     languageId = languageId,
                     tokens = tokens,
-                    diagnostics = emptyList(),
+                    diagnostics = diagnosticsFor(tab.uri),
                     isLoading = false,
                 )
             }
 
             syncDocumentOpened(tab.uri, languageId, content)
+            scheduleLint(tab.uri, languageId, content, LintTrigger.OPEN)
         } catch (e: Exception) {
             updateState { copy(isLoading = false, error = "Failed to load file: ${e.message}") }
         }
@@ -646,6 +660,7 @@ public class EditorViewModel(
 
         currentState.activeDocumentUri?.let { uri ->
             syncDocumentChanged(uri, currentState.languageId, content)
+            scheduleLint(uri, currentState.languageId, content, LintTrigger.TYPE)
         }
 
         refreshFindMatches()
@@ -1938,6 +1953,82 @@ public class EditorViewModel(
         viewModelScope.launch {
             registry.notifyDocumentClosed(uriValue, languageId.value)
         }
+    }
+
+    // ========================================================================
+    // Lint Diagnostics
+    // ========================================================================
+
+    /**
+     * What caused a lint pass to be requested, gating it on the matching
+     * configuration flag.
+     */
+    private enum class LintTrigger {
+        OPEN,
+        TYPE,
+        SAVE,
+    }
+
+    /**
+     * Publish the merged LSP and lint diagnostics for the active document.
+     */
+    private fun refreshActiveDiagnostics() {
+        val uri = currentState.activeDocumentUri?.value ?: return
+        updateState {
+            copy(diagnostics = lspDiagnostics[uri].orEmpty() + lintDiagnostics[uri].orEmpty())
+        }
+    }
+
+    private fun diagnosticsFor(uri: DocumentUri): List<Diagnostic> =
+        lspDiagnostics[uri.value].orEmpty() + lintDiagnostics[uri.value].orEmpty()
+
+    /**
+     * Run the lint engine against the document and surface results as diagnostics.
+     *
+     * Skipped when an LSP server already provides diagnostics for the language,
+     * to avoid reporting the same issues twice.
+     */
+    private fun scheduleLint(
+        uri: DocumentUri,
+        languageId: LanguageId,
+        content: String,
+        trigger: LintTrigger,
+    ) {
+        val service = lintService ?: return
+        val path = uri.toPath() ?: return
+        val configuration = service.getConfiguration()
+
+        if (!configuration.enabled || configuration.isExcluded(path)) return
+        if (languageRegistry?.hasLspServer(languageId.value) == true) return
+        val triggerEnabled =
+            when (trigger) {
+                LintTrigger.OPEN -> true
+                LintTrigger.TYPE -> configuration.lintOnType
+                LintTrigger.SAVE -> configuration.lintOnSave
+            }
+        if (!triggerEnabled) return
+
+        lintJob?.cancel()
+        lintJob =
+            viewModelScope.launch {
+                // Debounce while typing so analysis runs on settled content
+                if (trigger == LintTrigger.TYPE) {
+                    delay(configuration.lintOnTypeDelayMs)
+                }
+                val results =
+                    withContext(Dispatchers.Default) {
+                        service.lintFile(uri.value, languageId.value, content)
+                    }
+                lintDiagnostics[uri.value] = DiagnosticConverter.toDiagnostics(results)
+                if (uri.value == currentState.activeDocumentUri?.value) {
+                    refreshActiveDiagnostics()
+                }
+            }
+    }
+
+    private fun clearDiagnostics(uri: DocumentUri) {
+        lspDiagnostics.remove(uri.value)
+        lintDiagnostics.remove(uri.value)
     }
 
     private fun LanguageDiagnostic.toEditorDiagnostic(): Diagnostic =

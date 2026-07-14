@@ -53,6 +53,11 @@ kotlin {
                 implementation(libs.pty4j)
             }
         }
+        jvmTest {
+            dependencies {
+                implementation(libs.bundles.testing)
+            }
+        }
     }
 }
 

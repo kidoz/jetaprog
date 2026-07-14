@@ -26,6 +26,7 @@ import su.kidoz.jetaprog.configuration.discovery.ConfigurationDiscovery
 import su.kidoz.jetaprog.configuration.discovery.ProjectDetector
 import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.editor.navigation.NavigationService
+import su.kidoz.jetaprog.lint.JvmLintConfigurationStorage
 import su.kidoz.jetaprog.lint.engine.DefaultLintEngine
 import su.kidoz.jetaprog.lint.provider.LintProviderRegistry
 import su.kidoz.jetaprog.lsp.server.DefaultServerRegistry
@@ -152,6 +153,10 @@ public class ProjectSession(
         ContributionRegistryImpl(commandService, sessionScope)
     }
 
+    private val lintService: LintServiceImpl by lazy {
+        LintServiceImpl(lintEngine, lintProviderRegistry)
+    }
+
     private val serviceContainer: ServiceContainer by lazy {
         ServiceContainer(
             workspace = workspaceService,
@@ -160,7 +165,7 @@ public class ProjectSession(
             commands = commandService,
             notifications = NotificationServiceImpl(),
             terminal = TerminalServiceImpl(processExecutor, projectPath),
-            lint = LintServiceImpl(lintEngine, lintProviderRegistry),
+            lint = lintService,
             storageFactory = { pluginId -> StorageServiceImpl(pluginId, projectPath) },
             activationEvents = activationEventService,
             settingsAccess = SettingsAccessServiceImpl(settingsService),
@@ -194,6 +199,7 @@ public class ProjectSession(
             navigationService = navigationService,
             languageRegistry = languageRegistry,
             activationEvents = activationEventService,
+            lintService = lintService,
         )
     }
 
@@ -295,6 +301,11 @@ public class ProjectSession(
      * Registers bundled plugins, activates eager ones, and starts listening for activation triggers.
      */
     public suspend fun initialize() {
+        // Load the project lint configuration (.jetaprog/lint.json)
+        JvmLintConfigurationStorage()
+            .load(projectPath)
+            .onSuccess { lintService.setConfiguration(it) }
+
         // Initialize Gradle with current project
         gradleViewModel.dispatch(GradleIntent.Initialize(projectPath))
 

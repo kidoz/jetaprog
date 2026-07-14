@@ -218,6 +218,11 @@ public class LanguageRegistry(
     }
 
     /**
+     * Whether a running LSP server is registered for the given language.
+     */
+    public fun hasLspServer(languageId: String): Boolean = lspServers.values.any { it.config.languageId == languageId }
+
+    /**
      * Add a diagnostics listener.
      */
     public fun onDiagnostics(listener: DiagnosticsListener): Disposable {
