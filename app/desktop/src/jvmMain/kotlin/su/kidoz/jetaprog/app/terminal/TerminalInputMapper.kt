@@ -33,7 +33,10 @@ internal fun TerminalInputMode.focusChanged(focused: Boolean): String? =
 /**
  * Converts Compose key events into byte-oriented terminal input sequences.
  */
-internal fun KeyEvent.toTerminalInput(mode: TerminalInputMode = TerminalInputMode()): String? =
+internal fun KeyEvent.toTerminalInput(
+    mode: TerminalInputMode = TerminalInputMode(),
+    includePlainText: Boolean = true,
+): String? =
     terminalInputForKey(
         key = key,
         type = type,
@@ -43,6 +46,7 @@ internal fun KeyEvent.toTerminalInput(mode: TerminalInputMode = TerminalInputMod
         isMetaPressed = isMetaPressed,
         isShiftPressed = isShiftPressed,
         mode = mode,
+        includePlainText = includePlainText,
     )
 
 internal fun terminalInputForKey(
@@ -54,6 +58,7 @@ internal fun terminalInputForKey(
     isMetaPressed: Boolean = false,
     isShiftPressed: Boolean = false,
     mode: TerminalInputMode = TerminalInputMode(),
+    includePlainText: Boolean = true,
 ): String? {
     if (type != KeyEventType.KeyDown) return null
     if (key.isModifierOnlyKey()) return null
@@ -89,7 +94,7 @@ internal fun terminalInputForKey(
         Key.F10 -> functionKey("[21~", 21, isShiftPressed, isAltPressed, isCtrlPressed)
         Key.F11 -> functionKey("[23~", 23, isShiftPressed, isAltPressed, isCtrlPressed)
         Key.F12 -> functionKey("[24~", 24, isShiftPressed, isAltPressed, isCtrlPressed)
-        else -> printableInput(utf16CodePoint, isCtrlPressed, isAltPressed, isMetaPressed)
+        else -> printableInput(utf16CodePoint, isCtrlPressed, isAltPressed, isMetaPressed, includePlainText)
     }
 }
 
@@ -185,10 +190,12 @@ private fun printableInput(
     isCtrlPressed: Boolean,
     isAltPressed: Boolean,
     isMetaPressed: Boolean,
+    includePlainText: Boolean,
 ): String? =
     when {
         isMetaPressed || isCtrlPressed -> null
         utf16CodePoint == 0 -> null
+        !includePlainText && !isAltPressed -> null
         else -> (if (isAltPressed) "\u001b" else "") + String(Character.toChars(utf16CodePoint))
     }
 

@@ -581,7 +581,7 @@ private fun TerminalInputCapture(
         onValueChange = { value ->
             inputValue = value
             if (value.text.isNotEmpty() && value.composition == null) {
-                onInput(inputMode.paste(value.text))
+                onInput(value.text)
                 inputValue = TextFieldValue()
             }
         },
@@ -605,7 +605,9 @@ private fun TerminalInputCapture(
                 }.onPreviewKeyEvent { keyEvent ->
                     val clipboardText =
                         if (keyEvent.isTerminalPasteShortcut()) readClipboardText() else null
-                    val input = clipboardText?.let(inputMode::paste) ?: keyEvent.toTerminalInput(inputMode)
+                    val input =
+                        clipboardText?.let(inputMode::paste)
+                            ?: keyEvent.toTerminalInput(inputMode, includePlainText = false)
                     if (input != null) {
                         onInput(input)
                         true

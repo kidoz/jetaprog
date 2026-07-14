@@ -60,6 +60,19 @@ class TerminalInputMapperTest {
     }
 
     @Test
+    fun printableInputCanBeDeferredToTextField() {
+        val input =
+            terminalInputForKey(
+                Key.W,
+                KeyEventType.KeyDown,
+                utf16CodePoint = 'w'.code,
+                includePlainText = false,
+            )
+
+        assertNull(input)
+    }
+
+    @Test
     fun keyUpAndModifiedPrintableInputAreIgnored() {
         assertNull(terminalInputForKey(Key.A, KeyEventType.KeyUp, utf16CodePoint = 'a'.code))
         assertNull(terminalInputForKey(Key.A, KeyEventType.KeyDown, utf16CodePoint = 'a'.code, isMetaPressed = true))
