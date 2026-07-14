@@ -19,6 +19,7 @@ import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
 import su.kidoz.jetaprog.build.gradle.GradleTaskRunner
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.common.Disposable
+import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.configuration.ConfigurationIntent
 import su.kidoz.jetaprog.configuration.ConfigurationManager
 import su.kidoz.jetaprog.configuration.JvmConfigurationStorage
@@ -26,6 +27,7 @@ import su.kidoz.jetaprog.configuration.discovery.ConfigurationDiscovery
 import su.kidoz.jetaprog.configuration.discovery.ProjectDetector
 import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.editor.navigation.NavigationService
+import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.lint.JvmLintConfigurationStorage
 import su.kidoz.jetaprog.lint.engine.DefaultLintEngine
 import su.kidoz.jetaprog.lint.provider.LintProviderRegistry
@@ -57,6 +59,11 @@ import su.kidoz.jetaprog.plugins.rust.RustPlugin
 import su.kidoz.jetaprog.plugins.support.LanguageRegistry
 import su.kidoz.jetaprog.plugins.support.LanguageServerManager
 import su.kidoz.jetaprog.plugins.vala.ValaPlugin
+import su.kidoz.jetaprog.project.service.JvmFileOperations
+import su.kidoz.jetaprog.project.service.ProjectDirectoryService
+import su.kidoz.jetaprog.project.state.CursorState
+import su.kidoz.jetaprog.project.state.TabState
+import su.kidoz.jetaprog.project.state.WorkspaceState
 import su.kidoz.jetaprog.settings.SettingsService
 
 /**
@@ -222,6 +229,12 @@ public class ProjectSession(
         GradleImportCoordinator(projectPath = projectPath, fileSystem = fileSystem)
 
     /**
+     * Persistence for the `.jetaprog` project directory (workspace state, config files).
+     */
+    private val projectDirectoryService: ProjectDirectoryService =
+        ProjectDirectoryService(projectPath, JvmFileOperations())
+
+    /**
      * The Kotlin compile classpath derived from the Gradle import, populated
      * asynchronously after the project opens. Fed to the Kotlin plugin for
      * classpath-aware analysis.
@@ -333,6 +346,63 @@ public class ProjectSession(
         // Resolve the Kotlin classpath from Gradle in the background so semantic
         // analysis becomes available once import completes.
         sessionScope.launch { loadKotlinClasspath() }
+
+        // Restore the previous editing session (open tabs, active tab, cursor)
+        restoreWorkspaceState()
+    }
+
+    private suspend fun restoreWorkspaceState() {
+        val state = projectDirectoryService.loadWorkspaceState().getOrNull() ?: return
+        if (state.openTabs.isEmpty()) return
+
+        val activeTab = state.openTabs.getOrNull(state.activeTabIndex)
+        editorViewModel.dispatch(
+            EditorIntent.RestoreSession(
+                filePaths = state.openTabs.map { tab -> resolveWorkspacePath(tab.filePath) },
+                activeTabIndex = state.activeTabIndex,
+                cursor =
+                    activeTab?.cursor?.let {
+                        TextPosition(it.line.coerceAtLeast(0), it.column.coerceAtLeast(0))
+                    },
+            ),
+        )
+    }
+
+    private fun resolveWorkspacePath(filePath: String): String =
+        if (filePath.startsWith("/")) filePath else "$projectPath/$filePath"
+
+    private suspend fun saveWorkspaceState() {
+        val editorState = editorViewModel.state.value
+        val existing =
+            projectDirectoryService
+                .loadWorkspaceState()
+                .getOrDefault(WorkspaceState())
+        val openTabs =
+            editorState.tabs.mapIndexedNotNull { index, tab ->
+                val uri = tab.uri.value
+                if (!uri.startsWith("file://")) return@mapIndexedNotNull null
+                val path = uri.removePrefix("file://")
+                val cursor =
+                    if (index == editorState.activeTabIndex) {
+                        CursorState(
+                            line = editorState.cursor.position.line,
+                            column = editorState.cursor.position.column,
+                        )
+                    } else {
+                        CursorState()
+                    }
+                TabState(
+                    filePath = path.removePrefix("$projectPath/"),
+                    cursor = cursor,
+                    isDirty = tab.isDirty,
+                )
+            }
+        projectDirectoryService.saveWorkspaceState(
+            existing.copy(
+                openTabs = openTabs,
+                activeTabIndex = editorState.activeTabIndex,
+            ),
+        )
     }
 
     private suspend fun loadKotlinClasspath() {
@@ -347,6 +417,7 @@ public class ProjectSession(
      * Shuts down all project-scoped services in order.
      */
     public suspend fun shutdown() {
+        saveWorkspaceState()
         pluginManager.shutdown()
         embeddedServerRegistry.shutdownAll()
         languageRegistry.shutdown()

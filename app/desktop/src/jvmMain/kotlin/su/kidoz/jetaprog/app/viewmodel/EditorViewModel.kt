@@ -154,6 +154,10 @@ public class EditorViewModel(
                 openFile(intent.path)
             }
 
+            is EditorIntent.RestoreSession -> {
+                restoreSession(intent)
+            }
+
             is EditorIntent.Save -> {
                 saveCurrentFile()
             }
@@ -439,6 +443,20 @@ public class EditorViewModel(
             }
             emitEffect(EditorEffect.ShowError("Failed to open file: ${e.message}"))
         }
+    }
+
+    private suspend fun restoreSession(intent: EditorIntent.RestoreSession) {
+        val existingFiles =
+            intent.filePaths.withIndex().filter { (_, path) ->
+                withContext(Dispatchers.IO) { fileSystem.exists(path) }
+            }
+        existingFiles.forEach { (_, path) -> openFile(path) }
+
+        val activeIndex = existingFiles.indexOfFirst { it.index == intent.activeTabIndex }
+        if (activeIndex >= 0) {
+            switchTab(activeIndex)
+        }
+        intent.cursor?.let { moveCursor(it) }
     }
 
     private suspend fun saveCurrentFile() {

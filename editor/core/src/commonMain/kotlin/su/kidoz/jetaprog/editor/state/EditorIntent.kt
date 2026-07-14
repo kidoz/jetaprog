@@ -18,6 +18,19 @@ public sealed interface EditorIntent : Intent {
     ) : EditorIntent
 
     /**
+     * Restore the tabs of a previous editing session.
+     *
+     * Missing files are skipped silently. [activeTabIndex] indexes into
+     * [filePaths] and is remapped to the surviving tabs; [cursor] applies
+     * to the restored active tab.
+     */
+    public data class RestoreSession(
+        val filePaths: List<String>,
+        val activeTabIndex: Int,
+        val cursor: TextPosition? = null,
+    ) : EditorIntent
+
+    /**
      * Save the active document.
      */
     public data object Save : EditorIntent
