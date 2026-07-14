@@ -38,6 +38,21 @@ public interface GitService {
 
     /** Fast-forwards the current branch from its upstream; returns git's output. */
     public suspend fun pull(): Result<String>
+
+    /** Returns the local branches. */
+    public suspend fun branches(): Result<List<GitBranch>>
+
+    /** Checks out the branch [name]; returns git's output. */
+    public suspend fun checkout(name: String): Result<String>
+
+    /** Creates the branch [name] and checks it out; returns git's output. */
+    public suspend fun createBranch(name: String): Result<String>
+
+    /**
+     * Returns the per-line changes of [path]'s working tree relative to HEAD,
+     * with 0-based line indices into the current file contents.
+     */
+    public suspend fun lineStatus(path: String): Result<List<GitLineChange>>
 }
 
 /**
@@ -101,6 +116,39 @@ public class DefaultGitService(
         run("pull", "--ff-only").mapCatching { result ->
             if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git pull failed" } })
             result.stdout.ifBlank { result.stderr }
+        }
+
+    override suspend fun branches(): Result<List<GitBranch>> =
+        run("branch", "--format=%(HEAD)%09%(refname:short)").mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { "git branch failed" })
+            result.stdout
+                .lineSequence()
+                .filter { it.contains('\t') }
+                .map { line ->
+                    GitBranch(
+                        name = line.substringAfter('\t').trim(),
+                        isCurrent = line.substringBefore('\t').trim() == "*",
+                    )
+                }.filter { it.name.isNotEmpty() }
+                .toList()
+        }
+
+    override suspend fun checkout(name: String): Result<String> =
+        run("checkout", name).mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git checkout failed" } })
+            result.stderr.ifBlank { result.stdout }
+        }
+
+    override suspend fun createBranch(name: String): Result<String> =
+        run("checkout", "-b", name).mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git checkout -b failed" } })
+            result.stderr.ifBlank { result.stdout }
+        }
+
+    override suspend fun lineStatus(path: String): Result<List<GitLineChange>> =
+        run("diff", "-U0", "HEAD", "--", path).mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { "git diff failed" })
+            GitDiffLineParser.parse(result.stdout)
         }
 
     private suspend fun mutate(

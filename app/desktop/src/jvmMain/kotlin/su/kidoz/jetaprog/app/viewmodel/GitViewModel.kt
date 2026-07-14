@@ -12,8 +12,10 @@ import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.vcs.DefaultGitService
+import su.kidoz.jetaprog.vcs.GitBranch
 import su.kidoz.jetaprog.vcs.GitChange
 import su.kidoz.jetaprog.vcs.GitCommit
+import su.kidoz.jetaprog.vcs.GitLineChange
 import su.kidoz.jetaprog.vcs.GitService
 
 /** State of the Git panel. */
@@ -22,6 +24,8 @@ public data class GitState(
     val isRepository: Boolean = true,
     /** The current branch name. */
     val branch: String? = null,
+    /** The local branches. */
+    val branches: List<GitBranch> = emptyList(),
     /** Commits ahead of upstream. */
     val ahead: Int = 0,
     /** Commits behind upstream. */
@@ -91,6 +95,9 @@ public class GitViewModel(
                     service
                         .log(LOG_LIMIT)
                         .onSuccess { log -> _state.update { it.copy(commitLog = log) } }
+                    service
+                        .branches()
+                        .onSuccess { branches -> _state.update { it.copy(branches = branches) } }
                 }.onFailure { error -> fail(error) }
         }
     }
@@ -192,6 +199,37 @@ public class GitViewModel(
                 .onFailure { error -> fail(error) }
         }
     }
+
+    /** Checks out the branch [name]. */
+    public fun checkoutBranch(name: String) {
+        scope.launch {
+            _state.update { it.copy(isBusy = true, error = null) }
+            service
+                .checkout(name)
+                .onSuccess { refresh() }
+                .onFailure { error -> fail(error) }
+        }
+    }
+
+    /** Creates the branch [name] and checks it out. */
+    public fun createBranch(name: String) {
+        val branchName = name.trim()
+        if (branchName.isEmpty()) return
+        scope.launch {
+            _state.update { it.copy(isBusy = true, error = null) }
+            service
+                .createBranch(branchName)
+                .onSuccess { refresh() }
+                .onFailure { error -> fail(error) }
+        }
+    }
+
+    /**
+     * Returns the per-line working-tree changes of [path] relative to HEAD,
+     * or an empty list when unavailable (e.g. untracked file, not a repository).
+     */
+    public suspend fun lineChanges(path: String): List<GitLineChange> =
+        service.lineStatus(path).getOrDefault(emptyList())
 
     private fun runThenRefresh(action: suspend () -> Result<Unit>) {
         scope.launch {

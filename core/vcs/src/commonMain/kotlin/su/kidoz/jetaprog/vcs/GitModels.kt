@@ -49,6 +49,36 @@ public data class GitRepositoryStatus(
 }
 
 /**
+ * A local branch in the repository.
+ */
+public data class GitBranch(
+    /** Branch name (short ref, e.g. "main"). */
+    val name: String,
+    /** Whether this branch is currently checked out. */
+    val isCurrent: Boolean,
+)
+
+/** The kind of change to a single line relative to HEAD. */
+public enum class GitLineChangeType {
+    ADDED,
+    MODIFIED,
+    DELETED,
+}
+
+/**
+ * A per-line change in a file's working tree relative to HEAD.
+ *
+ * For [GitLineChangeType.DELETED] the [line] is the line in the current file
+ * next to which content was removed.
+ */
+public data class GitLineChange(
+    /** Line index in the current file contents (0-based). */
+    val line: Int,
+    /** The kind of change. */
+    val type: GitLineChangeType,
+)
+
+/**
  * A single entry in the commit history.
  */
 public data class GitCommit(
