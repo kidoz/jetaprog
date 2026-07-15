@@ -56,6 +56,12 @@ install:
 package-dmg:
     ./gradlew :app:desktop:packageDmg
 
+# Build macOS install packages (release DMG + .app), then show artifact paths
+package-mac:
+    ./gradlew :app:desktop:packageReleaseDmg
+    @echo "Install artifacts:"
+    @find app/desktop/build/compose/binaries -maxdepth 4 \( -name '*.dmg' -o -name '*.app' \) 2>/dev/null | head -5
+
 # Create MSI (Windows only)
 package-msi:
     ./gradlew :app:desktop:packageMsi
