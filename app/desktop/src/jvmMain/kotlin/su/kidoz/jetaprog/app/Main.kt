@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -138,7 +139,12 @@ private fun FrameWindowScope.IdeTitleBar(
     onClose: () -> Unit,
 ) {
     val title = windowTitle(app)
-    WindowDraggableArea {
+    WindowDraggableArea(
+        modifier =
+            Modifier.pointerInput(onToggleMaximize) {
+                detectTapGestures(onDoubleTap = { onToggleMaximize() })
+            },
+    ) {
         Box(
             modifier =
                 Modifier
