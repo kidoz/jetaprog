@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 
 /**
@@ -93,7 +94,7 @@ public fun Breadcrumbs(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(22.dp)
+                .height(Dimensions.breadcrumbsHeight.dp)
                 .background(IntelliJColors.breadcrumbsBackground)
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp),
