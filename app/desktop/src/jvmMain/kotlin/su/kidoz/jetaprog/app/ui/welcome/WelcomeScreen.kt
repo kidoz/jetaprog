@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.ui.welcome
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -377,7 +378,11 @@ private fun SearchField(
                 .height(Dimensions.inputHeight.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
                 .background(IntelliJColors.inputBackground)
-                .padding(horizontal = Spacing.md.dp),
+                .border(
+                    width = 1.dp,
+                    color = IntelliJColors.border,
+                    shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp),
+                ).padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
