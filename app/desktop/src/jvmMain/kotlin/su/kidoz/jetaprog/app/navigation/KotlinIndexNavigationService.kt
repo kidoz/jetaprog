@@ -1,5 +1,7 @@
 package su.kidoz.jetaprog.app.navigation
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.navigation.BreadcrumbItem
 import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
@@ -19,6 +21,7 @@ import su.kidoz.jetaprog.editor.navigation.UsageGroup
 import su.kidoz.jetaprog.editor.navigation.UsageHighlight
 import su.kidoz.jetaprog.editor.navigation.UsageInfo
 import su.kidoz.jetaprog.editor.navigation.UsageKind
+import su.kidoz.jetaprog.editor.search.FileTextMatches
 import su.kidoz.jetaprog.editor.search.ProjectTextSearcher
 import su.kidoz.jetaprog.editor.search.TextSearchQuery
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -27,6 +30,8 @@ import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbol
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
 import su.kidoz.jetaprog.plugins.kotlin.SymbolKind
 import su.kidoz.jetaprog.plugins.kotlin.Visibility
+import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinReference
+import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
 
 /**
  * Navigation service that layers the regex-based [KotlinSymbolIndex] on top of a
@@ -39,7 +44,8 @@ import su.kidoz.jetaprog.plugins.kotlin.Visibility
  * - Go to Class / Go to Symbol from the indexed declarations
  * - Go to Declaration via [KotlinNavigationProvider]
  * - File structure and breadcrumbs from the file's indexed symbols
- * - Find usages via whole-word project text search
+ * - Find usages, resolved by binding when [semanticAnalyzer] is available and
+ *   falling back to whole-word project text search otherwise
  *
  * Navigation history and file search are always served by the delegate.
  */
@@ -48,6 +54,7 @@ public class KotlinIndexNavigationService(
     private val symbolIndex: KotlinSymbolIndex,
     private val fileSystem: FileSystem,
     private val workspacePath: String,
+    private val semanticAnalyzer: KotlinSemanticAnalyzer? = null,
 ) : NavigationService {
     private val navigationProvider = KotlinNavigationProvider(symbolIndex)
     private val textSearcher = ProjectTextSearcher(fileSystem)
@@ -165,36 +172,14 @@ public class KotlinIndexNavigationService(
         val content = fileSystem.readText(filePath).getOrNull() ?: return null
         val identifier = identifierAt(content, position) ?: return null
 
+        // Whole-word text search finds every file that mentions the name; it is
+        // both the fallback result and the candidate set for semantic resolution.
         val query = TextSearchQuery(query = identifier, caseSensitive = true, wholeWord = true)
-        val groups =
+        val textMatches =
             textSearcher
                 .search(workspacePath, query, MAX_USAGE_RESULTS)
                 .filter { isKotlinFile(it.filePath) }
-                .map { file ->
-                    UsageGroup(
-                        filePath = file.filePath,
-                        fileName = file.filePath.substringAfterLast('/'),
-                        usages =
-                            file.matches.map { match ->
-                                UsageInfo(
-                                    target =
-                                        NavigationTarget(
-                                            name = identifier,
-                                            qualifiedName = identifier,
-                                            kind = NavigationSymbolKind.UNKNOWN,
-                                            filePath = file.filePath,
-                                            position = TextPosition(match.line, match.startColumn),
-                                            languageId = KOTLIN_LANGUAGE_ID,
-                                        ),
-                                    usageKind = UsageKind.UNKNOWN,
-                                    contextLine = match.lineText,
-                                    lineNumber = match.line + 1,
-                                    columnRange = MatchRange(match.startColumn, match.endColumn - 1),
-                                )
-                            },
-                    )
-                }
-        if (groups.isEmpty()) return null
+        if (textMatches.isEmpty()) return null
 
         val symbol =
             getDefinition(filePath, position)
@@ -206,12 +191,127 @@ public class KotlinIndexNavigationService(
                     position = position,
                     languageId = KOTLIN_LANGUAGE_ID,
                 )
+
+        val groups =
+            semanticUsages(filePath, content, position, identifier, textMatches.map { it.filePath })
+                ?: textUsages(identifier, textMatches)
+
         return FindUsagesResult(
             symbol = symbol,
             groups = groups,
             totalCount = groups.sumOf { it.usages.size },
         )
     }
+
+    /**
+     * Resolves usages by binding, using [candidateFiles] (files that mention the
+     * name) as the analysis context.
+     *
+     * Returns null — leaving the caller with the text-match result — when the
+     * classpath has not resolved yet, analysis fails, or nothing resolves.
+     * At most [MAX_SEMANTIC_CONTEXT_FILES] candidate files are analyzed; when
+     * more mention the name, the remainder keep their text matches only via the
+     * fallback path.
+     */
+    private suspend fun semanticUsages(
+        filePath: String,
+        content: String,
+        position: TextPosition,
+        identifier: String,
+        candidateFiles: List<String>,
+    ): List<UsageGroup>? {
+        val analyzer = semanticAnalyzer ?: return null
+        if (!analyzer.isReady()) return null
+
+        val context = candidateFiles.filter { it != filePath }.distinct()
+        if (context.size > MAX_SEMANTIC_CONTEXT_FILES) return null
+
+        val offset = position.toOffset(content)
+        val references =
+            withContext(Dispatchers.Default) {
+                runCatching { analyzer.references(content, offset, context) }.getOrNull()
+            }?.takeIf { it.isNotEmpty() } ?: return null
+
+        return references
+            .groupBy { it.filePath ?: filePath }
+            .mapNotNull { (path, refs) ->
+                val fileContent =
+                    if (path == filePath) {
+                        content
+                    } else {
+                        fileSystem.readText(path).getOrNull() ?: return@mapNotNull null
+                    }
+                val lines = fileContent.lines()
+                UsageGroup(
+                    filePath = path,
+                    fileName = path.substringAfterLast('/'),
+                    usages =
+                        refs
+                            .map { reference ->
+                                toUsageInfo(identifier, path, fileContent, lines, reference)
+                            }.sortedBy { it.lineNumber },
+                )
+            }.sortedBy { it.filePath }
+    }
+
+    private fun toUsageInfo(
+        identifier: String,
+        path: String,
+        content: String,
+        lines: List<String>,
+        reference: KotlinReference,
+    ): UsageInfo {
+        val start = offsetToPosition(content, reference.startOffset)
+        val end = offsetToPosition(content, reference.endOffset)
+        // Reference ranges are single-line; guard anyway so a multi-line range
+        // highlights from its start rather than producing an inverted range.
+        val endColumn = if (end.line == start.line) end.column - 1 else start.column
+        return UsageInfo(
+            target =
+                NavigationTarget(
+                    name = identifier,
+                    qualifiedName = identifier,
+                    kind = NavigationSymbolKind.UNKNOWN,
+                    filePath = path,
+                    position = start,
+                    languageId = KOTLIN_LANGUAGE_ID,
+                ),
+            usageKind = if (reference.isDeclaration) UsageKind.DEFINITION else UsageKind.READ,
+            contextLine = lines.getOrNull(start.line).orEmpty(),
+            lineNumber = start.line + 1,
+            columnRange = MatchRange(start.column, maxOf(start.column, endColumn)),
+        )
+    }
+
+    /** Builds usage groups directly from whole-word text matches. */
+    private fun textUsages(
+        identifier: String,
+        textMatches: List<FileTextMatches>,
+    ): List<UsageGroup> =
+        textMatches.map { file ->
+            UsageGroup(
+                filePath = file.filePath,
+                fileName = file.filePath.substringAfterLast('/'),
+                usages =
+                    file.matches.map { match ->
+                        UsageInfo(
+                            target =
+                                NavigationTarget(
+                                    name = identifier,
+                                    qualifiedName = identifier,
+                                    kind = NavigationSymbolKind.UNKNOWN,
+                                    filePath = file.filePath,
+                                    position = TextPosition(match.line, match.startColumn),
+                                    languageId = KOTLIN_LANGUAGE_ID,
+                                ),
+                            usageKind = UsageKind.UNKNOWN,
+                            contextLine = match.lineText,
+                            lineNumber = match.line + 1,
+                            columnRange = MatchRange(match.startColumn, match.endColumn - 1),
+                        )
+                    },
+            )
+        }
 
     override suspend fun getUsageHighlights(
         filePath: String,
@@ -374,6 +474,24 @@ public class KotlinIndexNavigationService(
 
     private fun Char.isIdentifierChar(): Boolean = isLetterOrDigit() || this == '_'
 
+    private fun TextPosition.toOffset(text: String): Int {
+        val lines = text.lines()
+        if (line >= lines.size) return text.length
+        val before = lines.take(line).sumOf { it.length + 1 }
+        return (before + column).coerceIn(0, text.length)
+    }
+
+    private fun offsetToPosition(
+        text: String,
+        offset: Int,
+    ): TextPosition {
+        val safe = offset.coerceIn(0, text.length)
+        val prefix = text.substring(0, safe)
+        val line = prefix.count { it == '\n' }
+        val column = safe - (prefix.lastIndexOf('\n') + 1)
+        return TextPosition(line, column)
+    }
+
     private fun KotlinSymbol.toStructureItem(
         depth: Int,
         children: List<StructureItem> = emptyList(),
@@ -426,6 +544,13 @@ public class KotlinIndexNavigationService(
         const val KOTLIN_LANGUAGE_ID = "kotlin"
         const val SEARCH_OVERSCAN = 3
         const val MAX_USAGE_RESULTS = 500
+
+        /**
+         * Cap on files analyzed together for semantic find-usages. Beyond this,
+         * resolution is skipped in favour of the text-match result rather than
+         * silently reporting usages from a truncated slice of the project.
+         */
+        const val MAX_SEMANTIC_CONTEXT_FILES = 24
         const val SCORE_EXACT = 1000
         const val SCORE_PREFIX = 500
         const val SCORE_CONTAINS = 100

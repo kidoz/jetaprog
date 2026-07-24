@@ -3,8 +3,10 @@ package su.kidoz.jetaprog.app.navigation
 import kotlinx.coroutines.test.runTest
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.navigation.NavigationSymbolKind
+import su.kidoz.jetaprog.editor.navigation.UsageKind
 import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
+import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
@@ -131,6 +133,78 @@ class KotlinIndexNavigationServiceTest {
             val files = result.groups.map { it.fileName }.toSet()
             assertTrue("Main.kt" in files, "expected a usage in Main.kt, got $files")
             assertTrue(result.totalCount >= 2, "expected declaration + usage, got ${result.totalCount}")
+        }
+
+    @Test
+    fun `findUsages resolves semantically when an analyzer is available`() =
+        runTest {
+            File(projectDir, "Beta.kt").writeText(
+                """
+                package sample
+
+                class Beta {
+                    fun ping(): Int = 2
+                }
+
+                class Decoy {
+                    fun ping(): Int = 99
+                }
+
+                fun useBeta(b: Beta): Int = b.ping()
+
+                fun useDecoy(d: Decoy): Int = d.ping()
+
+                // ping mentioned in a comment
+                val note: String = "ping in a string"
+                """.trimIndent(),
+            )
+
+            val stdlibPath =
+                File(
+                    Unit::class.java.protectionDomain.codeSource.location
+                        .toURI(),
+                ).absolutePath
+            val analyzer = KotlinSemanticAnalyzer(classpathProvider = { listOf(stdlibPath) })
+            val fileSystem = JvmFileSystem()
+            val semanticService =
+                KotlinIndexNavigationService(
+                    delegate =
+                        DefaultNavigationService(
+                            lspClient = null,
+                            fileSystem = fileSystem,
+                            embeddedServerRegistry = null,
+                            workspacePath = projectDir.absolutePath,
+                        ),
+                    symbolIndex = symbolIndex,
+                    fileSystem = fileSystem,
+                    workspacePath = projectDir.absolutePath,
+                    semanticAnalyzer = analyzer,
+                )
+            try {
+                symbolIndex.indexDirectory(projectDir.absolutePath)
+                val betaFile = File(projectDir, "Beta.kt").absolutePath
+
+                // Cursor on Beta.ping's declaration name (line 3, column 8).
+                val result = semanticService.findUsages(betaFile, TextPosition(3, 8))
+
+                assertNotNull(result, "expected usages for Beta.ping")
+                val usages = result.groups.flatMap { it.usages }
+                // Declaration + b.ping(); NOT Decoy.ping, its call, the comment or the string.
+                val contextLines = usages.map { it.contextLine }
+                assertEquals(2, usages.size, "expected declaration and one real use, got $contextLines")
+                assertEquals(1, usages.count { it.usageKind == UsageKind.DEFINITION })
+                assertTrue(
+                    usages.any { it.contextLine.contains("useBeta") },
+                    "expected the useBeta call site, got ${usages.map { it.contextLine }}",
+                )
+                assertTrue(
+                    usages.none { it.contextLine.contains("useDecoy") || it.contextLine.contains("in a string") },
+                    "text-only false positives must be filtered, got ${usages.map { it.contextLine }}",
+                )
+                assertTrue(usages.all { it.contextLine.isNotBlank() }, "context lines must be populated")
+            } finally {
+                analyzer.dispose()
+            }
         }
 
     @Test

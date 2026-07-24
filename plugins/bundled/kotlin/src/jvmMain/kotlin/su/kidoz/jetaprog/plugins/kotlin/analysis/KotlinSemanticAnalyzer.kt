@@ -9,6 +9,8 @@ import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM
 import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoots
 import org.jetbrains.kotlin.cli.jvm.configureJdkHomeFromSystemProperty
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
+import org.jetbrains.kotlin.com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.com.intellij.psi.PsiFile
 import org.jetbrains.kotlin.com.intellij.psi.PsiManager
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
@@ -23,6 +25,7 @@ import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtNamedDeclaration
 import org.jetbrains.kotlin.psi.KtReferenceExpression
 import org.jetbrains.kotlin.resolve.BindingContext
@@ -54,6 +57,18 @@ public data class KotlinCrossFileDefinition(
     val startOffset: Int,
     /** Exclusive end offset of the declaration's name within its file. */
     val endOffset: Int,
+)
+
+/** A resolved reference to a symbol, by file and character offsets. */
+public data class KotlinReference(
+    /** Path of the file containing the reference, or null for the analyzed text itself. */
+    val filePath: String?,
+    /** Inclusive start offset of the reference within its file. */
+    val startOffset: Int,
+    /** Exclusive end offset of the reference within its file. */
+    val endOffset: Int,
+    /** True when this entry is the declaration itself rather than a use of it. */
+    val isDeclaration: Boolean = false,
 )
 
 /** A semantic diagnostic produced by frontend analysis, with character offsets. */
@@ -103,7 +118,7 @@ public class KotlinSemanticAnalyzer(
     public fun diagnostics(text: String): List<KotlinSemanticDiagnostic> =
         synchronized(lock) {
             diagnosticsCache.getOrPut(cacheKey(text)) {
-                withAnalysis(text) { file, bindingContext ->
+                withAnalysis(text) { file, _, bindingContext ->
                     bindingContext.diagnostics
                         .all()
                         .filter { it.psiElement.containingFile == file }
@@ -123,7 +138,7 @@ public class KotlinSemanticAnalyzer(
     ): List<KotlinDeclaration> =
         synchronized(lock) {
             completionCache.getOrPut("$offset@${cacheKey(text)}") {
-                withAnalysis(text) { file, bindingContext ->
+                withAnalysis(text) { file, _, bindingContext ->
                     val receiver = findReceiver(file, offset) ?: return@withAnalysis emptyList()
                     val type =
                         bindingContext.get(BindingContext.EXPRESSION_TYPE_INFO, receiver)?.type
@@ -164,7 +179,7 @@ public class KotlinSemanticAnalyzer(
         contextFiles: List<String> = emptyList(),
     ): KotlinCrossFileDefinition? =
         synchronized(lock) {
-            withAnalysis(text, contextFiles) { file, bindingContext ->
+            withAnalysis(text, contextFiles) { file, _, bindingContext ->
                 val reference =
                     PsiTreeUtil.getParentOfType(
                         file.findElementAt(offset.coerceIn(0, maxOf(0, file.textLength - 1))),
@@ -183,12 +198,109 @@ public class KotlinSemanticAnalyzer(
             }
         }
 
+    /**
+     * Finds references to the symbol at [offset], resolved by binding rather
+     * than by name.
+     *
+     * [text] and [contextFiles] are analyzed together in a single pass, so the
+     * cost is one analysis over the supplied files regardless of how many
+     * references are found. Callers should nominate context files that plausibly
+     * mention the symbol (for example via a project-wide text search) and cap
+     * that list — files outside it are not searched.
+     *
+     * The cursor may sit on either the declaration or any reference to it. The
+     * result includes the declaration itself (marked with
+     * [KotlinReference.isDeclaration]) when its source is among the analyzed
+     * files. Occurrences in comments and string literals are excluded, as are
+     * unrelated symbols that merely share the name.
+     */
+    public fun references(
+        text: String,
+        offset: Int,
+        contextFiles: List<String> = emptyList(),
+    ): List<KotlinReference> =
+        synchronized(lock) {
+            withAnalysis(text, contextFiles) { file, context, bindingContext ->
+                val target = targetDeclarationAt(file, bindingContext, offset) ?: return@withAnalysis emptyList()
+                val results = mutableListOf<KotlinReference>()
+
+                val targetRange =
+                    (target as? KtNamedDeclaration)?.nameIdentifier?.textRange ?: target.textRange
+                results +=
+                    KotlinReference(
+                        filePath = target.containingFile.pathRelativeTo(file),
+                        startOffset = targetRange.startOffset,
+                        endOffset = targetRange.endOffset,
+                        isDeclaration = true,
+                    )
+
+                for (analyzed in listOf(file) + context) {
+                    PsiTreeUtil
+                        .findChildrenOfType(analyzed, KtNameReferenceExpression::class.java)
+                        .forEach { reference ->
+                            if (!reference.resolvesTo(target, bindingContext)) return@forEach
+                            val range = reference.textRange
+                            results +=
+                                KotlinReference(
+                                    filePath = analyzed.pathRelativeTo(file),
+                                    startOffset = range.startOffset,
+                                    endOffset = range.endOffset,
+                                )
+                        }
+                }
+                results
+            } ?: emptyList()
+        }
+
+    /**
+     * Resolves what the cursor at [offset] designates: the declaration under the
+     * caret when it sits on a declaration name, otherwise the declaration that
+     * the reference under the caret binds to.
+     */
+    private fun targetDeclarationAt(
+        file: KtFile,
+        bindingContext: BindingContext,
+        offset: Int,
+    ): PsiElement? {
+        val anchor = offset.coerceIn(0, maxOf(0, file.textLength - 1))
+        val element = file.findElementAt(anchor) ?: return null
+
+        val declaration = PsiTreeUtil.getParentOfType(element, KtNamedDeclaration::class.java, false)
+        if (declaration?.nameIdentifier?.textRange?.containsOffset(offset) == true) return declaration
+
+        val reference =
+            PsiTreeUtil.getParentOfType(element, KtReferenceExpression::class.java, false) ?: return null
+        val descriptor = bindingContext.get(BindingContext.REFERENCE_TARGET, reference) ?: return null
+        return DescriptorToSourceUtils.descriptorToDeclaration(descriptor)
+    }
+
+    private fun KtNameReferenceExpression.resolvesTo(
+        target: PsiElement,
+        bindingContext: BindingContext,
+    ): Boolean {
+        val descriptor = bindingContext.get(BindingContext.REFERENCE_TARGET, this) ?: return false
+        val declaration = DescriptorToSourceUtils.descriptorToDeclaration(descriptor) ?: return false
+        // A constructor call resolves to the constructor; treat it as a use of
+        // the class that declares it.
+        return declaration == target || declaration.parent == target
+    }
+
+    /**
+     * Path of this file, or null when it is [main] — the throwaway file backing
+     * the analyzed text, whose temp path is meaningless to callers.
+     */
+    private fun PsiFile?.pathRelativeTo(main: KtFile): String? =
+        when {
+            this == null || this == main -> null
+            else -> virtualFile?.path
+        }
+
     @OptIn(org.jetbrains.kotlin.K1Deprecation::class)
     @Suppress("DEPRECATION_ERROR")
     private fun <R> withAnalysis(
         text: String,
         contextFiles: List<String> = emptyList(),
-        block: (KtFile, BindingContext) -> R,
+        block: (KtFile, List<KtFile>, BindingContext) -> R,
     ): R? {
         val active = session(classpathProvider())
         val file = active.reparse(text) ?: return null
@@ -202,7 +314,7 @@ public class KotlinSemanticAnalyzer(
                     active.environment.configuration,
                     active.environment::createPackagePartProvider,
                 ).bindingContext
-        return block(file, bindingContext)
+        return block(file, context, bindingContext)
     }
 
     private fun session(classpath: List<String>): Session {
