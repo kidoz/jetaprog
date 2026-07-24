@@ -89,6 +89,8 @@ public class LintServiceImpl(
 
     override fun observeSummary(): Flow<LintSummary> = summaryFlowInternal.asStateFlow()
 
+    override fun observeProviderChanges(): Flow<Unit> = providerRegistry.changes
+
     override suspend fun getFix(
         uri: String,
         result: LintResult,

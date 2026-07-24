@@ -142,6 +142,15 @@ public class EditorViewModel(
             refreshActiveDiagnostics()
         }
 
+        // Plugins activate lazily when their language is first opened, so the
+        // initial lint pass can run before their rules exist. Re-lint whenever
+        // the rule set changes so the first file opened still gets diagnostics.
+        lintService?.let { service ->
+            viewModelScope.launch {
+                service.observeProviderChanges().collect { relintActiveDocument() }
+            }
+        }
+
         // Observe settings changes
         viewModelScope.launch {
             settingsService.settings.collect { newSettings ->
@@ -2069,6 +2078,16 @@ public class EditorViewModel(
                     refreshActiveDiagnostics()
                 }
             }
+    }
+
+    /**
+     * Re-runs lint for the document currently in the editor, if any.
+     *
+     * Used when the available rules change under an already-open document.
+     */
+    private fun relintActiveDocument() {
+        val uri = currentState.activeDocumentUri ?: return
+        scheduleLint(uri, currentState.languageId, currentState.content, LintTrigger.OPEN)
     }
 
     private fun clearDiagnostics(uri: DocumentUri) {

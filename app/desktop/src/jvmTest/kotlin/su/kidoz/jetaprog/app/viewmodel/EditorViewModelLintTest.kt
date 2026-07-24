@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -37,12 +38,16 @@ class EditorViewModelLintTest {
     private val settingsService = mockk<SettingsService>()
     private val lintService = mockk<LintService>()
 
+    /** Stands in for plugins registering their lint rules after activation. */
+    private val providerChanges = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+
     @BeforeTest
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         coEvery { fileSystem.readText(any(), any()) } returns Result.success("fun main() {}")
         every { settingsService.getCurrentSettings() } returns AllSettings()
         every { settingsService.settings } returns MutableStateFlow(AllSettings())
+        every { lintService.observeProviderChanges() } returns providerChanges
     }
 
     @AfterTest
@@ -101,6 +106,32 @@ class EditorViewModelLintTest {
                     .isEmpty(),
             )
             coVerify(exactly = 0) { lintService.lintFile(any(), any(), any()) }
+            viewModel.dispose()
+        }
+
+    @Test
+    fun lateRegisteredRulesRelintTheOpenDocument() =
+        runTest {
+            every { lintService.getConfiguration() } returns LintConfiguration()
+            // The Kotlin plugin activates lazily on first open, so the initial
+            // pass runs with no rules registered yet.
+            coEvery { lintService.lintFile(any(), any(), any()) } returns emptyList()
+            val viewModel = editorViewModel()
+            viewModel.dispatch(EditorIntent.OpenFile("/project/src/Main.kt"))
+            viewModel.state.first { it.tabs.isNotEmpty() }
+            assertTrue(
+                viewModel.state.value.diagnostics
+                    .isEmpty(),
+                "no diagnostics expected before rules are registered",
+            )
+
+            // The plugin finishes activating and contributes its rules.
+            coEvery { lintService.lintFile(any(), any(), any()) } returns listOf(lintResult("unresolved reference"))
+            providerChanges.emit(Unit)
+
+            // Diagnostics must appear without the user touching the document.
+            val diagnostics = viewModel.state.first { it.diagnostics.isNotEmpty() }.diagnostics
+            assertEquals("unresolved reference", diagnostics.single().message)
             viewModel.dispose()
         }
 

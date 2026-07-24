@@ -1,5 +1,8 @@
 package su.kidoz.jetaprog.lint.provider
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import su.kidoz.jetaprog.lint.engine.LintEngine
 import su.kidoz.jetaprog.lint.model.LintRule
 
@@ -14,6 +17,17 @@ public class LintProviderRegistry(
 ) {
     private val providers = mutableMapOf<String, LintProvider>()
     private val providerRules = mutableMapOf<String, List<LintRule>>()
+
+    private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = CHANGE_BUFFER)
+
+    /**
+     * Emits whenever the set of registered rules changes.
+     *
+     * Lazily activated plugins register their providers after documents are
+     * already open, so results produced before they arrived are stale;
+     * observers use this to re-run analysis.
+     */
+    public val changes: Flow<Unit> = _changes.asSharedFlow()
 
     /**
      * Register a lint provider.
@@ -34,6 +48,7 @@ public class LintProviderRegistry(
         for (rule in rules) {
             engine.registerRule(rule)
         }
+        notifyChanged()
     }
 
     /**
@@ -50,6 +65,7 @@ public class LintProviderRegistry(
         }
 
         provider.onUnregister()
+        notifyChanged()
     }
 
     /**
@@ -90,6 +106,7 @@ public class LintProviderRegistry(
         for (rule in newRules) {
             engine.registerRule(rule)
         }
+        notifyChanged()
     }
 
     /**
@@ -104,5 +121,14 @@ public class LintProviderRegistry(
         for (providerId in providers.keys.toList()) {
             unregister(providerId)
         }
+    }
+
+    private fun notifyChanged() {
+        _changes.tryEmit(Unit)
+    }
+
+    private companion object {
+        /** Buffer so non-suspending registration never drops a change signal. */
+        const val CHANGE_BUFFER = 16
     }
 }

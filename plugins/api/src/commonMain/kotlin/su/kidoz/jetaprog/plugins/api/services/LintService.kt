@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.plugins.api.services
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.lint.config.LintConfiguration
 import su.kidoz.jetaprog.lint.model.LintCategory
@@ -70,6 +71,15 @@ public interface LintService {
      * Observe the lint summary.
      */
     public fun observeSummary(): Flow<LintSummary>
+
+    /**
+     * Observe changes to the set of registered lint rules.
+     *
+     * Emits when a provider is registered or unregistered — typically when a
+     * lazily activated plugin contributes its rules after documents are already
+     * open, making previously computed results stale.
+     */
+    public fun observeProviderChanges(): Flow<Unit> = emptyFlow()
 
     /**
      * Get a fix for a lint result.
