@@ -55,6 +55,7 @@ import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.plugins.dotnet.DotNetPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
+import su.kidoz.jetaprog.plugins.kotlin.server.KotlinEmbeddedServer
 import su.kidoz.jetaprog.plugins.python.PythonPlugin
 import su.kidoz.jetaprog.plugins.runtime.activation.ActivationEventServiceImpl
 import su.kidoz.jetaprog.plugins.runtime.activation.ContributionRegistryImpl
@@ -344,6 +345,13 @@ public class ProjectSession(
      * Registers bundled plugins, activates eager ones, and starts listening for activation triggers.
      */
     public suspend fun initialize() {
+        // Register the embedded Kotlin language server, backed by the shared
+        // symbol index. Navigation prefers LSP answers, so features migrate to
+        // the server automatically as it gains capabilities.
+        embeddedServerRegistry.registerServerFactory("kotlin") {
+            KotlinEmbeddedServer(kotlinSymbolIndex)
+        }
+
         // Load the project lint configuration (.jetaprog/lint.json)
         JvmLintConfigurationStorage()
             .load(projectPath)
