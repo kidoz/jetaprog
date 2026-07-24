@@ -844,7 +844,7 @@ private fun MainScreenContent(
             // Status bar
             IntelliJStatusBar(
                 gitBranch = gitState.branch,
-                isDirty = editorState.activeTab?.isDirty == true,
+                isDirty = gitState.staged.isNotEmpty() || gitState.unstaged.isNotEmpty(),
                 errorCount = editorState.diagnostics.count { it.severity == DiagnosticSeverity.ERROR },
                 warningCount = editorState.diagnostics.count { it.severity == DiagnosticSeverity.WARNING },
                 lineInfo =
