@@ -1,5 +1,13 @@
 package su.kidoz.jetaprog.app
 
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -10,7 +18,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
+import su.kidoz.jetaprog.app.navigation.KotlinIndexNavigationService
+import su.kidoz.jetaprog.app.ui.navigation.NavigationIntent
 import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
+import su.kidoz.jetaprog.app.ui.navigation.SearchMode
+import su.kidoz.jetaprog.app.ui.navigation.handleNavigationKeyEvent
 import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
 import su.kidoz.jetaprog.app.viewmodel.ConfigurationViewModel
 import su.kidoz.jetaprog.app.viewmodel.DebugViewModel
@@ -42,6 +54,7 @@ import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.plugins.dotnet.DotNetPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinPlugin
+import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
 import su.kidoz.jetaprog.plugins.python.PythonPlugin
 import su.kidoz.jetaprog.plugins.runtime.activation.ActivationEventServiceImpl
 import su.kidoz.jetaprog.plugins.runtime.activation.ContributionRegistryImpl
@@ -119,13 +132,25 @@ public class ProjectSession(
     // ========================================================================
 
     /**
+     * Local Kotlin symbol index powering Go to Class/Symbol, file structure and
+     * declaration navigation until a real language server is registered.
+     */
+    private val kotlinSymbolIndex: KotlinSymbolIndex = KotlinSymbolIndex()
+
+    /**
      * The navigation service for code navigation features.
      */
     public val navigationService: NavigationService =
-        DefaultNavigationService(
-            lspClient = null,
+        KotlinIndexNavigationService(
+            delegate =
+                DefaultNavigationService(
+                    lspClient = null,
+                    fileSystem = fileSystem,
+                    embeddedServerRegistry = embeddedServerRegistry,
+                    workspacePath = projectPath,
+                ),
+            symbolIndex = kotlinSymbolIndex,
             fileSystem = fileSystem,
-            embeddedServerRegistry = embeddedServerRegistry,
             workspacePath = projectPath,
         )
 
@@ -352,11 +377,89 @@ public class ProjectSession(
         // analysis becomes available once import completes.
         sessionScope.launch { loadKotlinClasspath() }
 
+        // Build the Kotlin symbol index in the background so Go to Class/Symbol,
+        // file structure and declaration navigation work without a language server.
+        sessionScope.launch { kotlinSymbolIndex.indexDirectory(projectPath) }
+
         // Keep editor gutter VCS markers in sync with the active document and git state
         sessionScope.launch { observeGitLineMarkers() }
 
         // Restore the previous editing session (open tabs, active tab, cursor)
         restoreWorkspaceState()
+    }
+
+    /**
+     * Re-indexes a single file in the Kotlin symbol index.
+     *
+     * Call after a file is saved or opened so navigation stays in sync with edits;
+     * non-Kotlin files are ignored by the index.
+     */
+    public fun reindexFile(path: String) {
+        sessionScope.launch { kotlinSymbolIndex.indexFile(path) }
+    }
+
+    /**
+     * Timestamp of the last plain Shift release, for double-Shift detection.
+     */
+    private var lastShiftReleaseAtMillis = 0L
+
+    /**
+     * Handles an IDE-wide key event for navigation shortcuts.
+     *
+     * Routed from the window's preview key handler. Recognizes the [su.kidoz.jetaprog.app.keymap.DefaultKeymap]
+     * navigation chords (Go to Class/File/Symbol, declaration, usages, structure, back/forward)
+     * plus double-Shift for Search Everywhere.
+     *
+     * @return true when the event triggered a navigation action and should not propagate.
+     */
+    public fun handleKeyEvent(event: KeyEvent): Boolean {
+        // While a navigation popup is open it owns the keyboard.
+        val navState = navigationViewModel.state.value
+        val popupOpen =
+            navState.isSearchPopupVisible ||
+                navState.isFileStructureVisible ||
+                navState.isQuickDefinitionVisible ||
+                navState.isUsagesPopupVisible
+        if (popupOpen) return false
+
+        if (handleDoubleShift(event)) return true
+
+        val editorState = editorViewModel.state.value
+        val cursor = editorState.cursor.position
+        return handleNavigationKeyEvent(
+            event = event,
+            viewModel = navigationViewModel,
+            currentFilePath =
+                editorState.activeTab
+                    ?.uri
+                    ?.value
+                    ?.removePrefix("file://") ?: "",
+            currentFileName = editorState.activeTab?.name ?: "",
+            currentLine = cursor.line,
+            currentColumn = cursor.column,
+            scope = sessionScope,
+        )
+    }
+
+    private fun handleDoubleShift(event: KeyEvent): Boolean {
+        val isShift = event.key == Key.ShiftLeft || event.key == Key.ShiftRight
+        val hasOtherModifiers = event.isCtrlPressed || event.isAltPressed || event.isMetaPressed
+        if (event.type == KeyEventType.KeyDown) {
+            // Any non-Shift key press breaks a pending double-Shift sequence.
+            if (!isShift) lastShiftReleaseAtMillis = 0L
+            return false
+        }
+        if (event.type != KeyEventType.KeyUp || !isShift || hasOtherModifiers) return false
+
+        val now = System.currentTimeMillis()
+        val isDouble = now - lastShiftReleaseAtMillis <= DOUBLE_SHIFT_INTERVAL_MILLIS
+        lastShiftReleaseAtMillis = if (isDouble) 0L else now
+        if (isDouble) {
+            sessionScope.launch {
+                navigationViewModel.processIntent(NavigationIntent.ShowSearchPopup(SearchMode.ALL))
+            }
+        }
+        return isDouble
     }
 
     private suspend fun observeGitLineMarkers() {
@@ -488,5 +591,10 @@ public class ProjectSession(
     override fun dispose() {
         debugService.dispose()
         sessionScope.cancel()
+    }
+
+    private companion object {
+        /** Two Shift releases within this window count as double-Shift (Search Everywhere). */
+        const val DOUBLE_SHIFT_INTERVAL_MILLIS = 300L
     }
 }

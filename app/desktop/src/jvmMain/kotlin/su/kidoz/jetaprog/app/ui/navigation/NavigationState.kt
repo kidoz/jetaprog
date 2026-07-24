@@ -84,6 +84,10 @@ public sealed interface NavigationIntent {
         val column: Int,
     ) : NavigationIntent
 
+    public data class ShowUsagesResult(
+        val result: FindUsagesResult,
+    ) : NavigationIntent
+
     public data object HideUsages : NavigationIntent
 
     public data class SelectUsage(

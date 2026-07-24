@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import su.kidoz.jetaprog.common.text.TextPosition
+import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
 import su.kidoz.jetaprog.editor.navigation.NavigationSearchResult
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.StructureItem
@@ -79,6 +80,10 @@ public class NavigationViewModel(
 
             is NavigationIntent.ShowUsages -> {
                 showUsages(intent.filePath, intent.line, intent.column)
+            }
+
+            is NavigationIntent.ShowUsagesResult -> {
+                showUsagesResult(intent.result)
             }
 
             is NavigationIntent.HideUsages -> {
@@ -279,6 +284,15 @@ public class NavigationViewModel(
             }
         } else {
             _effects.send(NavigationEffect.ShowNotification("No usages found"))
+        }
+    }
+
+    private fun showUsagesResult(result: FindUsagesResult) {
+        _state.update {
+            it.copy(
+                isUsagesPopupVisible = true,
+                usagesResult = result,
+            )
         }
     }
 

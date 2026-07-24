@@ -35,13 +35,19 @@ public data class KeyboardShortcut(
 ) {
     /**
      * Check if a key event matches this shortcut.
+     *
+     * When [ctrl] is required (and [meta] is not), either Ctrl or Cmd (macOS)
+     * is accepted as the primary modifier, matching the editor's Ctrl/Cmd handling.
      */
-    public fun matches(event: KeyEvent): Boolean =
-        event.key == key &&
-            event.isCtrlPressed == ctrl &&
-            event.isShiftPressed == shift &&
-            event.isAltPressed == alt &&
-            event.isMetaPressed == meta
+    public fun matches(event: KeyEvent): Boolean {
+        if (event.key != key) return false
+        if (event.isShiftPressed != shift || event.isAltPressed != alt) return false
+        return if (ctrl && !meta) {
+            event.isCtrlPressed || event.isMetaPressed
+        } else {
+            event.isCtrlPressed == ctrl && event.isMetaPressed == meta
+        }
+    }
 
     /**
      * Get display string for the shortcut.

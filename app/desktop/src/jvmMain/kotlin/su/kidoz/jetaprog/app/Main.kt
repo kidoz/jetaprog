@@ -72,15 +72,18 @@ public fun main(): Unit =
                 }
             }
 
+        val app = remember { JetaProgApplication() }
+
         Window(
             onCloseRequest = ::exitApplication,
             title = "JetaProg",
             state = windowState,
             icon = iconPainter,
             undecorated = true,
+            // Global navigation shortcuts (Go to Class/File/Symbol, declaration,
+            // usages, back/forward, double-Shift) work regardless of focus.
+            onPreviewKeyEvent = { event -> app.session.value?.handleKeyEvent(event) ?: false },
         ) {
-            val app = remember { JetaProgApplication() }
-
             // Initialize the application (registers language providers, etc.)
             LaunchedEffect(Unit) {
                 app.initialize()

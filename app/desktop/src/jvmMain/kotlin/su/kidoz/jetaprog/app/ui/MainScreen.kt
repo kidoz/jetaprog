@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -76,6 +77,8 @@ import su.kidoz.jetaprog.app.ui.editor.EditorDebugInfo
 import su.kidoz.jetaprog.app.ui.editor.EmptyEditorPlaceholder
 import su.kidoz.jetaprog.app.ui.editor.MarkdownEditor
 import su.kidoz.jetaprog.app.ui.navigation.NavigationHost
+import su.kidoz.jetaprog.app.ui.navigation.NavigationIntent
+import su.kidoz.jetaprog.app.ui.navigation.SearchMode
 import su.kidoz.jetaprog.app.ui.panels.BottomPanel
 import su.kidoz.jetaprog.app.ui.panels.BottomTab
 import su.kidoz.jetaprog.app.ui.panels.BuildOutputPanel
@@ -307,12 +310,39 @@ private fun MainScreenContent(
         selectedBottomTab = null
     }
 
-    // Session-scoped effect collectors: surface ShowError/ShowNotification toasts.
+    // Session-scoped effect collectors: toasts plus navigation effects
+    // (go-to-definition jumps, usages popup, symbol search, index refresh).
     LaunchedEffect(session) {
         session.editorViewModel.effects.collect { effect ->
             when (effect) {
                 is EditorEffect.ShowError -> {
                     notificationCenter.error(title = "Editor", message = effect.message)
+                }
+
+                is EditorEffect.NavigateTo -> {
+                    session.editorViewModel.dispatch(
+                        EditorIntent.NavigateTo(path = effect.path, position = effect.position),
+                    )
+                }
+
+                is EditorEffect.ShowUsages -> {
+                    session.navigationViewModel.processIntent(
+                        NavigationIntent.ShowUsagesResult(effect.result),
+                    )
+                }
+
+                is EditorEffect.ShowSymbolSearch -> {
+                    session.navigationViewModel.processIntent(
+                        NavigationIntent.ShowSearchPopup(SearchMode.SYMBOLS),
+                    )
+                }
+
+                is EditorEffect.FileSaved -> {
+                    session.reindexFile(effect.path)
+                }
+
+                is EditorEffect.FileOpened -> {
+                    session.reindexFile(effect.path)
                 }
 
                 is EditorEffect.ShowNotification -> {
@@ -416,6 +446,23 @@ private fun MainScreenContent(
             // Main toolbar (project chip + branch + search-everywhere + run configuration)
             MainToolbar(
                 projectName = currentProjectPath.substringAfterLast('/'),
+                onNavigateBack = {
+                    coroutineScope.launch {
+                        session.navigationViewModel.processIntent(NavigationIntent.GoBack)
+                    }
+                },
+                onNavigateForward = {
+                    coroutineScope.launch {
+                        session.navigationViewModel.processIntent(NavigationIntent.GoForward)
+                    }
+                },
+                onSearchEverywhere = {
+                    coroutineScope.launch {
+                        session.navigationViewModel.processIntent(
+                            NavigationIntent.ShowSearchPopup(SearchMode.ALL),
+                        )
+                    }
+                },
                 branchName = gitState.branch,
                 branches = gitState.branches,
                 ahead = gitState.ahead,
@@ -879,9 +926,10 @@ private fun MainScreenContent(
             currentFileName = activeTab?.name ?: "",
             currentLine = editorState.currentLine,
             currentColumn = editorState.currentColumn,
-            onNavigate = { filePath, line, _ ->
-                session.editorViewModel.dispatch(EditorIntent.OpenFile(filePath))
-                session.editorViewModel.dispatch(EditorIntent.GoToLine(line + 1))
+            onNavigate = { filePath, line, column ->
+                session.editorViewModel.dispatch(
+                    EditorIntent.NavigateTo(path = filePath, position = TextPosition(line, column)),
+                )
             },
             notificationCenter = notificationCenter,
         )
@@ -944,14 +992,17 @@ private fun IntelliJMenuBar(
 /**
  * Main toolbar row beneath the menu bar.
  *
- * Currently hosts the run-configuration selector. VCS controls and the
- * search-everywhere trigger will land here in follow-up work — this row is
- * the canonical home for high-frequency global actions, per the UI/UX guide.
+ * Hosts the high-frequency global actions per the UI/UX guide: back/forward
+ * navigation, the project chip, VCS controls, the Search Everywhere trigger
+ * and the run-configuration selector.
  */
 @Composable
 @Suppress("LongParameterList")
 private fun MainToolbar(
     projectName: String,
+    onNavigateBack: () -> Unit,
+    onNavigateForward: () -> Unit,
+    onSearchEverywhere: () -> Unit,
     branchName: String?,
     branches: List<su.kidoz.jetaprog.vcs.GitBranch>,
     ahead: Int,
@@ -982,13 +1033,21 @@ private fun MainToolbar(
                 imageVector = Icons.Filled.ChevronLeft,
                 contentDescription = "Navigate back",
                 tint = IntelliJColors.iconDefault,
-                modifier = Modifier.size(Dimensions.iconLg.dp),
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                        .clickable(onClick = onNavigateBack)
+                        .size(Dimensions.iconLg.dp),
             )
             Icon(
                 imageVector = Icons.Filled.ChevronRight,
                 contentDescription = "Navigate forward",
                 tint = IntelliJColors.iconDefault,
-                modifier = Modifier.size(Dimensions.iconLg.dp),
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                        .clickable(onClick = onNavigateForward)
+                        .size(Dimensions.iconLg.dp),
             )
             ToolbarDivider()
             ToolbarChip(icon = Icons.Filled.Folder, iconTint = IntelliJColors.iconFolder, label = projectName)
@@ -1005,7 +1064,7 @@ private fun MainToolbar(
             }
             androidx.compose.foundation.layout
                 .Spacer(modifier = Modifier.weight(1f))
-            SearchEverywhereField()
+            SearchEverywhereField(onClick = onSearchEverywhere)
             ToolbarDivider()
             RunConfigurationSelector(
                 state = configurationState,
@@ -1119,15 +1178,20 @@ private fun ToolbarAction(
 
 /** The "Search Everywhere" entry point shown on the right of the toolbar. */
 @Composable
-private fun SearchEverywhereField() {
+private fun SearchEverywhereField(onClick: () -> Unit) {
     Row(
         modifier =
             Modifier
                 .height(26.dp)
                 .widthIn(min = 190.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                .clickable(onClick = onClick)
                 .background(IntelliJColors.inputBackground)
-                .padding(horizontal = 10.dp),
+                .border(
+                    width = 1.dp,
+                    color = IntelliJColors.divider,
+                    shape = RoundedCornerShape(Dimensions.cornerRadius.dp),
+                ).padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
@@ -1141,7 +1205,6 @@ private fun SearchEverywhereField() {
             text = "Search Everywhere",
             color = IntelliJColors.textMuted,
             fontSize = 12.sp,
-            modifier = Modifier.weight(1f),
         )
         Box(
             modifier =
