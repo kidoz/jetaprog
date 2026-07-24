@@ -135,7 +135,9 @@ public class JvmGradleTaskRunner(
         var currentGroup: String? = null
 
         val groupPattern = Regex("""^(.+?) tasks$""")
-        val taskPattern = Regex("""^($GRADLE_TASK_PATH_PATTERN)\s*-\s*(.+)$""")
+        // The separator dash must be surrounded by whitespace so section underlines
+        // ("--------") and prose ("Type-safe project accessors...") never parse as tasks.
+        val taskPattern = Regex("""^($GRADLE_TASK_PATH_PATTERN)\s+-\s+(.+)$""")
 
         for (line in output.lines()) {
             groupPattern.matchEntire(line)?.let { match ->
