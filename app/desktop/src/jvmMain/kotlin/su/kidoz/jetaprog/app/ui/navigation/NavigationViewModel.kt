@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
+import su.kidoz.jetaprog.editor.navigation.NavigationHistoryEntry
 import su.kidoz.jetaprog.editor.navigation.NavigationSearchResult
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.StructureItem
@@ -96,6 +97,18 @@ public class NavigationViewModel(
 
             is NavigationIntent.GoToDeclaration -> {
                 goToDeclaration(intent.filePath, intent.line, intent.column)
+            }
+
+            is NavigationIntent.ShowRecentFiles -> {
+                showRecentFiles()
+            }
+
+            is NavigationIntent.HideRecentFiles -> {
+                hideRecentFiles()
+            }
+
+            is NavigationIntent.SelectRecentFile -> {
+                selectRecentFile(intent.entry)
             }
 
             is NavigationIntent.UpdateBreadcrumbs -> {
@@ -314,6 +327,35 @@ public class NavigationViewModel(
         )
     }
 
+    // Recent files
+    private suspend fun showRecentFiles() {
+        val files = navigationService?.getRecentFiles() ?: emptyList()
+        if (files.isEmpty()) {
+            _effects.send(NavigationEffect.ShowNotification("No recent files"))
+            return
+        }
+        _state.update {
+            it.copy(
+                isRecentFilesVisible = true,
+                recentFiles = files,
+            )
+        }
+    }
+
+    private fun hideRecentFiles() {
+        _state.update {
+            it.copy(
+                isRecentFilesVisible = false,
+                recentFiles = emptyList(),
+            )
+        }
+    }
+
+    private suspend fun selectRecentFile(entry: NavigationHistoryEntry) {
+        hideRecentFiles()
+        navigateTo(entry.filePath, entry.position.line, entry.position.column)
+    }
+
     // Go to declaration
     private suspend fun goToDeclaration(
         filePath: String,
@@ -393,6 +435,7 @@ public class NavigationViewModel(
                 isFileStructureVisible = false,
                 isQuickDefinitionVisible = false,
                 isUsagesPopupVisible = false,
+                isRecentFilesVisible = false,
             )
         }
     }

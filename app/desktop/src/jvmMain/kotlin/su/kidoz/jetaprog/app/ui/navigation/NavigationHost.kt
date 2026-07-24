@@ -29,6 +29,7 @@ public fun NavigationHost(
     onNavigate: (filePath: String, line: Int, column: Int) -> Unit,
     notificationCenter: NotificationCenter,
     modifier: Modifier = Modifier,
+    projectPath: String = "",
 ) {
     val state by viewModel.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -111,6 +112,23 @@ public fun NavigationHost(
                 viewModel.processIntent(NavigationIntent.HideQuickDefinition)
             }
         },
+    )
+
+    // Recent files popup
+    RecentFilesPopup(
+        isVisible = state.isRecentFilesVisible,
+        entries = state.recentFiles,
+        onEntrySelect = { entry ->
+            scope.launch {
+                viewModel.processIntent(NavigationIntent.SelectRecentFile(entry))
+            }
+        },
+        onDismiss = {
+            scope.launch {
+                viewModel.processIntent(NavigationIntent.HideRecentFiles)
+            }
+        },
+        projectPath = projectPath,
     )
 
     // Usages popup
@@ -212,6 +230,13 @@ public fun handleNavigationKeyEvent(
                 viewModel.processIntent(
                     NavigationIntent.GoToDeclaration(currentFilePath, currentLine, currentColumn),
                 )
+            }
+            return true
+        }
+
+        NavigationActions.RECENT_FILES -> {
+            scope.launch {
+                viewModel.processIntent(NavigationIntent.ShowRecentFiles)
             }
             return true
         }

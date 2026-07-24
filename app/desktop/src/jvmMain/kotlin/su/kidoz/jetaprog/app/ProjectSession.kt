@@ -419,7 +419,8 @@ public class ProjectSession(
             navState.isSearchPopupVisible ||
                 navState.isFileStructureVisible ||
                 navState.isQuickDefinitionVisible ||
-                navState.isUsagesPopupVisible
+                navState.isUsagesPopupVisible ||
+                navState.isRecentFilesVisible
         if (popupOpen) return false
 
         if (handleDoubleShift(event)) return true

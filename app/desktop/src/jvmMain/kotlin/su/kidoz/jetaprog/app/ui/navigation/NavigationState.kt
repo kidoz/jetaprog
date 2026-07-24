@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.app.ui.navigation
 import androidx.compose.runtime.Immutable
 import su.kidoz.jetaprog.editor.navigation.BreadcrumbItem
 import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
+import su.kidoz.jetaprog.editor.navigation.NavigationHistoryEntry
 import su.kidoz.jetaprog.editor.navigation.NavigationSearchResult
 import su.kidoz.jetaprog.editor.navigation.QuickInfo
 import su.kidoz.jetaprog.editor.navigation.StructureItem
@@ -27,6 +28,9 @@ public data class NavigationState(
     // Usages popup
     val isUsagesPopupVisible: Boolean = false,
     val usagesResult: FindUsagesResult? = null,
+    // Recent files popup
+    val isRecentFilesVisible: Boolean = false,
+    val recentFiles: List<NavigationHistoryEntry> = emptyList(),
     // Breadcrumbs
     val breadcrumbs: List<BreadcrumbItem> = emptyList(),
 )
@@ -99,6 +103,15 @@ public sealed interface NavigationIntent {
         val filePath: String,
         val line: Int,
         val column: Int,
+    ) : NavigationIntent
+
+    // Recent files
+    public data object ShowRecentFiles : NavigationIntent
+
+    public data object HideRecentFiles : NavigationIntent
+
+    public data class SelectRecentFile(
+        val entry: NavigationHistoryEntry,
     ) : NavigationIntent
 
     // Breadcrumbs
