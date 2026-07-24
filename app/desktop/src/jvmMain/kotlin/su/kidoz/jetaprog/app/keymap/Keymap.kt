@@ -180,6 +180,9 @@ public object NavigationActions {
     public const val CALL_HIERARCHY: String = "navigation.callHierarchy"
     public const val TYPE_HIERARCHY: String = "navigation.typeHierarchy"
 
+    // Refactoring
+    public const val RENAME: String = "refactoring.rename"
+
     // Editor Actions
     public const val NEXT_ERROR: String = "navigation.nextError"
     public const val PREV_ERROR: String = "navigation.prevError"
@@ -223,6 +226,8 @@ public object DefaultKeymap {
             NavigationActions.BACK to KeyboardShortcut(Key.DirectionLeft, ctrl = true, alt = true),
             NavigationActions.FORWARD to KeyboardShortcut(Key.DirectionRight, ctrl = true, alt = true),
             NavigationActions.LAST_EDIT_LOCATION to KeyboardShortcut(Key.Backspace, ctrl = true, shift = true),
+            // Refactoring
+            NavigationActions.RENAME to KeyboardShortcut(Key.F6, shift = true),
             // Hierarchy
             NavigationActions.CALL_HIERARCHY to KeyboardShortcut(Key.H, ctrl = true, alt = true),
             NavigationActions.TYPE_HIERARCHY to KeyboardShortcut(Key.H, ctrl = true),

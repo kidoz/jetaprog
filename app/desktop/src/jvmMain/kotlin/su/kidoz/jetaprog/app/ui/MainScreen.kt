@@ -71,6 +71,7 @@ import su.kidoz.jetaprog.app.ui.dialogs.configuration.RunConfigurationDialog
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectDialog
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectEffect
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectIntent
+import su.kidoz.jetaprog.app.ui.dialogs.rename.RenameDialog
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsDialog
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsEffect
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
@@ -372,6 +373,11 @@ private fun MainScreenContent(
                     // Do nothing
                 }
             }
+        }
+    }
+    LaunchedEffect(session) {
+        session.renameMessages.collect { message ->
+            notificationCenter.info(title = "Rename", message = message)
         }
     }
     LaunchedEffect(session) {
@@ -942,6 +948,14 @@ private fun MainScreenContent(
         SettingsDialog(
             state = settingsState,
             onIntent = { intent -> app.settingsViewModel.dispatch(intent) },
+        )
+
+        // Rename refactoring (Shift+F6)
+        val renamePlan by session.renamePlan.collectAsState()
+        RenameDialog(
+            plan = renamePlan,
+            onRename = { newName -> session.applyRename(newName) },
+            onDismiss = { session.cancelRename() },
         )
 
         // Navigation popups (search, file structure, usages, quick definition)

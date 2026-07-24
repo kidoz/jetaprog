@@ -12,13 +12,25 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
+import su.kidoz.jetaprog.app.keymap.DefaultKeymap
+import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.navigation.KotlinIndexNavigationService
+import su.kidoz.jetaprog.app.refactoring.KotlinRenameService
+import su.kidoz.jetaprog.app.refactoring.RenameOutcome
+import su.kidoz.jetaprog.app.refactoring.RenamePlan
+import su.kidoz.jetaprog.app.refactoring.RenamePreparation
 import su.kidoz.jetaprog.app.ui.navigation.NavigationIntent
 import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
 import su.kidoz.jetaprog.app.ui.navigation.SearchMode
@@ -170,6 +182,98 @@ public class ProjectSession(
      * The navigation view model.
      */
     public val navigationViewModel: NavigationViewModel = NavigationViewModel(navigationService)
+
+    // ========================================================================
+    // Refactoring
+    // ========================================================================
+
+    private val renameService: KotlinRenameService =
+        KotlinRenameService(
+            fileSystem = fileSystem,
+            symbolIndex = kotlinSymbolIndex,
+            semanticAnalyzer = kotlinSemanticAnalyzer,
+            workspacePath = projectPath,
+        )
+
+    private val _renamePlan = MutableStateFlow<RenamePlan?>(null)
+
+    /** The pending rename, shown in the rename dialog; null when no rename is in progress. */
+    public val renamePlan: StateFlow<RenamePlan?> = _renamePlan.asStateFlow()
+
+    private val _renameMessages = Channel<String>(Channel.BUFFERED)
+
+    /** User-facing rename outcomes, surfaced as notifications by the UI layer. */
+    public val renameMessages: Flow<String> = _renameMessages.receiveAsFlow()
+
+    /**
+     * Prepares a rename for the symbol under the caret, opening the dialog on
+     * success and reporting why not otherwise.
+     */
+    public fun startRename() {
+        sessionScope.launch {
+            val state = editorViewModel.state.value
+            val path = state.activeDocumentUri?.value?.removePrefix("file://")
+            if (path == null) {
+                notify("Open a file to rename a symbol in it.")
+                return@launch
+            }
+            when (val preparation = renameService.prepare(path, state.cursor.position, state.content)) {
+                is RenamePreparation.Ready -> {
+                    val dirtyOthers =
+                        preparation.plan.affectedFiles
+                            .filter { it != path }
+                            .filter { affected -> isDirty(affected) }
+                    if (dirtyOthers.isNotEmpty()) {
+                        // Rename rewrites files on disk; unsaved buffers elsewhere would be lost.
+                        notify("Save ${dirtyOthers.joinToString { it.substringAfterLast('/') }} before renaming.")
+                        return@launch
+                    }
+                    _renamePlan.value = preparation.plan
+                }
+
+                is RenamePreparation.Unavailable -> {
+                    notify(preparation.reason)
+                }
+            }
+        }
+    }
+
+    /** Applies the pending rename, rewriting every affected file. */
+    public fun applyRename(newName: String) {
+        val plan = _renamePlan.value ?: return
+        _renamePlan.value = null
+        sessionScope.launch {
+            when (val outcome = renameService.apply(plan, newName)) {
+                is RenameOutcome.Applied -> {
+                    // Only the active document is held in memory; other tabs
+                    // re-read from disk when switched to.
+                    editorViewModel.dispatch(EditorIntent.UpdateContent(outcome.updatedOriginContent))
+                    editorViewModel.dispatch(EditorIntent.Save)
+                    notify(
+                        "Renamed ${outcome.occurrencesReplaced} occurrences in ${outcome.filesChanged} files.",
+                    )
+                }
+
+                is RenameOutcome.Failed -> {
+                    notify(outcome.reason)
+                }
+            }
+        }
+    }
+
+    /** Dismisses the rename dialog without changing anything. */
+    public fun cancelRename() {
+        _renamePlan.value = null
+    }
+
+    private fun isDirty(path: String): Boolean =
+        editorViewModel.state.value.tabs.any { tab ->
+            tab.uri.value.removePrefix("file://") == path && tab.isDirty
+        }
+
+    private suspend fun notify(message: String) {
+        _renameMessages.send(message)
+    }
 
     // ========================================================================
     // Language
@@ -448,6 +552,13 @@ public class ProjectSession(
         if (popupOpen) return false
 
         if (handleDoubleShift(event)) return true
+
+        if (event.type == KeyEventType.KeyDown &&
+            DefaultKeymap.findAction(event) == NavigationActions.RENAME
+        ) {
+            startRename()
+            return true
+        }
 
         val editorState = editorViewModel.state.value
         val cursor = editorState.cursor.position
