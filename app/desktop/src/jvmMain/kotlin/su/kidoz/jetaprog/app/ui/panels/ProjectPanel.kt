@@ -17,10 +17,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
@@ -40,10 +42,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -61,6 +73,7 @@ import su.kidoz.jetaprog.app.ui.dialogs.projectfile.ProjectFileNameDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
+import su.kidoz.jetaprog.editor.search.ProjectTextSearcher
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import java.io.File
 
@@ -90,6 +103,7 @@ public fun ProjectPanel(
     val childrenCache = remember { mutableStateMapOf<String, List<File>>() }
     var selectedPath by remember { mutableStateOf<String?>(null) }
     var pendingAction by remember { mutableStateOf<ProjectFileAction?>(null) }
+    var renamingPath by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     // Mark the clicked file as selected, then open it.
@@ -131,8 +145,23 @@ public fun ProjectPanel(
             file = file,
             isRoot = file.absolutePath == projectPath,
             enabled = fileActions != null,
-            onAction = { pendingAction = it },
+            onAction = { action -> pendingAction = action },
+            // Renaming is edited in the row itself rather than in a dialog.
+            onRename = { path -> renamingPath = path },
         )
+    }
+
+    val commitRename: (String, String) -> Unit = { path, newName ->
+        renamingPath = null
+        if (newName != path.substringAfterLast('/')) {
+            fileActions?.let { actions ->
+                runAction {
+                    actions.rename(path, newName).also { result ->
+                        if (result is FileActionResult.Success) onPathRemoved(path)
+                    }
+                }
+            }
+        }
     }
 
     Column(
@@ -189,6 +218,9 @@ public fun ProjectPanel(
                     onFileClick = { }, // Root is always a directory, so no file click action
                     onToggleExpand = { },
                     menuItems = menuItemsFor,
+                    isRenaming = false,
+                    onRenameCommit = { },
+                    onRenameCancel = { },
                 )
             }
 
@@ -203,6 +235,9 @@ public fun ProjectPanel(
                     onFileClick = handleFileClick,
                     fileSystem = fileSystem,
                     menuItems = menuItemsFor,
+                    renamingPath = renamingPath,
+                    onRenameCommit = commitRename,
+                    onRenameCancel = { renamingPath = null },
                 )
             }
         }
@@ -218,17 +253,6 @@ public fun ProjectPanel(
         onCreateFolder = { parent, name ->
             pendingAction = null
             fileActions?.let { actions -> runAction { actions.createDirectory(parent, name) } }
-        },
-        onRename = { path, newName ->
-            pendingAction = null
-            fileActions?.let { actions ->
-                runAction {
-                    actions.rename(path, newName).also { result ->
-                        // The old path is gone either way from the editor's point of view.
-                        if (result is FileActionResult.Success) onPathRemoved(path)
-                    }
-                }
-            }
         },
         onDelete = { path ->
             pendingAction = null
@@ -249,6 +273,7 @@ private fun buildProjectTreeMenu(
     isRoot: Boolean,
     enabled: Boolean,
     onAction: (ProjectFileAction) -> Unit,
+    onRename: (String) -> Unit,
 ): List<ProjectTreeMenuItem> {
     if (!enabled) return emptyList()
     val path = file.absolutePath
@@ -270,8 +295,8 @@ private fun buildProjectTreeMenu(
         if (!isRoot) {
             add(
                 ProjectTreeMenuItem(
-                    label = "Rename…",
-                    onClick = { onAction(ProjectFileAction.Rename(path, file.name)) },
+                    label = "Rename",
+                    onClick = { onRename(path) },
                 ),
             )
             add(
@@ -285,7 +310,7 @@ private fun buildProjectTreeMenu(
     }
 }
 
-/** A file operation awaiting confirmation in a dialog. */
+/** A file operation awaiting confirmation in a dialog. Rename is edited inline instead. */
 private sealed interface ProjectFileAction {
     data class NewFile(
         val parentDirectory: String,
@@ -293,11 +318,6 @@ private sealed interface ProjectFileAction {
 
     data class NewFolder(
         val parentDirectory: String,
-    ) : ProjectFileAction
-
-    data class Rename(
-        val path: String,
-        val currentName: String,
     ) : ProjectFileAction
 
     data class Delete(
@@ -313,7 +333,6 @@ private fun ProjectFileActionDialogs(
     onDismiss: () -> Unit,
     onCreateFile: (String, String) -> Unit,
     onCreateFolder: (String, String) -> Unit,
-    onRename: (String, String) -> Unit,
     onDelete: (String) -> Unit,
 ) {
     if (action == null) return
@@ -335,16 +354,6 @@ private fun ProjectFileActionDialogs(
                 confirmLabel = "Create",
                 initialName = "",
                 onConfirm = { name -> onCreateFolder(action.parentDirectory, name) },
-                onDismiss = onDismiss,
-            )
-        }
-
-        is ProjectFileAction.Rename -> {
-            ProjectFileNameDialog(
-                title = "Rename ${action.currentName}",
-                confirmLabel = "Rename",
-                initialName = action.currentName,
-                onConfirm = { name -> onRename(action.path, name) },
                 onDismiss = onDismiss,
             )
         }
@@ -388,11 +397,19 @@ private fun WatchDirectory(
     }
 }
 
-/** Lists visible children of [path], directories first. */
+/**
+ * Lists visible children of [path], directories first.
+ *
+ * Build output and tooling directories are hidden — they are churn-heavy noise
+ * and expanding them would start file watchers on them. The exclusion set is
+ * shared with project-wide search so both views hide the same things. Other
+ * dot-files (`.gitignore`, `.editorconfig`, `.github`) stay visible, as they do
+ * in IntelliJ and VS Code.
+ */
 private fun listDirectory(path: String): List<File> =
     File(path)
         .listFiles()
-        ?.filter { !it.name.startsWith(".") }
+        ?.filterNot { it.isDirectory && it.name in ProjectTextSearcher.DEFAULT_EXCLUDED_DIRECTORIES }
         ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
         ?: emptyList()
 
@@ -410,6 +427,9 @@ private fun FileTreeNode(
     onFileClick: (String) -> Unit,
     fileSystem: FileSystem?,
     menuItems: (File) -> List<ProjectTreeMenuItem>,
+    renamingPath: String?,
+    onRenameCommit: (String, String) -> Unit,
+    onRenameCancel: () -> Unit,
 ) {
     val isDirectory = file.isDirectory
     val path = file.absolutePath
@@ -442,6 +462,9 @@ private fun FileTreeNode(
                 }
             },
             menuItems = menuItems,
+            isRenaming = path == renamingPath,
+            onRenameCommit = { newName -> onRenameCommit(path, newName) },
+            onRenameCancel = onRenameCancel,
         )
 
         // Children
@@ -456,6 +479,9 @@ private fun FileTreeNode(
                     onFileClick = onFileClick,
                     fileSystem = fileSystem,
                     menuItems = menuItems,
+                    renamingPath = renamingPath,
+                    onRenameCommit = onRenameCommit,
+                    onRenameCancel = onRenameCancel,
                 )
             }
         }
@@ -474,6 +500,9 @@ private fun ProjectTreeNode(
     onFileClick: () -> Unit,
     onToggleExpand: () -> Unit,
     menuItems: (File) -> List<ProjectTreeMenuItem>,
+    isRenaming: Boolean,
+    onRenameCommit: (String) -> Unit,
+    onRenameCancel: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -546,20 +575,28 @@ private fun ProjectTreeNode(
                 )
             }
 
-            // Name
-            Text(
-                text = displayName,
-                color =
-                    when {
-                        isSelected -> Color.White
-                        isRoot -> IntelliJColors.textPrimary
-                        else -> IntelliJColors.treeForeground
-                    },
-                fontSize = 13.sp,
-                fontWeight = if (isRoot) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Name — replaced by an inline editor while renaming.
+            if (isRenaming) {
+                InlineNameEditor(
+                    initialName = displayName,
+                    onCommit = onRenameCommit,
+                    onCancel = onRenameCancel,
+                )
+            } else {
+                Text(
+                    text = displayName,
+                    color =
+                        when {
+                            isSelected -> Color.White
+                            isRoot -> IntelliJColors.textPrimary
+                            else -> IntelliJColors.treeForeground
+                        },
+                    fontSize = 13.sp,
+                    fontWeight = if (isRoot) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         menuOffset?.let { offset ->
@@ -587,6 +624,75 @@ private fun ProjectTreeNode(
             )
         }
     }
+}
+
+/**
+ * In-place name editor shown in a tree row during rename.
+ *
+ * Enter commits, Escape cancels, and losing focus cancels — clicking elsewhere
+ * should never silently rename a file.
+ */
+@Composable
+private fun InlineNameEditor(
+    initialName: String,
+    onCommit: (String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    val focusRequester = remember { FocusRequester() }
+    // Guards against the focus-loss cancel firing after a commit.
+    var isFinished by remember(initialName) { mutableStateOf(false) }
+
+    LaunchedEffect(initialName) {
+        focusRequester.requestFocus()
+    }
+
+    BasicTextField(
+        value = name,
+        onValueChange = { name = it },
+        singleLine = true,
+        textStyle =
+            TextStyle(
+                color = IntelliJColors.textPrimary,
+                fontSize = 13.sp,
+            ),
+        cursorBrush = SolidColor(IntelliJColors.accent),
+        modifier =
+            Modifier
+                .widthIn(min = 120.dp)
+                .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
+                .background(IntelliJColors.inputBackground)
+                .padding(horizontal = Spacing.xs.dp)
+                .focusRequester(focusRequester)
+                .onFocusChanged { focusState ->
+                    if (!focusState.isFocused && !isFinished) {
+                        isFinished = true
+                        onCancel()
+                    }
+                }.onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) {
+                        false
+                    } else {
+                        when (event.key) {
+                            Key.Enter -> {
+                                isFinished = true
+                                onCommit(name.trim())
+                                true
+                            }
+
+                            Key.Escape -> {
+                                isFinished = true
+                                onCancel()
+                                true
+                            }
+
+                            else -> {
+                                false
+                            }
+                        }
+                    }
+                },
+    )
 }
 
 /** A single tree indent guide: a 16dp-wide cell with a 1px vertical line on its left. */
