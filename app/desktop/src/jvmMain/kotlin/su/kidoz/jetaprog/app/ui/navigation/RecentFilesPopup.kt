@@ -59,6 +59,8 @@ import su.kidoz.jetaprog.editor.navigation.NavigationHistoryEntry
 
 /**
  * Recent files popup for quick switching between visited files (Ctrl+E).
+ *
+ * Also renders recent locations (Ctrl+Shift+E) via the [title] parameter.
  */
 @Composable
 public fun RecentFilesPopup(
@@ -67,6 +69,7 @@ public fun RecentFilesPopup(
     onEntrySelect: (NavigationHistoryEntry) -> Unit,
     onDismiss: () -> Unit,
     projectPath: String = "",
+    title: String = "Recent Files",
     modifier: Modifier = Modifier,
 ) {
     if (!isVisible) return
@@ -124,7 +127,7 @@ public fun RecentFilesPopup(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Recent Files",
+                    text = title,
                     color = IntelliJColors.textPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,

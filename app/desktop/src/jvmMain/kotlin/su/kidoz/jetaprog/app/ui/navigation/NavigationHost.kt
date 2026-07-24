@@ -129,6 +129,7 @@ public fun NavigationHost(
             }
         },
         projectPath = projectPath,
+        title = state.recentFilesTitle,
     )
 
     // Usages popup
@@ -216,7 +217,7 @@ public fun handleNavigationKeyEvent(
             return true
         }
 
-        NavigationActions.SHOW_USAGES -> {
+        NavigationActions.SHOW_USAGES, NavigationActions.FIND_USAGES -> {
             scope.launch {
                 viewModel.processIntent(
                     NavigationIntent.ShowUsages(currentFilePath, currentLine, currentColumn),
@@ -237,6 +238,13 @@ public fun handleNavigationKeyEvent(
         NavigationActions.RECENT_FILES -> {
             scope.launch {
                 viewModel.processIntent(NavigationIntent.ShowRecentFiles)
+            }
+            return true
+        }
+
+        NavigationActions.RECENT_LOCATIONS -> {
+            scope.launch {
+                viewModel.processIntent(NavigationIntent.ShowRecentLocations)
             }
             return true
         }

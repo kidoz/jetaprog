@@ -28,9 +28,10 @@ public data class NavigationState(
     // Usages popup
     val isUsagesPopupVisible: Boolean = false,
     val usagesResult: FindUsagesResult? = null,
-    // Recent files popup
+    // Recent files/locations popup
     val isRecentFilesVisible: Boolean = false,
     val recentFiles: List<NavigationHistoryEntry> = emptyList(),
+    val recentFilesTitle: String = "Recent Files",
     // Breadcrumbs
     val breadcrumbs: List<BreadcrumbItem> = emptyList(),
 )
@@ -107,6 +108,8 @@ public sealed interface NavigationIntent {
 
     // Recent files
     public data object ShowRecentFiles : NavigationIntent
+
+    public data object ShowRecentLocations : NavigationIntent
 
     public data object HideRecentFiles : NavigationIntent
 

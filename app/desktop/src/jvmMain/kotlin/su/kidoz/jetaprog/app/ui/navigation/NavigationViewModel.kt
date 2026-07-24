@@ -103,6 +103,10 @@ public class NavigationViewModel(
                 showRecentFiles()
             }
 
+            is NavigationIntent.ShowRecentLocations -> {
+                showRecentLocations()
+            }
+
             is NavigationIntent.HideRecentFiles -> {
                 hideRecentFiles()
             }
@@ -338,6 +342,22 @@ public class NavigationViewModel(
             it.copy(
                 isRecentFilesVisible = true,
                 recentFiles = files,
+                recentFilesTitle = "Recent Files",
+            )
+        }
+    }
+
+    private suspend fun showRecentLocations() {
+        val locations = navigationService?.getRecentLocations() ?: emptyList()
+        if (locations.isEmpty()) {
+            _effects.send(NavigationEffect.ShowNotification("No recent locations"))
+            return
+        }
+        _state.update {
+            it.copy(
+                isRecentFilesVisible = true,
+                recentFiles = locations,
+                recentFilesTitle = "Recent Locations",
             )
         }
     }
