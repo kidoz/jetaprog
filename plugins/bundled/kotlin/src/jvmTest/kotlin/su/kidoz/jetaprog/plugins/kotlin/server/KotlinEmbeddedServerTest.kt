@@ -176,6 +176,63 @@ class KotlinEmbeddedServerTest {
         }
 
     @Test
+    fun `semantic analyzer disambiguates same-named methods across files`() =
+        runBlocking {
+            File(projectDir, "Alpha.kt").writeText(
+                "package sample\n\nclass Alpha {\n    fun ping(): Int = 1\n}\n",
+            )
+            File(projectDir, "Beta.kt").writeText(
+                "package sample\n\nclass Beta {\n    fun ping(): Int = 2\n}\n",
+            )
+            symbolIndex.indexDirectory(projectDir.absolutePath)
+
+            val stdlibPath =
+                File(
+                    Unit::class.java.protectionDomain.codeSource.location
+                        .toURI(),
+                ).absolutePath
+            val analyzer = KotlinSemanticAnalyzer(classpathProvider = { listOf(stdlibPath) })
+            val semanticServer = KotlinEmbeddedServer(symbolIndex, analyzer)
+            try {
+                val uri = uriOf("Use.kt")
+                semanticServer.didOpen(
+                    DidOpenTextDocumentParams(
+                        textDocument =
+                            TextDocumentItem(
+                                uri = uri,
+                                languageId = "kotlin",
+                                version = 1,
+                                text =
+                                    "package sample\n\nfun use(): Int {\n" +
+                                        "    val b = Beta()\n    return b.ping()\n}\n",
+                            ),
+                    ),
+                )
+
+                // Cursor on "ping" in `b.ping()` — both Alpha and Beta declare ping();
+                // only binding resolution can pick Beta's.
+                val locations =
+                    semanticServer.definition(
+                        TextDocumentPositionParams(
+                            textDocument = TextDocumentIdentifier(uri),
+                            position = LspPosition(4, 13),
+                        ),
+                    )
+
+                assertEquals(1, locations.size)
+                assertEquals(uriOf("Beta.kt"), locations.first().uri)
+                assertEquals(
+                    3,
+                    locations
+                        .first()
+                        .range.start.line,
+                )
+            } finally {
+                analyzer.dispose()
+            }
+        }
+
+    @Test
     fun `didOpen keeps unsaved content for lookups`() =
         runBlocking {
             symbolIndex.indexDirectory(projectDir.absolutePath)

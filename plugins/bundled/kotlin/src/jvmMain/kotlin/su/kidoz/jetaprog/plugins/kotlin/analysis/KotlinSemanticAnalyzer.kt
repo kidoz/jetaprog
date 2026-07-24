@@ -46,6 +46,16 @@ public data class KotlinDefinitionLocation(
     val endOffset: Int,
 )
 
+/** A resolved definition target that may live in a context file on disk. */
+public data class KotlinCrossFileDefinition(
+    /** Path of the file containing the declaration, or null for the analyzed text itself. */
+    val filePath: String?,
+    /** Inclusive start offset of the declaration's name within its file. */
+    val startOffset: Int,
+    /** Exclusive end offset of the declaration's name within its file. */
+    val endOffset: Int,
+)
+
 /** A semantic diagnostic produced by frontend analysis, with character offsets. */
 public data class KotlinSemanticDiagnostic(
     /** The rendered diagnostic message. */
@@ -135,8 +145,26 @@ public class KotlinSemanticAnalyzer(
         text: String,
         offset: Int,
     ): KotlinDefinitionLocation? =
+        definitionInContext(text, offset)
+            ?.takeIf { it.filePath == null }
+            ?.let { KotlinDefinitionLocation(it.startOffset, it.endOffset) }
+
+    /**
+     * Resolves the reference at [offset] to its declaration, analyzing [text]
+     * together with [contextFiles] (paths of on-disk sources that may contain
+     * the target — typically nominated by the symbol index). Resolution picks
+     * the correct declaration among same-named candidates by actual binding.
+     *
+     * Context files are read from disk; unsaved edits in them are not seen.
+     * Returns null for references into compiled/library code (no source).
+     */
+    public fun definitionInContext(
+        text: String,
+        offset: Int,
+        contextFiles: List<String> = emptyList(),
+    ): KotlinCrossFileDefinition? =
         synchronized(lock) {
-            withAnalysis(text) { file, bindingContext ->
+            withAnalysis(text, contextFiles) { file, bindingContext ->
                 val reference =
                     PsiTreeUtil.getParentOfType(
                         file.findElementAt(offset.coerceIn(0, maxOf(0, file.textLength - 1))),
@@ -145,9 +173,13 @@ public class KotlinSemanticAnalyzer(
                     ) ?: return@withAnalysis null
                 val target = bindingContext.get(BindingContext.REFERENCE_TARGET, reference) ?: return@withAnalysis null
                 val declaration = DescriptorToSourceUtils.descriptorToDeclaration(target) ?: return@withAnalysis null
-                if (declaration.containingFile != file) return@withAnalysis null
                 val range = (declaration as? KtNamedDeclaration)?.nameIdentifier?.textRange ?: declaration.textRange
-                KotlinDefinitionLocation(range.startOffset, range.endOffset)
+                if (declaration.containingFile == file) {
+                    KotlinCrossFileDefinition(null, range.startOffset, range.endOffset)
+                } else {
+                    val path = declaration.containingFile?.virtualFile?.path ?: return@withAnalysis null
+                    KotlinCrossFileDefinition(path, range.startOffset, range.endOffset)
+                }
             }
         }
 
@@ -155,15 +187,17 @@ public class KotlinSemanticAnalyzer(
     @Suppress("DEPRECATION_ERROR")
     private fun <R> withAnalysis(
         text: String,
+        contextFiles: List<String> = emptyList(),
         block: (KtFile, BindingContext) -> R,
     ): R? {
         val active = session(classpathProvider())
         val file = active.reparse(text) ?: return null
+        val context = contextFiles.mapNotNull { active.loadFile(it) }.filter { it != file }
         val bindingContext =
             TopDownAnalyzerFacadeForJVM
                 .analyzeFilesWithJavaIntegration(
                     active.environment.project,
-                    listOf(file),
+                    listOf(file) + context,
                     NoScopeRecordCliBindingTrace(active.environment.project),
                     active.environment.configuration,
                     active.environment::createPackagePartProvider,
@@ -251,6 +285,12 @@ public class KotlinSemanticAnalyzer(
             previousFile?.delete()
             previousFile = file
             val virtualFile = environment.findLocalFile(file.absolutePath) ?: return null
+            return PsiManager.getInstance(environment.project).findFile(virtualFile) as? KtFile
+        }
+
+        /** Loads an on-disk source file into the session for context analysis. */
+        fun loadFile(path: String): KtFile? {
+            val virtualFile = environment.findLocalFile(path) ?: return null
             return PsiManager.getInstance(environment.project).findFile(virtualFile) as? KtFile
         }
 

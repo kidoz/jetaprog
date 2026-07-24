@@ -57,9 +57,10 @@ import java.io.File
  * Embedded LSP server for Kotlin backed by the local [KotlinSymbolIndex] and,
  * when available, the classpath-aware [KotlinSemanticAnalyzer].
  *
- * Definitions are resolved semantically first (locals, parameters and members
- * within the current file — cases a name-based index cannot resolve), falling
- * back to the index for cross-file navigation. Document symbols, hover and
+ * Definitions are resolved semantically first: the current file is analyzed
+ * together with index-nominated candidate files, so locals, parameters and
+ * same-named symbols across files resolve by actual binding. The name-based
+ * index remains the fallback. Document symbols, hover and
  * document highlights are answered from the index. `references` intentionally
  * returns empty so the richer text-search fallback in the application's
  * navigation service is used. Semantic diagnostics are NOT published here —
@@ -194,8 +195,12 @@ public class KotlinEmbeddedServer(
     }
 
     /**
-     * Resolves the reference at [position] via compiler analysis. Only same-file
-     * targets are returned; cross-file references fall back to the index.
+     * Resolves the reference at [position] via compiler analysis.
+     *
+     * The current file is analyzed together with candidate files nominated by
+     * the symbol index (files declaring the identifier under the cursor), so
+     * binding resolution picks the correct declaration among same-named
+     * symbols across files. Falls back to null when analysis cannot resolve.
      */
     private suspend fun semanticDefinition(
         path: String,
@@ -206,16 +211,38 @@ public class KotlinEmbeddedServer(
         if (!analyzer.isReady()) return null
 
         val offset = position.toOffset(content)
-        val location =
+        val identifier = identifierAt(content, position)
+        val candidates =
+            if (identifier == null) {
+                emptyList()
+            } else {
+                symbolIndex
+                    .findByName(identifier)
+                    .map { it.filePath }
+                    .distinct()
+                    .filter { it != path }
+                    .take(MAX_CONTEXT_FILES)
+            }
+
+        val definition =
             withContext(Dispatchers.Default) {
-                runCatching { analyzer.definition(content, offset) }.getOrNull()
+                runCatching { analyzer.definitionInContext(content, offset, candidates) }.getOrNull()
             } ?: return null
+
+        val targetPath = definition.filePath ?: path
+        // Cross-file offsets are relative to what the analyzer read from disk.
+        val targetContent =
+            if (definition.filePath == null) {
+                content
+            } else {
+                File(targetPath).takeIf { it.isFile }?.readText() ?: return null
+            }
         return LspLocation(
-            uri = pathToUri(path),
+            uri = pathToUri(targetPath),
             range =
                 LspRange(
-                    start = offsetToLspPosition(content, location.startOffset),
-                    end = offsetToLspPosition(content, location.endOffset),
+                    start = offsetToLspPosition(targetContent, definition.startOffset),
+                    end = offsetToLspPosition(targetContent, definition.endOffset),
                 ),
         )
     }
@@ -395,6 +422,9 @@ public class KotlinEmbeddedServer(
     private companion object {
         /** LSP text document sync kind: full document on every change. */
         const val SYNC_FULL = 1
+
+        /** Cap on index-nominated context files per semantic definition request. */
+        const val MAX_CONTEXT_FILES = 8
 
         val CONTAINER_KINDS =
             setOf(
