@@ -32,14 +32,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.common.text.TextPosition
 
 /**
  * Breadcrumb segment representing a path element.
+ *
+ * [position] is set for [BreadcrumbType.SYMBOL] segments and points at the
+ * symbol's declaration within [path].
  */
 public data class BreadcrumbSegment(
     val name: String,
     val path: String,
     val type: BreadcrumbType = BreadcrumbType.DIRECTORY,
+    val position: TextPosition? = null,
 )
 
 /**

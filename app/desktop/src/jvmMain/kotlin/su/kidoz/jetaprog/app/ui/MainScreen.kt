@@ -52,6 +52,8 @@ import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
 import su.kidoz.jetaprog.app.ui.agent.AgentToolWindow
 import su.kidoz.jetaprog.app.ui.components.ActivityBar
 import su.kidoz.jetaprog.app.ui.components.ActivityBarItem
+import su.kidoz.jetaprog.app.ui.components.BreadcrumbSegment
+import su.kidoz.jetaprog.app.ui.components.BreadcrumbType
 import su.kidoz.jetaprog.app.ui.components.Breadcrumbs
 import su.kidoz.jetaprog.app.ui.components.BuildStatus
 import su.kidoz.jetaprog.app.ui.components.FileMenu
@@ -100,6 +102,7 @@ import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.configuration.ConfigurationEffect
 import su.kidoz.jetaprog.configuration.ConfigurationIntent
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
+import su.kidoz.jetaprog.editor.navigation.NavigationSymbolKind
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.editor.state.EditorEffect
 import su.kidoz.jetaprog.editor.state.EditorIntent
@@ -625,19 +628,42 @@ private fun MainScreenContent(
                             )
                         }
 
-                        // Breadcrumbs navigation
+                        // Breadcrumbs navigation: file path plus the symbols containing the cursor
                         val activeTab = editorState.activeTab
                         if (activeTab != null) {
                             val projectName = currentProjectPath.substringAfterLast('/')
                             val filePath = activeTab.uri.value.removePrefix("file://")
-                            val breadcrumbs =
+                            val pathBreadcrumbs =
                                 remember(filePath, currentProjectPath) {
                                     createBreadcrumbsFromPath(currentProjectPath, projectName, filePath)
                                 }
+                            val cursorLine = editorState.cursor.position.line
+                            var symbolBreadcrumbs by remember(filePath) {
+                                mutableStateOf<List<BreadcrumbSegment>>(emptyList())
+                            }
+                            LaunchedEffect(filePath, cursorLine) {
+                                symbolBreadcrumbs =
+                                    session.navigationService
+                                        .getBreadcrumbs(filePath, TextPosition(cursorLine, 0))
+                                        .filter { it.kind != NavigationSymbolKind.FILE }
+                                        .map { crumb ->
+                                            BreadcrumbSegment(
+                                                name = crumb.name,
+                                                path = crumb.target.filePath,
+                                                type = BreadcrumbType.SYMBOL,
+                                                position = crumb.target.position,
+                                            )
+                                        }
+                            }
                             Breadcrumbs(
-                                segments = breadcrumbs,
-                                onSegmentClick = { _ ->
-                                    // Navigate to directory or file
+                                segments = pathBreadcrumbs + symbolBreadcrumbs,
+                                onSegmentClick = { segment ->
+                                    val position = segment.position
+                                    if (segment.type == BreadcrumbType.SYMBOL && position != null) {
+                                        session.editorViewModel.dispatch(
+                                            EditorIntent.NavigateTo(path = segment.path, position = position),
+                                        )
+                                    }
                                 },
                             )
                         }
@@ -932,6 +958,7 @@ private fun MainScreenContent(
                 )
             },
             notificationCenter = notificationCenter,
+            projectPath = currentProjectPath,
         )
 
         // Toast overlay — last child so it sits above everything except modals.
