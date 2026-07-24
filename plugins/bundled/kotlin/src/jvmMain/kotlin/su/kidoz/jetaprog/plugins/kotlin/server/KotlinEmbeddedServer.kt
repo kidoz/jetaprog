@@ -1,5 +1,7 @@
 package su.kidoz.jetaprog.plugins.kotlin.server
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.lsp.protocol.CallHierarchyIncomingCallsParams
@@ -48,23 +50,28 @@ import su.kidoz.jetaprog.plugins.kotlin.KotlinNavigationProvider
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbol
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
 import su.kidoz.jetaprog.plugins.kotlin.SymbolKind
+import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
 import java.io.File
 
 /**
- * Embedded LSP server for Kotlin backed by the local [KotlinSymbolIndex].
+ * Embedded LSP server for Kotlin backed by the local [KotlinSymbolIndex] and,
+ * when available, the classpath-aware [KotlinSemanticAnalyzer].
  *
- * First iteration of the in-process Kotlin language server: definitions,
- * document symbols, hover and document highlights are answered from the
- * regex-based symbol index. `references` intentionally returns empty so the
- * richer text-search fallback in the application's navigation service is used;
- * it (and semantic analysis for the other features) will move here as the
- * server grows.
+ * Definitions are resolved semantically first (locals, parameters and members
+ * within the current file — cases a name-based index cannot resolve), falling
+ * back to the index for cross-file navigation. Document symbols, hover and
+ * document highlights are answered from the index. `references` intentionally
+ * returns empty so the richer text-search fallback in the application's
+ * navigation service is used. Semantic diagnostics are NOT published here —
+ * they already reach the editor through the lint pipeline.
  *
- * The index is shared with the host application, which owns workspace-wide
- * indexing; the server re-indexes individual files on open/save notifications.
+ * The index and analyzer are shared with the host application, which owns
+ * workspace indexing and analyzer disposal; the server re-indexes individual
+ * files on open/save notifications.
  */
 public class KotlinEmbeddedServer(
     private val symbolIndex: KotlinSymbolIndex,
+    private val semanticAnalyzer: KotlinSemanticAnalyzer? = null,
 ) : EmbeddedLspServer {
     override val serverId: String = "kotlin-embedded"
     override val languageId: String = "kotlin"
@@ -174,12 +181,42 @@ public class KotlinEmbeddedServer(
         val path = uriToPath(params.textDocument.uri) ?: return emptyList()
         val position = params.position.toTextPosition()
         val content = documentContent(path) ?: return emptyList()
+
+        semanticDefinition(path, content, position)?.let { return listOf(it) }
+
         val location = navigationProvider.goToDefinition(path, position, content) ?: return emptyList()
         return listOf(
             LspLocation(
                 uri = pathToUri(location.filePath),
                 range = location.range.toLspRange(),
             ),
+        )
+    }
+
+    /**
+     * Resolves the reference at [position] via compiler analysis. Only same-file
+     * targets are returned; cross-file references fall back to the index.
+     */
+    private suspend fun semanticDefinition(
+        path: String,
+        content: String,
+        position: TextPosition,
+    ): LspLocation? {
+        val analyzer = semanticAnalyzer ?: return null
+        if (!analyzer.isReady()) return null
+
+        val offset = position.toOffset(content)
+        val location =
+            withContext(Dispatchers.Default) {
+                runCatching { analyzer.definition(content, offset) }.getOrNull()
+            } ?: return null
+        return LspLocation(
+            uri = pathToUri(path),
+            range =
+                LspRange(
+                    start = offsetToLspPosition(content, location.startOffset),
+                    end = offsetToLspPosition(content, location.endOffset),
+                ),
         )
     }
 
@@ -301,6 +338,24 @@ public class KotlinEmbeddedServer(
     }
 
     private fun Char.isIdentifierChar(): Boolean = isLetterOrDigit() || this == '_'
+
+    private fun TextPosition.toOffset(text: String): Int {
+        val lines = text.lines()
+        if (line >= lines.size) return text.length
+        val before = lines.take(line).sumOf { it.length + 1 }
+        return (before + column).coerceIn(0, text.length)
+    }
+
+    private fun offsetToLspPosition(
+        text: String,
+        offset: Int,
+    ): LspPosition {
+        val safe = offset.coerceIn(0, text.length)
+        val prefix = text.substring(0, safe)
+        val line = prefix.count { it == '\n' }
+        val column = safe - (prefix.lastIndexOf('\n') + 1)
+        return LspPosition(line, column)
+    }
 
     private fun uriToPath(uri: String): String? = uri.takeIf { it.startsWith("file://") }?.removePrefix("file://")
 

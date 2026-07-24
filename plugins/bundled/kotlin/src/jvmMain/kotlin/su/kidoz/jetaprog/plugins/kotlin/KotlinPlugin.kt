@@ -38,6 +38,7 @@ private val logger = KotlinLogging.logger {}
  */
 public class KotlinPlugin(
     private val classpathProvider: () -> List<String> = { emptyList() },
+    private val sharedSemanticAnalyzer: KotlinSemanticAnalyzer? = null,
 ) : BasePlugin(
         manifest =
             PluginManifest(
@@ -89,8 +90,10 @@ public class KotlinPlugin(
         val analyzer = KotlinPsiAnalyzer()
         psiAnalyzer = analyzer
 
-        // Classpath-aware semantic analyzer (diagnostics + member completion)
-        val semantics = KotlinSemanticAnalyzer(classpathProvider)
+        // Classpath-aware semantic analyzer (diagnostics + member completion).
+        // A host-provided analyzer is shared with the embedded LSP server so the
+        // expensive compiler environment exists only once per session.
+        val semantics = sharedSemanticAnalyzer ?: KotlinSemanticAnalyzer(classpathProvider)
         semanticAnalyzer = semantics
 
         // Register completion provider
@@ -190,7 +193,8 @@ public class KotlinPlugin(
         kotlinLanguageService?.dispose()
         kotlinLanguageClient?.stop()
         psiAnalyzer?.dispose()
-        semanticAnalyzer?.dispose()
+        // A shared analyzer is owned (and disposed) by the host application.
+        if (sharedSemanticAnalyzer == null) semanticAnalyzer?.dispose()
         kotlinLanguageService = null
         kotlinFormatter = null
         kotlinLanguageClient = null

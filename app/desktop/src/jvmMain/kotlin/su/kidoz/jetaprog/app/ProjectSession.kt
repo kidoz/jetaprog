@@ -55,6 +55,7 @@ import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.plugins.dotnet.DotNetPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
+import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
 import su.kidoz.jetaprog.plugins.kotlin.server.KotlinEmbeddedServer
 import su.kidoz.jetaprog.plugins.python.PythonPlugin
 import su.kidoz.jetaprog.plugins.runtime.activation.ActivationEventServiceImpl
@@ -137,6 +138,15 @@ public class ProjectSession(
      * declaration navigation until a real language server is registered.
      */
     private val kotlinSymbolIndex: KotlinSymbolIndex = KotlinSymbolIndex()
+
+    /**
+     * Classpath-aware Kotlin semantic analyzer shared between the Kotlin plugin
+     * (diagnostics, member completion) and the embedded language server
+     * (semantic go-to-definition), so the expensive compiler environment is
+     * built at most once per session. Owned and disposed by this session.
+     */
+    private val kotlinSemanticAnalyzer: KotlinSemanticAnalyzer =
+        KotlinSemanticAnalyzer(classpathProvider = { kotlinClasspath })
 
     /**
      * The navigation service for code navigation features.
@@ -349,7 +359,7 @@ public class ProjectSession(
         // symbol index. Navigation prefers LSP answers, so features migrate to
         // the server automatically as it gains capabilities.
         embeddedServerRegistry.registerServerFactory("kotlin") {
-            KotlinEmbeddedServer(kotlinSymbolIndex)
+            KotlinEmbeddedServer(kotlinSymbolIndex, kotlinSemanticAnalyzer)
         }
 
         // Load the project lint configuration (.jetaprog/lint.json)
@@ -364,7 +374,12 @@ public class ProjectSession(
         configurationViewModel.dispatch(ConfigurationIntent.Initialize(projectPath))
 
         // Register bundled plugins (lazy activation handled by LazyPluginActivator)
-        pluginManager.registerBundledPlugin(KotlinPlugin(classpathProvider = { kotlinClasspath }))
+        pluginManager.registerBundledPlugin(
+            KotlinPlugin(
+                classpathProvider = { kotlinClasspath },
+                sharedSemanticAnalyzer = kotlinSemanticAnalyzer,
+            ),
+        )
         pluginManager.registerBundledPlugin(DotNetPlugin())
         pluginManager.registerBundledPlugin(PythonPlugin())
         pluginManager.registerBundledPlugin(RustPlugin())
@@ -583,6 +598,7 @@ public class ProjectSession(
         saveWorkspaceState()
         pluginManager.shutdown()
         embeddedServerRegistry.shutdownAll()
+        kotlinSemanticAnalyzer.dispose()
         languageRegistry.shutdown()
         editorViewModel.dispose()
         terminalViewModel.dispose()

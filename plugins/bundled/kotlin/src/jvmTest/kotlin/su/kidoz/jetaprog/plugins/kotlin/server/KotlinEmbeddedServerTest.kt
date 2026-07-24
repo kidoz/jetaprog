@@ -9,6 +9,7 @@ import su.kidoz.jetaprog.lsp.protocol.TextDocumentIdentifier
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentItem
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentPositionParams
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
+import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
@@ -131,6 +132,47 @@ class KotlinEmbeddedServerTest {
             // `greeter` appears on line 3 (declaration) and line 4 (call receiver);
             // the whole-word match must not include "Greeter".
             assertEquals(listOf(3, 4), highlights.map { it.range.start.line })
+        }
+
+    @Test
+    fun `semantic analyzer resolves local variable definition`() =
+        runBlocking {
+            val stdlibPath =
+                File(
+                    Unit::class.java.protectionDomain.codeSource.location
+                        .toURI(),
+                ).absolutePath
+            val analyzer = KotlinSemanticAnalyzer(classpathProvider = { listOf(stdlibPath) })
+            val semanticServer = KotlinEmbeddedServer(symbolIndex, analyzer)
+            try {
+                val uri = uriOf("Calc.kt")
+                semanticServer.didOpen(
+                    DidOpenTextDocumentParams(
+                        textDocument =
+                            TextDocumentItem(
+                                uri = uri,
+                                languageId = "kotlin",
+                                version = 1,
+                                text = "fun compute(): Int {\n    val answer = 41\n    return answer + 1\n}\n",
+                            ),
+                    ),
+                )
+
+                // Cursor on "answer" in `return answer + 1` — a local the index cannot resolve.
+                val locations =
+                    semanticServer.definition(
+                        TextDocumentPositionParams(
+                            textDocument = TextDocumentIdentifier(uri),
+                            position = LspPosition(2, 11),
+                        ),
+                    )
+
+                assertEquals(1, locations.size)
+                assertEquals(uri, locations.first().uri)
+                assertEquals(LspPosition(1, 8), locations.first().range.start)
+            } finally {
+                analyzer.dispose()
+            }
         }
 
     @Test
