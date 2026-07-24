@@ -27,6 +27,7 @@ import su.kidoz.jetaprog.app.keymap.DefaultKeymap
 import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.navigation.KotlinIndexNavigationService
+import su.kidoz.jetaprog.app.project.ProjectFileActions
 import su.kidoz.jetaprog.app.refactoring.KotlinRenameService
 import su.kidoz.jetaprog.app.refactoring.RenameOutcome
 import su.kidoz.jetaprog.app.refactoring.RenamePlan
@@ -187,6 +188,9 @@ public class ProjectSession(
     // Refactoring
     // ========================================================================
 
+    /** Create/rename/delete operations offered by the project tree. */
+    public val projectFileActions: ProjectFileActions = ProjectFileActions(fileSystem)
+
     private val renameService: KotlinRenameService =
         KotlinRenameService(
             fileSystem = fileSystem,
@@ -264,6 +268,18 @@ public class ProjectSession(
     /** Dismisses the rename dialog without changing anything. */
     public fun cancelRename() {
         _renamePlan.value = null
+    }
+
+    /**
+     * Closes any editor tab for [path], used after the file is deleted or
+     * renamed from the project tree so the editor cannot show a ghost buffer.
+     */
+    public fun closeTabFor(path: String) {
+        val index =
+            editorViewModel.state.value.tabs.indexOfFirst { tab ->
+                tab.uri.value.removePrefix("file://") == path
+            }
+        if (index >= 0) editorViewModel.dispatch(EditorIntent.CloseTab(index))
     }
 
     private fun isDirty(path: String): Boolean =

@@ -597,6 +597,12 @@ private fun MainScreenContent(
                                 projectPath = currentProjectPath,
                                 onFileOpen = { path -> session.editorViewModel.dispatch(EditorIntent.OpenFile(path)) },
                                 modifier = panelModifier,
+                                fileSystem = app.fileSystem,
+                                fileActions = session.projectFileActions,
+                                onMessage = { message ->
+                                    notificationCenter.warning(title = "Project", message = message)
+                                },
+                                onPathRemoved = { path -> session.closeTabFor(path) },
                             )
                         }
                     }

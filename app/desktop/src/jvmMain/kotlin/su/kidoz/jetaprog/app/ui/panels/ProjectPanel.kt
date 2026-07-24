@@ -26,7 +26,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,19 +35,33 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.launch
+import su.kidoz.jetaprog.app.project.FileActionResult
+import su.kidoz.jetaprog.app.project.ProjectFileActions
 import su.kidoz.jetaprog.app.ui.components.ToolWindowButton
+import su.kidoz.jetaprog.app.ui.dialogs.projectfile.ProjectFileDeleteDialog
+import su.kidoz.jetaprog.app.ui.dialogs.projectfile.ProjectFileNameDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
+import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import java.io.File
 
 /**
@@ -60,16 +74,23 @@ import java.io.File
  * - Smooth hover states
  */
 @Composable
+@Suppress("LongParameterList")
 public fun ProjectPanel(
     projectPath: String,
     onFileOpen: (String) -> Unit,
     modifier: Modifier = Modifier,
+    fileSystem: FileSystem? = null,
+    fileActions: ProjectFileActions? = null,
+    onMessage: (String) -> Unit = {},
+    onPathRemoved: (String) -> Unit = {},
 ) {
     val projectName = remember(projectPath) { File(projectPath).name }
     var rootFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     val expandedDirs = remember { mutableStateMapOf<String, Boolean>() }
     val childrenCache = remember { mutableStateMapOf<String, List<File>>() }
     var selectedPath by remember { mutableStateOf<String?>(null) }
+    var pendingAction by remember { mutableStateOf<ProjectFileAction?>(null) }
+    val scope = rememberCoroutineScope()
 
     // Mark the clicked file as selected, then open it.
     val handleFileClick: (String) -> Unit = { path ->
@@ -77,12 +98,41 @@ public fun ProjectPanel(
         onFileOpen(path)
     }
 
+    // Reloads a directory listing after the tree or disk changes.
+    val reloadDirectory: (String) -> Unit = { path ->
+        val children = listDirectory(path)
+        if (path == projectPath) rootFiles = children else childrenCache[path] = children
+    }
+
     LaunchedEffect(projectPath) {
-        rootFiles = File(projectPath)
-            .listFiles()
-            ?.filter { !it.name.startsWith(".") }
-            ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
-            ?: emptyList()
+        rootFiles = listDirectory(projectPath)
+    }
+
+    // Keep the root in sync with disk; expanded directories watch themselves.
+    WatchDirectory(fileSystem, projectPath) { reloadDirectory(projectPath) }
+
+    val runAction: (suspend () -> FileActionResult) -> Unit = { operation ->
+        scope.launch {
+            when (val result = operation()) {
+                is FileActionResult.Success -> {
+                    // The watcher refreshes too, but this keeps the tree instant.
+                    result.path.substringBeforeLast('/').let(reloadDirectory)
+                }
+
+                is FileActionResult.Failure -> {
+                    onMessage(result.reason)
+                }
+            }
+        }
+    }
+
+    val menuItemsFor: (File) -> List<ProjectTreeMenuItem> = { file ->
+        buildProjectTreeMenu(
+            file = file,
+            isRoot = file.absolutePath == projectPath,
+            enabled = fileActions != null,
+            onAction = { pendingAction = it },
+        )
     }
 
     Column(
@@ -109,9 +159,13 @@ public fun ProjectPanel(
             )
             Box(modifier = Modifier.weight(1f))
             ToolWindowButton(
-                icon = Icons.Default.Settings,
-                onClick = { },
-                contentDescription = "Settings",
+                icon = Icons.Default.Refresh,
+                onClick = {
+                    // Drop cached listings so expanded directories reload from disk.
+                    childrenCache.keys.toList().forEach { path -> childrenCache[path] = listDirectory(path) }
+                    rootFiles = listDirectory(projectPath)
+                },
+                contentDescription = "Refresh",
             )
         }
 
@@ -134,6 +188,7 @@ public fun ProjectPanel(
                     isSelected = false,
                     onFileClick = { }, // Root is always a directory, so no file click action
                     onToggleExpand = { },
+                    menuItems = menuItemsFor,
                 )
             }
 
@@ -146,13 +201,206 @@ public fun ProjectPanel(
                     childrenCache = childrenCache,
                     selectedPath = selectedPath,
                     onFileClick = handleFileClick,
+                    fileSystem = fileSystem,
+                    menuItems = menuItemsFor,
                 )
             }
         }
     }
+
+    ProjectFileActionDialogs(
+        action = pendingAction,
+        onDismiss = { pendingAction = null },
+        onCreateFile = { parent, name ->
+            pendingAction = null
+            fileActions?.let { actions -> runAction { actions.createFile(parent, name) } }
+        },
+        onCreateFolder = { parent, name ->
+            pendingAction = null
+            fileActions?.let { actions -> runAction { actions.createDirectory(parent, name) } }
+        },
+        onRename = { path, newName ->
+            pendingAction = null
+            fileActions?.let { actions ->
+                runAction {
+                    actions.rename(path, newName).also { result ->
+                        // The old path is gone either way from the editor's point of view.
+                        if (result is FileActionResult.Success) onPathRemoved(path)
+                    }
+                }
+            }
+        },
+        onDelete = { path ->
+            pendingAction = null
+            fileActions?.let { actions ->
+                runAction {
+                    actions.delete(path).also { result ->
+                        if (result is FileActionResult.Success) onPathRemoved(path)
+                    }
+                }
+            }
+        },
+    )
+}
+
+/** Menu entries for a tree row; directories can also receive new children. */
+private fun buildProjectTreeMenu(
+    file: File,
+    isRoot: Boolean,
+    enabled: Boolean,
+    onAction: (ProjectFileAction) -> Unit,
+): List<ProjectTreeMenuItem> {
+    if (!enabled) return emptyList()
+    val path = file.absolutePath
+    return buildList {
+        if (file.isDirectory) {
+            add(
+                ProjectTreeMenuItem(
+                    label = "New File…",
+                    onClick = { onAction(ProjectFileAction.NewFile(path)) },
+                ),
+            )
+            add(
+                ProjectTreeMenuItem(
+                    label = "New Folder…",
+                    onClick = { onAction(ProjectFileAction.NewFolder(path)) },
+                ),
+            )
+        }
+        if (!isRoot) {
+            add(
+                ProjectTreeMenuItem(
+                    label = "Rename…",
+                    onClick = { onAction(ProjectFileAction.Rename(path, file.name)) },
+                ),
+            )
+            add(
+                ProjectTreeMenuItem(
+                    label = "Delete…",
+                    onClick = { onAction(ProjectFileAction.Delete(path, file.name, file.isDirectory)) },
+                    isDestructive = true,
+                ),
+            )
+        }
+    }
+}
+
+/** A file operation awaiting confirmation in a dialog. */
+private sealed interface ProjectFileAction {
+    data class NewFile(
+        val parentDirectory: String,
+    ) : ProjectFileAction
+
+    data class NewFolder(
+        val parentDirectory: String,
+    ) : ProjectFileAction
+
+    data class Rename(
+        val path: String,
+        val currentName: String,
+    ) : ProjectFileAction
+
+    data class Delete(
+        val path: String,
+        val name: String,
+        val isDirectory: Boolean,
+    ) : ProjectFileAction
 }
 
 @Composable
+private fun ProjectFileActionDialogs(
+    action: ProjectFileAction?,
+    onDismiss: () -> Unit,
+    onCreateFile: (String, String) -> Unit,
+    onCreateFolder: (String, String) -> Unit,
+    onRename: (String, String) -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    if (action == null) return
+
+    when (action) {
+        is ProjectFileAction.NewFile -> {
+            ProjectFileNameDialog(
+                title = "New File",
+                confirmLabel = "Create",
+                initialName = "",
+                onConfirm = { name -> onCreateFile(action.parentDirectory, name) },
+                onDismiss = onDismiss,
+            )
+        }
+
+        is ProjectFileAction.NewFolder -> {
+            ProjectFileNameDialog(
+                title = "New Folder",
+                confirmLabel = "Create",
+                initialName = "",
+                onConfirm = { name -> onCreateFolder(action.parentDirectory, name) },
+                onDismiss = onDismiss,
+            )
+        }
+
+        is ProjectFileAction.Rename -> {
+            ProjectFileNameDialog(
+                title = "Rename ${action.currentName}",
+                confirmLabel = "Rename",
+                initialName = action.currentName,
+                onConfirm = { name -> onRename(action.path, name) },
+                onDismiss = onDismiss,
+            )
+        }
+
+        is ProjectFileAction.Delete -> {
+            ProjectFileDeleteDialog(
+                name = action.name,
+                isDirectory = action.isDirectory,
+                onConfirm = { onDelete(action.path) },
+                onDismiss = onDismiss,
+            )
+        }
+    }
+}
+
+/**
+ * Reloads a directory whenever its contents change on disk.
+ *
+ * Watching is non-recursive and scoped to the composable's lifetime, so only
+ * directories actually visible in the tree are watched — a recursive watch of
+ * the project root would register every build output directory.
+ */
+@Composable
+private fun WatchDirectory(
+    fileSystem: FileSystem?,
+    path: String,
+    onChanged: () -> Unit,
+) {
+    if (fileSystem == null) return
+    LaunchedEffect(path) {
+        runCatching {
+            fileSystem
+                .watch(path, recursive = false)
+                .conflate()
+                .collectLatest {
+                    // Coalesce bursts (a save can emit several events).
+                    delay(WATCH_DEBOUNCE_MS)
+                    onChanged()
+                }
+        }
+    }
+}
+
+/** Lists visible children of [path], directories first. */
+private fun listDirectory(path: String): List<File> =
+    File(path)
+        .listFiles()
+        ?.filter { !it.name.startsWith(".") }
+        ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+        ?: emptyList()
+
+/** Delay used to coalesce bursts of file-system events. */
+private const val WATCH_DEBOUNCE_MS = 150L
+
+@Composable
+@Suppress("LongParameterList")
 private fun FileTreeNode(
     file: File,
     indent: Int,
@@ -160,19 +408,23 @@ private fun FileTreeNode(
     childrenCache: MutableMap<String, List<File>>,
     selectedPath: String?,
     onFileClick: (String) -> Unit,
+    fileSystem: FileSystem?,
+    menuItems: (File) -> List<ProjectTreeMenuItem>,
 ) {
     val isDirectory = file.isDirectory
-    val isExpanded = expandedDirs[file.absolutePath] == true
+    val path = file.absolutePath
+    val isExpanded = expandedDirs[path] == true
 
     // Load children when expanded
     LaunchedEffect(isExpanded) {
-        if (isDirectory && isExpanded && !childrenCache.containsKey(file.absolutePath)) {
-            childrenCache[file.absolutePath] = file
-                .listFiles()
-                ?.filter { !it.name.startsWith(".") }
-                ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
-                ?: emptyList()
+        if (isDirectory && isExpanded && !childrenCache.containsKey(path)) {
+            childrenCache[path] = listDirectory(path)
         }
+    }
+
+    // Only expanded directories are watched, so the watcher set matches what is visible.
+    if (isDirectory && isExpanded) {
+        WatchDirectory(fileSystem, path) { childrenCache[path] = listDirectory(path) }
     }
 
     Column {
@@ -182,18 +434,19 @@ private fun FileTreeNode(
             isRoot = false,
             isExpanded = isExpanded,
             indent = indent,
-            isSelected = !isDirectory && file.absolutePath == selectedPath,
-            onFileClick = { onFileClick(file.absolutePath) },
+            isSelected = !isDirectory && path == selectedPath,
+            onFileClick = { onFileClick(path) },
             onToggleExpand = {
                 if (isDirectory) {
-                    expandedDirs[file.absolutePath] = !isExpanded
+                    expandedDirs[path] = !isExpanded
                 }
             },
+            menuItems = menuItems,
         )
 
         // Children
         if (isExpanded) {
-            childrenCache[file.absolutePath]?.forEach { child ->
+            childrenCache[path]?.forEach { child ->
                 FileTreeNode(
                     file = child,
                     indent = indent + 1,
@@ -201,6 +454,8 @@ private fun FileTreeNode(
                     childrenCache = childrenCache,
                     selectedPath = selectedPath,
                     onFileClick = onFileClick,
+                    fileSystem = fileSystem,
+                    menuItems = menuItems,
                 )
             }
         }
@@ -218,10 +473,12 @@ private fun ProjectTreeNode(
     isSelected: Boolean,
     onFileClick: () -> Unit,
     onToggleExpand: () -> Unit,
+    menuItems: (File) -> List<ProjectTreeMenuItem>,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     val isDirectory = file.isDirectory
+    var menuOffset by remember { mutableStateOf<IntOffset?>(null) }
 
     val backgroundColor =
         when {
@@ -240,7 +497,19 @@ private fun ProjectTreeNode(
                     .background(backgroundColor)
                     .hoverable(interactionSource)
                     .clickable { if (isDirectory) onToggleExpand() else onFileClick() }
-                    .padding(start = Spacing.xs.dp, end = Spacing.sm.dp),
+                    .pointerInput(file) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.type == PointerEventType.Press &&
+                                    event.buttons.isSecondaryPressed
+                                ) {
+                                    val position = event.changes.first().position
+                                    menuOffset = IntOffset(position.x.toInt(), position.y.toInt())
+                                }
+                            }
+                        }
+                    }.padding(start = Spacing.xs.dp, end = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Indent guides — one vertical line per depth level.
@@ -291,6 +560,19 @@ private fun ProjectTreeNode(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+
+        menuOffset?.let { offset ->
+            val items = menuItems(file)
+            if (items.isEmpty()) {
+                menuOffset = null
+            } else {
+                ProjectTreeContextMenu(
+                    offset = offset,
+                    items = items,
+                    onDismiss = { menuOffset = null },
+                )
+            }
         }
 
         // Left accent bar on the selected row.
