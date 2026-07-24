@@ -30,6 +30,7 @@ import su.kidoz.jetaprog.lsp.protocol.LspHover
 import su.kidoz.jetaprog.lsp.protocol.LspLocation
 import su.kidoz.jetaprog.lsp.protocol.LspPosition
 import su.kidoz.jetaprog.lsp.protocol.LspRange
+import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
 import su.kidoz.jetaprog.lsp.protocol.LspSymbolKind
 import su.kidoz.jetaprog.lsp.protocol.LspTextEdit
 import su.kidoz.jetaprog.lsp.protocol.LspTypeHierarchyItem
@@ -45,6 +46,7 @@ import su.kidoz.jetaprog.lsp.protocol.TextDocumentSyncOptions
 import su.kidoz.jetaprog.lsp.protocol.TypeHierarchyPrepareParams
 import su.kidoz.jetaprog.lsp.protocol.TypeHierarchySubtypesParams
 import su.kidoz.jetaprog.lsp.protocol.TypeHierarchySupertypesParams
+import su.kidoz.jetaprog.lsp.protocol.WorkspaceSymbolParams
 import su.kidoz.jetaprog.lsp.server.EmbeddedLspServer
 import su.kidoz.jetaprog.plugins.kotlin.KotlinNavigationProvider
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbol
@@ -83,6 +85,7 @@ public class KotlinEmbeddedServer(
             hoverProvider = true,
             definitionProvider = true,
             documentSymbolProvider = true,
+            workspaceSymbolProvider = true,
         )
 
     private var initializedFlag = false
@@ -282,6 +285,24 @@ public class KotlinEmbeddedServer(
         return topLevel.sortedBy { it.range.start.line }
     }
 
+    override suspend fun workspaceSymbol(params: WorkspaceSymbolParams): List<LspSymbolInformation> {
+        if (params.query.isBlank()) return emptyList()
+        return symbolIndex
+            .search(params.query, WORKSPACE_SYMBOL_LIMIT)
+            .map { symbol ->
+                LspSymbolInformation(
+                    name = symbol.name,
+                    kind = symbol.kind.toLspSymbolKind(),
+                    location =
+                        LspLocation(
+                            uri = pathToUri(symbol.filePath),
+                            range = symbol.nameRange.toLspRange(),
+                        ),
+                    containerName = symbol.parent ?: symbol.fqName.substringBeforeLast('.', ""),
+                )
+            }
+    }
+
     override suspend fun semanticTokensFull(params: SemanticTokensParams): SemanticTokens? = null
 
     override suspend fun codeAction(params: CodeActionParams): List<LspCodeAction> = emptyList()
@@ -425,6 +446,9 @@ public class KotlinEmbeddedServer(
 
         /** Cap on index-nominated context files per semantic definition request. */
         const val MAX_CONTEXT_FILES = 8
+
+        /** Cap on symbols returned per workspace/symbol query. */
+        const val WORKSPACE_SYMBOL_LIMIT = 100
 
         val CONTAINER_KINDS =
             setOf(

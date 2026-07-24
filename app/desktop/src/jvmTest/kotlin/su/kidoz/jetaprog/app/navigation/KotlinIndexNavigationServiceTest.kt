@@ -4,9 +4,12 @@ import kotlinx.coroutines.test.runTest
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.navigation.NavigationSymbolKind
 import su.kidoz.jetaprog.editor.navigation.UsageKind
+import su.kidoz.jetaprog.lsp.server.DefaultServerRegistry
+import su.kidoz.jetaprog.lsp.server.EmbeddedServerConfig
 import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
+import su.kidoz.jetaprog.plugins.kotlin.server.KotlinEmbeddedServer
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
@@ -19,6 +22,7 @@ import kotlin.test.assertTrue
 class KotlinIndexNavigationServiceTest {
     private lateinit var projectDir: File
     private lateinit var symbolIndex: KotlinSymbolIndex
+    private lateinit var serverRegistry: DefaultServerRegistry
     private lateinit var service: KotlinIndexNavigationService
 
     @BeforeTest
@@ -48,13 +52,23 @@ class KotlinIndexNavigationServiceTest {
 
         val fileSystem = JvmFileSystem()
         symbolIndex = KotlinSymbolIndex()
+
+        // Symbol search is served through the embedded Kotlin server, exactly as
+        // ProjectSession wires it in the running application.
+        serverRegistry =
+            DefaultServerRegistry(
+                EmbeddedServerConfig(rootUri = "file://${projectDir.absolutePath}"),
+            ).apply {
+                registerServerFactory("kotlin") { KotlinEmbeddedServer(symbolIndex) }
+            }
+
         service =
             KotlinIndexNavigationService(
                 delegate =
                     DefaultNavigationService(
                         lspClient = null,
                         fileSystem = fileSystem,
-                        embeddedServerRegistry = null,
+                        embeddedServerRegistry = serverRegistry,
                         workspacePath = projectDir.absolutePath,
                     ),
                 symbolIndex = symbolIndex,
@@ -65,6 +79,7 @@ class KotlinIndexNavigationServiceTest {
 
     @AfterTest
     fun tearDown() {
+        serverRegistry.dispose()
         projectDir.deleteRecursively()
     }
 
@@ -78,6 +93,22 @@ class KotlinIndexNavigationServiceTest {
             assertTrue(results.isNotEmpty(), "expected Greeter in class search results")
             assertEquals("Greeter", results.first().target.name)
             assertEquals(NavigationSymbolKind.CLASS, results.first().target.kind)
+        }
+
+    @Test
+    fun `symbol search reports each symbol once`() =
+        runTest {
+            symbolIndex.indexDirectory(projectDir.absolutePath)
+
+            val results = service.searchClasses("Greeter")
+
+            // Served solely by the embedded server's workspace/symbol; a second
+            // in-process source would surface the same declaration twice.
+            assertEquals(
+                1,
+                results.count { it.target.name == "Greeter" },
+                "expected exactly one Greeter result, got ${results.map { it.target.qualifiedName }}",
+            )
         }
 
     @Test

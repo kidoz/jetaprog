@@ -24,6 +24,7 @@ import su.kidoz.jetaprog.lsp.protocol.LspDocumentHighlight
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
 import su.kidoz.jetaprog.lsp.protocol.LspHover
 import su.kidoz.jetaprog.lsp.protocol.LspLocation
+import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
 import su.kidoz.jetaprog.lsp.protocol.LspTextEdit
 import su.kidoz.jetaprog.lsp.protocol.LspTypeHierarchyItem
 import su.kidoz.jetaprog.lsp.protocol.PublishDiagnosticsParams
@@ -35,6 +36,7 @@ import su.kidoz.jetaprog.lsp.protocol.TextDocumentPositionParams
 import su.kidoz.jetaprog.lsp.protocol.TypeHierarchyPrepareParams
 import su.kidoz.jetaprog.lsp.protocol.TypeHierarchySubtypesParams
 import su.kidoz.jetaprog.lsp.protocol.TypeHierarchySupertypesParams
+import su.kidoz.jetaprog.lsp.protocol.WorkspaceSymbolParams
 
 /**
  * Interface for embedded (in-process) LSP servers.
@@ -179,6 +181,17 @@ public interface EmbeddedLspServer : Disposable {
      * @return List of document symbols (hierarchical)
      */
     public suspend fun documentSymbol(params: DocumentSymbolParams): List<LspDocumentSymbol>
+
+    /**
+     * Search workspace symbols by name.
+     *
+     * Optional capability: servers that do not index the workspace return an
+     * empty list, which callers treat as "no results from this server".
+     *
+     * @param params Query parameters
+     * @return Matching symbols across the workspace
+     */
+    public suspend fun workspaceSymbol(params: WorkspaceSymbolParams): List<LspSymbolInformation> = emptyList()
 
     /**
      * Get semantic tokens for the full document.

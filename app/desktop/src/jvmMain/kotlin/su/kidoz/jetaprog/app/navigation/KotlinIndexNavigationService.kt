@@ -67,9 +67,7 @@ public class KotlinIndexNavigationService(
         query: String,
         scope: SearchScope,
         limit: Int,
-    ): List<NavigationSearchResult> =
-        searchIndex(query, limit) { it.kind in CLASS_KINDS } +
-            delegate.searchClasses(query, scope, limit)
+    ): List<NavigationSearchResult> = delegate.searchClasses(query, scope, limit)
 
     override suspend fun searchFiles(
         query: String,
@@ -81,9 +79,7 @@ public class KotlinIndexNavigationService(
         query: String,
         scope: SearchScope,
         limit: Int,
-    ): List<NavigationSearchResult> =
-        searchIndex(query, limit) { true } +
-            delegate.searchSymbols(query, scope, limit)
+    ): List<NavigationSearchResult> = delegate.searchSymbols(query, scope, limit)
 
     override suspend fun searchEverywhere(
         query: String,
@@ -103,7 +99,7 @@ public class KotlinIndexNavigationService(
         filePath: String,
         position: TextPosition,
     ): NavigationTarget? {
-        delegate.getDefinition(filePath, position)?.let { return it }
+        delegate.getDefinition(filePath, position)?.let { return enrichWithIndexedSymbol(it) }
         if (!isKotlinFile(filePath)) return null
 
         val content = fileSystem.readText(filePath).getOrNull() ?: return null
@@ -417,44 +413,13 @@ public class KotlinIndexNavigationService(
     // Helpers
     // ========================================================================
 
-    private suspend fun searchIndex(
-        query: String,
-        limit: Int,
-        kindFilter: (KotlinSymbol) -> Boolean,
-    ): List<NavigationSearchResult> {
-        if (query.isBlank()) return emptyList()
-        return symbolIndex
-            .search(query, limit * SEARCH_OVERSCAN)
-            .filter(kindFilter)
-            .map { symbol ->
-                NavigationSearchResult(
-                    target = symbol.toNavigationTarget(),
-                    matchRanges = matchRanges(symbol.name, query),
-                    score = matchScore(symbol.name, query),
-                )
-            }.sortedByDescending { it.score }
-            .take(limit)
-    }
-
-    private fun matchRanges(
-        name: String,
-        query: String,
-    ): List<MatchRange> {
-        val index = name.indexOf(query, ignoreCase = true)
-        if (index < 0) return emptyList()
-        return listOf(MatchRange(index, index + query.length - 1))
-    }
-
-    private fun matchScore(
-        name: String,
-        query: String,
-    ): Int {
-        var score = 0
-        if (name.equals(query, ignoreCase = true)) score += SCORE_EXACT
-        if (name.startsWith(query, ignoreCase = true)) score += SCORE_PREFIX
-        if (name.contains(query, ignoreCase = true)) score += SCORE_CONTAINS
-        return score - name.length
-    }
+    /**
+     * An LSP definition carries only a location, so the adapter names the target
+     * after its file. Recover the declaration's real name and kind from the
+     * symbol index when it knows the symbol at that position.
+     */
+    private suspend fun enrichWithIndexedSymbol(target: NavigationTarget): NavigationTarget =
+        symbolIndex.getSymbolAt(target.filePath, target.position)?.toNavigationTarget() ?: target
 
     private fun isKotlinFile(filePath: String): Boolean = filePath.endsWith(".kt") || filePath.endsWith(".kts")
 
@@ -542,7 +507,6 @@ public class KotlinIndexNavigationService(
 
     private companion object {
         const val KOTLIN_LANGUAGE_ID = "kotlin"
-        const val SEARCH_OVERSCAN = 3
         const val MAX_USAGE_RESULTS = 500
 
         /**
@@ -551,18 +515,6 @@ public class KotlinIndexNavigationService(
          * silently reporting usages from a truncated slice of the project.
          */
         const val MAX_SEMANTIC_CONTEXT_FILES = 24
-        const val SCORE_EXACT = 1000
-        const val SCORE_PREFIX = 500
-        const val SCORE_CONTAINS = 100
-
-        val CLASS_KINDS =
-            setOf(
-                SymbolKind.CLASS,
-                SymbolKind.INTERFACE,
-                SymbolKind.OBJECT,
-                SymbolKind.ENUM,
-                SymbolKind.ANNOTATION,
-            )
 
         val CONTAINER_KINDS =
             setOf(

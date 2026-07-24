@@ -509,6 +509,17 @@ public data class DocumentSymbolParams(
     val textDocument: TextDocumentIdentifier,
 )
 
+/**
+ * Workspace symbol params.
+ */
+@Serializable
+public data class WorkspaceSymbolParams(
+    /**
+     * Query string to filter symbols by. An empty query matches all symbols.
+     */
+    val query: String,
+)
+
 // ============================================================================
 // Document Highlight
 // ============================================================================

@@ -31,6 +31,8 @@ import su.kidoz.jetaprog.lsp.protocol.TextDocumentIdentifier
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentPositionParams
 import su.kidoz.jetaprog.lsp.protocol.TypeHierarchySubtypesParams
 import su.kidoz.jetaprog.lsp.protocol.TypeHierarchySupertypesParams
+import su.kidoz.jetaprog.lsp.protocol.WorkspaceSymbolParams
+import su.kidoz.jetaprog.lsp.server.EmbeddedLspServer
 import su.kidoz.jetaprog.lsp.server.EmbeddedServerRegistry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 
@@ -867,26 +869,52 @@ public class DefaultNavigationService(
     }
 
     /**
-     * Search symbols from an embedded server.
+     * Search symbols from an embedded server via `workspace/symbol`.
      *
-     * Currently returns empty as workspace/symbol LSP method is not yet implemented.
-     * For Kotlin, symbols are searchable via the KotlinSymbolIndex directly.
+     * Servers without workspace indexing return no symbols, in which case the
+     * caller falls back to its other sources.
      */
-    @Suppress("UNUSED_PARAMETER")
-    private fun searchServerSymbols(
-        server: su.kidoz.jetaprog.lsp.server.EmbeddedLspServer,
+    private suspend fun searchServerSymbols(
+        server: EmbeddedLspServer,
         query: String,
         limit: Int,
         kindFilter: (NavigationSymbolKind) -> Boolean,
-    ): List<NavigationSearchResult> {
-        // TODO: Implement workspace/symbol LSP method in EmbeddedLspServer
-        // For now, symbol search relies on file-based search
-        // A complete implementation would:
-        // 1. Add workspaceSymbol() method to EmbeddedLspServer interface
-        // 2. Implement it in KotlinEmbeddedServer using KotlinSymbolIndex.search()
-        // 3. Convert KotlinSymbol to NavigationSearchResult
-        return emptyList()
-    }
+    ): List<NavigationSearchResult> =
+        server
+            .workspaceSymbol(WorkspaceSymbolParams(query))
+            .mapNotNull { symbol ->
+                val kind = adapter.mapSymbolKind(symbol.kind)
+                if (!kindFilter(kind)) return@mapNotNull null
+
+                val filePath = uriToPath(symbol.location.uri) ?: return@mapNotNull null
+                NavigationSearchResult(
+                    target =
+                        NavigationTarget(
+                            name = symbol.name,
+                            qualifiedName =
+                                symbol.containerName
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?.let { "$it.${symbol.name}" }
+                                    ?: symbol.name,
+                            kind = kind,
+                            filePath = filePath,
+                            position =
+                                TextPosition(
+                                    symbol.location.range.start.line,
+                                    symbol.location.range.start.character,
+                                ),
+                            endPosition =
+                                TextPosition(
+                                    symbol.location.range.end.line,
+                                    symbol.location.range.end.character,
+                                ),
+                            containerName = symbol.containerName,
+                            languageId = detectLanguageId(filePath),
+                        ),
+                    matchRanges = findMatchRanges(symbol.name, query),
+                    score = calculateMatchScore(symbol.name, query),
+                )
+            }.take(limit)
 
     /**
      * Find match ranges in a string for highlighting.

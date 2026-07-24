@@ -8,6 +8,7 @@ import su.kidoz.jetaprog.lsp.protocol.LspSymbolKind
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentIdentifier
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentItem
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentPositionParams
+import su.kidoz.jetaprog.lsp.protocol.WorkspaceSymbolParams
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
 import java.io.File
@@ -94,6 +95,30 @@ class KotlinEmbeddedServerTest {
             assertEquals(LspSymbolKind.Class, greeter.kind)
             val childNames = greeter.children.orEmpty().map { it.name }
             assertTrue("greet" in childNames, "expected greet nested under Greeter, got $childNames")
+        }
+
+    @Test
+    fun `workspaceSymbol returns indexed declarations with kinds and containers`() =
+        runBlocking {
+            symbolIndex.indexDirectory(projectDir.absolutePath)
+
+            val symbols = server.workspaceSymbol(WorkspaceSymbolParams("greet"))
+
+            val greeter = symbols.single { it.name == "Greeter" }
+            assertEquals(LspSymbolKind.Class, greeter.kind)
+            assertEquals(uriOf("Greeter.kt"), greeter.location.uri)
+
+            val greet = symbols.single { it.name == "greet" }
+            assertEquals(LspSymbolKind.Function, greet.kind)
+            assertEquals("Greeter", greet.containerName)
+        }
+
+    @Test
+    fun `workspaceSymbol ignores a blank query`() =
+        runBlocking {
+            symbolIndex.indexDirectory(projectDir.absolutePath)
+
+            assertTrue(server.workspaceSymbol(WorkspaceSymbolParams("  ")).isEmpty())
         }
 
     @Test
