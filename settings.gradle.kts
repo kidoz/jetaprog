@@ -67,6 +67,7 @@ include(":dap:service")
 
 // Build System
 include(":build-system:cargo")
+include(":build-system:cmake")
 include(":build-system:dotnet")
 include(":build-system:gradle")
 include(":build-system:meson")
