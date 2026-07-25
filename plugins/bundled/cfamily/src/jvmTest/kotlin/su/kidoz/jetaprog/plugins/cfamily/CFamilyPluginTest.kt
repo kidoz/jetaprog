@@ -241,4 +241,19 @@ class CFamilyPluginTest {
             workspace.deleteRecursively()
         }
     }
+
+    @Test
+    fun `sysroot is passed to clangd as fallback flags`() {
+        val options = ClangdOptions(sysroot = "/SDKs/MacOSX26.5.sdk")
+
+        assertEquals(
+            mapOf("fallbackFlags" to listOf("-isysroot", "/SDKs/MacOSX26.5.sdk")),
+            options.initializationOptions(),
+        )
+    }
+
+    @Test
+    fun `no fallback flags without a sysroot`() {
+        assertEquals(emptyMap(), ClangdOptions(sysroot = null).initializationOptions())
+    }
 }

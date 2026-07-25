@@ -87,7 +87,13 @@ internal data class ClangdOptions(
                     process.destroy()
                     return@runCatching null
                 }
-                output.takeIf { process.exitValue() == 0 && it.isNotEmpty() }
+                output
+                    .takeIf { process.exitValue() == 0 && it.isNotEmpty() }
+                    // `xcrun` reports the versionless symlink (MacOSX.sdk) while clangd
+                    // resolves headers to the real one (MacOSX26.5.sdk). Passing the
+                    // symlink makes clangd's include-path prefix match fail, so every
+                    // header looks unreachable.
+                    ?.let { File(it).canonicalPath }
             }.getOrNull()
         }
     }
