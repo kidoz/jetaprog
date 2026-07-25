@@ -403,6 +403,30 @@ public sealed interface EditorIntent : Intent {
     // Navigation
 
     /**
+     * Compute quick fixes for the caret position and show the popup.
+     */
+    public data object RequestQuickFixes : EditorIntent
+
+    /**
+     * Apply the quick fix at [index] of the offered list.
+     */
+    public data class ApplyQuickFix(
+        val index: Int,
+    ) : EditorIntent
+
+    /**
+     * Move the quick-fix selection by [delta] entries.
+     */
+    public data class MoveQuickFixSelection(
+        val delta: Int,
+    ) : EditorIntent
+
+    /**
+     * Close the quick-fix popup without applying anything.
+     */
+    public data object DismissQuickFixes : EditorIntent
+
+    /**
      * Go to definition of symbol at cursor.
      */
     public data object GoToDefinition : EditorIntent

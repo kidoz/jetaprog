@@ -20,6 +20,8 @@ import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.SearchScope
+import su.kidoz.jetaprog.editor.quickfix.QuickFixProvider
+import su.kidoz.jetaprog.editor.quickfix.applyReplacements
 import su.kidoz.jetaprog.editor.search.FindMatcher
 import su.kidoz.jetaprog.editor.state.CompletionState
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
@@ -30,6 +32,7 @@ import su.kidoz.jetaprog.editor.state.EditorTab
 import su.kidoz.jetaprog.editor.state.FindToggle
 import su.kidoz.jetaprog.editor.state.HoverState
 import su.kidoz.jetaprog.editor.state.NotificationType
+import su.kidoz.jetaprog.editor.state.QuickFixState
 import su.kidoz.jetaprog.editor.state.SignatureHelpState
 import su.kidoz.jetaprog.editor.state.SignatureInfo
 import su.kidoz.jetaprog.editor.state.SignatureParameter
@@ -80,6 +83,7 @@ import java.io.File
  * @param languageRegistry Registry for language features (completion, hover, etc.).
  * @param activationEvents Service for firing activation triggers when documents open.
  * @param lintService Service running registered lint rules to produce editor diagnostics.
+ * @param quickFixProvider Supplies quick fixes for the caret position (Alt+Enter).
  */
 public class EditorViewModel(
     private val fileSystem: FileSystem,
@@ -88,6 +92,7 @@ public class EditorViewModel(
     private val languageRegistry: LanguageRegistry? = null,
     private val activationEvents: ActivationEventService? = null,
     private val lintService: LintService? = null,
+    private val quickFixProvider: QuickFixProvider? = null,
 ) : MviViewModel<EditorIntent, EditorState, EditorEffect>(EditorState()) {
     private val completionController = CompletionController()
     private var completionJob: Job? = null
@@ -226,6 +231,22 @@ public class EditorViewModel(
             }
 
             // Navigation intents (will be implemented later)
+            is EditorIntent.RequestQuickFixes -> {
+                requestQuickFixes()
+            }
+
+            is EditorIntent.ApplyQuickFix -> {
+                applyQuickFix(intent.index)
+            }
+
+            is EditorIntent.MoveQuickFixSelection -> {
+                moveQuickFixSelection(intent.delta)
+            }
+
+            is EditorIntent.DismissQuickFixes -> {
+                updateState { copy(quickFixState = QuickFixState()) }
+            }
+
             is EditorIntent.GoToDefinition -> {
                 handleGoToDefinition()
             }
@@ -959,6 +980,53 @@ public class EditorViewModel(
 
     private fun toggleWordWrap() {
         updateState { copy(wordWrap = !wordWrap) }
+    }
+
+    /**
+     * Computes fixes for the caret position and opens the popup.
+     *
+     * A notification is shown when nothing applies, so Alt+Enter always gives
+     * feedback rather than appearing to do nothing.
+     */
+    private suspend fun requestQuickFixes() {
+        val provider = quickFixProvider ?: return
+        val path = currentState.activeTab?.uri?.toPath() ?: return
+        val position = currentState.cursor.position
+        val fixes = provider.quickFixes(path, currentState.content, position)
+
+        if (fixes.isEmpty()) {
+            emitEffect(EditorEffect.ShowNotification("No quick fixes here", NotificationType.INFO))
+            return
+        }
+        updateState {
+            copy(
+                quickFixState =
+                    QuickFixState(
+                        isVisible = true,
+                        fixes = fixes,
+                        selectedIndex = 0,
+                        position = position,
+                    ),
+            )
+        }
+    }
+
+    private fun moveQuickFixSelection(delta: Int) {
+        val state = currentState.quickFixState
+        if (!state.isVisible || state.fixes.isEmpty()) return
+        val next = (state.selectedIndex + delta).coerceIn(0, state.fixes.lastIndex)
+        updateState { copy(quickFixState = state.copy(selectedIndex = next)) }
+    }
+
+    /**
+     * Applies a fix by rewriting the document through the normal content update,
+     * so the change lands on the undo stack like a manual edit.
+     */
+    private fun applyQuickFix(index: Int) {
+        val fix = currentState.quickFixState.fixes.getOrNull(index) ?: return
+        val updated = applyReplacements(currentState.content, fix.edits)
+        updateState { copy(quickFixState = QuickFixState()) }
+        updateContent(updated)
     }
 
     private suspend fun handleGoToDefinition() {

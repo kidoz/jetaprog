@@ -11,6 +11,7 @@ import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.cursor.Cursor
 import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
+import su.kidoz.jetaprog.editor.quickfix.QuickFix
 import su.kidoz.jetaprog.editor.search.FindMatch
 import su.kidoz.jetaprog.editor.search.FindOptions
 import su.kidoz.jetaprog.editor.syntax.Diagnostic
@@ -117,6 +118,10 @@ public data class EditorState(
      * Hover popup state.
      */
     val hoverState: HoverState = HoverState(),
+    /**
+     * State of the quick-fix popup (Alt+Enter).
+     */
+    val quickFixState: QuickFixState = QuickFixState(),
     /**
      * Signature help popup state.
      */
@@ -238,6 +243,29 @@ public data class CompletionState(
     public val selectedItem: CompletionItem?
         get() = if (selectedIndex in items.indices) items[selectedIndex] else null
 }
+
+/**
+ * State for the quick-fix popup.
+ */
+@Serializable
+public data class QuickFixState(
+    /**
+     * Whether the popup is visible.
+     */
+    val isVisible: Boolean = false,
+    /**
+     * Fixes offered for the caret position.
+     */
+    val fixes: List<QuickFix> = emptyList(),
+    /**
+     * Index of the highlighted entry.
+     */
+    val selectedIndex: Int = 0,
+    /**
+     * Caret position the fixes were computed for, used to place the popup.
+     */
+    val position: TextPosition = TextPosition(0, 0),
+)
 
 /**
  * State for the hover information popup.

@@ -28,6 +28,7 @@ import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.navigation.KotlinIndexNavigationService
 import su.kidoz.jetaprog.app.project.ProjectFileActions
+import su.kidoz.jetaprog.app.quickfix.KotlinQuickFixService
 import su.kidoz.jetaprog.app.refactoring.KotlinRenameService
 import su.kidoz.jetaprog.app.refactoring.RenameOutcome
 import su.kidoz.jetaprog.app.refactoring.RenamePlan
@@ -369,6 +370,7 @@ public class ProjectSession(
             languageRegistry = languageRegistry,
             activationEvents = activationEventService,
             lintService = lintService,
+            quickFixProvider = KotlinQuickFixService(kotlinSymbolIndex),
         )
     }
 

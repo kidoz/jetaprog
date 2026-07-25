@@ -268,6 +268,13 @@ public fun CodeEditor(
             IntOffset(x = x, y = y)
         }
 
+    // Quick-fix popup sits just under the caret line.
+    val quickFixOffset =
+        remember(state.quickFixState.position, lineHeightPx) {
+            val line = state.quickFixState.position.line
+            IntOffset(x = 60, y = (line + 1) * lineHeightPx)
+        }
+
     // Calculate hover popup offset
     val hoverOffset =
         remember(state.hoverState.position) {
@@ -569,6 +576,37 @@ public fun CodeEditor(
                                             true
                                         }
 
+                                        // Quick fixes: Alt+Enter
+                                        keyEvent.isAltPressed && keyEvent.key == Key.Enter -> {
+                                            onIntent(EditorIntent.RequestQuickFixes)
+                                            true
+                                        }
+
+                                        // While the quick-fix popup is open it owns these keys.
+                                        state.quickFixState.isVisible &&
+                                            keyEvent.key == Key.DirectionDown -> {
+                                            onIntent(EditorIntent.MoveQuickFixSelection(1))
+                                            true
+                                        }
+
+                                        state.quickFixState.isVisible &&
+                                            keyEvent.key == Key.DirectionUp -> {
+                                            onIntent(EditorIntent.MoveQuickFixSelection(-1))
+                                            true
+                                        }
+
+                                        state.quickFixState.isVisible && keyEvent.key == Key.Enter -> {
+                                            onIntent(
+                                                EditorIntent.ApplyQuickFix(state.quickFixState.selectedIndex),
+                                            )
+                                            true
+                                        }
+
+                                        state.quickFixState.isVisible && keyEvent.key == Key.Escape -> {
+                                            onIntent(EditorIntent.DismissQuickFixes)
+                                            true
+                                        }
+
                                         // Find: Ctrl+F / Cmd+F
                                         plainCtrlOrMeta && keyEvent.key == Key.F -> {
                                             onIntent(EditorIntent.OpenFindBar(withReplace = false))
@@ -773,6 +811,14 @@ public fun CodeEditor(
                         onItemSelect = onCompletionSelect,
                         onDismiss = onCompletionDismiss,
                         offset = popupOffset,
+                    )
+
+                    // Quick fix popup
+                    QuickFixPopup(
+                        state = state.quickFixState,
+                        onSelect = { index -> onIntent(EditorIntent.ApplyQuickFix(index)) },
+                        onDismiss = { onIntent(EditorIntent.DismissQuickFixes) },
+                        offset = quickFixOffset,
                     )
 
                     // Hover popup
