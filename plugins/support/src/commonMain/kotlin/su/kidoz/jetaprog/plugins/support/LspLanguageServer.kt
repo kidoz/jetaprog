@@ -35,6 +35,11 @@ import su.kidoz.jetaprog.plugins.api.services.SignatureHelpTriggerKind
 
 /**
  * Configuration for an LSP language server.
+ *
+ * @property languageId The primary language the server handles.
+ * @property languageIds Every language the server handles. Defaults to just [languageId];
+ *   servers such as clangd that cover several languages list them all here so a single
+ *   process serves all of them.
  */
 public data class LspServerConfig(
     val name: String,
@@ -42,6 +47,7 @@ public data class LspServerConfig(
     val command: List<String>,
     val workingDirectory: String? = null,
     val initializationOptions: Map<String, Any?>? = null,
+    val languageIds: List<String> = listOf(languageId),
 )
 
 /**

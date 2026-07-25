@@ -173,13 +173,15 @@ public class LanguageServiceImpl(
     }
 
     override suspend fun startLanguageServer(config: LanguageServerConfig): LanguageClient {
+        val languageIds = config.documentSelector.getLanguageIds().ifEmpty { listOf("unknown") }
         val lspConfig =
             LspServerConfig(
                 name = config.name,
-                languageId = config.documentSelector.getLanguageIds().firstOrNull() ?: "unknown",
+                languageId = languageIds.first(),
                 command = config.command + config.args,
                 workingDirectory = config.workingDirectory,
                 initializationOptions = config.initializationOptions,
+                languageIds = languageIds,
             )
 
         val rootUri = "file://$workspacePath"

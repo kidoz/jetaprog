@@ -1,5 +1,10 @@
 package su.kidoz.jetaprog.plugins.support
 
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
@@ -143,59 +148,62 @@ public class LanguageRegistry(
                             name = path.substringAfterLast('/'),
                         )
                     },
+                initializationOptions = config.initializationOptions?.takeIf { it.isNotEmpty() }?.toJsonObject(),
             )
 
         val server = serverManager.startServer(config, clientConfig)
         lspServers[config.name] = server
 
-        // Register LSP-backed providers
-        val hybridProvider = getOrCreateProvider(config.languageId)
-
         val disposables = mutableListOf<Disposable>()
 
-        // Register providers with negative priority (fallback to in-process)
-        disposables.add(
-            hybridProvider.registerLspCompletionProvider(
-                server.createCompletionProvider(),
-                priority = -10,
-            ),
-        )
-        disposables.add(
-            hybridProvider.registerLspHoverProvider(
-                server.createHoverProvider(),
-                priority = -10,
-            ),
-        )
-        disposables.add(
-            hybridProvider.registerLspSignatureHelpProvider(
-                server.createSignatureHelpProvider(),
-                priority = -10,
-            ),
-        )
-        disposables.add(
-            hybridProvider.registerLspDefinitionProvider(
-                server.createDefinitionProvider(),
-                priority = -10,
-            ),
-        )
-        disposables.add(
-            hybridProvider.registerLspReferencesProvider(
-                server.createReferencesProvider(),
-                priority = -10,
-            ),
-        )
-        disposables.add(
-            hybridProvider.registerLspFormattingProvider(
-                server.createFormattingProvider(),
-                priority = -10,
-            ),
-        )
-        disposables.add(
-            hybridProvider.registerLspCodeActionProvider(
-                server.createCodeActionProvider(),
-                priority = -10,
-            ),
-        )
+        // Register LSP-backed providers for every language the server covers.
+        for (languageId in config.languageIds) {
+            val hybridProvider = getOrCreateProvider(languageId)
+
+            // Register providers with negative priority (fallback to in-process)
+            disposables.add(
+                hybridProvider.registerLspCompletionProvider(
+                    server.createCompletionProvider(),
+                    priority = -10,
+                ),
+            )
+            disposables.add(
+                hybridProvider.registerLspHoverProvider(
+                    server.createHoverProvider(),
+                    priority = -10,
+                ),
+            )
+            disposables.add(
+                hybridProvider.registerLspSignatureHelpProvider(
+                    server.createSignatureHelpProvider(),
+                    priority = -10,
+                ),
+            )
+            disposables.add(
+                hybridProvider.registerLspDefinitionProvider(
+                    server.createDefinitionProvider(),
+                    priority = -10,
+                ),
+            )
+            disposables.add(
+                hybridProvider.registerLspReferencesProvider(
+                    server.createReferencesProvider(),
+                    priority = -10,
+                ),
+            )
+            disposables.add(
+                hybridProvider.registerLspFormattingProvider(
+                    server.createFormattingProvider(),
+                    priority = -10,
+                ),
+            )
+            disposables.add(
+                hybridProvider.registerLspCodeActionProvider(
+                    server.createCodeActionProvider(),
+                    priority = -10,
+                ),
+            )
+        }
 
         // Forward diagnostics
         server.onDiagnostics { uri, diagnostics ->
@@ -220,7 +228,7 @@ public class LanguageRegistry(
     /**
      * Whether a running LSP server is registered for the given language.
      */
-    public fun hasLspServer(languageId: String): Boolean = lspServers.values.any { it.config.languageId == languageId }
+    public fun hasLspServer(languageId: String): Boolean = lspServers.values.any { languageId in it.config.languageIds }
 
     /**
      * Add a diagnostics listener.
@@ -243,7 +251,7 @@ public class LanguageRegistry(
         content: String,
     ) {
         lspServers.values
-            .filter { it.config.languageId == languageId }
+            .filter { languageId in it.config.languageIds }
             .forEach { it.openDocument(uri, languageId, content) }
     }
 
@@ -256,7 +264,7 @@ public class LanguageRegistry(
         content: String,
     ) {
         lspServers.values
-            .filter { it.config.languageId == languageId }
+            .filter { languageId in it.config.languageIds }
             .forEach { it.changeDocument(uri, content) }
     }
 
@@ -269,7 +277,7 @@ public class LanguageRegistry(
         content: String? = null,
     ) {
         lspServers.values
-            .filter { it.config.languageId == languageId }
+            .filter { languageId in it.config.languageIds }
             .forEach { it.saveDocument(uri, content) }
     }
 
@@ -281,7 +289,7 @@ public class LanguageRegistry(
         languageId: String,
     ) {
         lspServers.values
-            .filter { it.config.languageId == languageId }
+            .filter { languageId in it.config.languageIds }
             .forEach { it.closeDocument(uri) }
     }
 
@@ -387,3 +395,21 @@ public class LanguageRegistry(
         diagnosticsListeners.clear()
     }
 }
+
+/**
+ * Converts plugin-supplied initialization options into the JSON payload sent with
+ * the LSP `initialize` request.
+ */
+private fun Map<String, Any?>.toJsonObject(): JsonObject = JsonObject(mapValues { (_, value) -> value.toJsonElement() })
+
+private fun Any?.toJsonElement(): JsonElement =
+    when (this) {
+        null -> JsonNull
+        is JsonElement -> this
+        is Boolean -> JsonPrimitive(this)
+        is Number -> JsonPrimitive(this)
+        is String -> JsonPrimitive(this)
+        is Iterable<*> -> JsonArray(map { it.toJsonElement() })
+        is Map<*, *> -> JsonObject(entries.associate { (key, value) -> key.toString() to value.toJsonElement() })
+        else -> JsonPrimitive(toString())
+    }

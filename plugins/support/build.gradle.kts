@@ -23,6 +23,7 @@ kotlin {
                 implementation(project(":core:settings"))
                 implementation(project(":editor:core"))
                 implementation(libs.coroutines.core)
+                implementation(libs.serialization.json)
                 implementation(libs.kotlin.logging)
             }
         }
