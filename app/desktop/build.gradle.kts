@@ -22,6 +22,7 @@ kotlin {
                 implementation(projects.plugins.runtime)
                 implementation(projects.plugins.support)
                 implementation(projects.plugins.bundled.kotlin)
+                implementation(projects.plugins.bundled.cfamily)
                 implementation(project(":plugins:bundled:dotnet"))
                 implementation(projects.plugins.bundled.python)
                 implementation(projects.plugins.bundled.rust)

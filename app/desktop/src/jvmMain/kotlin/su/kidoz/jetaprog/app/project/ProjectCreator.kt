@@ -457,6 +457,7 @@ public class ProjectCreator(
         // Determine C++ standard from sdkVersion
         val cppStandard =
             when (config.sdkVersion) {
+                "C++26" -> "c++26"
                 "C++23" -> "c++23"
                 "C++20" -> "c++20"
                 "C++17" -> "c++17"

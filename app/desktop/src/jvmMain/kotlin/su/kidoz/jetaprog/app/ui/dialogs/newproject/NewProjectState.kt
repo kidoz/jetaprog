@@ -47,7 +47,7 @@ public data class NewProjectState(
                 ProjectLanguage.KOTLIN -> listOf("2.1.21", "2.0.21", "1.9.25")
                 ProjectLanguage.JAVA -> listOf("21", "17", "11", "8")
                 ProjectLanguage.RUST -> listOf("1.83", "1.82", "1.81", "1.80")
-                ProjectLanguage.CPP -> listOf("C++23", "C++20", "C++17", "C++14")
+                ProjectLanguage.CPP -> listOf("C++26", "C++23", "C++20", "C++17")
                 ProjectLanguage.VALA -> listOf("0.56", "0.54", "0.52", "0.48")
             }
 

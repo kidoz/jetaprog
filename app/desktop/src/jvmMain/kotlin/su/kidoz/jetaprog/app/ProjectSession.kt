@@ -66,6 +66,8 @@ import su.kidoz.jetaprog.lsp.server.EmbeddedServerConfig
 import su.kidoz.jetaprog.lsp.server.EmbeddedServerRegistry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
+import su.kidoz.jetaprog.plugins.cfamily.CPlugin
+import su.kidoz.jetaprog.plugins.cfamily.CppPlugin
 import su.kidoz.jetaprog.plugins.dotnet.DotNetPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
@@ -507,6 +509,8 @@ public class ProjectSession(
                 sharedSemanticAnalyzer = kotlinSemanticAnalyzer,
             ),
         )
+        pluginManager.registerBundledPlugin(CPlugin())
+        pluginManager.registerBundledPlugin(CppPlugin())
         pluginManager.registerBundledPlugin(DotNetPlugin())
         pluginManager.registerBundledPlugin(PythonPlugin())
         pluginManager.registerBundledPlugin(RustPlugin())

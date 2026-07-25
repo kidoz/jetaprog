@@ -45,6 +45,7 @@ import su.kidoz.jetaprog.editor.syntax.IncrementalTokenizer
 import su.kidoz.jetaprog.editor.syntax.Lexer
 import su.kidoz.jetaprog.editor.syntax.LexerRegistry
 import su.kidoz.jetaprog.editor.syntax.TokenList
+import su.kidoz.jetaprog.editor.syntax.c.CLexer
 import su.kidoz.jetaprog.editor.syntax.cpp.CppLexer
 import su.kidoz.jetaprog.editor.syntax.highlighting.LayeredHighlighter
 import su.kidoz.jetaprog.editor.syntax.java.JavaLexer
@@ -127,6 +128,7 @@ public class EditorViewModel(
         LexerRegistry.register(ValaLexer())
         LexerRegistry.register(JavaLexer())
         LexerRegistry.register(RustLexer())
+        LexerRegistry.register(CLexer())
         LexerRegistry.register(CppLexer())
         LexerRegistry.register(MesonLexer())
         LexerRegistry.register(XmlLexer())
@@ -1186,6 +1188,7 @@ public class EditorViewModel(
                 LanguageId.VALA -> "vala"
                 LanguageId.JAVA -> "java"
                 LanguageId.RUST -> "rust"
+                LanguageId.C -> "c"
                 LanguageId.CPP -> "cpp"
                 LanguageId.MESON -> "meson"
                 LanguageId.XML -> "xml"
@@ -2073,23 +2076,47 @@ public class EditorViewModel(
         val extension = fileName.substringAfterLast('.', "").lowercase()
         return when (extension) {
             "kt", "kts" -> LanguageId.KOTLIN
+
             "java" -> LanguageId.JAVA
+
             "js" -> LanguageId.JAVASCRIPT
+
             "ts" -> LanguageId.TYPESCRIPT
+
             "py" -> LanguageId.PYTHON
+
             "cs", "csx" -> LanguageId.CSHARP
+
             "csproj", "fsproj", "vbproj", "props", "targets" -> LanguageId.MSBUILD
+
             "rs" -> LanguageId.RUST
+
             "go" -> LanguageId.GO
-            "cpp", "cc", "cxx", "c", "h", "hpp" -> LanguageId.CPP
+
+            // ".h" is shared between C and C++; clangd resolves the real dialect from
+            // the compilation database, so map it to C like most editors do.
+            "c", "h" -> LanguageId.C
+
+            "cpp", "cc", "cxx", "c++", "cppm", "ixx", "ccm", "cxxm", "c++m" -> LanguageId.CPP
+
+            "hpp", "hh", "hxx", "h++", "inl", "ipp", "tpp" -> LanguageId.CPP
+
             "json" -> LanguageId.JSON
+
             "yaml", "yml" -> LanguageId.YAML
+
             "toml" -> LanguageId.TOML
+
             "xml", "pom", "xsd", "xsl", "xslt", "svg" -> LanguageId.XML
+
             "html", "htm" -> LanguageId.HTML
+
             "css" -> LanguageId.CSS
+
             "md", "markdown" -> LanguageId.MARKDOWN
+
             "vala", "vapi" -> LanguageId.VALA
+
             else -> LanguageId.PLAIN_TEXT
         }
     }
