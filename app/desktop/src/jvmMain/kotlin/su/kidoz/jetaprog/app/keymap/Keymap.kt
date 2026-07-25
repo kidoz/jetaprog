@@ -191,6 +191,14 @@ public object NavigationActions {
 }
 
 /**
+ * Command action identifiers.
+ */
+public object CommandActions {
+    /** Opens the command palette listing every command the active plugins registered. */
+    public const val COMMAND_PALETTE: String = "command.palette"
+}
+
+/**
  * Default keymap with IntelliJ-style shortcuts.
  */
 public object DefaultKeymap {
@@ -236,6 +244,8 @@ public object DefaultKeymap {
             NavigationActions.PREV_ERROR to KeyboardShortcut(Key.F2, shift = true),
             NavigationActions.NEXT_METHOD to KeyboardShortcut(Key.DirectionDown, alt = true),
             NavigationActions.PREV_METHOD to KeyboardShortcut(Key.DirectionUp, alt = true),
+            // Commands - matches IntelliJ's Find Action chord
+            CommandActions.COMMAND_PALETTE to KeyboardShortcut(Key.A, ctrl = true, shift = true),
         )
 
     /**

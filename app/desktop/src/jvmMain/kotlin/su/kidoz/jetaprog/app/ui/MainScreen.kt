@@ -50,6 +50,7 @@ import su.kidoz.jetaprog.app.ProjectSession
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
 import su.kidoz.jetaprog.app.ui.agent.AgentToolWindow
+import su.kidoz.jetaprog.app.ui.command.CommandPaletteHost
 import su.kidoz.jetaprog.app.ui.components.ActivityBar
 import su.kidoz.jetaprog.app.ui.components.ActivityBarItem
 import su.kidoz.jetaprog.app.ui.components.BreadcrumbSegment
@@ -979,6 +980,12 @@ private fun MainScreenContent(
             },
             notificationCenter = notificationCenter,
             projectPath = currentProjectPath,
+        )
+
+        // Command palette over everything the active plugins registered.
+        CommandPaletteHost(
+            viewModel = session.commandPaletteViewModel,
+            notificationCenter = notificationCenter,
         )
 
         // Toast overlay — last child so it sits above everything except modals.

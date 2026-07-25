@@ -22,7 +22,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import su.kidoz.jetaprog.app.command.CommandPaletteIntent
+import su.kidoz.jetaprog.app.command.CommandPaletteViewModel
 import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
+import su.kidoz.jetaprog.app.keymap.CommandActions
 import su.kidoz.jetaprog.app.keymap.DefaultKeymap
 import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
@@ -186,6 +189,19 @@ public class ProjectSession(
      * The navigation view model.
      */
     public val navigationViewModel: NavigationViewModel = NavigationViewModel(navigationService)
+
+    /**
+     * Drives the command palette over the commands registered by the active plugins.
+     */
+    public val commandPaletteViewModel: CommandPaletteViewModel by lazy {
+        CommandPaletteViewModel(
+            listCommandIds = { commandService.getCommands() },
+            listManifests = {
+                pluginManager.installedPlugins.value.mapNotNull { pluginManager.getPlugin(it.id)?.manifest }
+            },
+            executeCommand = { id -> commandService.executeCommand(id) },
+        )
+    }
 
     // ========================================================================
     // Refactoring
@@ -574,8 +590,16 @@ public class ProjectSession(
                 navState.isFileStructureVisible ||
                 navState.isQuickDefinitionVisible ||
                 navState.isUsagesPopupVisible ||
-                navState.isRecentFilesVisible
+                navState.isRecentFilesVisible ||
+                commandPaletteViewModel.state.value.isVisible
         if (popupOpen) return false
+
+        if (event.type == KeyEventType.KeyDown &&
+            DefaultKeymap.findAction(event) == CommandActions.COMMAND_PALETTE
+        ) {
+            commandPaletteViewModel.dispatch(CommandPaletteIntent.Show)
+            return true
+        }
 
         if (handleDoubleShift(event)) return true
 
@@ -739,6 +763,7 @@ public class ProjectSession(
         kotlinSemanticAnalyzer.dispose()
         languageRegistry.shutdown()
         editorViewModel.dispose()
+        commandPaletteViewModel.dispose()
         terminalViewModel.dispose()
         gradleViewModel.dispose()
         agentSessionViewModel.dispose()
