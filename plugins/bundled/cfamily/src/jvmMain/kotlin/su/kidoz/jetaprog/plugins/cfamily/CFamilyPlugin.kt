@@ -96,6 +96,7 @@ public abstract class CFamilyPlugin(
                     ClangdOptions(
                         executable = clangdExecutable,
                         compileCommandsDir = support.compileCommandsDirectory(),
+                        sysroot = ClangdOptions.detectMacosSysroot(),
                     ),
             )
         if (!isLanguageServerRunning) {

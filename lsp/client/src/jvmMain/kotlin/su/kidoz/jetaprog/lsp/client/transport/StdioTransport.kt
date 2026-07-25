@@ -93,7 +93,7 @@ public class StdioTransport(
                 ).use { errorReader ->
                     var line: String?
                     while (errorReader.readLine().also { line = it } != null && isActive) {
-                        logger.warn { "[LSP stderr] $line" }
+                        logServerLog(line.orEmpty())
                     }
                 }
             }
@@ -272,6 +272,21 @@ public class StdioTransport(
             } catch (e: Exception) {
                 logger.error(e) { "Error closing transport" }
             }
+        }
+    }
+
+    /**
+     * Logs a line the server wrote to stderr at its own severity.
+     *
+     * Servers such as clangd write ordinary progress chatter to stderr, prefixed
+     * with a severity marker (`I[..]`, `E[..]`). Logging every line as a warning
+     * makes routine output look like a fault.
+     */
+    private fun logServerLog(line: String) {
+        when (line.firstOrNull()) {
+            'E', 'F' -> logger.warn { "[LSP stderr] $line" }
+            'I', 'V', 'D' -> logger.debug { "[LSP stderr] $line" }
+            else -> logger.info { "[LSP stderr] $line" }
         }
     }
 }

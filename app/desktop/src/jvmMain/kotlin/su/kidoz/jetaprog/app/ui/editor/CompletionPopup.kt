@@ -96,6 +96,21 @@ public fun CompletionPopup(
                     .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
                     .background(IntelliJColors.popupBackground),
         ) {
+            // Smart completion says which type it narrowed to, so a short list does not
+            // look like a broken one.
+            state.smartTypeName?.let { typeName ->
+                Text(
+                    text = "Expected type: $typeName",
+                    color = IntelliJColors.textMuted,
+                    fontSize = 11.sp,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(IntelliJColors.surfaceElevated)
+                            .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xxs.dp),
+                )
+            }
+
             // Loading indicator
             if (state.isLoading) {
                 Box(

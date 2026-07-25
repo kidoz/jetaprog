@@ -181,17 +181,13 @@ public fun CodeEditor(
     LaunchedEffect(state.activeDocumentUri, state.content) {
         val newContent = state.content
         if (newContent != lastKnownContent && newContent != textFieldValue.text) {
-            // External change - update text while preserving cursor position
-            val selection = textFieldValue.selection
-            textFieldValue =
-                TextFieldValue(
-                    text = newContent,
-                    selection =
-                        TextRange(
-                            selection.start.coerceIn(0, newContent.length),
-                            selection.end.coerceIn(0, newContent.length),
-                        ),
-                )
+            // Follow the caret the view model asked for: accepting a completion or a
+            // snippet places it after the inserted text, and preserving the old
+            // offset here would leave it behind. Operations that do not move the
+            // caret (Format Document, a quick fix) leave state.cursor untouched, so
+            // this preserves it for them.
+            val caret = offsetOfPosition(newContent, state.cursor.position)
+            textFieldValue = TextFieldValue(text = newContent, selection = TextRange(caret))
         }
         lastKnownContent = newContent
     }
@@ -642,6 +638,26 @@ public fun CodeEditor(
                                         // Delete line: Ctrl+Y / Cmd+Y
                                         plainCtrlOrMeta && keyEvent.key == Key.Y -> {
                                             onIntent(EditorIntent.DeleteLine)
+                                            true
+                                        }
+
+                                        // Ctrl+Shift+Space - smart completion, narrowed to
+                                        // the type expected at the caret. Must precede the
+                                        // plain Ctrl+Space branch, which would swallow it.
+                                        ctrlOrMeta &&
+                                            keyEvent.isShiftPressed &&
+                                            keyEvent.key == Key.Spacebar -> {
+                                            onIntent(
+                                                EditorIntent.RequestCompletion(
+                                                    triggerKind = CompletionTriggerKind.Invoked,
+                                                    filterText =
+                                                        extractIdentifierPrefix(
+                                                            textFieldValue.text,
+                                                            textFieldValue.selection.start,
+                                                        ),
+                                                    smart = true,
+                                                ),
+                                            )
                                             true
                                         }
 
@@ -1136,4 +1152,16 @@ public fun EmptyEditorPlaceholder(modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+/** Character offset of [position] within [content], clamped to its bounds. */
+private fun offsetOfPosition(
+    content: String,
+    position: TextPosition,
+): Int {
+    val lines = content.lines()
+    if (position.line >= lines.size) return content.length
+    val lineStart = lines.take(position.line).sumOf { it.length + 1 }
+    val column = position.column.coerceAtMost(lines[position.line].length)
+    return (lineStart + column).coerceIn(0, content.length)
 }

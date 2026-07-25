@@ -8,6 +8,7 @@ import su.kidoz.jetaprog.plugins.api.PluginContext
 import su.kidoz.jetaprog.plugins.api.language.DocumentSelector
 import su.kidoz.jetaprog.plugins.api.services.LanguageServerConfig
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 private val logger = KotlinLogging.logger {}
 
@@ -18,12 +19,14 @@ private val logger = KotlinLogging.logger {}
  * @property compileCommandsDir Directory holding `compile_commands.json`, if one exists.
  * @property backgroundIndex Whether clangd should index the project in the background.
  * @property clangTidy Whether clang-tidy diagnostics are enabled.
+ * @property sysroot SDK root applied to sources outside the compilation database.
  */
 internal data class ClangdOptions(
     val executable: String = DEFAULT_EXECUTABLE,
     val compileCommandsDir: String? = null,
     val backgroundIndex: Boolean = true,
     val clangTidy: Boolean = true,
+    val sysroot: String? = null,
 ) {
     /**
      * The full command line, starting with the executable.
@@ -44,9 +47,49 @@ internal data class ClangdOptions(
             compileCommandsDir?.let { add("--compile-commands-dir=$it") }
         }
 
+    /**
+     * Initialization options for the server.
+     *
+     * The macOS SDK path goes here rather than into the project's `.clangd` so
+     * a machine-specific path is never written into the repository. Without it,
+     * sources outside `compile_commands.json` compile with no sysroot and every
+     * system header is off the include path — which shows up as failed include
+     * insertion and missing completions.
+     */
+    fun initializationOptions(): Map<String, Any?> =
+        if (sysroot == null) {
+            emptyMap()
+        } else {
+            mapOf("fallbackFlags" to listOf("-isysroot", sysroot))
+        }
+
     companion object {
         /** The clangd binary name looked up on PATH. */
         const val DEFAULT_EXECUTABLE: String = "clangd"
+
+        /** How long to wait for `xcrun` before giving up on SDK detection. */
+        private const val SYSROOT_TIMEOUT_SECONDS = 5L
+
+        /**
+         * The macOS SDK path reported by `xcrun`, or null off macOS or when the
+         * command tools are unavailable.
+         */
+        fun detectMacosSysroot(): String? {
+            if (!System.getProperty("os.name").orEmpty().startsWith("Mac")) return null
+            return runCatching {
+                val process = ProcessBuilder("xcrun", "--show-sdk-path").start()
+                val output =
+                    process.inputStream
+                        .bufferedReader()
+                        .use { it.readText() }
+                        .trim()
+                if (!process.waitFor(SYSROOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    process.destroy()
+                    return@runCatching null
+                }
+                output.takeIf { process.exitValue() == 0 && it.isNotEmpty() }
+            }.getOrNull()
+        }
     }
 }
 
@@ -92,6 +135,7 @@ internal object ClangdCoordinator {
                     name = SERVER_NAME,
                     command = options.command(),
                     documentSelector = DocumentSelector(languages = LANGUAGES),
+                    initializationOptions = options.initializationOptions(),
                     workingDirectory = workspacePath,
                 )
 

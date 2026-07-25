@@ -20,6 +20,9 @@ import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.completion.CompletionController
 import su.kidoz.jetaprog.editor.completion.SnippetExpander
+import su.kidoz.jetaprog.editor.completion.smart.ExpectedTypeContext
+import su.kidoz.jetaprog.editor.completion.smart.ExpectedTypeInference
+import su.kidoz.jetaprog.editor.completion.smart.SmartCompletionFilter
 import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
 import su.kidoz.jetaprog.editor.navigation.NavigationService
@@ -293,6 +296,7 @@ public class EditorViewModel(
                     intent.triggerKind,
                     intent.triggerCharacter,
                     intent.filterText,
+                    smart = intent.smart,
                 )
             }
 
@@ -1223,6 +1227,7 @@ public class EditorViewModel(
         triggerKind: CompletionTriggerKind,
         triggerCharacter: Char?,
         filterTextOverride: String?,
+        smart: Boolean = false,
     ) {
         // Cancel any pending completion request
         completionJob?.cancel()
@@ -1268,18 +1273,39 @@ public class EditorViewModel(
                     } else {
                         completionItems
                     }
+
+                // Smart mode narrows what the provider already ranked, rather than
+                // sourcing separately, so the server's semantic ordering is preserved.
+                val smartResult =
+                    if (smart) {
+                        SmartCompletionFilter.apply(filteredItems, inferExpectedType())
+                    } else {
+                        null
+                    }
+                val itemsToShow = smartResult?.items ?: filteredItems
+
                 updateState {
                     copy(
                         completionState =
                             completionState.copy(
-                                items = filteredItems,
+                                items = itemsToShow,
                                 isLoading = false,
                                 selectedIndex = 0,
-                                isVisible = filteredItems.isNotEmpty(),
+                                isVisible = itemsToShow.isNotEmpty(),
+                                smartTypeName = smartResult?.takeIf { it.narrowed }?.expectedTypeName,
                             ),
                     )
                 }
             }
+    }
+
+    /**
+     * Infers the type expected at the caret, for smart completion.
+     */
+    private fun inferExpectedType(): ExpectedTypeContext {
+        val content = currentState.content
+        val position = currentState.cursor.position
+        return ExpectedTypeInference.inferAt(content, positionToOffset(content, position.line, position.column))
     }
 
     /**
@@ -1569,12 +1595,14 @@ public class EditorViewModel(
                 append(content.substring(replaceEnd))
             }
 
-        updateContent(newContent)
-
-        // Place the caret where the snippet asked for it (inside the parentheses of a
-        // call, say) rather than after the inserted text.
+        // Move the caret first: the editor syncs its text field when the content
+        // changes and reads the caret from state, so updating content first would
+        // leave the caret at its pre-completion offset.
+        // Snippets ask for a caret inside the inserted text (between a call's
+        // parentheses); everything else lands after it.
         val caretOffset = replaceStart + (expanded?.caretOffset ?: textToInsert.length)
         moveCursorToOffset(newContent, caretOffset)
+        updateContent(newContent)
 
         // Dismiss completion popup
         dismissCompletion()
@@ -1603,7 +1631,7 @@ public class EditorViewModel(
                         newText = edit.newText,
                     )
                 }
-            updateContent(applyReplacements(contentAfterInsert, replacements))
+            applyEditsKeepingCaret(contentAfterInsert, replacements)
             return
         }
 
@@ -1613,8 +1641,30 @@ public class EditorViewModel(
             val edit = provider.importEditFor(path, contentAfterInsert, item.label) ?: return@launch
             // The document may have moved on while resolving; only apply to what we measured.
             if (currentState.content != contentAfterInsert) return@launch
-            updateContent(applyReplacements(contentAfterInsert, listOf(edit)))
+            applyEditsKeepingCaret(contentAfterInsert, listOf(edit))
         }
+    }
+
+    /**
+     * Applies [edits] and shifts the caret so it stays on the same text.
+     *
+     * An inserted import sits above the caret and pushes everything below it
+     * down; without this the caret would keep its old offset and end up a line
+     * off from where the user was typing.
+     */
+    private fun applyEditsKeepingCaret(
+        content: String,
+        edits: List<TextReplacement>,
+    ) {
+        val updated = applyReplacements(content, edits)
+        val position = currentState.cursor.position
+        val caret = positionToOffset(content, position.line, position.column)
+        val shift =
+            edits
+                .filter { it.endOffset <= caret }
+                .sumOf { it.newText.length - (it.endOffset - it.startOffset) }
+        moveCursorToOffset(updated, caret + shift)
+        updateContent(updated)
     }
 
     /** Converts a position to a character offset in [content]. */

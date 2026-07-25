@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import su.kidoz.jetaprog.common.completion.CompletionItem
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.state.EditorIntent
@@ -171,6 +172,26 @@ class EditorViewModelQuickFixTest {
                     .startsWith("fun main()"),
                 "content must be unchanged",
             )
+            viewModel.dispose()
+        }
+
+    @Test
+    fun caretLandsAfterAnAcceptedCompletion() =
+        runTest {
+            coEvery { fileSystem.readText(any(), any()) } returns Result.success("val x = wid\n")
+            val viewModel = openEditor()
+            viewModel.dispatch(EditorIntent.MoveCursor(TextPosition(0, 11)))
+
+            viewModel.dispatch(
+                EditorIntent.ApplyCompletion(
+                    CompletionItem(label = "widget", insertText = "widget"),
+                ),
+            )
+
+            val state = viewModel.state.first { it.content.contains("widget") }
+            assertEquals("val x = widget\n", state.content)
+            // Caret sits after the inserted word, ready for the next keystroke.
+            assertEquals(TextPosition(0, 14), state.cursor.position)
             viewModel.dispose()
         }
 }
