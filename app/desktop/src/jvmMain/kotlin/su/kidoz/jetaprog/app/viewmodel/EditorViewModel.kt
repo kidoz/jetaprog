@@ -15,12 +15,14 @@ import su.kidoz.jetaprog.common.completion.CompletionTriggerKind
 import su.kidoz.jetaprog.common.mvi.MviViewModel
 import su.kidoz.jetaprog.common.text.MarkedString
 import su.kidoz.jetaprog.common.text.TextPosition
+import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.completion.CompletionController
 import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.SearchScope
 import su.kidoz.jetaprog.editor.quickfix.AutoImportProvider
+import su.kidoz.jetaprog.editor.quickfix.QuickFix
 import su.kidoz.jetaprog.editor.quickfix.QuickFixProvider
 import su.kidoz.jetaprog.editor.quickfix.TextReplacement
 import su.kidoz.jetaprog.editor.quickfix.applyReplacements
@@ -58,6 +60,7 @@ import su.kidoz.jetaprog.editor.undo.EditSnapshot
 import su.kidoz.jetaprog.editor.undo.UndoManager
 import su.kidoz.jetaprog.lint.integration.DiagnosticConverter
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.plugins.api.services.CodeActionContext
 import su.kidoz.jetaprog.plugins.api.services.FormattingOptions
 import su.kidoz.jetaprog.plugins.api.services.LanguageDiagnostic
 import su.kidoz.jetaprog.plugins.api.services.LintService
@@ -993,10 +996,11 @@ public class EditorViewModel(
      * feedback rather than appearing to do nothing.
      */
     private suspend fun requestQuickFixes() {
-        val provider = quickFixProvider ?: return
         val path = currentState.activeTab?.uri?.toPath() ?: return
         val position = currentState.cursor.position
-        val fixes = provider.quickFixes(path, currentState.content, position)
+        val fixes =
+            quickFixProvider?.quickFixes(path, currentState.content, position).orEmpty() +
+                languageCodeActions(position)
 
         if (fixes.isEmpty()) {
             emitEffect(EditorEffect.ShowNotification("No quick fixes here", NotificationType.INFO))
@@ -1011,6 +1015,49 @@ public class EditorViewModel(
                         selectedIndex = 0,
                         position = position,
                     ),
+            )
+        }
+    }
+
+/**
+     * Code actions offered by the language provider (an LSP server, when one is
+     * configured) for the caret position.
+     *
+     * Actions whose edits touch other files are skipped: the editor applies
+     * fixes to the open buffer only, and silently dropping the rest of a
+     * multi-file edit would corrupt the change.
+     */
+    private suspend fun languageCodeActions(position: TextPosition): List<QuickFix> {
+        val registry = languageRegistry ?: return emptyList()
+        val document = TextDocumentAdapter(currentState)
+        val uri = currentState.activeDocumentUri?.value ?: return emptyList()
+        val caretRange = TextRange(position, position)
+
+        val actions =
+            runCatching {
+                registry.provideCodeActions(
+                    document = document,
+                    range = caretRange,
+                    context = CodeActionContext(diagnostics = emptyList()),
+                )
+            }.getOrNull() ?: return emptyList()
+
+        return actions.mapNotNull { action ->
+            val changes = action.edit?.changes ?: return@mapNotNull null
+            if (changes.keys.any { it != uri }) return@mapNotNull null
+            val edits = changes[uri].orEmpty()
+            if (edits.isEmpty()) return@mapNotNull null
+
+            QuickFix(
+                title = action.title,
+                edits =
+                    edits.map { edit ->
+                        TextReplacement(
+                            startOffset = edit.range.start.toOffset(currentState.content),
+                            endOffset = edit.range.end.toOffset(currentState.content),
+                            newText = edit.newText,
+                        )
+                    },
             )
         }
     }
