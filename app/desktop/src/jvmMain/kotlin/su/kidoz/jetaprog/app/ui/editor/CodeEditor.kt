@@ -172,24 +172,28 @@ public fun CodeEditor(
 
     val commentPrefix = remember(state.languageId) { CommentSyntax.lineCommentPrefix(state.languageId) }
 
-    // Handle external content changes (not from user typing)
-    LaunchedEffect(state.activeDocumentUri) {
-        snapshotFlow { state.content }
-            .collect { newContent ->
-                // Only update if content changed externally (not from our own edit)
-                if (newContent != lastKnownContent && newContent != textFieldValue.text) {
-                    // External change - update text while preserving cursor position
-                    val selection = textFieldValue.selection
-                    val clampedStart = selection.start.coerceIn(0, newContent.length)
-                    val clampedEnd = selection.end.coerceIn(0, newContent.length)
-                    textFieldValue =
-                        TextFieldValue(
-                            text = newContent,
-                            selection = TextRange(clampedStart, clampedEnd),
-                        )
-                }
-                lastKnownContent = newContent
-            }
+    // Handle external content changes (not from user typing): undo/redo, Format Document,
+    // an applied quick fix, a file reloaded from disk.
+    //
+    // Keyed on the content itself. Observing it through snapshotFlow did not work: the
+    // effect captures one immutable EditorState, and reading a field of it records no
+    // snapshot read, so the flow emitted once and never fired again.
+    LaunchedEffect(state.activeDocumentUri, state.content) {
+        val newContent = state.content
+        if (newContent != lastKnownContent && newContent != textFieldValue.text) {
+            // External change - update text while preserving cursor position
+            val selection = textFieldValue.selection
+            textFieldValue =
+                TextFieldValue(
+                    text = newContent,
+                    selection =
+                        TextRange(
+                            selection.start.coerceIn(0, newContent.length),
+                            selection.end.coerceIn(0, newContent.length),
+                        ),
+                )
+        }
+        lastKnownContent = newContent
     }
 
     // Select and reveal the current find match
@@ -209,22 +213,26 @@ public fun CodeEditor(
 
     // Diagnostic ranges converted to character offsets for underline rendering
     val diagnosticSpans =
-        remember(state.content, state.diagnostics) {
+        remember(textFieldValue.text, state.diagnostics) {
             state.diagnostics.map { diagnostic ->
-                val start = positionToOffset(state.content, diagnostic.range.start)
-                val end = positionToOffset(state.content, diagnostic.range.end)
+                val start = positionToOffset(textFieldValue.text, diagnostic.range.start)
+                val end = positionToOffset(textFieldValue.text, diagnostic.range.end)
                 DiagnosticSpan(
                     start = start,
                     // Widen empty ranges so they stay visible
-                    end = if (end > start) end else (start + 1).coerceAtMost(state.content.length),
+                    end = if (end > start) end else (start + 1).coerceAtMost(textFieldValue.text.length),
                     severity = diagnostic.severity,
                 )
             }
         }
 
+    // Built from the editable buffer, not state.content: the highlighted layer and the
+    // input layer are stacked, so if they ever hold different text their layouts disagree
+    // and the caret stops lining up with the glyphs. Tokens may lag by a frame, which at
+    // worst leaves the last typed character unstyled until they catch up.
     val annotatedString =
         remember(
-            state.content,
+            textFieldValue.text,
             state.tokens,
             syntaxTheme,
             state.findReplaceState.matches,
@@ -232,7 +240,7 @@ public fun CodeEditor(
             diagnosticSpans,
         ) {
             buildHighlightedText(
-                state.content,
+                textFieldValue.text,
                 state.tokens,
                 syntaxTheme,
                 state.findReplaceState.matches,
@@ -251,65 +259,31 @@ public fun CodeEditor(
             }
         }
 
-    // Calculate popup offset based on current cursor position (approximate)
     val lineHeightPx = with(density) { Dimensions.lineHeightCode.sp.roundToPx() }
-    val gutterWidthPx =
-        with(density) {
-            if (state.showLineNumbers) {
-                val digits =
-                    state.lineCount
-                        .toString()
-                        .length
-                        .coerceAtLeast(3)
-                (digits * 10 + 36).dp.roundToPx()
-            } else {
-                0
-            }
-        }
     val editorPaddingStartPx = with(density) { 8.dp.roundToPx() }
     val editorPaddingTopPx = with(density) { 4.dp.roundToPx() }
     val charWidthDp = with(density) { charWidthPx.toDp() }
     val lineHeightDp = with(density) { lineHeightPx.toDp() }
-    val popupOffset =
-        remember(
-            state.cursor.position,
-            gutterWidthPx,
-            editorPaddingStartPx,
-            charWidthPx,
-            horizontalScrollState.value,
-            verticalScrollState.value,
-        ) {
-            val line = state.cursor.position.line
-            val column = state.cursor.position.column
-            val x =
-                gutterWidthPx +
-                    editorPaddingStartPx +
-                    (column * charWidthPx).roundToInt() -
-                    horizontalScrollState.value
-            val y = ((line + 1) * lineHeightPx) - verticalScrollState.value
-            IntOffset(x = x, y = y)
-        }
 
-    // Quick-fix popup sits just under the caret line.
-    val quickFixOffset =
-        remember(state.quickFixState.position, lineHeightPx) {
-            val line = state.quickFixState.position.line
-            IntOffset(x = 60, y = (line + 1) * lineHeightPx)
-        }
+    // Anchors a popup to a text position, in the coordinate space of the editor content
+    // area - the same space the bracket and inlay overlays use. That area already begins
+    // after the line-number gutter, so the gutter width must not be added again, and the
+    // scroll offsets must be subtracted or the popup stays pinned to the document rather
+    // than the viewport and sails off screen as soon as the file is scrolled.
+    val anchorPopup: (TextPosition, Boolean) -> IntOffset = { position, below ->
+        val row = if (below) position.line + 1 else position.line
+        IntOffset(
+            x =
+                editorPaddingStartPx + (position.column * charWidthPx).roundToInt() -
+                    horizontalScrollState.value,
+            y = editorPaddingTopPx + row * lineHeightPx - verticalScrollState.value,
+        )
+    }
 
-    // Calculate hover popup offset
-    val hoverOffset =
-        remember(state.hoverState.position) {
-            val line = state.hoverState.position.line
-            IntOffset(x = 50, y = (line + 1) * lineHeightPx)
-        }
-
-    // Calculate signature help popup offset
-    val signatureHelpOffset =
-        remember(state.signatureHelpState.position) {
-            val line = state.signatureHelpState.position.line
-            IntOffset(x = 50, y = line * lineHeightPx)
-        }
+    val popupOffset = anchorPopup(state.cursor.position, true)
+    val quickFixOffset = anchorPopup(state.quickFixState.position, true)
+    val hoverOffset = anchorPopup(state.hoverState.position, true)
+    val signatureHelpOffset = anchorPopup(state.signatureHelpState.position, false)
 
     Column(modifier = modifier.background(syntaxTheme.background.toComposeColor())) {
         if (state.findReplaceState.isVisible) {
@@ -517,7 +491,11 @@ public fun CodeEditor(
                             if (processed.selection != oldSelection) {
                                 onCursorMove(offsetToPosition(processed.text, processed.selection.start))
                             }
-                            if (processed.text != state.content) {
+                            // Compare against the previous local text, not state.content:
+                            // the ViewModel lags by at least a frame, so typing a character
+                            // and deleting it again could leave the new text equal to the
+                            // stale state.content and the deletion was never propagated.
+                            if (processed.text != oldText) {
                                 // Update lastKnownContent to prevent LaunchedEffect from resetting cursor
                                 lastKnownContent = processed.text
                                 onContentChange(processed.text)
@@ -546,10 +524,11 @@ public fun CodeEditor(
                                     if (typedChar in SIGNATURE_HELP_TRIGGER_CHARACTERS) {
                                         onSignatureHelpRequest(typedChar)
                                     }
+                                } else if (processed.text.length < oldText.length) {
+                                    val prefix =
+                                        extractIdentifierPrefix(processed.text, processed.selection.start)
+                                    onCompletionFilterChange(prefix)
                                 }
-                            } else if (processed.text.length < oldText.length) {
-                                val prefix = extractIdentifierPrefix(processed.text, processed.selection.start)
-                                onCompletionFilterChange(prefix)
                             }
                             // Dismiss signature help on closing paren (also fires on skip-over)
                             if (typedChar == ')') {
@@ -1008,7 +987,7 @@ internal fun pointerTextPosition(
 /**
  * Convert a line/column position to a character offset.
  */
-private fun positionToOffset(
+internal fun positionToOffset(
     text: String,
     position: TextPosition,
 ): Int {
@@ -1019,7 +998,11 @@ private fun positionToOffset(
         if (text[index] == '\n') line++
         index++
     }
-    return (index + position.column).coerceIn(0, text.length)
+    // Clamp to the end of the target line: a column past the line end would otherwise
+    // resolve onto the following line and, for a diagnostic, underline the wrong text.
+    var lineEnd = index
+    while (lineEnd < text.length && text[lineEnd] != '\n') lineEnd++
+    return (index + position.column).coerceIn(0, lineEnd)
 }
 
 /**

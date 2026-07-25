@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.ui.editor
 
 import androidx.compose.ui.geometry.Offset
+import su.kidoz.jetaprog.common.text.TextPosition
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.test.Test
@@ -93,6 +94,25 @@ class EditorGridTest {
             )
 
         assertEquals(null, position)
+    }
+
+    @Test
+    fun positionToOffsetClampsAColumnPastTheLineEnd() {
+        val text = "ab\ncdef\ngh"
+
+        // Column 10 does not exist on line 0; it must stop at that line's end rather than
+        // resolving into line 1 and underlining the wrong text.
+        assertEquals(2, positionToOffset(text, TextPosition(0, 10)))
+        assertEquals(text.indexOf("cdef") + 4, positionToOffset(text, TextPosition(1, 99)))
+    }
+
+    @Test
+    fun positionToOffsetResolvesInRangeColumns() {
+        val text = "ab\ncdef\ngh"
+
+        assertEquals(0, positionToOffset(text, TextPosition(0, 0)))
+        assertEquals(1, positionToOffset(text, TextPosition(0, 1)))
+        assertEquals(text.indexOf("cdef") + 2, positionToOffset(text, TextPosition(1, 2)))
     }
 
     @Test
