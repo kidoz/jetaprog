@@ -43,6 +43,24 @@ public fun interface QuickFixProvider {
     ): List<QuickFix>
 }
 
+/**
+ * Supplies the edit that makes a symbol visible in a file.
+ *
+ * Used when a completion is accepted, so picking a project type also imports it.
+ */
+public fun interface AutoImportProvider {
+    /**
+     * Returns the edit importing [simpleName] into [filePath], or null when no
+     * import is needed or the name is ambiguous — guessing between candidates
+     * would insert the wrong import.
+     */
+    public suspend fun importEditFor(
+        filePath: String,
+        content: String,
+        simpleName: String,
+    ): TextReplacement?
+}
+
 /** Applies [edits] to [content], back-to-front so earlier offsets stay valid. */
 public fun applyReplacements(
     content: String,

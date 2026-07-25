@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.plugins.kotlin.lint
 import su.kidoz.jetaprog.lint.engine.LintContext
 import su.kidoz.jetaprog.lint.model.AbstractLintRule
 import su.kidoz.jetaprog.lint.model.LintCategory
+import su.kidoz.jetaprog.lint.model.LintFix
 import su.kidoz.jetaprog.lint.model.LintResult
 import su.kidoz.jetaprog.lint.model.LintRuleDescriptor
 import su.kidoz.jetaprog.lint.model.LintRuleId
@@ -44,6 +45,51 @@ public class KotlinSyntaxRule(
 }
 
 /**
+ * Reports imports that are never used in the file.
+ *
+ * Detection is shared with the editor's quick fix, so the warning and the
+ * "Remove unused import" action always agree.
+ */
+public class KotlinUnusedImportRule : AbstractLintRule(DESCRIPTOR) {
+    override suspend fun check(context: LintContext): List<LintResult> =
+        KotlinUnusedImports.find(context.content).map { unused ->
+            createResult(
+                message = "Unused import: ${unused.fqName}",
+                range = context.rangeFromOffsets(unused.startOffset, unused.endOffset),
+                severity = LintSeverity.WARNING,
+            )
+        }
+
+    override suspend fun fix(
+        context: LintContext,
+        result: LintResult,
+    ): LintFix? {
+        val unused =
+            KotlinUnusedImports.find(context.content).firstOrNull { candidate ->
+                "Unused import: ${candidate.fqName}" == result.message
+            } ?: return null
+        return LintFix.Delete(
+            description = "Remove import ${unused.fqName}",
+            uri = context.uri,
+            range = context.rangeFromOffsets(unused.startOffset, unused.endOffset),
+        )
+    }
+
+    private companion object {
+        private val DESCRIPTOR =
+            LintRuleDescriptor(
+                id = LintRuleId.of("kotlin", "unused-import"),
+                name = "Unused import",
+                description = "Reports imports whose name never appears in the file.",
+                category = LintCategory.STYLE,
+                defaultSeverity = LintSeverity.WARNING,
+                languages = listOf("kotlin"),
+                hasFix = true,
+            )
+    }
+}
+
+/**
  * Lint provider contributing Kotlin syntax-error diagnostics.
  */
 public class KotlinSyntaxLintProvider(
@@ -55,6 +101,7 @@ public class KotlinSyntaxLintProvider(
     ) {
     init {
         registerRule(KotlinSyntaxRule(analyzer))
+        registerRule(KotlinUnusedImportRule())
     }
 }
 

@@ -1,22 +1,25 @@
 package su.kidoz.jetaprog.app.quickfix
 
 import su.kidoz.jetaprog.common.text.TextPosition
+import su.kidoz.jetaprog.editor.quickfix.AutoImportProvider
 import su.kidoz.jetaprog.editor.quickfix.QuickFix
 import su.kidoz.jetaprog.editor.quickfix.QuickFixProvider
 import su.kidoz.jetaprog.editor.quickfix.TextReplacement
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
+import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinUnusedImports
 
 /**
  * Computes quick fixes for the caret position in a Kotlin file.
  *
- * Currently offers imports for unresolved names, resolved from the project
- * symbol index. Fixes are returned as plain document edits so the caller can
- * apply them through the editor's normal content update — which keeps them
- * undoable.
+ * Offers imports for unresolved names (resolved from the project symbol index)
+ * and removal of unused ones. Fixes are returned as plain document edits so the
+ * caller can apply them through the editor's normal content update — which
+ * keeps them undoable.
  */
 public class KotlinQuickFixService(
     private val symbolIndex: KotlinSymbolIndex,
-) : QuickFixProvider {
+) : QuickFixProvider,
+    AutoImportProvider {
     /**
      * Returns the fixes available at [position] in [content].
      *
@@ -28,8 +31,27 @@ public class KotlinQuickFixService(
         position: TextPosition,
     ): List<QuickFix> {
         if (!isKotlinFile(filePath)) return emptyList()
+
+        removeUnusedImportFix(content, position)?.let { return listOf(it) }
+
         val identifier = identifierAt(content, position) ?: return emptyList()
         return importFixes(filePath, content, identifier)
+    }
+
+    /**
+     * Offers to delete the import under the caret when nothing in the file uses
+     * it. Shares its detection with the `kotlin/unused-import` lint rule, so the
+     * warning and this action never disagree.
+     */
+    private fun removeUnusedImportFix(
+        content: String,
+        position: TextPosition,
+    ): QuickFix? {
+        val unused = KotlinUnusedImports.find(content).firstOrNull { it.line == position.line } ?: return null
+        return QuickFix(
+            title = "Remove unused import ${unused.fqName}",
+            edits = listOf(TextReplacement(unused.startOffset, unused.endOffset, "")),
+        )
     }
 
     /**
@@ -42,29 +64,51 @@ public class KotlinQuickFixService(
         identifier: String,
     ): List<QuickFix> {
         val lines = content.lines()
-        val currentPackage = packageOf(lines)
-        val existingImports = importsIn(lines)
-
-        val candidates =
-            symbolIndex
-                .findByName(identifier)
-                // Only top-level declarations can be imported by simple name.
-                .filter { it.parent == null }
-                .filter { it.filePath != filePath }
-                .map { it.fqName }
-                .filter { fqName -> fqName.substringBeforeLast('.', "") != currentPackage }
-                .filterNot { fqName -> isImported(fqName, existingImports) }
-                .distinct()
-                .sorted()
-
-        if (candidates.isEmpty()) return emptyList()
-
-        return candidates.map { fqName ->
+        return importCandidates(filePath, content, identifier).map { fqName ->
             QuickFix(
                 title = "Import $fqName",
                 edits = listOf(importEdit(content, lines, fqName)),
             )
         }
+    }
+
+    /**
+     * Imports the accepted completion when exactly one project declaration
+     * matches. Ambiguous names are left alone; Alt+Enter can offer the choice.
+     */
+    override suspend fun importEditFor(
+        filePath: String,
+        content: String,
+        simpleName: String,
+    ): TextReplacement? {
+        if (!isKotlinFile(filePath)) return null
+        val fqName = importCandidates(filePath, content, simpleName).singleOrNull() ?: return null
+        return importEdit(content, content.lines(), fqName)
+    }
+
+    /**
+     * Fully qualified names that would make [identifier] resolvable in this
+     * file, excluding anything already visible.
+     */
+    private suspend fun importCandidates(
+        filePath: String,
+        content: String,
+        identifier: String,
+    ): List<String> {
+        val lines = content.lines()
+        val currentPackage = packageOf(lines)
+        val existingImports = importsIn(lines)
+
+        return symbolIndex
+            .findByName(identifier)
+            // Only top-level declarations can be imported by simple name.
+            .filter { it.parent == null }
+            .filter { it.filePath != filePath }
+            .map { it.fqName }
+            .filter { fqName -> fqName.substringBeforeLast('.', "") != currentPackage }
+            .filterNot { fqName -> isImported(fqName, existingImports) }
+            .distinct()
+            .sorted()
     }
 
     /**

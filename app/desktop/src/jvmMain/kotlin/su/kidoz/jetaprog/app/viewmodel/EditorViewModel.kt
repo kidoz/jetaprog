@@ -20,7 +20,9 @@ import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.SearchScope
+import su.kidoz.jetaprog.editor.quickfix.AutoImportProvider
 import su.kidoz.jetaprog.editor.quickfix.QuickFixProvider
+import su.kidoz.jetaprog.editor.quickfix.TextReplacement
 import su.kidoz.jetaprog.editor.quickfix.applyReplacements
 import su.kidoz.jetaprog.editor.search.FindMatcher
 import su.kidoz.jetaprog.editor.state.CompletionState
@@ -84,6 +86,7 @@ import java.io.File
  * @param activationEvents Service for firing activation triggers when documents open.
  * @param lintService Service running registered lint rules to produce editor diagnostics.
  * @param quickFixProvider Supplies quick fixes for the caret position (Alt+Enter).
+ * @param autoImportProvider Adds imports when an accepted completion needs one.
  */
 public class EditorViewModel(
     private val fileSystem: FileSystem,
@@ -93,6 +96,7 @@ public class EditorViewModel(
     private val activationEvents: ActivationEventService? = null,
     private val lintService: LintService? = null,
     private val quickFixProvider: QuickFixProvider? = null,
+    private val autoImportProvider: AutoImportProvider? = null,
 ) : MviViewModel<EditorIntent, EditorState, EditorEffect>(EditorState()) {
     private val completionController = CompletionController()
     private var completionJob: Job? = null
@@ -1504,12 +1508,50 @@ public class EditorViewModel(
         // Dismiss completion popup
         dismissCompletion()
 
-        // Emit effect for additional edits (like auto-imports)
-        if (item.additionalTextEdits.isNotEmpty()) {
-            viewModelScope.launch {
-                emitEffect(EditorEffect.CompletionApplied(item, item.additionalTextEdits))
-            }
+        applyCompletionImports(item, newContent)
+    }
+
+    /**
+     * Adds any imports the accepted completion needs.
+     *
+     * Edits supplied by the language server are applied as given; otherwise the
+     * auto-import provider resolves the symbol against the project. Running
+     * after the insertion keeps both changes on the undo stack.
+     */
+    private fun applyCompletionImports(
+        item: su.kidoz.jetaprog.common.completion.CompletionItem,
+        contentAfterInsert: String,
+    ) {
+        val serverEdits = item.additionalTextEdits
+        if (serverEdits.isNotEmpty()) {
+            val replacements =
+                serverEdits.map { edit ->
+                    TextReplacement(
+                        startOffset = edit.range.start.toOffset(contentAfterInsert),
+                        endOffset = edit.range.end.toOffset(contentAfterInsert),
+                        newText = edit.newText,
+                    )
+                }
+            updateContent(applyReplacements(contentAfterInsert, replacements))
+            return
         }
+
+        val provider = autoImportProvider ?: return
+        val path = currentState.activeTab?.uri?.toPath() ?: return
+        viewModelScope.launch {
+            val edit = provider.importEditFor(path, contentAfterInsert, item.label) ?: return@launch
+            // The document may have moved on while resolving; only apply to what we measured.
+            if (currentState.content != contentAfterInsert) return@launch
+            updateContent(applyReplacements(contentAfterInsert, listOf(edit)))
+        }
+    }
+
+    /** Converts a position to a character offset in [content]. */
+    private fun su.kidoz.jetaprog.common.text.TextPosition.toOffset(content: String): Int {
+        val lines = content.lines()
+        if (line >= lines.size) return content.length
+        val before = lines.take(line).sumOf { it.length + 1 }
+        return (before + column).coerceIn(0, content.length)
     }
 
     /**

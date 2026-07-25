@@ -189,6 +189,9 @@ public class ProjectSession(
     // Refactoring
     // ========================================================================
 
+    /** Quick fixes and auto-import, both backed by the Kotlin symbol index. */
+    private val kotlinQuickFixService: KotlinQuickFixService = KotlinQuickFixService(kotlinSymbolIndex)
+
     /** Create/rename/delete operations offered by the project tree. */
     public val projectFileActions: ProjectFileActions = ProjectFileActions(fileSystem)
 
@@ -370,7 +373,8 @@ public class ProjectSession(
             languageRegistry = languageRegistry,
             activationEvents = activationEventService,
             lintService = lintService,
-            quickFixProvider = KotlinQuickFixService(kotlinSymbolIndex),
+            quickFixProvider = kotlinQuickFixService,
+            autoImportProvider = kotlinQuickFixService,
         )
     }
 

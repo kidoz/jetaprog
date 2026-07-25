@@ -10,6 +10,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class KotlinQuickFixServiceTest {
@@ -176,5 +177,69 @@ class KotlinQuickFixServiceTest {
             val fixes = service.quickFixes(usage.absolutePath, usage.readText(), TextPosition(0, 2))
 
             assertTrue(fixes.isEmpty())
+        }
+
+    @Test
+    fun `offers to remove an unused import under the caret`() =
+        runTest {
+            val usage =
+                write(
+                    "Main.kt",
+                    "package app\n\nimport java.io.File\nimport kotlin.math.PI\n\nfun area(): Double = PI\n",
+                )
+            val content = usage.readText()
+
+            // Caret on the `java.io.File` import, which nothing uses.
+            val fixes = service.quickFixes(usage.absolutePath, content, TextPosition(2, 8))
+
+            assertEquals(listOf("Remove unused import java.io.File"), fixes.map { it.title })
+            val fixed = applyReplacements(content, fixes.single().edits)
+            assertEquals(
+                "package app\n\nimport kotlin.math.PI\n\nfun area(): Double = PI\n",
+                fixed,
+                "the used import and surrounding blank lines must survive",
+            )
+        }
+
+    @Test
+    fun `keeps an import that is still referenced`() =
+        runTest {
+            val usage =
+                write(
+                    "Main.kt",
+                    "package app\n\nimport kotlin.math.PI\n\nfun area(): Double = PI\n",
+                )
+
+            val fixes = service.quickFixes(usage.absolutePath, usage.readText(), TextPosition(2, 8))
+
+            assertTrue(fixes.isEmpty(), "PI is used, got ${fixes.map { it.title }}")
+        }
+
+    @Test
+    fun `imports the accepted completion when exactly one candidate matches`() =
+        runTest {
+            indexWidget()
+            val usage = write("Main.kt", "package app\n\nfun make(): Widget = Widget()\n")
+            val content = usage.readText()
+
+            val edit = assertNotNull(service.importEditFor(usage.absolutePath, content, "Widget"))
+
+            assertEquals(
+                "package app\n\nimport sample.ui.Widget\n\nfun make(): Widget = Widget()\n",
+                applyReplacements(content, listOf(edit)),
+            )
+        }
+
+    @Test
+    fun `does not guess an import when the name is ambiguous`() =
+        runTest {
+            write("A.kt", "package one\n\nclass Widget\n")
+            write("B.kt", "package two\n\nclass Widget\n")
+            symbolIndex.indexDirectory(projectDir.absolutePath)
+            val usage = write("Main.kt", "package app\n\nfun make(): Widget = Widget()\n")
+
+            val edit = service.importEditFor(usage.absolutePath, usage.readText(), "Widget")
+
+            assertEquals(null, edit, "ambiguous names must be left to Alt+Enter")
         }
 }
