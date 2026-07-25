@@ -64,6 +64,7 @@ public value class LanguageId(
         public val VALA: LanguageId = LanguageId("vala")
         public val VAPI: LanguageId = LanguageId("vapi")
         public val MESON: LanguageId = LanguageId("meson")
+        public val CMAKE: LanguageId = LanguageId("cmake")
         public val GO: LanguageId = LanguageId("go")
 
         private val displayNames: Map<String, String> =
@@ -89,6 +90,7 @@ public value class LanguageId(
                 "vala" to "Vala",
                 "vapi" to "Vala API",
                 "meson" to "Meson",
+                "cmake" to "CMake",
                 "go" to "Go",
             )
     }

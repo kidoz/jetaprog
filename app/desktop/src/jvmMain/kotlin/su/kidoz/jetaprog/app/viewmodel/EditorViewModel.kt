@@ -46,6 +46,7 @@ import su.kidoz.jetaprog.editor.syntax.Lexer
 import su.kidoz.jetaprog.editor.syntax.LexerRegistry
 import su.kidoz.jetaprog.editor.syntax.TokenList
 import su.kidoz.jetaprog.editor.syntax.c.CLexer
+import su.kidoz.jetaprog.editor.syntax.cmake.CMakeLexer
 import su.kidoz.jetaprog.editor.syntax.cpp.CppLexer
 import su.kidoz.jetaprog.editor.syntax.highlighting.LayeredHighlighter
 import su.kidoz.jetaprog.editor.syntax.java.JavaLexer
@@ -131,6 +132,7 @@ public class EditorViewModel(
         LexerRegistry.register(CLexer())
         LexerRegistry.register(CppLexer())
         LexerRegistry.register(MesonLexer())
+        LexerRegistry.register(CMakeLexer())
         LexerRegistry.register(XmlLexer())
         LexerRegistry.register(TomlLexer())
         LexerRegistry.register(MarkdownLexer())
@@ -1191,6 +1193,7 @@ public class EditorViewModel(
                 LanguageId.C -> "c"
                 LanguageId.CPP -> "cpp"
                 LanguageId.MESON -> "meson"
+                LanguageId.CMAKE -> "cmake"
                 LanguageId.XML -> "xml"
                 LanguageId.TOML -> "toml"
                 LanguageId.PYTHON -> "python"
@@ -2068,6 +2071,7 @@ public class EditorViewModel(
         val lowerFileName = fileName.lowercase()
         when {
             lowerFileName == "meson.build" || lowerFileName == "meson_options.txt" -> return LanguageId.MESON
+            lowerFileName == "cmakelists.txt" || lowerFileName == "cmakecache.txt" -> return LanguageId.CMAKE
             lowerFileName == "cargo.toml" || lowerFileName == "cargo.lock" -> return LanguageId.TOML
             lowerFileName == "pom.xml" -> return LanguageId.XML
             lowerFileName.endsWith(".sln") || lowerFileName.endsWith(".slnx") -> return LanguageId.MSBUILD
@@ -2112,6 +2116,8 @@ public class EditorViewModel(
             "html", "htm" -> LanguageId.HTML
 
             "css" -> LanguageId.CSS
+
+            "cmake" -> LanguageId.CMAKE
 
             "md", "markdown" -> LanguageId.MARKDOWN
 

@@ -22,6 +22,7 @@ public object CommentSyntax {
             LanguageId.YAML.value to "#",
             LanguageId.TOML.value to "#",
             LanguageId.MESON.value to "#",
+            LanguageId.CMAKE.value to "#",
         )
 
     /**
