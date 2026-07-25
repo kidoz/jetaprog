@@ -1,4 +1,4 @@
-package su.kidoz.jetaprog.editor.syntax.cpp
+package su.kidoz.jetaprog.editor.syntax.c
 
 import su.kidoz.jetaprog.editor.syntax.Lexer
 import su.kidoz.jetaprog.editor.syntax.LexerState
@@ -7,153 +7,103 @@ import su.kidoz.jetaprog.editor.syntax.TokenList
 import su.kidoz.jetaprog.editor.syntax.TokenType
 
 /**
- * Lexer for the C++ programming language, targeting C++26.
+ * Lexer for the C programming language, targeting C23 (ISO/IEC 9899:2024).
  *
- * Covers the C++20 module and coroutine keywords, the C++23 `if consteval` spelling,
- * and the C++26 additions: the `contract_assert` keyword and the reflection operator
- * `^^` together with the `[: :]` splice tokens.
+ * Recognises the C23 additions on top of C17: the unprefixed `bool`, `true`, `false`,
+ * `nullptr`, `constexpr`, `typeof`/`typeof_unqual` and `_BitInt` keywords, `[[...]]`
+ * attributes, binary literals, digit separators and the `#embed`/`#elifdef`/`#elifndef`
+ * preprocessor directives.
  */
-public class CppLexer : Lexer {
-    override val languageId: String = "cpp"
+public class CLexer : Lexer {
+    override val languageId: String = "c"
 
     private companion object {
+        /** Keywords defined by C23, including the legacy underscore-prefixed spellings. */
         val KEYWORDS =
             setOf(
                 "alignas",
                 "alignof",
-                "and",
-                "and_eq",
-                "asm",
                 "auto",
-                "bitand",
-                "bitor",
                 "bool",
                 "break",
                 "case",
-                "catch",
                 "char",
-                "char8_t",
-                "char16_t",
-                "char32_t",
-                "class",
-                "compl",
-                "concept",
                 "const",
-                "consteval",
                 "constexpr",
-                "constinit",
-                "const_cast",
                 "continue",
-                "co_await",
-                "co_return",
-                "co_yield",
-                "decltype",
                 "default",
-                "delete",
                 "do",
                 "double",
-                "dynamic_cast",
                 "else",
                 "enum",
-                "explicit",
-                "export",
                 "extern",
                 "false",
                 "float",
                 "for",
-                "friend",
                 "goto",
                 "if",
                 "inline",
                 "int",
                 "long",
-                "mutable",
-                "namespace",
-                "new",
-                "noexcept",
-                "not",
-                "not_eq",
                 "nullptr",
-                "operator",
-                "or",
-                "or_eq",
-                "private",
-                "protected",
-                "public",
                 "register",
-                "reinterpret_cast",
-                "requires",
+                "restrict",
                 "return",
                 "short",
                 "signed",
                 "sizeof",
                 "static",
                 "static_assert",
-                "static_cast",
                 "struct",
                 "switch",
-                "template",
-                "this",
                 "thread_local",
-                "throw",
                 "true",
-                "try",
                 "typedef",
-                "typeid",
-                "typename",
+                "typeof",
+                "typeof_unqual",
                 "union",
                 "unsigned",
-                "using",
-                "virtual",
                 "void",
                 "volatile",
-                "wchar_t",
                 "while",
-                "xor",
-                "xor_eq",
-                // C++20 modules
-                "import",
-                "module",
-                // C++26 contracts
-                "contract_assert",
+                // Underscore-prefixed spellings kept for compatibility with C11/C17.
+                "_Alignas",
+                "_Alignof",
+                "_Atomic",
+                "_BitInt",
+                "_Bool",
+                "_Complex",
+                "_Decimal32",
+                "_Decimal64",
+                "_Decimal128",
+                "_Generic",
+                "_Imaginary",
+                "_Noreturn",
+                "_Static_assert",
+                "_Thread_local",
             )
-
-        /**
-         * Identifiers with special meaning: keywords only in specific positions,
-         * but conventionally highlighted as such.
-         */
-        val CONTEXTUAL_KEYWORDS = setOf("final", "override")
-
-        val CONSTANTS = setOf("true", "false", "nullptr", "NULL")
 
         val MODIFIERS =
             setOf(
+                "auto",
                 "const",
                 "constexpr",
-                "consteval",
-                "constinit",
-                "explicit",
                 "extern",
-                "friend",
                 "inline",
-                "mutable",
-                "private",
-                "protected",
-                "public",
                 "register",
+                "restrict",
                 "static",
                 "thread_local",
-                "virtual",
                 "volatile",
+                "_Atomic",
+                "_Noreturn",
+                "_Thread_local",
             )
 
         val PRIMITIVE_TYPES =
             setOf(
                 "bool",
                 "char",
-                "char8_t",
-                "char16_t",
-                "char32_t",
                 "double",
                 "float",
                 "int",
@@ -162,9 +112,27 @@ public class CppLexer : Lexer {
                 "signed",
                 "unsigned",
                 "void",
+                "_BitInt",
+                "_Bool",
+                "_Complex",
+                "_Decimal32",
+                "_Decimal64",
+                "_Decimal128",
+                "_Imaginary",
+                // Common standard-library typedefs.
+                "char8_t",
+                "char16_t",
+                "char32_t",
                 "wchar_t",
                 "size_t",
+                "ssize_t",
                 "ptrdiff_t",
+                "nullptr_t",
+                "max_align_t",
+                "intptr_t",
+                "uintptr_t",
+                "intmax_t",
+                "uintmax_t",
                 "int8_t",
                 "int16_t",
                 "int32_t",
@@ -173,11 +141,17 @@ public class CppLexer : Lexer {
                 "uint16_t",
                 "uint32_t",
                 "uint64_t",
+                "FILE",
+                "va_list",
             )
 
+        val CONSTANTS = setOf("true", "false", "nullptr", "NULL")
+
+        /** Preprocessor directives, including the C23 `#embed`, `#elifdef` and `#elifndef`. */
         val PREPROCESSOR_DIRECTIVES =
             setOf(
                 "include",
+                "embed",
                 "define",
                 "undef",
                 "ifdef",
@@ -185,6 +159,8 @@ public class CppLexer : Lexer {
                 "if",
                 "else",
                 "elif",
+                "elifdef",
+                "elifndef",
                 "endif",
                 "error",
                 "warning",
@@ -194,61 +170,70 @@ public class CppLexer : Lexer {
 
         val OPERATORS =
             setOf(
+                "...",
+                "<<=",
+                ">>=",
+                "->",
+                "++",
+                "--",
+                "<<",
+                ">>",
+                "<=",
+                ">=",
+                "==",
+                "!=",
+                "&&",
+                "||",
+                "+=",
+                "-=",
+                "*=",
+                "/=",
+                "%=",
+                "&=",
+                "|=",
+                "^=",
                 "+",
                 "-",
                 "*",
                 "/",
                 "%",
                 "=",
-                "+=",
-                "-=",
-                "*=",
-                "/=",
-                "%=",
-                "++",
-                "--",
-                "==",
-                "!=",
                 "<",
                 ">",
-                "<=",
-                ">=",
-                "<=>",
-                "&&",
-                "||",
                 "!",
                 "&",
                 "|",
                 "^",
                 "~",
-                "<<",
-                ">>",
-                "&=",
-                "|=",
-                "^=",
-                "<<=",
-                ">>=",
-                "->",
-                "->*",
-                ".*",
-                "::",
                 "?",
                 ":",
-                "...",
-                // C++26 reflection: the `^^` reflect operator. The `[: :]` splicers are
-                // matched in nextToken so they take precedence over the bracket tokens.
-                "^^",
             )
 
         val BRACKETS = setOf('(', ')', '[', ']', '{', '}')
 
         val PUNCTUATION = setOf('.', ',', ';')
 
-        /** Encoding prefixes that may precede a string or character literal. */
-        val LITERAL_PREFIXES = setOf("u8", "u", "U", "L")
+        /** Prefixes that may precede a string or character literal. */
+        val LITERAL_PREFIXES = listOf("u8", "u", "U", "L")
 
-        /** Encoding prefixes that may precede a raw string literal, e.g. `LR"(x)"`. */
-        val RAW_STRING_PREFIXES = setOf("R", "u8R", "uR", "UR", "LR")
+        /** Integer and floating-point literal suffixes, longest first. */
+        val NUMBER_SUFFIXES =
+            listOf(
+                "wb",
+                "uwb",
+                "wbu",
+                "ull",
+                "llu",
+                "df",
+                "dd",
+                "dl",
+                "ul",
+                "lu",
+                "ll",
+                "u",
+                "l",
+                "f",
+            )
     }
 
     override fun tokenize(text: String): TokenList {
@@ -306,9 +291,6 @@ public class CppLexer : Lexer {
         if (state.inBlockComment) {
             return consumeBlockCommentContinuation(text, pos, line, state, baseOffset)
         }
-        if (state.inMultilineString) {
-            return consumeRawStringContinuation(text, pos, line, state, baseOffset)
-        }
 
         val char = text[pos]
 
@@ -334,11 +316,7 @@ public class CppLexer : Lexer {
             }
 
             text.startsWith("[[", pos) -> {
-                consumeAttribute(text, pos, line, state, baseOffset)
-            }
-
-            text.startsWith("R\"", pos) -> {
-                consumeRawString(text, pos, line, baseOffset)
+                consumeAttribute(text, pos, line, baseOffset)
             }
 
             char == '"' -> {
@@ -353,13 +331,12 @@ public class CppLexer : Lexer {
                 consumeNumber(text, pos, line, baseOffset)
             }
 
-            char.isLetter() || char == '_' -> {
-                consumeIdentifier(text, pos, line, baseOffset)
+            char == '.' && pos + 1 < text.length && text[pos + 1].isDigit() -> {
+                consumeNumber(text, pos, line, baseOffset)
             }
 
-            // C++26 splice tokens must win over the plain '[' and ']' brackets.
-            text.startsWith("[:", pos) || text.startsWith(":]", pos) -> {
-                Triple(Token(TokenType.OPERATOR, baseOffset + pos, 2, line), state, 2)
+            char.isLetter() || char == '_' -> {
+                consumeWord(text, pos, line, baseOffset)
             }
 
             char in BRACKETS -> {
@@ -424,7 +401,11 @@ public class CppLexer : Lexer {
         }
 
         val tokenType = if (isDoc) TokenType.COMMENT_DOC else TokenType.COMMENT_BLOCK
-        return Triple(Token(tokenType, baseOffset + pos, length, line), state.copy(inBlockComment = true), length)
+        return Triple(
+            Token(tokenType, baseOffset + pos, length, line),
+            state.copy(inBlockComment = true, inDocComment = isDoc),
+            length,
+        )
     }
 
     private fun consumeBlockCommentContinuation(
@@ -434,21 +415,24 @@ public class CppLexer : Lexer {
         state: LexerState,
         baseOffset: Int,
     ): Triple<Token, LexerState, Int> {
+        val tokenType = if (state.inDocComment) TokenType.COMMENT_DOC else TokenType.COMMENT_BLOCK
         var length = 0
         while (pos + length < text.length) {
             if (text.startsWith("*/", pos + length)) {
                 length += 2
-                return Triple(
-                    Token(TokenType.COMMENT_BLOCK, baseOffset + pos, length, line),
-                    LexerState.Initial,
-                    length,
-                )
+                return Triple(Token(tokenType, baseOffset + pos, length, line), LexerState.Initial, length)
             }
             length++
         }
-        return Triple(Token(TokenType.COMMENT_BLOCK, baseOffset + pos, length, line), state, length)
+        return Triple(Token(tokenType, baseOffset + pos, length, line), state, length)
     }
 
+    /**
+     * Consumes a preprocessor directive such as `#include`, `#embed` or `#elifdef`.
+     *
+     * The `#` and the directive name form a single keyword token; the remainder of the
+     * line is tokenised normally so that header names and macro bodies stay highlighted.
+     */
     private fun consumePreprocessor(
         text: String,
         pos: Int,
@@ -456,37 +440,47 @@ public class CppLexer : Lexer {
         baseOffset: Int,
     ): Triple<Token, LexerState, Int> {
         var length = 1
-        while (pos + length < text.length && text[pos + length].isWhitespace() && text[pos + length] != '\n') {
+        while (pos + length < text.length && text[pos + length] == ' ') {
             length++
         }
-        while (pos + length < text.length && text[pos + length].isLetter()) {
-            length++
+        val nameStart = pos + length
+        var nameEnd = nameStart
+        while (nameEnd < text.length && text[nameEnd].isLetter()) {
+            nameEnd++
         }
-        return Triple(Token(TokenType.KEYWORD, baseOffset + pos, length, line), LexerState.Initial, length)
+        val directive = text.substring(nameStart, nameEnd)
+        if (directive !in PREPROCESSOR_DIRECTIVES) {
+            // A stray '#' or the '#'/'##' stringify and paste operators.
+            val operatorLength = if (text.startsWith("##", pos)) 2 else 1
+            return Triple(
+                Token(TokenType.OPERATOR, baseOffset + pos, operatorLength, line),
+                LexerState.Initial,
+                operatorLength,
+            )
+        }
+        val total = nameEnd - pos
+        return Triple(Token(TokenType.KEYWORD, baseOffset + pos, total, line), LexerState.Initial, total)
     }
 
     /**
-     * Consumes a `[[attribute]]` sequence as a single annotation token.
-     *
-     * Falls back to a plain bracket when the sequence is not closed on the same line,
-     * which keeps a lambda used as a subscript (`a[[]{ return 0; }()]`) tokenising sanely.
+     * Consumes a C23 `[[attribute]]` sequence as a single annotation token.
      */
     private fun consumeAttribute(
         text: String,
         pos: Int,
         line: Int,
-        state: LexerState,
         baseOffset: Int,
     ): Triple<Token, LexerState, Int> {
         var length = 2
         while (pos + length < text.length && !text.startsWith("]]", pos + length)) {
             if (text[pos + length] == '\n') {
-                return Triple(Token(TokenType.BRACKET, baseOffset + pos, 1, line), state, 1)
+                // Unterminated on this line: fall back to a bracket token.
+                return Triple(Token(TokenType.BRACKET, baseOffset + pos, 1, line), LexerState.Initial, 1)
             }
             length++
         }
         if (pos + length >= text.length) {
-            return Triple(Token(TokenType.BRACKET, baseOffset + pos, 1, line), state, 1)
+            return Triple(Token(TokenType.BRACKET, baseOffset + pos, 1, line), LexerState.Initial, 1)
         }
         length += 2
         return Triple(Token(TokenType.ANNOTATION, baseOffset + pos, length, line), LexerState.Initial, length)
@@ -524,62 +518,6 @@ public class CppLexer : Lexer {
         return Triple(Token(TokenType.STRING, baseOffset + pos, length, line), LexerState.Initial, length)
     }
 
-    private fun consumeRawString(
-        text: String,
-        pos: Int,
-        line: Int,
-        baseOffset: Int,
-        prefixLength: Int = 0,
-    ): Triple<Token, LexerState, Int> {
-        var length = prefixLength + 2
-        var delimiter = ""
-        while (pos + length < text.length && text[pos + length] != '(') {
-            delimiter += text[pos + length]
-            length++
-        }
-        if (pos + length >= text.length) {
-            return Triple(Token(TokenType.UNKNOWN, baseOffset + pos, length, line), LexerState.Initial, length)
-        }
-        length++
-
-        val endPattern = ")$delimiter\""
-
-        while (pos + length < text.length) {
-            if (text.startsWith(endPattern, pos + length)) {
-                length += endPattern.length
-                return Triple(Token(TokenType.STRING, baseOffset + pos, length, line), LexerState.Initial, length)
-            }
-            length++
-        }
-
-        return Triple(
-            Token(TokenType.STRING, baseOffset + pos, length, line),
-            LexerState(inMultilineString = true, stringDelimiter = endPattern),
-            length,
-        )
-    }
-
-    private fun consumeRawStringContinuation(
-        text: String,
-        pos: Int,
-        line: Int,
-        state: LexerState,
-        baseOffset: Int,
-    ): Triple<Token, LexerState, Int> {
-        var length = 0
-        val endPattern = state.stringDelimiter
-
-        while (pos + length < text.length) {
-            if (text.startsWith(endPattern, pos + length)) {
-                length += endPattern.length
-                return Triple(Token(TokenType.STRING, baseOffset + pos, length, line), LexerState.Initial, length)
-            }
-            length++
-        }
-
-        return Triple(Token(TokenType.STRING, baseOffset + pos, length, line), state, length)
-    }
-
     private fun consumeChar(
         text: String,
         pos: Int,
@@ -588,13 +526,26 @@ public class CppLexer : Lexer {
         prefixLength: Int = 0,
     ): Triple<Token, LexerState, Int> {
         var length = prefixLength + 1
-        if (pos + length < text.length && text[pos + length] == '\\') {
-            length += 2
-        } else if (pos + length < text.length) {
-            length++
-        }
-        if (pos + length < text.length && text[pos + length] == '\'') {
-            length++
+        while (pos + length < text.length) {
+            val char = text[pos + length]
+            when {
+                char == '\\' && pos + length + 1 < text.length -> {
+                    length += 2
+                }
+
+                char == '\'' -> {
+                    length++
+                    break
+                }
+
+                char == '\n' -> {
+                    break
+                }
+
+                else -> {
+                    length++
+                }
+            }
         }
         return Triple(Token(TokenType.CHARACTER, baseOffset + pos, length, line), LexerState.Initial, length)
     }
@@ -605,41 +556,43 @@ public class CppLexer : Lexer {
         line: Int,
         baseOffset: Int,
     ): Triple<Token, LexerState, Int> {
-        var length = 0
-
-        if (pos + 1 < text.length && text[pos] == '0') {
-            when (text[pos + 1].lowercaseChar()) {
-                'x' -> {
-                    length = 2
-                    while (pos + length < text.length &&
-                        (text[pos + length].isHexDigit() || text[pos + length] == '\'')
-                    ) {
-                        length++
-                    }
-                }
-
-                'b' -> {
-                    length = 2
-                    while (pos + length < text.length &&
-                        (text[pos + length] in '0'..'1' || text[pos + length] == '\'')
-                    ) {
-                        length++
-                    }
-                }
-
-                else -> {
-                    length = consumeDecimalNumber(text, pos)
-                }
+        var length =
+            when {
+                text.startsWith("0x", pos, ignoreCase = true) -> consumeRadixDigits(text, pos, 2) { it.isHexDigit() }
+                text.startsWith("0b", pos, ignoreCase = true) -> consumeRadixDigits(text, pos, 2) { it in '0'..'1' }
+                else -> consumeDecimalNumber(text, pos)
             }
-        } else {
-            length = consumeDecimalNumber(text, pos)
-        }
+        length += consumeSuffix(text, pos + length)
+        return Triple(Token(TokenType.NUMBER, baseOffset + pos, length, line), LexerState.Initial, length)
+    }
 
-        while (pos + length < text.length && text[pos + length].lowercaseChar() in listOf('u', 'l', 'f')) {
+    private fun consumeRadixDigits(
+        text: String,
+        pos: Int,
+        prefixLength: Int,
+        isDigit: (Char) -> Boolean,
+    ): Int {
+        var length = prefixLength
+        while (pos + length < text.length && (isDigit(text[pos + length]) || text[pos + length] == '\'')) {
             length++
         }
-
-        return Triple(Token(TokenType.NUMBER, baseOffset + pos, length, line), LexerState.Initial, length)
+        // Hexadecimal floating literals: 0x1.8p3
+        if (pos + length < text.length && text[pos + length] == '.') {
+            length++
+            while (pos + length < text.length && (text[pos + length].isHexDigit() || text[pos + length] == '\'')) {
+                length++
+            }
+        }
+        if (pos + length < text.length && text[pos + length].lowercaseChar() == 'p') {
+            length++
+            if (pos + length < text.length && (text[pos + length] == '+' || text[pos + length] == '-')) {
+                length++
+            }
+            while (pos + length < text.length && text[pos + length].isDigit()) {
+                length++
+            }
+        }
+        return length
     }
 
     private fun consumeDecimalNumber(
@@ -651,16 +604,14 @@ public class CppLexer : Lexer {
             length++
         }
         if (pos + length < text.length && text[pos + length] == '.') {
-            if (pos + length + 1 < text.length && text[pos + length + 1].isDigit()) {
+            length++
+            while (pos + length < text.length && (text[pos + length].isDigit() || text[pos + length] == '\'')) {
                 length++
-                while (pos + length < text.length && (text[pos + length].isDigit() || text[pos + length] == '\'')) {
-                    length++
-                }
             }
         }
         if (pos + length < text.length && text[pos + length].lowercaseChar() == 'e') {
             length++
-            if (pos + length < text.length && text[pos + length] in listOf('+', '-')) {
+            if (pos + length < text.length && (text[pos + length] == '+' || text[pos + length] == '-')) {
                 length++
             }
             while (pos + length < text.length && text[pos + length].isDigit()) {
@@ -670,7 +621,29 @@ public class CppLexer : Lexer {
         return length
     }
 
-    private fun consumeIdentifier(
+    /**
+     * Consumes a literal suffix such as `u`, `ll`, `wb` (C23 `_BitInt`) or `df` (decimal float).
+     */
+    private fun consumeSuffix(
+        text: String,
+        pos: Int,
+    ): Int {
+        val remaining = text.length - pos
+        if (remaining <= 0) return 0
+        for (suffix in NUMBER_SUFFIXES) {
+            if (text.startsWith(suffix, pos, ignoreCase = true)) {
+                val end = pos + suffix.length
+                val boundary = end >= text.length || !(text[end].isLetterOrDigit() || text[end] == '_')
+                if (boundary) return suffix.length
+            }
+        }
+        return 0
+    }
+
+    /**
+     * Consumes an identifier, keyword, or a prefixed string/character literal such as `u8"x"`.
+     */
+    private fun consumeWord(
         text: String,
         pos: Int,
         line: Int,
@@ -683,32 +656,40 @@ public class CppLexer : Lexer {
 
         val word = text.substring(pos, pos + length)
 
-        // String and character literal prefixes: u8"x", L'c', and the raw forms LR"(x)".
-        val afterWord = text.getOrNull(pos + length)
-        if (afterWord == '"' && word in RAW_STRING_PREFIXES) {
-            // The word already consumed the R, so back up one character for the R".
-            return consumeRawString(text, pos, line, baseOffset, prefixLength = length - 1)
-        }
-        if (afterWord == '"' && word in LITERAL_PREFIXES) {
-            return consumeString(text, pos, line, baseOffset, prefixLength = length)
-        }
-        if (afterWord == '\'' && word in LITERAL_PREFIXES) {
-            return consumeChar(text, pos, line, baseOffset, prefixLength = length)
-        }
-
-        val type =
-            when {
-                word in CONSTANTS -> TokenType.CONSTANT
-                word in PRIMITIVE_TYPES -> TokenType.TYPE
-                word in KEYWORDS -> if (word in MODIFIERS) TokenType.MODIFIER else TokenType.KEYWORD
-                word in CONTEXTUAL_KEYWORDS -> TokenType.MODIFIER
-                word.first().isUpperCase() -> TokenType.TYPE
-                pos + length < text.length && text[pos + length] == '(' -> TokenType.FUNCTION
-                pos + length < text.length && text[pos + length] == '<' -> TokenType.TYPE
-                else -> TokenType.IDENTIFIER
+        if (word in LITERAL_PREFIXES && pos + length < text.length) {
+            when (text[pos + length]) {
+                '"' -> return consumeString(text, pos, line, baseOffset, prefixLength = length)
+                '\'' -> return consumeChar(text, pos, line, baseOffset, prefixLength = length)
+                else -> Unit
             }
+        }
 
+        val type = classifyWord(word, text, pos + length)
         return Triple(Token(type, baseOffset + pos, length, line), LexerState.Initial, length)
+    }
+
+    private fun classifyWord(
+        word: String,
+        text: String,
+        end: Int,
+    ): TokenType {
+        val next = text.getOrNull(end)
+        return when {
+            word in CONSTANTS -> TokenType.CONSTANT
+
+            word in PRIMITIVE_TYPES -> TokenType.TYPE
+
+            word in KEYWORDS -> if (word in MODIFIERS) TokenType.MODIFIER else TokenType.KEYWORD
+
+            next == '(' -> TokenType.FUNCTION
+
+            word.endsWith("_t") -> TokenType.TYPE
+
+            // Uppercase identifiers are macros or enumeration constants by convention.
+            word.length > 1 && word.all { it.isUpperCase() || it.isDigit() || it == '_' } -> TokenType.CONSTANT
+
+            else -> TokenType.IDENTIFIER
+        }
     }
 
     private fun consumeOperator(
@@ -718,7 +699,7 @@ public class CppLexer : Lexer {
         state: LexerState,
         baseOffset: Int,
     ): Triple<Token, LexerState, Int> {
-        for (op in OPERATORS.sortedByDescending { it.length }) {
+        for (op in OPERATORS) {
             if (text.startsWith(op, pos)) {
                 return Triple(Token(TokenType.OPERATOR, baseOffset + pos, op.length, line), state, op.length)
             }

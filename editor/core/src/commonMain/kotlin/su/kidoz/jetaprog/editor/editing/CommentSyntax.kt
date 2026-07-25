@@ -11,6 +11,7 @@ public object CommentSyntax {
             LanguageId.KOTLIN.value to "//",
             LanguageId.JAVA.value to "//",
             LanguageId.RUST.value to "//",
+            LanguageId.C.value to "//",
             LanguageId.CPP.value to "//",
             LanguageId.JAVASCRIPT.value to "//",
             LanguageId.TYPESCRIPT.value to "//",

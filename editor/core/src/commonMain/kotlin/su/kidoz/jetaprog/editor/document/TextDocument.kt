@@ -46,6 +46,7 @@ public value class LanguageId(
         public val PLAIN_TEXT: LanguageId = LanguageId("plaintext")
         public val KOTLIN: LanguageId = LanguageId("kotlin")
         public val RUST: LanguageId = LanguageId("rust")
+        public val C: LanguageId = LanguageId("c")
         public val CPP: LanguageId = LanguageId("cpp")
         public val JAVA: LanguageId = LanguageId("java")
         public val JAVASCRIPT: LanguageId = LanguageId("javascript")
@@ -70,6 +71,7 @@ public value class LanguageId(
                 "plaintext" to "Plain Text",
                 "kotlin" to "Kotlin",
                 "rust" to "Rust",
+                "c" to "C",
                 "cpp" to "C++",
                 "java" to "Java",
                 "javascript" to "JavaScript",
