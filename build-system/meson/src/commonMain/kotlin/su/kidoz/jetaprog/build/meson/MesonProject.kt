@@ -16,6 +16,11 @@ public data class MesonProject(
     val targets: List<MesonTarget> = emptyList(),
     /** Build type (e.g., "debug", "release"). */
     val buildType: MesonBuildType = MesonBuildType.DEBUG,
+    /**
+     * Project options passed as `-Dkey=value` on `meson setup`, such as
+     * `cpp_std` or `warning_level`.
+     */
+    val options: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -50,6 +55,20 @@ public enum class MesonBuildType {
     RELEASE,
     MINSIZE,
     CUSTOM,
+}
+
+/**
+ * Well-known Meson built-in option names.
+ */
+public object MesonOptions {
+    /** The C language standard, e.g. `c23`. */
+    public const val C_STD: String = "c_std"
+
+    /** The C++ language standard, e.g. `c++26`. */
+    public const val CPP_STD: String = "cpp_std"
+
+    /** Compiler warning level, `0` to `3` (`everything` on recent Meson). */
+    public const val WARNING_LEVEL: String = "warning_level"
 }
 
 /**

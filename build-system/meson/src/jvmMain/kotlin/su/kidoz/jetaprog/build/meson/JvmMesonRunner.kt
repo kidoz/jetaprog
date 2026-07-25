@@ -40,6 +40,7 @@ public class JvmMesonRunner(
                     add(project.buildDir)
                     if (reconfigure) add("--reconfigure")
                     add("--buildtype=${project.buildType.name.lowercase()}")
+                    project.options.forEach { (key, value) -> add("-D$key=$value") }
                     addAll(args)
                 }
 
