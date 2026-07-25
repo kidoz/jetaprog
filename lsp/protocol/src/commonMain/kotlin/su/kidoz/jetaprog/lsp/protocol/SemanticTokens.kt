@@ -18,7 +18,10 @@ public data class SemanticTokensLegend(
 @Serializable
 public data class SemanticTokensOptions(
     val legend: SemanticTokensLegend,
+    // Both are `boolean | Options` in the specification; clangd sends `{"delta": true}` for full.
+    @Serializable(with = LspCapabilitySerializer::class)
     val full: Boolean? = null,
+    @Serializable(with = LspCapabilitySerializer::class)
     val range: Boolean? = null,
 )
 

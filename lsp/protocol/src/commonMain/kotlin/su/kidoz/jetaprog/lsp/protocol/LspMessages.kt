@@ -258,16 +258,27 @@ public data class ServerInfo(
  */
 @Serializable
 public data class ServerCapabilities(
+    @Serializable(with = TextDocumentSyncSerializer::class)
     val textDocumentSync: TextDocumentSyncOptions? = null,
     val completionProvider: CompletionOptions? = null,
+    // Each of these is `boolean | Options` in the specification; servers mix both forms.
+    @Serializable(with = LspCapabilitySerializer::class)
     val hoverProvider: Boolean? = null,
+    @Serializable(with = LspCapabilitySerializer::class)
     val definitionProvider: Boolean? = null,
+    @Serializable(with = LspCapabilitySerializer::class)
     val referencesProvider: Boolean? = null,
+    @Serializable(with = LspCapabilitySerializer::class)
     val documentSymbolProvider: Boolean? = null,
+    @Serializable(with = LspCapabilitySerializer::class)
     val codeActionProvider: Boolean? = null,
+    @Serializable(with = LspCapabilitySerializer::class)
     val documentFormattingProvider: Boolean? = null,
+    @Serializable(with = LspCapabilitySerializer::class)
     val documentRangeFormattingProvider: Boolean? = null,
+    @Serializable(with = LspCapabilitySerializer::class)
     val renameProvider: Boolean? = null,
+    @Serializable(with = LspCapabilitySerializer::class)
     val workspaceSymbolProvider: Boolean? = null,
     val semanticTokensProvider: SemanticTokensOptions? = null,
 )
@@ -279,6 +290,7 @@ public data class ServerCapabilities(
 public data class TextDocumentSyncOptions(
     val openClose: Boolean? = null,
     val change: Int? = null, // 0 = None, 1 = Full, 2 = Incremental
+    @Serializable(with = SaveOptionsSerializer::class)
     val save: SaveOptions? = null,
 )
 
