@@ -19,6 +19,7 @@ import su.kidoz.jetaprog.common.text.MarkedString
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.completion.CompletionController
+import su.kidoz.jetaprog.editor.completion.SnippetExpander
 import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
 import su.kidoz.jetaprog.editor.navigation.NavigationService
@@ -108,6 +109,14 @@ public class EditorViewModel(
     private val autoImportProvider: AutoImportProvider? = null,
 ) : MviViewModel<EditorIntent, EditorState, EditorEffect>(EditorState()) {
     private val completionController = CompletionController()
+
+    /**
+     * The result set exactly as the provider returned it.
+     *
+     * Filtering narrows a copy: filtering the already-filtered list in place meant
+     * backspacing could never widen the popup again.
+     */
+    private var unfilteredCompletionItems: List<CompletionItem> = emptyList()
     private var completionJob: Job? = null
     private var hoverJob: Job? = null
     private var signatureHelpJob: Job? = null
@@ -1225,13 +1234,14 @@ public class EditorViewModel(
                     extractCurrentIdentifierPrefix()
                 }
 
-        // Update state to show loading
         updateState {
             copy(
                 completionState =
                     CompletionState(
                         isVisible = true,
-                        isLoading = true,
+                        // Loading is raised only once the request is actually in flight,
+                        // so a debounced keystroke does not flash an empty popup.
+                        isLoading = triggerKind == CompletionTriggerKind.Invoked,
                         triggerPosition = cursor.position,
                         triggerKind = triggerKind,
                         triggerCharacter = triggerCharacter,
@@ -1246,8 +1256,10 @@ public class EditorViewModel(
                 // Debounce auto-triggered completions to avoid thrashing LSP servers
                 if (triggerKind != CompletionTriggerKind.Invoked) {
                     delay(COMPLETION_DEBOUNCE_MS)
+                    updateState { copy(completionState = completionState.copy(isLoading = true)) }
                 }
                 val completionItems = getCompletionItems()
+                unfilteredCompletionItems = completionItems
                 // Apply latest filter to the items (may have updated while request was in flight)
                 val activeFilter = currentState.completionState.filterText
                 val filteredItems =
@@ -1528,8 +1540,14 @@ public class EditorViewModel(
         // Calculate offset from current cursor position
         val cursorOffset = positionToOffset(content, cursorPosition.line, cursorPosition.column)
 
-        // Find the replacement range - from word start before trigger to current position
-        val (replaceStart, replaceEnd) = completionController.getReplacementRange(content, cursorOffset)
+        // Prefer the range the language server supplied. Its edit is authoritative and
+        // covers spans an identifier scan cannot, such as an include path or a qualified
+        // name; the local scan is only a fallback for providers that send no range.
+        val (replaceStart, replaceEnd) =
+            item.range?.let { range ->
+                positionToOffset(content, range.start.line, range.start.column) to
+                    positionToOffset(content, range.end.line, range.end.column)
+            } ?: completionController.getReplacementRange(content, cursorOffset)
 
         // Get current line's indentation
         val currentLineStart = content.lastIndexOf('\n', replaceStart - 1) + 1
@@ -1539,18 +1557,9 @@ public class EditorViewModel(
         // Get the text to insert
         val insertText = item.insertText
 
-        // Process snippet placeholders and apply indentation to multi-line text
-        val textToInsert =
-            if (item.insertTextIsSnippet) {
-                // Simple snippet processing - remove placeholders
-                val processed =
-                    insertText
-                        .replace(Regex("\\$\\d+"), "")
-                        .replace(Regex("\\$\\{\\d+:([^}]*)\\}"), "$1")
-                applyIndentation(processed, indentation)
-            } else {
-                applyIndentation(insertText, indentation)
-            }
+        // Expand snippet placeholders and apply indentation to multi-line text.
+        val expanded = if (item.insertTextIsSnippet) SnippetExpander.expand(insertText) else null
+        val textToInsert = applyIndentation(expanded?.text ?: insertText, indentation)
 
         // Build new content: before replacement + completion text + after replacement
         val newContent =
@@ -1561,6 +1570,11 @@ public class EditorViewModel(
             }
 
         updateContent(newContent)
+
+        // Place the caret where the snippet asked for it (inside the parentheses of a
+        // call, say) rather than after the inserted text.
+        val caretOffset = replaceStart + (expanded?.caretOffset ?: textToInsert.length)
+        moveCursorToOffset(newContent, caretOffset)
 
         // Dismiss completion popup
         dismissCompletion()
@@ -1687,7 +1701,14 @@ public class EditorViewModel(
     }
 
     private fun updateCompletionFilter(filterText: String) {
-        val filtered = completionController.filterItems(currentState.completionState.items, filterText)
+        // The server truncated its answer, so the items it withheld can only be obtained by
+        // asking again with the longer prefix - filtering locally would hide them forever.
+        if (currentState.completionState.isIncomplete) {
+            requestCompletion(CompletionTriggerKind.TriggerForIncompleteCompletions, null, filterText)
+            return
+        }
+
+        val filtered = completionController.filterItems(unfilteredCompletionItems, filterText)
         updateState {
             copy(
                 completionState =
@@ -1698,6 +1719,20 @@ public class EditorViewModel(
                     ),
             )
         }
+    }
+
+    /**
+     * Moves the caret to a character offset in [content].
+     */
+    private fun moveCursorToOffset(
+        content: String,
+        offset: Int,
+    ) {
+        val safe = offset.coerceIn(0, content.length)
+        val prefix = content.substring(0, safe)
+        val line = prefix.count { it == '\n' }
+        val column = safe - (prefix.lastIndexOf('\n') + 1)
+        moveCursor(TextPosition(line, column))
     }
 
     private fun moveCursor(position: TextPosition) {

@@ -46,7 +46,7 @@ public data class CompletionItem(
     /**
      * Sort text for ordering.
      */
-    val sortText: String = label,
+    val sortText: String? = null,
     /**
      * Whether this item should be preselected.
      */

@@ -156,7 +156,7 @@ public fun LspCompletionItem.toCompletionItem(): CompletionItem =
         insertText = insertText ?: label,
         insertTextIsSnippet = insertTextFormat == 2,
         filterText = filterText ?: label,
-        sortText = sortText ?: label,
+        sortText = sortText,
         preselect = preselect ?: false,
         range = textEdit?.range?.toTextRange(),
         additionalTextEdits = additionalTextEdits?.map { it.toTextEditData() } ?: emptyList(),

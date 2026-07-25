@@ -40,16 +40,31 @@ public class CompletionController(
 
         val lowerFilter = filterText.lowercase()
 
-        return items
-            .mapNotNull { item ->
+        val matched =
+            items.mapNotNull { item ->
                 val score = calculateMatchScore(item, lowerFilter)
                 if (score > 0) item to score else null
-            }.sortedWith(
+            }
+
+        // A language server ranks its results for the prefix it was given and reports that
+        // ranking in sortText. That ranking is semantic - it knows the types in scope - so
+        // where it exists it must win. Local string scoring only orders results from
+        // providers that offer no ranking of their own.
+        val serverRanked = matched.any { it.first.sortText != null }
+        val comparator =
+            if (serverRanked) {
                 compareByDescending<Pair<CompletionItem, Int>> { it.first.preselect }
-                    .thenByDescending { it.second } // Higher score first
-                    .thenBy { it.first.sortText }
-                    .thenBy { it.first.label },
-            ).take(config.maxDisplayItems)
+                    .thenBy { it.first.sortText ?: it.first.label }
+                    .thenBy { it.first.label }
+            } else {
+                compareByDescending<Pair<CompletionItem, Int>> { it.first.preselect }
+                    .thenByDescending { it.second }
+                    .thenBy { it.first.label }
+            }
+
+        return matched
+            .sortedWith(comparator)
+            .take(config.maxDisplayItems)
             .map { it.first }
     }
 
