@@ -1,5 +1,7 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -80,6 +82,8 @@ import su.kidoz.jetaprog.plugins.support.formatters.YamlFormatter
 import su.kidoz.jetaprog.settings.SettingsService
 import su.kidoz.jetaprog.settings.model.AllSettings
 import java.io.File
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * ViewModel for the code editor.
@@ -1726,29 +1730,45 @@ public class EditorViewModel(
         // Cancel any pending hover request
         hoverJob?.cancel()
 
-        // Show loading state
-        updateState {
-            copy(
-                hoverState =
-                    HoverState(
-                        isLoading = true,
-                        position = position,
-                    ),
-            )
+        // A popup anchored to a different position is stale the moment the pointer
+        // moves, so drop it rather than letting it trail the cursor.
+        if (currentState.hoverState.position != position) {
+            clearHoverState()
         }
 
-        // Launch hover request with debounce
         hoverJob =
             viewModelScope.launch {
+                // Wait for the pointer to settle before doing anything visible. Showing a
+                // "Loading..." popup up front meant every pointer move over code produced
+                // one, and a moving pointer restarted it before it could ever resolve.
                 delay(HOVER_DEBOUNCE_MS)
 
-                val hover =
-                    languageRegistry?.let { registry ->
-                        registry.provideHover(TextDocumentAdapter(currentState), position)
+                // Only advertise loading once the request is genuinely slow; a fast reply
+                // would otherwise flash a spinner for a few milliseconds.
+                val loadingIndicator =
+                    launch {
+                        delay(HOVER_LOADING_INDICATOR_MS)
+                        updateState {
+                            copy(hoverState = HoverState(isLoading = true, position = position))
+                        }
                     }
+
+                val hover =
+                    try {
+                        languageRegistry?.provideHover(TextDocumentAdapter(currentState), position)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // A failed provider must not strand the popup on "Loading...".
+                        logger.debug { "Hover request failed: ${e.message}" }
+                        null
+                    } finally {
+                        loadingIndicator.cancel()
+                    }
+
                 val contents = diagnosticsAt(position) + hover?.contents.orEmpty()
                 if (contents.isEmpty()) {
-                    dismissHover()
+                    clearHoverState()
                 } else {
                     updateState {
                         copy(
@@ -1802,12 +1822,20 @@ public class EditorViewModel(
         }
     }
 
-    private fun dismissHover() {
-        hoverJob?.cancel()
-        hoverJob = null
+    /**
+     * Resets the hover popup without touching [hoverJob], so it is safe to call from
+     * inside the hover coroutine itself.
+     */
+    private fun clearHoverState() {
         updateState {
             copy(hoverState = HoverState())
         }
+    }
+
+    private fun dismissHover() {
+        hoverJob?.cancel()
+        hoverJob = null
+        clearHoverState()
     }
 
     // ========================================================================
@@ -2294,11 +2322,16 @@ public class EditorViewModel(
             code = code,
         )
 
-    private companion object {
+    internal companion object {
         /**
          * Debounce delay for hover requests in milliseconds.
          */
         const val HOVER_DEBOUNCE_MS = 400L
+
+        /**
+         * How long a settled hover request may run before a loading indicator appears.
+         */
+        const val HOVER_LOADING_INDICATOR_MS = 150L
 
         /**
          * Debounce delay for auto-triggered completion requests in milliseconds.
