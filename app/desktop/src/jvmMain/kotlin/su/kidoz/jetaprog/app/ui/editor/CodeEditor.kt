@@ -57,11 +57,13 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.common.completion.CompletionItem
@@ -79,6 +81,7 @@ import su.kidoz.jetaprog.editor.syntax.highlighting.DarkSyntaxTheme
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxColor
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
 import su.kidoz.jetaprog.editor.syntax.highlighting.TokenStyle
+import kotlin.math.roundToInt
 
 /**
  * Code editor composable with syntax highlighting support.
@@ -114,6 +117,17 @@ public fun CodeEditor(
             TextStyle(
                 fontFamily = JetaProgFonts.codeFont,
                 fontSize = 14.sp,
+                // Overlays (bracket match, caret line, inlay hints, pointer hit-testing)
+                // all position themselves on a fixed line grid, so the text has to use
+                // exactly that line height instead of whatever the font's metrics imply.
+                // Without this the two drift apart by a fraction of a line per line, and
+                // by the bottom of a screenful the highlight sits on the wrong row.
+                lineHeight = Dimensions.lineHeightCode.sp,
+                lineHeightStyle =
+                    LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.None,
+                    ),
             )
         }
     val editorSelectionColors =
@@ -127,7 +141,14 @@ public fun CodeEditor(
     val textMeasurer = rememberTextMeasurer()
     val charWidthPx =
         remember(textStyle, textMeasurer) {
-            textMeasurer.measure(AnnotatedString("M"), style = textStyle).size.width
+            // Measure a run and divide rather than measuring one glyph: a single
+            // character's width is reported in whole pixels, and that rounding error
+            // accumulates across a line until overlays no longer sit over their glyph.
+            val sample = CHAR_WIDTH_SAMPLE
+            textMeasurer
+                .measure(AnnotatedString("M".repeat(sample)), style = textStyle)
+                .size.width
+                .toFloat() / sample
         }
 
     // Track the text field value - keyed by document URI to reset when switching files
@@ -181,7 +202,7 @@ public fun CodeEditor(
 
         // Scroll the match into view, roughly centered
         val matchLine = offsetToPosition(textFieldValue.text, match.start).line
-        val lineHeight = with(density) { 21.dp.roundToPx() }
+        val lineHeight = with(density) { Dimensions.lineHeightCode.sp.roundToPx() }
         val target = (matchLine * lineHeight - verticalScrollState.viewportSize / 2).coerceAtLeast(0)
         verticalScrollState.animateScrollTo(target)
     }
@@ -231,7 +252,7 @@ public fun CodeEditor(
         }
 
     // Calculate popup offset based on current cursor position (approximate)
-    val lineHeightPx = with(density) { 21.dp.roundToPx() }
+    val lineHeightPx = with(density) { Dimensions.lineHeightCode.sp.roundToPx() }
     val gutterWidthPx =
         with(density) {
             if (state.showLineNumbers) {
@@ -248,6 +269,7 @@ public fun CodeEditor(
     val editorPaddingStartPx = with(density) { 8.dp.roundToPx() }
     val editorPaddingTopPx = with(density) { 4.dp.roundToPx() }
     val charWidthDp = with(density) { charWidthPx.toDp() }
+    val lineHeightDp = with(density) { lineHeightPx.toDp() }
     val popupOffset =
         remember(
             state.cursor.position,
@@ -262,7 +284,7 @@ public fun CodeEditor(
             val x =
                 gutterWidthPx +
                     editorPaddingStartPx +
-                    (column * charWidthPx) -
+                    (column * charWidthPx).roundToInt() -
                     horizontalScrollState.value
             val y = ((line + 1) * lineHeightPx) - verticalScrollState.value
             IntOffset(x = x, y = y)
@@ -414,7 +436,7 @@ public fun CodeEditor(
                                 modifier =
                                     Modifier.offset {
                                         IntOffset(
-                                            editorPaddingStartPx + (column + 2) * charWidthPx -
+                                            editorPaddingStartPx + ((column + 2) * charWidthPx).roundToInt() -
                                                 horizontalScrollState.value,
                                             editorPaddingTopPx + lineIndex * lineHeightPx -
                                                 verticalScrollState.value,
@@ -441,12 +463,13 @@ public fun CodeEditor(
                                     Modifier
                                         .offset {
                                             IntOffset(
-                                                editorPaddingStartPx + position.column * charWidthPx -
+                                                editorPaddingStartPx +
+                                                    (position.column * charWidthPx).roundToInt() -
                                                     horizontalScrollState.value,
                                                 editorPaddingTopPx + position.line * lineHeightPx -
                                                     verticalScrollState.value,
                                             )
-                                        }.size(width = charWidthDp, height = 21.dp)
+                                        }.size(width = charWidthDp, height = lineHeightDp)
                                         .background(IntelliJColors.accentSubtle),
                             )
                         }
@@ -772,10 +795,10 @@ public fun CodeEditor(
                                 // Render syntax-highlighted text as visual layer
                                 Text(
                                     text = annotatedString,
+                                    // Same style object as the input layer: two separately
+                                    // declared styles can silently drift out of alignment.
                                     style =
-                                        TextStyle(
-                                            fontFamily = JetaProgFonts.codeFont,
-                                            fontSize = 14.sp,
+                                        textStyle.copy(
                                             color = syntaxTheme.defaultForeground.toComposeColor(),
                                         ),
                                 )
@@ -908,6 +931,9 @@ private const val MIN_AUTO_COMPLETION_LENGTH = 2
 /** Alpha for the selection wash, which overlays the highlighted text layer. */
 private const val SELECTION_OVERLAY_ALPHA = 0.55f
 
+/** Glyph run measured to derive a fractional character advance. */
+private const val CHAR_WIDTH_SAMPLE = 64
+
 /**
  * Extract the identifier prefix at the given cursor position.
  */
@@ -932,7 +958,7 @@ private fun extractIdentifierPrefix(
 /**
  * Convert a character offset to a line/column position.
  */
-private fun offsetToPosition(
+internal fun offsetToPosition(
     text: String,
     offset: Int,
 ): TextPosition {
@@ -965,13 +991,13 @@ private data class DiagnosticSpan(
  * Map a pointer location to the text position under it, or null when the pointer
  * is not over a character.
  */
-private fun pointerTextPosition(
+internal fun pointerTextPosition(
     pointer: Offset,
     lines: List<String>,
     scrollY: Int,
     scrollX: Int,
     lineHeightPx: Int,
-    charWidthPx: Int,
+    charWidthPx: Float,
 ): TextPosition? {
     val line = ((pointer.y + scrollY) / lineHeightPx).toInt()
     val column = ((pointer.x + scrollX) / charWidthPx).toInt()
