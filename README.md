@@ -83,7 +83,7 @@ app/desktop    Compose Desktop application (UI shell, editor, dialogs)
 ## Getting started
 
 ### Prerequisites
-- **JDK 25** (the build compiles against a JVM 25 toolchain)
+- **JDK 26** (the configured Gradle/Foojay toolchain provisions it automatically when needed)
 - No separate Gradle install needed — use the included wrapper (`./gradlew`)
 
 ### Build & run

@@ -10,7 +10,7 @@ kotlin {
         compilations.all {
             compileTaskProvider.configure {
                 compilerOptions {
-                    jvmTarget.set(JvmTarget.JVM_25)
+                    jvmTarget.set(JvmTarget.JVM_26)
                     allWarningsAsErrors.set(true)
                     freeCompilerArgs.addAll(
                         "-Xjsr305=strict",
@@ -23,7 +23,7 @@ kotlin {
         }
     }
 
-    jvmToolchain(25)
+    jvmToolchain(26)
 
     sourceSets {
         commonMain {

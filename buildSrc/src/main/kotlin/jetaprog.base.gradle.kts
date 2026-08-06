@@ -10,7 +10,7 @@ plugins {
 tasks.withType<KotlinCompile>().configureEach {
     compilerOptions {
         allWarningsAsErrors.set(true)
-        jvmTarget.set(JvmTarget.JVM_25)
+        jvmTarget.set(JvmTarget.JVM_26)
         freeCompilerArgs.addAll(
             "-Xjsr305=strict",
         )
@@ -18,8 +18,8 @@ tasks.withType<KotlinCompile>().configureEach {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    sourceCompatibility = "25"
-    targetCompatibility = "25"
+    sourceCompatibility = "26"
+    targetCompatibility = "26"
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
