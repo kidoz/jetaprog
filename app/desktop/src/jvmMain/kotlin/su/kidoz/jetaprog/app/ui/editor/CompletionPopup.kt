@@ -1,16 +1,12 @@
 package su.kidoz.jetaprog.app.ui.editor
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,12 +31,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -50,8 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.Elevation
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.common.completion.CompletionItem
@@ -92,9 +85,7 @@ public fun CompletionPopup(
             modifier =
                 modifier
                     .width(Dimensions.popupCompletionWidth.dp)
-                    .shadow(Elevation.popup.dp, RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .background(IntelliJColors.popupBackground),
+                    .popupChrome(Dimensions.cornerRadius.dp),
         ) {
             // Smart completion says which type it narrowed to, so a short list does not
             // look like a broken one.
@@ -187,27 +178,10 @@ private fun CompletionItemRow(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    val backgroundColor =
-        when {
-            isSelected -> IntelliJColors.menuItemHover
-            isHovered -> IntelliJColors.surfaceHover
-            else -> Color.Transparent
-        }
-
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(24.dp)
-                .background(backgroundColor)
-                .hoverable(interactionSource)
-                .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.sm.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    PopupListRow(
+        selected = isSelected,
+        onClick = onClick,
+        height = Dimensions.popupRowHeightCompact.dp,
     ) {
         // Kind icon
         Icon(
@@ -216,6 +190,8 @@ private fun CompletionItemRow(
             tint = item.kind.toColor(),
             modifier = Modifier.size(16.dp),
         )
+
+        Spacer(modifier = Modifier.width(Spacing.sm.dp))
 
         // Label
         Text(
@@ -235,6 +211,7 @@ private fun CompletionItemRow(
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = Spacing.sm.dp),
             )
         }
 
@@ -246,9 +223,10 @@ private fun CompletionItemRow(
                 fontSize = 9.sp,
                 modifier =
                     Modifier
+                        .padding(start = Spacing.sm.dp)
                         .background(
                             IntelliJColors.surfaceContainer,
-                            RoundedCornerShape(2.dp),
+                            RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                         ).padding(horizontal = 3.dp, vertical = 1.dp),
             )
         }
@@ -295,7 +273,7 @@ private fun FooterHint(
                 Modifier
                     .background(
                         IntelliJColors.surfaceContainer,
-                        RoundedCornerShape(2.dp),
+                        RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 3.dp, vertical = 1.dp),
         )
         Text(

@@ -439,6 +439,14 @@ public object Dimensions {
     public val popupHoverHeightMax: Int = 300
     public val popupSearchWidth: Int = 600
     public val popupSearchHeight: Int = 480
+    public val popupListWidth: Int = 500
+    public val popupUsagesWidth: Int = 700
+    public val popupListMaxHeight: Int = 400
+    public val popupRowHeight: Int = 28
+    public val popupRowHeightCompact: Int = 24
+
+    // Selection
+    public val selectionAccentWidth: Int = 2
 
     // Dialogs
     public val dialogSettingsWidth: Int = 900

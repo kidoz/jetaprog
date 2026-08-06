@@ -35,8 +35,11 @@ import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.IntelliJStatusBar
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.panels.Avatar
 import su.kidoz.jetaprog.app.ui.panels.FileBadge
+import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -142,6 +145,19 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
                     ) {
                         FileBadge(fileName = name)
                         Text(text = name, color = IntelliJColors.textSecondary, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        GallerySection("Popup chrome · popupChrome + PopupListRow") {
+            var selected by remember { mutableStateOf(1) }
+            Column(
+                modifier = Modifier.width(Dimensions.popupCompletionWidth.dp).popupChrome(),
+            ) {
+                listOf("Open recent project", "Reload from disk", "Reveal in Finder").forEachIndexed { index, label ->
+                    PopupListRow(selected = index == selected, onClick = { selected = index }) {
+                        Text(text = label, color = IntelliJColors.textPrimary, fontSize = 13.sp)
                     }
                 }
             }

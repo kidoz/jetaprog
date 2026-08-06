@@ -1,39 +1,32 @@
 package su.kidoz.jetaprog.app.ui.editor
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -64,12 +57,10 @@ public fun QuickFixPopup(
             modifier =
                 Modifier
                     .widthIn(min = 260.dp, max = 460.dp)
-                    .shadow(8.dp, RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .background(IntelliJColors.popupBackground)
+                    .popupChrome(Dimensions.cornerRadius.dp)
                     .padding(vertical = Spacing.xs.dp),
         ) {
-            LazyColumn(modifier = Modifier.heightIn(max = 220.dp)) {
+            LazyColumn(modifier = Modifier.heightIn(max = Dimensions.popupCompletionMaxHeight.dp)) {
                 itemsIndexed(state.fixes) { index, fix ->
                     QuickFixRow(
                         title = fix.title,
@@ -89,26 +80,10 @@ private fun QuickFixRow(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    val background =
-        when {
-            isSelected -> IntelliJColors.selectionBackground
-            isHovered -> IntelliJColors.surfaceHover
-            else -> Color.Transparent
-        }
-
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(background)
-                .hoverable(interactionSource)
-                .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    PopupListRow(
+        selected = isSelected,
+        onClick = onClick,
+        horizontalPadding = Spacing.md.dp,
     ) {
         Icon(
             imageVector = Icons.Default.AutoFixHigh,
@@ -116,6 +91,7 @@ private fun QuickFixRow(
             tint = IntelliJColors.warning,
             modifier = Modifier.size(14.dp),
         )
+        Spacer(modifier = Modifier.width(Spacing.sm.dp))
         Text(
             text = title,
             color = IntelliJColors.textPrimary,

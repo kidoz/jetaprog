@@ -1,17 +1,20 @@
 package su.kidoz.jetaprog.app.ui.navigation
 
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -29,8 +32,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -38,15 +39,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.navigation.NavigationSymbolKind
 import su.kidoz.jetaprog.editor.navigation.QuickInfo
@@ -79,10 +81,8 @@ public fun QuickDefinitionPopup(
         Column(
             modifier =
                 modifier
-                    .width(600.dp)
-                    .shadow(8.dp, RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .background(IntelliJColors.popupBackground)
+                    .width(Dimensions.popupSearchWidth.dp)
+                    .popupChrome()
                     .focusRequester(focusRequester)
                     .onKeyEvent { keyEvent ->
                         when (keyEvent.key) {
@@ -224,7 +224,7 @@ private fun SignatureSection(signature: String) {
             text = signature,
             color = IntelliJColors.textPrimary,
             fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = JetaProgFonts.codeFont,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
@@ -241,40 +241,50 @@ private fun DefinitionPreviewSection(preview: String) {
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 100.dp, max = 300.dp)
-                .background(IntelliJColors.editorBackground)
-                .verticalScroll(verticalScrollState)
-                .horizontalScroll(horizontalScrollState)
-                .padding(Spacing.md.dp),
+                .background(IntelliJColors.editorBackground),
     ) {
-        // Simple code preview with line numbers
-        val lines = preview.lines()
-        Row {
-            // Line numbers
-            Column(
-                modifier = Modifier.padding(end = Spacing.md.dp),
-            ) {
-                lines.forEachIndexed { index, _ ->
-                    Text(
-                        text = "${index + 1}",
-                        color = IntelliJColors.lineNumberText,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                    )
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(verticalScrollState)
+                    .horizontalScroll(horizontalScrollState)
+                    .padding(Spacing.md.dp),
+        ) {
+            // Simple code preview with line numbers
+            val lines = preview.lines()
+            Row {
+                // Line numbers
+                Column(
+                    modifier = Modifier.padding(end = Spacing.md.dp),
+                ) {
+                    lines.forEachIndexed { index, _ ->
+                        Text(
+                            text = "${index + 1}",
+                            color = IntelliJColors.lineNumberText,
+                            fontSize = 12.sp,
+                            fontFamily = JetaProgFonts.codeFont,
+                        )
+                    }
                 }
-            }
 
-            // Code content
-            Column {
-                lines.forEach { line ->
-                    Text(
-                        text = line.ifEmpty { " " },
-                        color = IntelliJColors.textPrimary,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                    )
+                // Code content
+                Column {
+                    lines.forEach { line ->
+                        Text(
+                            text = line.ifEmpty { " " },
+                            color = IntelliJColors.textPrimary,
+                            fontSize = 12.sp,
+                            fontFamily = JetaProgFonts.codeFont,
+                        )
+                    }
                 }
             }
         }
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(verticalScrollState),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+        )
     }
 }
 
@@ -286,15 +296,25 @@ private fun DocumentationSection(documentation: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(max = 150.dp)
-                .verticalScroll(scrollState)
-                .padding(Spacing.md.dp),
+                .heightIn(max = 150.dp),
     ) {
-        Text(
-            text = documentation,
-            color = IntelliJColors.textSecondary,
-            fontSize = 12.sp,
-            lineHeight = 18.sp,
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
+                    .padding(Spacing.md.dp),
+        ) {
+            Text(
+                text = documentation,
+                color = IntelliJColors.textSecondary,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+            )
+        }
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(scrollState),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
         )
     }
 }
@@ -332,7 +352,7 @@ private fun QuickDefFooterHint(
                 Modifier
                     .background(
                         IntelliJColors.surfaceContainer,
-                        RoundedCornerShape(2.dp),
+                        RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 4.dp, vertical = 1.dp),
         )
         Text(

@@ -19,18 +19,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.Elevation
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.common.text.MarkedString
 import su.kidoz.jetaprog.editor.state.HoverState
@@ -58,9 +56,7 @@ public fun HoverPopup(
                     .widthIn(
                         min = Dimensions.popupHoverWidthMin.dp,
                         max = Dimensions.popupHoverWidthMax.dp,
-                    ).shadow(Elevation.popup.dp, RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .background(IntelliJColors.popupBackground),
+                    ).popupChrome(Dimensions.cornerRadius.dp),
         ) {
             if (state.isLoading) {
                 // Loading indicator
@@ -154,7 +150,7 @@ private fun MarkedStringContent(content: MarkedString) {
                     text = content.value,
                     color = IntelliJColors.textPrimary,
                     fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = JetaProgFonts.codeFont,
                     lineHeight = 16.sp,
                 )
             }

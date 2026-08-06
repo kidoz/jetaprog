@@ -1,6 +1,5 @@
 package su.kidoz.jetaprog.app.ui.editor
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -23,11 +21,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
@@ -35,8 +30,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.state.SignatureHelpState
 import su.kidoz.jetaprog.editor.state.SignatureInfo
@@ -64,9 +61,7 @@ public fun SignatureHelpPopup(
             modifier =
                 modifier
                     .widthIn(min = 200.dp, max = 600.dp)
-                    .shadow(8.dp, RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .background(IntelliJColors.popupBackground),
+                    .popupChrome(Dimensions.cornerRadius.dp),
         ) {
             if (state.isLoading) {
                 // Loading indicator
@@ -301,7 +296,7 @@ private fun SignatureLabel(
         text = annotatedString,
         color = IntelliJColors.textPrimary,
         fontSize = 12.sp,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = JetaProgFonts.codeFont,
         lineHeight = 16.sp,
     )
 }

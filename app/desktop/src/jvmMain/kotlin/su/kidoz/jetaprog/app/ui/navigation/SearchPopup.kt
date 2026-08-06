@@ -1,16 +1,14 @@
 package su.kidoz.jetaprog.app.ui.navigation
 
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -39,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -59,6 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -119,10 +119,8 @@ public fun SearchPopup(
         Column(
             modifier =
                 modifier
-                    .width(600.dp)
-                    .shadow(8.dp, RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .background(IntelliJColors.popupBackground),
+                    .width(Dimensions.popupSearchWidth.dp)
+                    .popupChrome(),
         ) {
             // Mode tabs (only for Search Everywhere)
             if (mode == SearchMode.ALL) {
@@ -176,21 +174,31 @@ public fun SearchPopup(
 
             // Results list
             if (results.isNotEmpty()) {
-                LazyColumn(
-                    state = listState,
+                Box(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 400.dp)
-                            .padding(vertical = Spacing.xs.dp),
+                            .heightIn(max = Dimensions.popupListMaxHeight.dp),
                 ) {
-                    itemsIndexed(results) { index, result ->
-                        SearchResultItem(
-                            result = result,
-                            isSelected = index == selectedIndex,
-                            onClick = { onResultSelect(result) },
-                        )
+                    LazyColumn(
+                        state = listState,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = Spacing.xs.dp),
+                    ) {
+                        itemsIndexed(results) { index, result ->
+                            SearchResultItem(
+                                result = result,
+                                isSelected = index == selectedIndex,
+                                onClick = { onResultSelect(result) },
+                            )
+                        }
                     }
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(listState),
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    )
                 }
 
                 // Scroll to selected item
@@ -331,64 +339,53 @@ private fun SearchResultItem(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    val backgroundColor =
-        when {
-            isSelected -> IntelliJColors.selectionBackground
-            isHovered -> IntelliJColors.surfaceHover
-            else -> Color.Transparent
-        }
-
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(32.dp)
-                .background(backgroundColor)
-                .hoverable(interactionSource)
-                .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.md.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    PopupListRow(
+        selected = isSelected,
+        onClick = onClick,
+        horizontalPadding = Spacing.md.dp,
     ) {
-        // Icon
-        Icon(
-            imageVector = result.target.kind.toIcon(),
-            contentDescription = null,
-            tint = result.target.kind.toColor(),
-            modifier = Modifier.size(16.dp),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+        ) {
+            // Icon
+            Icon(
+                imageVector = result.target.kind.toIcon(),
+                contentDescription = null,
+                tint = result.target.kind.toColor(),
+                modifier = Modifier.size(16.dp),
+            )
 
-        // Name with highlighted matches
-        Text(
-            text = highlightMatches(result.target.name, result.matchRanges),
-            fontSize = 13.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-
-        // Container name (e.g., class name, package)
-        result.target.containerName?.let { container ->
+            // Name with highlighted matches
             Text(
-                text = container,
-                color = IntelliJColors.textMuted,
-                fontSize = 12.sp,
+                text = highlightMatches(result.target.name, result.matchRanges),
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+
+            // Container name (e.g., class name, package)
+            result.target.containerName?.let { container ->
+                Text(
+                    text = container,
+                    color = IntelliJColors.textMuted,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            // File path
+            Text(
+                text = result.target.filePath.substringAfterLast('/'),
+                color = IntelliJColors.textSecondary,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-
-        // File path
-        Text(
-            text = result.target.filePath.substringAfterLast('/'),
-            color = IntelliJColors.textSecondary,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
@@ -429,7 +426,7 @@ private fun FooterHint(
                 Modifier
                     .background(
                         IntelliJColors.surfaceContainer,
-                        RoundedCornerShape(2.dp),
+                        RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 4.dp, vertical = 1.dp),
         )
         Text(

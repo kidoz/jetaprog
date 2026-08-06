@@ -1,16 +1,13 @@
 package su.kidoz.jetaprog.app.ui.command
 
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -32,11 +30,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -54,6 +49,8 @@ import androidx.compose.ui.window.PopupProperties
 import su.kidoz.jetaprog.app.command.CommandPaletteIntent
 import su.kidoz.jetaprog.app.command.CommandPaletteState
 import su.kidoz.jetaprog.app.command.PaletteCommand
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -95,9 +92,7 @@ public fun CommandPalette(
             modifier =
                 modifier
                     .width(Dimensions.popupSearchWidth.dp)
-                    .shadow(Spacing.sm.dp, RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .background(IntelliJColors.popupBackground),
+                    .popupChrome(),
         ) {
             PaletteInput(
                 query = state.query,
@@ -115,21 +110,26 @@ public fun CommandPalette(
             )
 
             if (state.results.isNotEmpty()) {
-                LazyColumn(
-                    state = listState,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = Dimensions.popupCompletionMaxHeight.dp)
-                            .padding(vertical = Spacing.xs.dp),
-                ) {
-                    itemsIndexed(state.results) { index, command ->
-                        CommandRow(
-                            command = command,
-                            isSelected = index == selectedIndex,
-                            onClick = { onIntent(CommandPaletteIntent.Execute(command)) },
-                        )
+                Box(modifier = Modifier.fillMaxWidth().heightIn(max = Dimensions.popupListMaxHeight.dp)) {
+                    LazyColumn(
+                        state = listState,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = Spacing.xs.dp),
+                    ) {
+                        itemsIndexed(state.results) { index, command ->
+                            CommandRow(
+                                command = command,
+                                isSelected = index == selectedIndex,
+                                onClick = { onIntent(CommandPaletteIntent.Execute(command)) },
+                            )
+                        }
                     }
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(listState),
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    )
                 }
 
                 LaunchedEffect(selectedIndex) {
@@ -255,26 +255,10 @@ private fun CommandRow(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    val backgroundColor =
-        when {
-            isSelected -> IntelliJColors.selectionBackground
-            isHovered -> IntelliJColors.surfaceHover
-            else -> Color.Transparent
-        }
-
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(Dimensions.tabHeight.dp)
-                .background(backgroundColor)
-                .hoverable(interactionSource)
-                .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.md.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    PopupListRow(
+        selected = isSelected,
+        onClick = onClick,
+        horizontalPadding = Spacing.md.dp,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
         command.category?.takeIf { it.isNotBlank() }?.let { category ->

@@ -1,16 +1,13 @@
 package su.kidoz.jetaprog.app.ui.navigation
 
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
@@ -34,18 +32,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -53,8 +47,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
 import su.kidoz.jetaprog.editor.navigation.UsageGroup
@@ -107,10 +104,8 @@ public fun UsagesPopup(
         Column(
             modifier =
                 modifier
-                    .width(700.dp)
-                    .shadow(8.dp, RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .background(IntelliJColors.popupBackground)
+                    .width(Dimensions.popupUsagesWidth.dp)
+                    .popupChrome()
                     .focusRequester(focusRequester)
                     .onKeyEvent { keyEvent ->
                         when (keyEvent.key) {
@@ -159,37 +154,47 @@ public fun UsagesPopup(
 
             // Usages list
             if (visibleItems.isNotEmpty()) {
-                LazyColumn(
-                    state = listState,
+                Box(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 400.dp)
-                            .padding(vertical = Spacing.xs.dp),
+                            .heightIn(max = Dimensions.popupListMaxHeight.dp),
                 ) {
-                    itemsIndexed(visibleItems) { index, item ->
-                        when (item) {
-                            is UsageListItem.GroupHeader -> {
-                                UsageGroupHeaderRow(
-                                    group = item.group,
-                                    isExpanded = expandedGroups[item.group.filePath] ?: true,
-                                    isSelected = index == selectedIndex,
-                                    onClick = {
-                                        expandedGroups[item.group.filePath] =
-                                            !(expandedGroups[item.group.filePath] ?: true)
-                                    },
-                                )
-                            }
+                    LazyColumn(
+                        state = listState,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = Spacing.xs.dp),
+                    ) {
+                        itemsIndexed(visibleItems) { index, item ->
+                            when (item) {
+                                is UsageListItem.GroupHeader -> {
+                                    UsageGroupHeaderRow(
+                                        group = item.group,
+                                        isExpanded = expandedGroups[item.group.filePath] ?: true,
+                                        isSelected = index == selectedIndex,
+                                        onClick = {
+                                            expandedGroups[item.group.filePath] =
+                                                !(expandedGroups[item.group.filePath] ?: true)
+                                        },
+                                    )
+                                }
 
-                            is UsageListItem.Usage -> {
-                                UsageRow(
-                                    usage = item.usage,
-                                    isSelected = index == selectedIndex,
-                                    onClick = { onUsageSelect(item.usage) },
-                                )
+                                is UsageListItem.Usage -> {
+                                    UsageRow(
+                                        usage = item.usage,
+                                        isSelected = index == selectedIndex,
+                                        onClick = { onUsageSelect(item.usage) },
+                                    )
+                                }
                             }
                         }
                     }
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(listState),
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    )
                 }
 
                 // Scroll to selected item
@@ -258,67 +263,56 @@ private fun UsageGroupHeaderRow(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    val backgroundColor =
-        when {
-            isSelected -> IntelliJColors.selectionBackground
-            isHovered -> IntelliJColors.surfaceHover
-            else -> Color.Transparent
-        }
-
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(28.dp)
-                .background(backgroundColor)
-                .hoverable(interactionSource)
-                .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.md.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
+    PopupListRow(
+        selected = isSelected,
+        onClick = onClick,
+        horizontalPadding = Spacing.md.dp,
     ) {
-        // Expand/collapse icon
-        Icon(
-            imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = IntelliJColors.textSecondary,
-            modifier = Modifier.size(16.dp),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
+        ) {
+            // Expand/collapse icon
+            Icon(
+                imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = IntelliJColors.textSecondary,
+                modifier = Modifier.size(16.dp),
+            )
 
-        // File icon
-        Icon(
-            imageVector = Icons.Default.Description,
-            contentDescription = null,
-            tint = IntelliJColors.iconFile,
-            modifier = Modifier.size(16.dp),
-        )
+            // File icon
+            Icon(
+                imageVector = Icons.Default.Description,
+                contentDescription = null,
+                tint = IntelliJColors.iconFile,
+                modifier = Modifier.size(16.dp),
+            )
 
-        // File name
-        Text(
-            text = group.fileName,
-            color = IntelliJColors.textPrimary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+            // File name
+            Text(
+                text = group.fileName,
+                color = IntelliJColors.textPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
 
-        // Usage count
-        Text(
-            text = "${group.usages.size}",
-            color = IntelliJColors.textMuted,
-            fontSize = 11.sp,
-            modifier =
-                Modifier
-                    .background(
-                        IntelliJColors.surfaceContainer,
-                        RoundedCornerShape(8.dp),
-                    ).padding(horizontal = 6.dp, vertical = 1.dp),
-        )
+            // Usage count
+            Text(
+                text = "${group.usages.size}",
+                color = IntelliJColors.textMuted,
+                fontSize = 11.sp,
+                modifier =
+                    Modifier
+                        .background(
+                            IntelliJColors.surfaceContainer,
+                            RoundedCornerShape(8.dp),
+                        ).padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+        }
     }
 }
 
@@ -328,48 +322,40 @@ private fun UsageRow(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    val backgroundColor =
-        when {
-            isSelected -> IntelliJColors.selectionBackground
-            isHovered -> IntelliJColors.surfaceHover
-            else -> Color.Transparent
-        }
-
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(24.dp)
-                .background(backgroundColor)
-                .hoverable(interactionSource)
-                .clickable(onClick = onClick)
-                .padding(start = (Spacing.md + Spacing.lg).dp, end = Spacing.md.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    PopupListRow(
+        selected = isSelected,
+        onClick = onClick,
+        horizontalPadding = Spacing.md.dp,
     ) {
-        // Line number
-        Text(
-            text = "${usage.lineNumber}:",
-            color = IntelliJColors.lineNumberText,
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace,
-        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = Spacing.lg.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+        ) {
+            // Line number
+            Text(
+                text = "${usage.lineNumber}:",
+                color = IntelliJColors.lineNumberText,
+                fontSize = 11.sp,
+                fontFamily = JetaProgFonts.codeFont,
+            )
 
-        // Usage kind badge
-        UsageKindBadge(kind = usage.usageKind)
+            // Usage kind badge
+            UsageKindBadge(kind = usage.usageKind)
 
-        // Context line with highlighted usage
-        Text(
-            text = highlightUsageInLine(usage.contextLine, usage.columnRange.toIntRange()),
-            fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+            // Context line with highlighted usage
+            Text(
+                text = highlightUsageInLine(usage.contextLine, usage.columnRange.toIntRange()),
+                fontSize = 12.sp,
+                fontFamily = JetaProgFonts.codeFont,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -398,7 +384,7 @@ private fun UsageKindBadge(kind: UsageKind) {
             Modifier
                 .background(
                     color.copy(alpha = 0.15f),
-                    RoundedCornerShape(2.dp),
+                    RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                 ).padding(horizontal = 4.dp, vertical = 1.dp),
     )
 }
@@ -437,7 +423,7 @@ private fun UsageFooterHint(
                 Modifier
                     .background(
                         IntelliJColors.surfaceContainer,
-                        RoundedCornerShape(2.dp),
+                        RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 4.dp, vertical = 1.dp),
         )
         Text(

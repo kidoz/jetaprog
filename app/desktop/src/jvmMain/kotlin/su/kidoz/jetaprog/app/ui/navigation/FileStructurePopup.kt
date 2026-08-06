@@ -1,16 +1,13 @@
 package su.kidoz.jetaprog.app.ui.navigation
 
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -39,8 +37,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -57,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -120,10 +118,8 @@ public fun FileStructurePopup(
         Column(
             modifier =
                 modifier
-                    .width(500.dp)
-                    .shadow(8.dp, RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .background(IntelliJColors.popupBackground),
+                    .width(Dimensions.popupListWidth.dp)
+                    .popupChrome(),
         ) {
             // Header with file name
             Row(
@@ -182,21 +178,31 @@ public fun FileStructurePopup(
 
             // Structure list
             if (filteredItems.isNotEmpty()) {
-                LazyColumn(
-                    state = listState,
+                Box(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 400.dp)
-                            .padding(vertical = Spacing.xs.dp),
+                            .heightIn(max = Dimensions.popupListMaxHeight.dp),
                 ) {
-                    itemsIndexed(filteredItems) { index, item ->
-                        StructureItemRow(
-                            item = item,
-                            isSelected = index == selectedIndex,
-                            onClick = { onItemSelect(item) },
-                        )
+                    LazyColumn(
+                        state = listState,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = Spacing.xs.dp),
+                    ) {
+                        itemsIndexed(filteredItems) { index, item ->
+                            StructureItemRow(
+                                item = item,
+                                isSelected = index == selectedIndex,
+                                onClick = { onItemSelect(item) },
+                            )
+                        }
                     }
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(listState),
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    )
                 }
 
                 // Scroll to selected item
@@ -287,92 +293,84 @@ private fun StructureItemRow(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    val backgroundColor =
-        when {
-            isSelected -> IntelliJColors.selectionBackground
-            isHovered -> IntelliJColors.surfaceHover
-            else -> Color.Transparent
-        }
-
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(28.dp)
-                .background(backgroundColor)
-                .hoverable(interactionSource)
-                .clickable(onClick = onClick)
-                .padding(start = (Spacing.md + item.depth * Spacing.lg).dp, end = Spacing.md.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    PopupListRow(
+        selected = isSelected,
+        onClick = onClick,
+        horizontalPadding = Spacing.md.dp,
     ) {
-        // Visibility icon
-        Icon(
-            imageVector = item.visibility.toIcon(),
-            contentDescription = null,
-            tint = item.visibility.toColor(),
-            modifier = Modifier.size(12.dp),
-        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = (item.depth * Spacing.lg).dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+        ) {
+            // Visibility icon
+            Icon(
+                imageVector = item.visibility.toIcon(),
+                contentDescription = null,
+                tint = item.visibility.toColor(),
+                modifier = Modifier.size(12.dp),
+            )
 
-        // Symbol icon
-        Icon(
-            imageVector = item.target.kind.toStructureIcon(),
-            contentDescription = null,
-            tint = item.target.kind.toStructureColor(),
-            modifier = Modifier.size(16.dp),
-        )
+            // Symbol icon
+            Icon(
+                imageVector = item.target.kind.toStructureIcon(),
+                contentDescription = null,
+                tint = item.target.kind.toStructureColor(),
+                modifier = Modifier.size(16.dp),
+            )
 
-        // Name
-        Text(
-            text = item.target.name,
-            color = IntelliJColors.textPrimary,
-            fontSize = 13.sp,
-            fontStyle = if (item.isAbstract) FontStyle.Italic else FontStyle.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-
-        // Detail (type, return type, etc.)
-        item.target.detail?.let { detail ->
+            // Name
             Text(
-                text = detail,
-                color = IntelliJColors.textMuted,
-                fontSize = 11.sp,
+                text = item.target.name,
+                color = IntelliJColors.textPrimary,
+                fontSize = 13.sp,
+                fontStyle = if (item.isAbstract) FontStyle.Italic else FontStyle.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
-        }
 
-        // Modifiers
-        if (item.isStatic) {
-            Text(
-                text = "static",
-                color = IntelliJColors.textSecondary,
-                fontSize = 10.sp,
-                modifier =
-                    Modifier
-                        .background(
-                            IntelliJColors.surfaceContainer,
-                            RoundedCornerShape(2.dp),
-                        ).padding(horizontal = 4.dp, vertical = 1.dp),
-            )
-        }
-        if (item.isFinal) {
-            Text(
-                text = "final",
-                color = IntelliJColors.textSecondary,
-                fontSize = 10.sp,
-                modifier =
-                    Modifier
-                        .background(
-                            IntelliJColors.surfaceContainer,
-                            RoundedCornerShape(2.dp),
-                        ).padding(horizontal = 4.dp, vertical = 1.dp),
-            )
+            // Detail (type, return type, etc.)
+            item.target.detail?.let { detail ->
+                Text(
+                    text = detail,
+                    color = IntelliJColors.textMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            // Modifiers
+            if (item.isStatic) {
+                Text(
+                    text = "static",
+                    color = IntelliJColors.textSecondary,
+                    fontSize = 10.sp,
+                    modifier =
+                        Modifier
+                            .background(
+                                IntelliJColors.surfaceContainer,
+                                RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
+                            ).padding(horizontal = 4.dp, vertical = 1.dp),
+                )
+            }
+            if (item.isFinal) {
+                Text(
+                    text = "final",
+                    color = IntelliJColors.textSecondary,
+                    fontSize = 10.sp,
+                    modifier =
+                        Modifier
+                            .background(
+                                IntelliJColors.surfaceContainer,
+                                RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
+                            ).padding(horizontal = 4.dp, vertical = 1.dp),
+                )
+            }
         }
     }
 }
@@ -411,7 +409,7 @@ private fun StructureFooterHint(
                 Modifier
                     .background(
                         IntelliJColors.surfaceContainer,
-                        RoundedCornerShape(2.dp),
+                        RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 4.dp, vertical = 1.dp),
         )
         Text(
