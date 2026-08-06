@@ -255,11 +255,15 @@ public fun CodeEditor(
             }
         }
 
-    val lineHeightPx = with(density) { Dimensions.lineHeightCode.sp.roundToPx() }
+    // Keep the fractional line height and round per row: the text layout accumulates
+    // the float value, so multiplying a pre-rounded height under-shoots by the lost
+    // fraction every line and the overlays drift a full row over a screenful on
+    // fractional density scales (e.g. 125%).
+    val lineHeightPxF = with(density) { Dimensions.lineHeightCode.sp.toPx() }
     val editorPaddingStartPx = with(density) { 8.dp.roundToPx() }
     val editorPaddingTopPx = with(density) { 4.dp.roundToPx() }
     val charWidthDp = with(density) { charWidthPx.toDp() }
-    val lineHeightDp = with(density) { lineHeightPx.toDp() }
+    val lineHeightDp = with(density) { lineHeightPxF.toDp() }
 
     // Anchors a popup to a text position, in the coordinate space of the editor content
     // area - the same space the bracket and inlay overlays use. That area already begins
@@ -272,7 +276,7 @@ public fun CodeEditor(
             x =
                 editorPaddingStartPx + (position.column * charWidthPx).roundToInt() -
                     horizontalScrollState.value,
-            y = editorPaddingTopPx + row * lineHeightPx - verticalScrollState.value,
+            y = editorPaddingTopPx + (row * lineHeightPxF).roundToInt() - verticalScrollState.value,
         )
     }
 
@@ -335,7 +339,7 @@ public fun CodeEditor(
                                                         lines = cachedLines,
                                                         scrollY = verticalScrollState.value - editorPaddingTopPx,
                                                         scrollX = horizontalScrollState.value - editorPaddingStartPx,
-                                                        lineHeightPx = lineHeightPx,
+                                                        lineHeightPx = lineHeightPxF,
                                                         charWidthPx = charWidthPx,
                                                     )
                                                 if (position != lastHoverPosition) {
@@ -367,11 +371,11 @@ public fun CodeEditor(
                                     .offset {
                                         IntOffset(
                                             0,
-                                            editorPaddingTopPx + caretLine * lineHeightPx -
+                                            editorPaddingTopPx + (caretLine * lineHeightPxF).roundToInt() -
                                                 verticalScrollState.value,
                                         )
                                     }.fillMaxWidth()
-                                    .height(21.dp)
+                                    .height(lineHeightDp)
                                     .background(IntelliJColors.editorCurrentLine),
                         )
                     }
@@ -384,11 +388,11 @@ public fun CodeEditor(
                                     .offset {
                                         IntOffset(
                                             0,
-                                            editorPaddingTopPx + (execLine - 1) * lineHeightPx -
+                                            editorPaddingTopPx + ((execLine - 1) * lineHeightPxF).roundToInt() -
                                                 verticalScrollState.value,
                                         )
                                     }.fillMaxWidth()
-                                    .height(21.dp)
+                                    .height(lineHeightDp)
                                     .background(IntelliJColors.executionLineBackground),
                         )
                     }
@@ -408,7 +412,7 @@ public fun CodeEditor(
                                         IntOffset(
                                             editorPaddingStartPx + ((column + 2) * charWidthPx).roundToInt() -
                                                 horizontalScrollState.value,
-                                            editorPaddingTopPx + lineIndex * lineHeightPx -
+                                            editorPaddingTopPx + (lineIndex * lineHeightPxF).roundToInt() -
                                                 verticalScrollState.value,
                                         )
                                     },
@@ -436,7 +440,7 @@ public fun CodeEditor(
                                                 editorPaddingStartPx +
                                                     (position.column * charWidthPx).roundToInt() -
                                                     horizontalScrollState.value,
-                                                editorPaddingTopPx + position.line * lineHeightPx -
+                                                editorPaddingTopPx + (position.line * lineHeightPxF).roundToInt() -
                                                     verticalScrollState.value,
                                             )
                                         }.size(width = charWidthDp, height = lineHeightDp)
@@ -991,7 +995,7 @@ internal fun pointerTextPosition(
     lines: List<String>,
     scrollY: Int,
     scrollX: Int,
-    lineHeightPx: Int,
+    lineHeightPx: Float,
     charWidthPx: Float,
 ): TextPosition? {
     val line = ((pointer.y + scrollY) / lineHeightPx).toInt()

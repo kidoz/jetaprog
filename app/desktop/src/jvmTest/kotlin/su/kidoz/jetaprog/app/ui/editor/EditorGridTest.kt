@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 class EditorGridTest {
     /** A realistic fractional advance: 14sp JetBrains Mono is not a whole number of pixels. */
     private val charWidth = 8.4f
-    private val lineHeight = 21
+    private val lineHeight = 21f
 
     @Test
     fun overlayStaysOnItsGlyphAcrossALongLine() {
@@ -37,6 +37,25 @@ class EditorGridTest {
             "expected the old maths to drift more than half a character",
         )
         assertTrue(abs(fixed - trueX) <= 0.5f, "rounding once should stay within half a pixel")
+    }
+
+    @Test
+    fun rowAnchorsFollowTheFractionalLineHeight() {
+        // 21sp at a 125% density scale is 26.25 physical pixels per line.
+        val fractionalLineHeight = 26.25f
+        val row = 40
+        val trueY = row * fractionalLineHeight
+
+        val fixed = (row * fractionalLineHeight).roundToInt()
+        val drifted = row * fractionalLineHeight.roundToInt()
+
+        // Multiplying a pre-rounded height loses the fraction on every row: half a
+        // line by row 40, which put overlays on the wrong row far down the file.
+        assertTrue(
+            abs(drifted - trueY) > fractionalLineHeight / 3,
+            "expected the old maths to drift by a visible fraction of a line",
+        )
+        assertTrue(abs(fixed - trueY) <= 0.5f, "rounding per row should stay within half a pixel")
     }
 
     @Test

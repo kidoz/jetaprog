@@ -30,14 +30,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.editor.state.LineChangeMarker
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxColor
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
+import kotlin.math.roundToInt
 
 /**
  * Fold region information.
@@ -70,13 +73,20 @@ public fun LineNumbers(
     val gutterWidth = (digits * 10 + 36).dp // Extra space for fold markers
 
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
 
-    // Sync scroll with editor
-    LaunchedEffect(scrollState.value) {
-        val lineHeight = 21 // Approximate line height in pixels
-        val firstVisibleLine = scrollState.value / lineHeight
-        if (firstVisibleLine >= 0 && firstVisibleLine < lineCount) {
-            listState.scrollToItem(firstVisibleLine)
+    // The editor's scroll state is in physical pixels while the rows are laid out
+    // from the sp line height, so the gutter must convert through the density or it
+    // scrolls at the wrong rate on HiDPI. The sub-line remainder goes into the item
+    // offset so the gutter tracks the editor per pixel instead of snapping to rows.
+    val lineHeightPxF = with(density) { Dimensions.lineHeightCode.sp.toPx() }
+    val rowHeight = with(density) { lineHeightPxF.toDp() }
+
+    LaunchedEffect(scrollState.value, lineCount) {
+        val firstVisibleLine = (scrollState.value / lineHeightPxF).toInt()
+        if (firstVisibleLine in 0 until lineCount) {
+            val remainderPx = (scrollState.value - firstVisibleLine * lineHeightPxF).roundToInt()
+            listState.scrollToItem(firstVisibleLine, remainderPx)
         }
     }
 
@@ -101,7 +111,7 @@ public fun LineNumbers(
                     Box(
                         modifier =
                             Modifier
-                                .height(21.dp)
+                                .height(rowHeight)
                                 .width(16.dp)
                                 .then(
                                     if (foldRegion == null) {
@@ -179,7 +189,7 @@ public fun LineNumbers(
                 Box(
                     modifier =
                         Modifier
-                            .height(21.dp)
+                            .height(rowHeight)
                             .padding(end = 8.dp)
                             .background(
                                 if (isCurrentLine) {
@@ -201,7 +211,7 @@ public fun LineNumbers(
                                             Alignment.CenterStart
                                         },
                                     ).width(3.dp)
-                                    .height(if (marker == LineChangeMarker.DELETED) 5.dp else 21.dp)
+                                    .height(if (marker == LineChangeMarker.DELETED) 5.dp else rowHeight)
                                     .background(marker.toGutterColor()),
                         )
                     }
