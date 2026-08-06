@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,38 +57,56 @@ public class TextSearchViewModel(
     /** The observable panel state. */
     public val state: StateFlow<TextSearchState> = _state.asStateFlow()
 
-    /** Updates the query string. */
+    /** Updates the query string and schedules a debounced search. */
     public fun setQuery(query: String) {
         _state.update { it.copy(query = query) }
+        scheduleSearch()
     }
 
-    /** Toggles case sensitivity. */
+    /** Toggles case sensitivity and re-runs the search. */
     public fun toggleCaseSensitive() {
         _state.update { it.copy(caseSensitive = !it.caseSensitive) }
+        scheduleSearch()
     }
 
-    /** Toggles regular-expression mode. */
+    /** Toggles regular-expression mode and re-runs the search. */
     public fun toggleRegex() {
         _state.update { it.copy(regex = !it.regex) }
+        scheduleSearch()
     }
 
-    /** Toggles whole-word matching. */
+    /** Toggles whole-word matching and re-runs the search. */
     public fun toggleWholeWord() {
         _state.update { it.copy(wholeWord = !it.wholeWord) }
+        scheduleSearch()
     }
 
-    /** Runs the search with the current query and options. */
+    /** Runs the search immediately with the current query and options. */
     public fun search() {
-        val current = _state.value
-        if (current.query.isEmpty()) {
-            _state.update { it.copy(results = emptyList(), totalMatches = 0, searched = false) }
+        startSearch(debounced = false)
+    }
+
+    // Search-as-you-type: every query/option change lands here; the debounce lets
+    // a fast typist supersede a keystroke before the project scan starts, and
+    // cancelling the previous job makes the newest input win.
+    private fun scheduleSearch() {
+        startSearch(debounced = true)
+    }
+
+    private fun startSearch(debounced: Boolean) {
+        searchJob?.cancel()
+        if (_state.value.query.isEmpty()) {
+            _state.update {
+                it.copy(results = emptyList(), totalMatches = 0, searched = false, isSearching = false)
+            }
             return
         }
 
-        searchJob?.cancel()
         _state.update { it.copy(isSearching = true) }
         searchJob =
             scope.launch {
+                if (debounced) delay(SEARCH_DEBOUNCE_MS)
+                val current = _state.value
                 val query =
                     TextSearchQuery(
                         query = current.query,
@@ -109,5 +128,10 @@ public class TextSearchViewModel(
 
     override fun dispose() {
         scope.cancel()
+    }
+
+    private companion object {
+        /** Delay between the last keystroke and the project scan it triggers. */
+        const val SEARCH_DEBOUNCE_MS = 250L
     }
 }

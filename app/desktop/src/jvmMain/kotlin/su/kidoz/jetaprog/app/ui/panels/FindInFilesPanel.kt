@@ -19,6 +19,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,7 +55,15 @@ public fun FindInFilesPanel(
                 onValueChange = viewModel::setQuery,
                 singleLine = true,
                 label = { Text("Find in files") },
-                modifier = Modifier.weight(1f),
+                modifier =
+                    Modifier.weight(1f).onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
+                            viewModel.search()
+                            true
+                        } else {
+                            false
+                        }
+                    },
             )
             Button(onClick = viewModel::search, enabled = state.query.isNotEmpty() && !state.isSearching) {
                 Text(if (state.isSearching) "Searching…" else "Search")
