@@ -1,12 +1,17 @@
 package su.kidoz.jetaprog.app.ui.theme
 
+import androidx.compose.foundation.LocalScrollbarStyle
+import androidx.compose.foundation.ScrollbarStyle
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // Material slots are derived from the design tokens so any Material component that
@@ -105,12 +110,27 @@ private val JetaProgTypography: Typography by lazy {
     )
 }
 
+// Thin flat scrollbars on the token colors; the Compose Desktop default is a
+// black-alpha thumb that is nearly invisible on the dark surfaces.
+@Suppress("MagicNumber")
+private val JetaProgScrollbarStyle: ScrollbarStyle by lazy {
+    ScrollbarStyle(
+        minimalHeight = 16.dp,
+        thickness = 8.dp,
+        shape = RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
+        hoverDurationMillis = 120,
+        unhoverColor = IntelliJColors.scrollbarThumb,
+        hoverColor = IntelliJColors.scrollbarThumbHover,
+    )
+}
+
 /**
  * JetaProg IDE theme.
  *
- * Supplies a Material color scheme derived from the design tokens and sets
- * JetBrains Mono as the default typeface, so `Text` calls without an explicit
- * `fontFamily` still render on-contract.
+ * Supplies a Material color scheme derived from the design tokens, sets
+ * JetBrains Mono as the default typeface so `Text` calls without an explicit
+ * `fontFamily` still render on-contract, and styles desktop scrollbars from
+ * the scrollbar tokens.
  */
 @Composable
 public fun JetaProgTheme(
@@ -119,9 +139,11 @@ public fun JetaProgTheme(
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = JetaProgTypography,
-        content = content,
-    )
+    CompositionLocalProvider(LocalScrollbarStyle provides JetaProgScrollbarStyle) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = JetaProgTypography,
+            content = content,
+        )
+    }
 }
