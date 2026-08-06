@@ -413,6 +413,7 @@ public object Dimensions {
     // Controls
     public val buttonHeight: Int = 32
     public val inputHeight: Int = 36
+    public val chipHeight: Int = 26
     public val treeNodeHeight: Int = 28
     public val toolbarIcon: Int = 24
 
