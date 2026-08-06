@@ -58,11 +58,11 @@ private const val LOG_ROW_HEIGHT = 28
 private const val AUTHOR_COLUMN_WIDTH = 150
 private const val DATE_COLUMN_WIDTH = 120
 
-private val DIFF_ADD_BG = Color(0xFF1F3326)
-private val DIFF_DELETE_BG = Color(0xFF3A2526)
-private val DIFF_ADD_TEXT = Color(0xFFA8C9A0)
-private val DIFF_DELETE_TEXT = Color(0xFFD26B6B)
-private val DIFF_ADD_SIGN = Color(0xFF7FB97A)
+private val DIFF_ADD_BG = IntelliJColors.diffAddedBackground
+private val DIFF_DELETE_BG = IntelliJColors.diffRemovedBackground
+private val DIFF_ADD_TEXT = IntelliJColors.diffAddedText
+private val DIFF_DELETE_TEXT = IntelliJColors.diffRemovedText
+private val DIFF_ADD_SIGN = IntelliJColors.diffAddedGutter
 
 /** A single side of a parsed unified diff. */
 private enum class DiffKind { CONTEXT, ADD, DELETE }
