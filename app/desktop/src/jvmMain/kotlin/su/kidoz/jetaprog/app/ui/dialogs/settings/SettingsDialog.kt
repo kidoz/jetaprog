@@ -15,9 +15,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -76,6 +80,7 @@ public fun SettingsDialog(
                     searchQuery = state.searchQuery,
                     activeScope = state.activeScope,
                     onSearchChange = { onIntent(SettingsIntent.Search(it)) },
+                    onClearSearch = { onIntent(SettingsIntent.ClearSearch) },
                     onScopeChange = { onIntent(SettingsIntent.SetScope(it)) },
                 )
 
@@ -89,6 +94,7 @@ public fun SettingsDialog(
                         selectedSubItem = state.selectedSubItem,
                         onSelectCategory = { onIntent(SettingsIntent.SelectCategory(it)) },
                         onSelectSubItem = { onIntent(SettingsIntent.SelectSubItem(it)) },
+                        searchQuery = state.searchQuery,
                         modifier =
                             Modifier
                                 .width(Dimensions.dialogSettingsNavWidth.dp)
@@ -129,6 +135,7 @@ private fun SettingsHeader(
     searchQuery: String,
     activeScope: SettingsScope,
     onSearchChange: (String) -> Unit,
+    onClearSearch: () -> Unit,
     onScopeChange: (SettingsScope) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -158,13 +165,29 @@ private fun SettingsHeader(
 
             Spacer(modifier = Modifier.width(Spacing.md.dp))
 
-            // Search field
-            IntelliJTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
-                placeholder = "Search settings...",
-                modifier = Modifier.width(200.dp),
-            )
+            // Search field with a clear affordance once a query is typed
+            Box {
+                IntelliJTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchChange,
+                    placeholder = "Search settings...",
+                    modifier = Modifier.width(200.dp),
+                )
+                if (searchQuery.isNotEmpty()) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Clear search",
+                        tint = IntelliJColors.textMuted,
+                        modifier =
+                            Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = Spacing.sm.dp)
+                                .size(Dimensions.iconSm.dp)
+                                .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
+                                .clickable(onClick = onClearSearch),
+                    )
+                }
+            }
         }
     }
 }

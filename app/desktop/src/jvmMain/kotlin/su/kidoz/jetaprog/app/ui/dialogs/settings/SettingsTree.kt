@@ -49,20 +49,38 @@ public fun SettingsTree(
     onSelectCategory: (SettingsCategory) -> Unit,
     onSelectSubItem: (String?) -> Unit,
     modifier: Modifier = Modifier,
+    searchQuery: String = "",
 ) {
+    val query = searchQuery.trim()
+    val visibleCategories =
+        SettingsCategory.entries.filter { category ->
+            query.isEmpty() ||
+                category.displayName.contains(query, ignoreCase = true) ||
+                getSubItems(category).any { it.contains(query, ignoreCase = true) }
+        }
+
     Column(
         modifier =
             modifier
                 .padding(Spacing.sm.dp)
                 .verticalScroll(rememberScrollState()),
     ) {
-        SettingsCategory.entries.forEach { category ->
+        if (visibleCategories.isEmpty()) {
+            Text(
+                text = "Nothing matches \"$query\"",
+                color = IntelliJColors.textMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(Spacing.sm.dp),
+            )
+        }
+        visibleCategories.forEach { category ->
             CategoryTreeItem(
                 category = category,
                 isSelected = selectedCategory == category,
                 selectedSubItem = if (selectedCategory == category) selectedSubItem else null,
                 onSelect = { onSelectCategory(category) },
                 onSelectSubItem = onSelectSubItem,
+                searchQuery = query,
             )
         }
     }
@@ -76,13 +94,23 @@ private fun CategoryTreeItem(
     onSelect: () -> Unit,
     onSelectSubItem: (String?) -> Unit,
     modifier: Modifier = Modifier,
+    searchQuery: String = "",
 ) {
-    var isExpanded by remember { mutableStateOf(isSelected) }
+    var userExpanded by remember { mutableStateOf(isSelected) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
-    val subItems = getSubItems(category)
+    val allSubItems = getSubItems(category)
+    val categoryMatches = searchQuery.isNotEmpty() && category.displayName.contains(searchQuery, ignoreCase = true)
+    // While searching, only matching sub-items are listed (all of them when the
+    // category name itself is the match) and they are always revealed.
+    val subItems =
+        when {
+            searchQuery.isEmpty() || categoryMatches -> allSubItems
+            else -> allSubItems.filter { it.contains(searchQuery, ignoreCase = true) }
+        }
     val hasSubItems = subItems.isNotEmpty()
+    val isExpanded = if (searchQuery.isNotEmpty()) hasSubItems else userExpanded
 
     Column(modifier = modifier) {
         // Main category item
@@ -100,7 +128,7 @@ private fun CategoryTreeItem(
                     ).hoverable(interactionSource)
                     .clickable {
                         onSelect()
-                        if (hasSubItems) isExpanded = !isExpanded
+                        if (hasSubItems) userExpanded = !userExpanded
                     }.padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
