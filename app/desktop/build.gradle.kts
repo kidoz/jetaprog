@@ -42,8 +42,8 @@ kotlin {
                 runtimeOnly(project(":dap:jvm"))
 
                 implementation(compose.desktop.currentOs)
-                implementation(compose.material3)
-                implementation(compose.materialIconsExtended)
+                implementation(libs.compose.material3)
+                implementation(libs.compose.material.icons.extended)
 
                 implementation(libs.coroutines.core)
                 implementation(libs.coroutines.swing)
@@ -73,8 +73,8 @@ compose.desktop {
                 "-Dapple.awt.application.name=JetaProg",
             )
 
-        // ProGuard 7.7 cannot read this project's Java 25 (class v69) bytecode, so the
-        // release distribution skips minification. Re-enable once ProGuard supports Java 25.
+        // ProGuard 7.7 cannot read this project's Java 26 (class v70) bytecode, so the
+        // release distribution skips minification. Re-enable once ProGuard supports Java 26.
         buildTypes.release.proguard {
             isEnabled.set(false)
         }

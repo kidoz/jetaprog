@@ -1,15 +1,17 @@
 [versions]
 kotlin = "2.4.10"
 compose = "1.11.1"
+composeMaterial3 = "1.11.0-alpha07"
+composeMaterialIconsExtended = "1.7.3"
 coroutines = "1.11.0"
 koin = "4.2.2"
 sqldelight = "2.3.2"
 serialization = "1.11.0"
-ktor = "3.5.1"
+ktor = "3.5.2"
 logging = "8.0.4"
-logback = "1.6.0"
+logback = "1.6.1"
 hikari = "7.1.0"
-jsch = "2.28.5"
+jsch = "2.28.6"
 jna = "5.19.1"
 ktlint-plugin = "14.2.0"
 ktlintEngine = "1.8.0"
@@ -19,9 +21,13 @@ junit5 = "6.1.2"
 mockk = "1.14.11"
 turbine = "1.2.1"
 pty4j = "0.13.12"
-gradleToolingApi = "9.6.1"
+gradleToolingApi = "9.7.0"
 
 [libraries]
+# Compose libraries deprecated by the plugin's convenience accessors
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "composeMaterial3" }
+compose-material-icons-extended = { module = "org.jetbrains.compose.material:material-icons-extended", version.ref = "composeMaterialIconsExtended" }
+
 # Coroutines
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
