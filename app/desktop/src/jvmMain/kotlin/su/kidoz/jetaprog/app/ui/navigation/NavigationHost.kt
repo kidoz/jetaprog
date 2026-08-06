@@ -57,7 +57,9 @@ public fun NavigationHost(
     SearchPopup(
         isVisible = state.isSearchPopupVisible,
         mode = state.searchMode,
+        query = state.searchQuery,
         results = state.searchResults,
+        showTabs = state.searchTabsVisible,
         onQueryChange = { query ->
             scope.launch {
                 viewModel.processIntent(NavigationIntent.Search(query))

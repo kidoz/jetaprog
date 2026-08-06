@@ -32,7 +32,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,8 +43,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -83,16 +85,17 @@ public enum class SearchMode {
 public fun SearchPopup(
     isVisible: Boolean,
     mode: SearchMode,
+    query: String,
     results: List<NavigationSearchResult>,
     onQueryChange: (String) -> Unit,
     onResultSelect: (NavigationSearchResult) -> Unit,
     onDismiss: () -> Unit,
     onModeChange: (SearchMode) -> Unit,
     modifier: Modifier = Modifier,
+    showTabs: Boolean = false,
 ) {
     if (!isVisible) return
 
-    var query by remember { mutableStateOf("") }
     var selectedIndex by remember { mutableIntStateOf(0) }
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
@@ -122,8 +125,10 @@ public fun SearchPopup(
                     .width(Dimensions.popupSearchWidth.dp)
                     .popupChrome(),
         ) {
-            // Mode tabs (only for Search Everywhere)
-            if (mode == SearchMode.ALL) {
+            // Mode tabs stay visible for the whole Search Everywhere session so the
+            // user can move between modes; single-mode popups (Go to Class etc.)
+            // never show them.
+            if (showTabs) {
                 SearchModeTabs(
                     currentMode = mode,
                     onModeChange = onModeChange,
@@ -135,38 +140,53 @@ public fun SearchPopup(
                 query = query,
                 placeholder = getPlaceholder(mode),
                 focusRequester = focusRequester,
-                onQueryChange = { newQuery ->
-                    query = newQuery
-                    onQueryChange(newQuery)
-                },
+                onQueryChange = onQueryChange,
                 onKeyEvent = { keyEvent ->
-                    when (keyEvent.key) {
-                        Key.DirectionDown -> {
-                            if (results.isNotEmpty()) {
-                                selectedIndex = (selectedIndex + 1).coerceAtMost(results.size - 1)
+                    // Compose delivers both KeyDown and KeyUp; without this guard
+                    // every arrow press moves the selection twice.
+                    if (keyEvent.type != KeyEventType.KeyDown) {
+                        false
+                    } else {
+                        when (keyEvent.key) {
+                            Key.DirectionDown -> {
+                                if (results.isNotEmpty()) {
+                                    selectedIndex = (selectedIndex + 1).coerceAtMost(results.size - 1)
+                                }
+                                true
                             }
-                            true
-                        }
 
-                        Key.DirectionUp -> {
-                            selectedIndex = (selectedIndex - 1).coerceAtLeast(0)
-                            true
-                        }
-
-                        Key.Enter -> {
-                            if (results.isNotEmpty() && selectedIndex in results.indices) {
-                                onResultSelect(results[selectedIndex])
+                            Key.DirectionUp -> {
+                                selectedIndex = (selectedIndex - 1).coerceAtLeast(0)
+                                true
                             }
-                            true
-                        }
 
-                        Key.Escape -> {
-                            onDismiss()
-                            true
-                        }
+                            Key.Enter -> {
+                                if (results.isNotEmpty() && selectedIndex in results.indices) {
+                                    onResultSelect(results[selectedIndex])
+                                }
+                                true
+                            }
 
-                        else -> {
-                            false
+                            Key.Escape -> {
+                                onDismiss()
+                                true
+                            }
+
+                            Key.Tab -> {
+                                if (showTabs) {
+                                    val modes = SearchMode.entries
+                                    val step = if (keyEvent.isShiftPressed) -1 else 1
+                                    val next = (modes.indexOf(mode) + step + modes.size) % modes.size
+                                    onModeChange(modes[next])
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+
+                            else -> {
+                                false
+                            }
                         }
                     }
                 },
@@ -207,8 +227,7 @@ public fun SearchPopup(
                         listState.animateScrollToItem(selectedIndex)
                     }
                 }
-            } else if (query.isNotEmpty()) {
-                // No results message
+            } else {
                 Box(
                     modifier =
                         Modifier
@@ -217,7 +236,7 @@ public fun SearchPopup(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "No matches found",
+                        text = if (query.isEmpty()) getEmptyHint(mode) else "No matches found",
                         color = IntelliJColors.textMuted,
                         fontSize = 13.sp,
                     )
@@ -492,6 +511,14 @@ private fun getPlaceholder(mode: SearchMode): String =
         SearchMode.CLASSES -> "Enter class name..."
         SearchMode.FILES -> "Enter file name..."
         SearchMode.SYMBOLS -> "Enter symbol name..."
+    }
+
+private fun getEmptyHint(mode: SearchMode): String =
+    when (mode) {
+        SearchMode.ALL -> "Type to search classes, files and symbols"
+        SearchMode.CLASSES -> "Type a class name"
+        SearchMode.FILES -> "Type a file name"
+        SearchMode.SYMBOLS -> "Type a symbol name"
     }
 
 private fun NavigationSymbolKind.toIcon(): ImageVector =

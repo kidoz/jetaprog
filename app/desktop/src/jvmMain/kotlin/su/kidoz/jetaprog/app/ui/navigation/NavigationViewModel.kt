@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.ui.navigation
 
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +26,8 @@ public class NavigationViewModel(
 
     private val _effects = Channel<NavigationEffect>(Channel.BUFFERED)
     public val effects: kotlinx.coroutines.flow.Flow<NavigationEffect> = _effects.receiveAsFlow()
+
+    private var searchGeneration = 0
 
     /**
      * Process a navigation intent.
@@ -142,13 +145,18 @@ public class NavigationViewModel(
     }
 
     // Search popup
-    private fun showSearchPopup(mode: SearchMode) {
+    private suspend fun showSearchPopup(mode: SearchMode) {
         _state.update {
             it.copy(
                 isSearchPopupVisible = true,
                 searchMode = mode,
                 searchResults = emptyList(),
+                searchTabsVisible = mode == SearchMode.ALL,
             )
+        }
+        // The last query is preserved between invocations; re-run it for this mode.
+        if (_state.value.searchQuery.isNotBlank()) {
+            search(_state.value.searchQuery)
         }
     }
 
@@ -162,12 +170,21 @@ public class NavigationViewModel(
     }
 
     private suspend fun search(query: String) {
+        // Each keystroke arrives as its own call; the generation counter makes the
+        // newest one win — older calls stop at the checks below, which both
+        // debounces typing and keeps a slow early search from overwriting fresher
+        // results after they arrived.
+        val generation = ++searchGeneration
+        _state.update { it.copy(searchQuery = query) }
+
         if (query.isBlank()) {
             _state.update { it.copy(searchResults = emptyList(), isSearching = false) }
             return
         }
 
         _state.update { it.copy(isSearching = true) }
+        delay(SEARCH_DEBOUNCE_MS)
+        if (generation != searchGeneration) return
 
         val results =
             navigationService?.let { service ->
@@ -191,6 +208,7 @@ public class NavigationViewModel(
                 }
             } ?: emptyList()
 
+        if (generation != searchGeneration) return
         _state.update {
             it.copy(
                 searchResults = results,
@@ -199,8 +217,10 @@ public class NavigationViewModel(
         }
     }
 
-    private fun changeSearchMode(mode: SearchMode) {
+    private suspend fun changeSearchMode(mode: SearchMode) {
         _state.update { it.copy(searchMode = mode) }
+        // Results from the previous mode are stale the moment the tab changes.
+        search(_state.value.searchQuery)
     }
 
     private suspend fun selectSearchResult(result: NavigationSearchResult) {
@@ -443,6 +463,11 @@ public class NavigationViewModel(
         column: Int,
     ) {
         _effects.send(NavigationEffect.NavigateTo(filePath, line, column))
+    }
+
+    private companion object {
+        /** Keystroke debounce before a search runs; a newer keystroke supersedes it. */
+        const val SEARCH_DEBOUNCE_MS = 120L
     }
 
     /**

@@ -16,8 +16,11 @@ public data class NavigationState(
     // Search popup
     val isSearchPopupVisible: Boolean = false,
     val searchMode: SearchMode = SearchMode.ALL,
+    val searchQuery: String = "",
     val searchResults: List<NavigationSearchResult> = emptyList(),
     val isSearching: Boolean = false,
+    /** True when the popup was opened as Search Everywhere; keeps the mode tabs visible. */
+    val searchTabsVisible: Boolean = false,
     // File structure popup
     val isFileStructureVisible: Boolean = false,
     val fileStructureFileName: String = "",
