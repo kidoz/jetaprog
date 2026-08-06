@@ -290,6 +290,8 @@ public sealed interface EditorIntent : Intent {
             su.kidoz.jetaprog.common.completion.CompletionTriggerKind.Invoked,
         val triggerCharacter: Char? = null,
         val filterText: String = "",
+        /** When true, narrow the results to the type expected at the caret. */
+        val smart: Boolean = false,
     ) : EditorIntent
 
     /**

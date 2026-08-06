@@ -225,6 +225,10 @@ public data class CompletionState(
      */
     val isIncomplete: Boolean = false,
     /**
+     * The type smart completion narrowed to, or null when the list was not narrowed.
+     */
+    val smartTypeName: String? = null,
+    /**
      * The position where completion was triggered.
      */
     val triggerPosition: TextPosition = TextPosition(0, 0),
