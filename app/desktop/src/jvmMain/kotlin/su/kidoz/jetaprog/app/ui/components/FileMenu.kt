@@ -23,8 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -48,6 +49,7 @@ public fun FileMenu(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var triggerHeightPx by remember { mutableStateOf(0) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
@@ -56,12 +58,13 @@ public fun FileMenu(
         Box(
             modifier =
                 Modifier
-                    .clip(RoundedCornerShape(2.dp))
+                    .onSizeChanged { triggerHeightPx = it.height }
+                    .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
                     .background(
                         if (isHovered || expanded) IntelliJColors.buttonBackgroundHover else Color.Transparent,
                     ).hoverable(interactionSource)
                     .clickable { expanded = !expanded }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
         ) {
             Text(
                 text = "File",
@@ -70,21 +73,20 @@ public fun FileMenu(
             )
         }
 
-        // Dropdown menu
+        // Dropdown menu, anchored below the trigger so it never covers the menu bar.
         if (expanded) {
             Popup(
                 alignment = Alignment.TopStart,
+                offset = IntOffset(0, triggerHeightPx),
                 onDismissRequest = { expanded = false },
                 properties = PopupProperties(focusable = true),
             ) {
                 Column(
                     modifier =
                         Modifier
-                            .shadow(8.dp, RoundedCornerShape(4.dp))
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(IntelliJColors.toolWindowBackground)
                             .width(200.dp)
-                            .padding(vertical = 4.dp),
+                            .popupChrome(Dimensions.cornerRadius.dp)
+                            .padding(vertical = Spacing.xs.dp),
                 ) {
                     FileMenuItem(
                         text = "New Project...",
@@ -168,7 +170,7 @@ private fun FileMenuItem(
             Modifier
                 .fillMaxWidth()
                 .background(
-                    if (isHovered) IntelliJColors.treeSelectionBackground else Color.Transparent,
+                    if (isHovered) IntelliJColors.menuItemHover else Color.Transparent,
                 ).hoverable(interactionSource)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 6.dp),
