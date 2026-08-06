@@ -1,6 +1,10 @@
 package su.kidoz.jetaprog.app.ui.dialogs.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +21,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -172,34 +178,34 @@ private fun ScopeSelector(
     Row(
         modifier =
             modifier
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
                 .background(IntelliJColors.backgroundDarker),
         horizontalArrangement = Arrangement.Center,
     ) {
         SettingsScope.entries.forEach { scope ->
             val isSelected = scope == activeScope
+            val interactionSource = remember { MutableInteractionSource() }
+            val isHovered by interactionSource.collectIsHoveredAsState()
+            val background =
+                when {
+                    isSelected -> IntelliJColors.accent
+                    isHovered -> IntelliJColors.surfaceHover
+                    else -> IntelliJColors.backgroundDarker
+                }
             Box(
                 modifier =
                     Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            if (isSelected) IntelliJColors.accent else IntelliJColors.backgroundDarker,
-                        ).padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
+                        .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                        .background(background)
+                        .hoverable(interactionSource)
+                        .clickable { onScopeChange(scope) }
+                        .padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
             ) {
                 Text(
                     text = scope.name.lowercase().replaceFirstChar { it.uppercase() },
                     color = if (isSelected) IntelliJColors.textInverse else IntelliJColors.textSecondary,
                     fontSize = 12.sp,
-                    modifier =
-                        Modifier
-                            .padding(horizontal = Spacing.xs.dp)
-                            .then(
-                                if (!isSelected) {
-                                    Modifier.background(IntelliJColors.backgroundDarker)
-                                } else {
-                                    Modifier
-                                },
-                            ),
+                    modifier = Modifier.padding(horizontal = Spacing.xs.dp),
                 )
             }
         }

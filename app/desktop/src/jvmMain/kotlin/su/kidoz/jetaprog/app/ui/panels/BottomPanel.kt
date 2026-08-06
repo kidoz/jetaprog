@@ -2,7 +2,9 @@ package su.kidoz.jetaprog.app.ui.panels
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,19 +37,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.components.HorizontalDragHandle
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.editor.syntax.Diagnostic
-import java.awt.Cursor
 
 /** The tool shown in the unified bottom panel. */
 public enum class BottomTab {
@@ -83,7 +81,6 @@ public fun BottomPanel(
     content: @Composable (BottomTab) -> Unit,
 ) {
     var panelHeight by remember { mutableStateOf(DEFAULT_PANEL_HEIGHT.dp) }
-    val density = LocalDensity.current
 
     Column(
         modifier =
@@ -92,20 +89,11 @@ public fun BottomPanel(
                 .height(panelHeight)
                 .background(IntelliJColors.background),
     ) {
-        // Top resize handle.
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(Dimensions.splitterThickness.dp)
-                    .background(IntelliJColors.divider)
-                    .pointerHoverIcon(PointerIcon(Cursor(Cursor.N_RESIZE_CURSOR)))
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures { _, dragAmount ->
-                            val delta = with(density) { dragAmount.toDp() }
-                            panelHeight = (panelHeight - delta).coerceIn(MIN_PANEL_HEIGHT.dp, MAX_PANEL_HEIGHT.dp)
-                        }
-                    },
+        // Top resize handle: 1dp visible line centered in the shared wide hit area.
+        HorizontalDragHandle(
+            onDelta = { delta ->
+                panelHeight = (panelHeight - delta).coerceIn(MIN_PANEL_HEIGHT.dp, MAX_PANEL_HEIGHT.dp)
+            },
         )
 
         // Tab strip.
@@ -113,7 +101,7 @@ public fun BottomPanel(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(30.dp)
+                    .height(Dimensions.tabHeight.dp)
                     .background(IntelliJColors.surface),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -173,10 +161,14 @@ private fun BottomTabItem(
     iconTint: Color = IntelliJColors.textSecondary,
     badgeCount: Int = 0,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
     Box(
         modifier =
             Modifier
                 .fillMaxHeightTabStrip()
+                .background(if (isHovered && !selected) IntelliJColors.tabBackgroundHover else Color.Transparent)
+                .hoverable(interactionSource)
                 .clickable(onClick = onClick),
     ) {
         Row(
@@ -227,8 +219,8 @@ private fun BottomTabItem(
     }
 }
 
-/** A 30dp-tall tab cell (matches the tab strip height). */
-private fun Modifier.fillMaxHeightTabStrip(): Modifier = this.height(30.dp)
+/** A tab cell matching the shared tab strip height. */
+private fun Modifier.fillMaxHeightTabStrip(): Modifier = this.height(Dimensions.tabHeight.dp)
 
 /**
  * Problems tab content: a simple list of diagnostics for the active document.
