@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -38,6 +40,16 @@ import su.kidoz.jetaprog.app.ui.theme.Spacing
  * - Subtle border that becomes more prominent on focus
  * - Hover state with slightly brighter background
  * - Better placeholder contrast
+ *
+ * @param value current text value.
+ * @param onValueChange invoked when the text changes.
+ * @param modifier modifier applied to the complete field, including its label and error.
+ * @param label optional label displayed above the input.
+ * @param placeholder text displayed when [value] is empty.
+ * @param error optional validation message displayed below the input.
+ * @param enabled whether the input accepts interaction.
+ * @param singleLine whether the input is restricted to one line.
+ * @param trailingContent optional action or indicator displayed inside the input at its trailing edge.
  */
 @Composable
 public fun IntelliJTextField(
@@ -49,6 +61,7 @@ public fun IntelliJTextField(
     error: String? = null,
     enabled: Boolean = true,
     singleLine: Boolean = true,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -78,6 +91,7 @@ public fun IntelliJTextField(
                 text = it,
                 color = if (error != null) IntelliJColors.error else IntelliJColors.textSecondary,
                 fontSize = 12.sp,
+                fontFamily = JetaProgFonts.codeFont,
                 modifier = Modifier.padding(bottom = Spacing.xs.dp),
             )
         }
@@ -92,6 +106,7 @@ public fun IntelliJTextField(
                 TextStyle(
                     color = if (enabled) IntelliJColors.textPrimary else IntelliJColors.textDisabled,
                     fontSize = 13.sp,
+                    fontFamily = JetaProgFonts.codeFont,
                 ),
             cursorBrush = SolidColor(IntelliJColors.accent),
             modifier =
@@ -103,18 +118,32 @@ public fun IntelliJTextField(
                     .hoverable(interactionSource)
                     .onFocusChanged { isFocused = it.isFocused },
             decorationBox = { innerTextField ->
-                Box(
-                    modifier = Modifier.padding(horizontal = Spacing.md.dp),
-                    contentAlignment = Alignment.CenterStart,
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (value.isEmpty()) {
-                        Text(
-                            text = placeholder,
-                            color = IntelliJColors.inputPlaceholder,
-                            fontSize = 13.sp,
-                        )
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (value.isEmpty()) {
+                            Text(
+                                text = placeholder,
+                                color = IntelliJColors.inputPlaceholder,
+                                fontSize = 13.sp,
+                                fontFamily = JetaProgFonts.codeFont,
+                            )
+                        }
+                        innerTextField()
                     }
-                    innerTextField()
+                    trailingContent?.let { content ->
+                        Box(
+                            modifier = Modifier.padding(start = Spacing.sm.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            content()
+                        }
+                    }
                 }
             },
         )
@@ -125,6 +154,7 @@ public fun IntelliJTextField(
                 text = it,
                 color = IntelliJColors.error,
                 fontSize = 11.sp,
+                fontFamily = JetaProgFonts.codeFont,
                 modifier = Modifier.padding(top = Spacing.xxs.dp),
             )
         }

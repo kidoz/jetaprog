@@ -17,6 +17,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -132,6 +134,19 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
                     onValueChange = { errored = it },
                     label = "With error",
                     error = "Required",
+                )
+                IntelliJTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    placeholder = "Search files",
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search files",
+                            tint = IntelliJColors.textSecondary,
+                            modifier = Modifier.size(Dimensions.iconMd.dp),
+                        )
+                    },
                 )
             }
         }
