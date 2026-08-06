@@ -346,6 +346,19 @@ public object IntelliJColors {
 
     /** Type/identifier variable value. */
     public val debugVarType: Color = Color(0xFF52B8B0)
+
+    // ============================================================
+    // WINDOW CHROME (macOS traffic lights — OS constants, same in both palettes)
+    // ============================================================
+
+    /** macOS traffic-light close button. */
+    public val windowCloseButton: Color = Color(0xFFFF5F57)
+
+    /** macOS traffic-light minimize button. */
+    public val windowMinimizeButton: Color = Color(0xFFFEBC2E)
+
+    /** macOS traffic-light zoom button. */
+    public val windowZoomButton: Color = Color(0xFF28C840)
 }
 
 /**
@@ -416,7 +429,7 @@ public object Dimensions {
 
     // Splitters
     public val splitterThickness: Int = 1
-    public val splitterHandleHitArea: Int = 6
+    public val splitterHandleHitArea: Int = 9
 
     // Popups
     public val popupCompletionWidth: Int = 400
@@ -678,4 +691,9 @@ public object IntelliJLightColors {
     public val debugVarString: Color = Color(0xFF2E7D43)
     public val debugVarNumber: Color = Color(0xFF1E66A8)
     public val debugVarType: Color = Color(0xFF2A8A86)
+
+    // Window chrome (parity with IntelliJColors — OS constants)
+    public val windowCloseButton: Color = Color(0xFFFF5F57)
+    public val windowMinimizeButton: Color = Color(0xFFFEBC2E)
+    public val windowZoomButton: Color = Color(0xFF28C840)
 }

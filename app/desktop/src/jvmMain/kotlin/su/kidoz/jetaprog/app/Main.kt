@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.window.WindowDraggableArea
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -99,7 +98,7 @@ public fun main(): Unit =
             JetaProgTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
+                    color = IntelliJColors.background,
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Column(modifier = Modifier.fillMaxSize()) {
@@ -168,9 +167,9 @@ private fun FrameWindowScope.IdeTitleBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TrafficLight(color = Color(0xFFFF5F57), label = "Close", onClick = onClose)
-                TrafficLight(color = Color(0xFFFEBC2E), label = "Minimize", onClick = onMinimize)
-                TrafficLight(color = Color(0xFF28C840), label = "Zoom", onClick = onToggleMaximize)
+                TrafficLight(color = IntelliJColors.windowCloseButton, label = "Close", onClick = onClose)
+                TrafficLight(color = IntelliJColors.windowMinimizeButton, label = "Minimize", onClick = onMinimize)
+                TrafficLight(color = IntelliJColors.windowZoomButton, label = "Zoom", onClick = onToggleMaximize)
             }
             Text(
                 text = title,
