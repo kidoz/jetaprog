@@ -15,11 +15,13 @@ import su.kidoz.jetaprog.plugins.api.services.TextEditor
 /**
  * Implementation of EditorService.
  *
- * This is a bridge implementation that needs to be connected to the
- * actual editor infrastructure. For now, it provides a basic implementation
- * that can be extended.
+ * Delegates document presentation to the host IDE while owning the observable
+ * editor and document-event surface exposed to plugins.
  */
-public class EditorServiceImpl : EditorService {
+public class EditorServiceImpl(
+    private val openDocumentHandler: suspend (DocumentUri, OpenOptions) -> TextEditor,
+    private val showDocumentHandler: suspend (TextDocument, ShowOptions) -> TextEditor,
+) : EditorService {
     private val _activeEditor = MutableStateFlow<TextEditor?>(null)
     private val _visibleEditors = MutableStateFlow<List<TextEditor>>(emptyList())
 
@@ -40,10 +42,9 @@ public class EditorServiceImpl : EditorService {
         uri: DocumentUri,
         options: OpenOptions,
     ): TextEditor {
-        // This needs to be wired to the actual editor implementation
-        throw NotImplementedError(
-            "EditorServiceImpl.openDocument must be connected to the actual editor",
-        )
+        val editor = openDocumentHandler(uri, options)
+        publishEditor(editor)
+        return editor
     }
 
     override suspend fun openFile(
@@ -58,10 +59,9 @@ public class EditorServiceImpl : EditorService {
         document: TextDocument,
         options: ShowOptions,
     ): TextEditor {
-        // This needs to be wired to the actual editor implementation
-        throw NotImplementedError(
-            "EditorServiceImpl.showDocument must be connected to the actual editor",
-        )
+        val editor = showDocumentHandler(document, options)
+        publishEditor(editor)
+        return editor
     }
 
     override fun onDidChangeTextDocument(handler: suspend (TextDocumentChangeEvent) -> Unit): Disposable {
@@ -134,5 +134,10 @@ public class EditorServiceImpl : EditorService {
      */
     public fun setVisibleEditors(editors: List<TextEditor>) {
         _visibleEditors.value = editors
+    }
+
+    private fun publishEditor(editor: TextEditor) {
+        _activeEditor.value = editor
+        _visibleEditors.value = listOf(editor)
     }
 }

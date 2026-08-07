@@ -70,6 +70,7 @@ public sealed interface EditorEffect : Effect {
         val message: String,
         val onConfirm: () -> Unit,
         val onCancel: () -> Unit,
+        val onSave: (() -> Unit)? = null,
     ) : EditorEffect
 
     /**

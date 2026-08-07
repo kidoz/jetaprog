@@ -1,6 +1,8 @@
 package su.kidoz.jetaprog.app.ui.editor
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.HorizontalScrollbar
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -14,7 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
@@ -81,6 +83,7 @@ import su.kidoz.jetaprog.editor.syntax.highlighting.DarkSyntaxTheme
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxColor
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
 import su.kidoz.jetaprog.editor.syntax.highlighting.TokenStyle
+import su.kidoz.jetaprog.settings.model.EditorSettings
 import kotlin.math.roundToInt
 
 /**
@@ -106,12 +109,13 @@ public fun CodeEditor(
     onFormatDocument: () -> Unit = {},
     onIntent: (EditorIntent) -> Unit = {},
     indentUnit: String = TextEditingOps.DEFAULT_INDENT_UNIT,
+    settings: EditorSettings = EditorSettings.DEFAULT,
     modifier: Modifier = Modifier,
     syntaxTheme: SyntaxTheme = DarkSyntaxTheme,
     debug: EditorDebugInfo? = null,
 ) {
-    val verticalScrollState = rememberScrollState()
-    val horizontalScrollState = rememberScrollState()
+    val verticalScrollState = remember(state.activeDocumentUri) { androidx.compose.foundation.ScrollState(0) }
+    val horizontalScrollState = remember(state.activeDocumentUri) { androidx.compose.foundation.ScrollState(0) }
     val textStyle =
         remember {
             TextStyle(
@@ -153,7 +157,8 @@ public fun CodeEditor(
 
     // Track the text field value - keyed by document URI to reset when switching files
     var textFieldValue by remember(state.activeDocumentUri) {
-        mutableStateOf(TextFieldValue(state.content))
+        val caret = offsetOfPosition(state.content, state.cursor.position)
+        mutableStateOf(TextFieldValue(state.content, selection = TextRange(caret)))
     }
 
     // Track last known content to detect external changes (file reload, undo from outside, etc.)
@@ -167,6 +172,7 @@ public fun CodeEditor(
                 text = result.text,
                 selection = TextRange(result.selectionStart, result.selectionEnd),
             )
+        onCursorMove(offsetToPosition(result.text, result.selectionEnd))
         onContentChange(result.text)
     }
 
@@ -190,6 +196,18 @@ public fun CodeEditor(
             textFieldValue = TextFieldValue(text = newContent, selection = TextRange(caret))
         }
         lastKnownContent = newContent
+    }
+
+    // Programmatic navigation (go-to-definition, search result, restored session)
+    // explicitly signals the field so normal cursor updates do not collapse selections.
+    LaunchedEffect(state.activeDocumentUri, state.caretSyncVersion) {
+        if (state.caretSyncVersion == 0L) return@LaunchedEffect
+        val start = offsetOfPosition(textFieldValue.text, state.cursor.selectionStart)
+        val end = offsetOfPosition(textFieldValue.text, state.cursor.selectionEnd)
+        textFieldValue = textFieldValue.copy(selection = TextRange(start, end))
+        val lineHeight = with(density) { Dimensions.lineHeightCode.sp.roundToPx() }
+        val target = (state.cursor.position.line * lineHeight).coerceAtLeast(0)
+        verticalScrollState.animateScrollTo(target)
     }
 
     // Select and reveal the current find match
@@ -234,6 +252,7 @@ public fun CodeEditor(
             state.findReplaceState.matches,
             state.findReplaceState.currentMatchIndex,
             diagnosticSpans,
+            settings.showWhitespace,
         ) {
             buildHighlightedText(
                 textFieldValue.text,
@@ -242,13 +261,14 @@ public fun CodeEditor(
                 state.findReplaceState.matches,
                 state.findReplaceState.currentMatchIndex,
                 diagnosticSpans,
+                settings.showWhitespace,
             )
         }
 
     // Matching bracket pair at the caret
     val bracketPair =
-        remember(textFieldValue.text, textFieldValue.selection) {
-            if (textFieldValue.selection.collapsed) {
+        remember(textFieldValue.text, textFieldValue.selection, settings.bracketMatching) {
+            if (settings.bracketMatching && textFieldValue.selection.collapsed) {
                 TextEditingOps.findMatchingBracket(textFieldValue.text, textFieldValue.selection.start)
             } else {
                 null
@@ -295,7 +315,7 @@ public fun CodeEditor(
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Row(modifier = Modifier.fillMaxSize()) {
                 // Line numbers gutter
-                if (state.showLineNumbers) {
+                if (settings.showLineNumbers) {
                     LineNumbers(
                         lineCount = state.lineCount,
                         currentLine = state.currentLine,
@@ -361,8 +381,25 @@ public fun CodeEditor(
                                 }
                             },
                 ) {
+                    if (settings.maxLineLength > 0) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .offset {
+                                        IntOffset(
+                                            editorPaddingStartPx +
+                                                (settings.maxLineLength * charWidthPx).roundToInt() -
+                                                horizontalScrollState.value,
+                                            0,
+                                        )
+                                    }.fillMaxHeight()
+                                    .width(Dimensions.editorGuideWidth.dp)
+                                    .background(IntelliJColors.divider),
+                        )
+                    }
+
                     // Current line highlight (behind the text layer)
-                    if (textFieldValue.selection.collapsed) {
+                    if (settings.highlightCurrentLine && textFieldValue.selection.collapsed) {
                         val caretLine =
                             offsetToPosition(textFieldValue.text, textFieldValue.selection.start).line
                         Box(
@@ -474,6 +511,7 @@ public fun CodeEditor(
                             // Auto-close brackets/quotes or skip over an existing closer
                             val processed =
                                 typedChar
+                                    ?.takeIf { settings.autoCloseBrackets }
                                     ?.let {
                                         TextEditingOps.autoCloseAfterInsert(
                                             newValue.text,
@@ -489,7 +527,7 @@ public fun CodeEditor(
 
                             textFieldValue = processed
                             if (processed.selection != oldSelection) {
-                                onCursorMove(offsetToPosition(processed.text, processed.selection.start))
+                                onCursorMove(offsetToPosition(processed.text, processed.selection.end))
                             }
                             // Compare against the previous local text, not state.content:
                             // the ViewModel lags by at least a frame, so typing a character
@@ -505,7 +543,7 @@ public fun CodeEditor(
                                     // Completion triggers for special characters
                                     if (typedChar in COMPLETION_TRIGGER_CHARACTERS) {
                                         val prefix =
-                                            extractIdentifierPrefix(processed.text, processed.selection.start)
+                                            extractIdentifierPrefix(processed.text, processed.selection.end)
                                         onCompletionRequest(
                                             CompletionTriggerKind.TriggerCharacter,
                                             typedChar,
@@ -514,7 +552,7 @@ public fun CodeEditor(
                                     } else if (typedChar.isLetterOrDigit() || typedChar == '_') {
                                         // Auto-trigger completion when typing identifiers (after 2+ chars)
                                         val prefix =
-                                            extractIdentifierPrefix(processed.text, processed.selection.start)
+                                            extractIdentifierPrefix(processed.text, processed.selection.end)
                                         onCompletionFilterChange(prefix)
                                         if (prefix.length >= MIN_AUTO_COMPLETION_LENGTH) {
                                             onCompletionRequest(CompletionTriggerKind.Invoked, null, prefix)
@@ -526,7 +564,7 @@ public fun CodeEditor(
                                     }
                                 } else if (processed.text.length < oldText.length) {
                                     val prefix =
-                                        extractIdentifierPrefix(processed.text, processed.selection.start)
+                                        extractIdentifierPrefix(processed.text, processed.selection.end)
                                     onCompletionFilterChange(prefix)
                                 }
                             }
@@ -545,8 +583,13 @@ public fun CodeEditor(
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
-                                .horizontalScroll(horizontalScrollState)
-                                .padding(start = 8.dp, top = 4.dp)
+                                .let { scrollModifier ->
+                                    if (settings.wordWrap) {
+                                        scrollModifier
+                                    } else {
+                                        scrollModifier.horizontalScroll(horizontalScrollState)
+                                    }
+                                }.padding(start = 8.dp, top = 4.dp)
                                 .onPreviewKeyEvent { keyEvent ->
                                     if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
 
@@ -859,7 +902,54 @@ public fun CodeEditor(
                         offset = signatureHelpOffset,
                     )
                 }
+                if (settings.showMinimap) {
+                    EditorMinimap(
+                        text = textFieldValue.text,
+                        scrollState = verticalScrollState,
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun EditorMinimap(
+    text: String,
+    scrollState: ScrollState,
+) {
+    val lines = remember(text) { text.lineSequence().take(MAX_MINIMAP_LINES).toList() }
+    val textColor = IntelliJColors.textMuted.copy(alpha = MINIMAP_TEXT_ALPHA)
+    val viewportColor = IntelliJColors.accentMuted.copy(alpha = MINIMAP_VIEWPORT_ALPHA)
+    Canvas(
+        modifier =
+            Modifier
+                .width(Dimensions.editorMinimapWidth.dp)
+                .fillMaxHeight()
+                .background(IntelliJColors.gutterBackground),
+    ) {
+        if (lines.isEmpty()) return@Canvas
+        val lineStep = size.height / lines.size
+        val maxLength = lines.maxOfOrNull { it.length }?.coerceAtLeast(1) ?: 1
+        lines.forEachIndexed { index, line ->
+            val width = (line.length.toFloat() / maxLength * size.width).coerceAtLeast(MINIMAP_MIN_LINE_WIDTH_PX)
+            val y = (index + MINIMAP_LINE_CENTER_OFFSET) * lineStep
+            drawLine(textColor, Offset(0f, y), Offset(width, y), strokeWidth = MINIMAP_STROKE_WIDTH_PX)
+        }
+
+        val totalScrollableHeight = scrollState.maxValue + scrollState.viewportSize
+        if (totalScrollableHeight > 0) {
+            val viewportTop = scrollState.value.toFloat() / totalScrollableHeight * size.height
+            val viewportHeight =
+                (scrollState.viewportSize.toFloat() / totalScrollableHeight * size.height)
+                    .coerceAtLeast(MINIMAP_MIN_VIEWPORT_HEIGHT_PX)
+            drawRect(
+                color = viewportColor,
+                topLeft = Offset(0f, viewportTop),
+                size =
+                    androidx.compose.ui.geometry
+                        .Size(size.width, viewportHeight),
+            )
         }
     }
 }
@@ -883,6 +973,13 @@ public data class EditorDebugInfo(
 
 /** Maximum lines scanned for inline value hints, to bound work on large files. */
 private const val MAX_INLINE_SCAN_LINES = 4000
+private const val MAX_MINIMAP_LINES = 5000
+private const val MINIMAP_TEXT_ALPHA = 0.55f
+private const val MINIMAP_VIEWPORT_ALPHA = 0.45f
+private const val MINIMAP_LINE_CENTER_OFFSET = 0.5f
+private const val MINIMAP_STROKE_WIDTH_PX = 1f
+private const val MINIMAP_MIN_LINE_WIDTH_PX = 1f
+private const val MINIMAP_MIN_VIEWPORT_HEIGHT_PX = 8f
 
 private val IDENTIFIER_REGEX = Regex("[A-Za-z_][A-Za-z0-9_]*")
 
@@ -966,11 +1063,17 @@ internal fun offsetToPosition(
     var column = 0
     var index = 0
     while (index < text.length && index < offset) {
-        if (text[index] == '\n') {
-            line++
-            column = 0
-        } else {
-            column++
+        when (text[index]) {
+            '\n' -> {
+                line++
+                column = 0
+            }
+
+            '\r' -> {}
+
+            else -> {
+                column++
+            }
         }
         index++
     }
@@ -1021,8 +1124,8 @@ internal fun positionToOffset(
     // Clamp to the end of the target line: a column past the line end would otherwise
     // resolve onto the following line and, for a diagnostic, underline the wrong text.
     var lineEnd = index
-    while (lineEnd < text.length && text[lineEnd] != '\n') lineEnd++
-    return (index + position.column).coerceIn(0, lineEnd)
+    while (lineEnd < text.length && text[lineEnd] != '\r' && text[lineEnd] != '\n') lineEnd++
+    return (index + position.column).coerceIn(index, lineEnd)
 }
 
 /**
@@ -1036,18 +1139,20 @@ private fun buildHighlightedText(
     findMatches: List<FindMatch> = emptyList(),
     currentMatchIndex: Int = -1,
     diagnostics: List<DiagnosticSpan> = emptyList(),
+    showWhitespace: Boolean = false,
 ): AnnotatedString =
     buildAnnotatedString {
+        val displayText = if (showWhitespace) visualizeWhitespace(text) else text
         if (tokens.isEmpty()) {
             // No tokens, just append plain text
-            append(text)
+            append(displayText)
         } else {
             var lastEnd = 0
             for (token in tokens) {
                 // Add unstyled text before this token
                 if (token.start > lastEnd && lastEnd < text.length) {
                     val endIndex = minOf(token.start, text.length)
-                    append(text.substring(lastEnd, endIndex))
+                    append(displayText.substring(lastEnd, endIndex))
                 }
 
                 // Add styled token
@@ -1055,7 +1160,7 @@ private fun buildHighlightedText(
                     val tokenEnd = minOf(token.end, text.length)
                     val style = theme.styleFor(token.type)
                     withStyle(style.toSpanStyle()) {
-                        append(text.substring(token.start, tokenEnd))
+                        append(displayText.substring(token.start, tokenEnd))
                     }
                     lastEnd = tokenEnd
                 }
@@ -1063,7 +1168,7 @@ private fun buildHighlightedText(
 
             // Add remaining text after the last token
             if (lastEnd < text.length) {
-                append(text.substring(lastEnd))
+                append(displayText.substring(lastEnd))
             }
         }
 
@@ -1099,6 +1204,19 @@ private fun buildHighlightedText(
                     match.end.coerceAtMost(text.length),
                 )
             }
+        }
+    }
+
+private fun visualizeWhitespace(text: String): String =
+    buildString(text.length) {
+        text.forEach { character ->
+            append(
+                when (character) {
+                    ' ' -> '·'
+                    '\t' -> '→'
+                    else -> character
+                },
+            )
         }
     }
 
@@ -1162,10 +1280,4 @@ public fun EmptyEditorPlaceholder(modifier: Modifier = Modifier) {
 private fun offsetOfPosition(
     content: String,
     position: TextPosition,
-): Int {
-    val lines = content.lines()
-    if (position.line >= lines.size) return content.length
-    val lineStart = lines.take(position.line).sumOf { it.length + 1 }
-    val column = position.column.coerceAtMost(lines[position.line].length)
-    return (lineStart + column).coerceIn(0, content.length)
-}
+): Int = positionToOffset(content, position)

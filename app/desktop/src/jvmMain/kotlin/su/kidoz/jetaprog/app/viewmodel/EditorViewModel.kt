@@ -23,6 +23,7 @@ import su.kidoz.jetaprog.editor.completion.SnippetExpander
 import su.kidoz.jetaprog.editor.completion.smart.ExpectedTypeContext
 import su.kidoz.jetaprog.editor.completion.smart.ExpectedTypeInference
 import su.kidoz.jetaprog.editor.completion.smart.SmartCompletionFilter
+import su.kidoz.jetaprog.editor.cursor.Cursor
 import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
 import su.kidoz.jetaprog.editor.navigation.NavigationService
@@ -41,6 +42,7 @@ import su.kidoz.jetaprog.editor.state.EditorState
 import su.kidoz.jetaprog.editor.state.EditorTab
 import su.kidoz.jetaprog.editor.state.FindToggle
 import su.kidoz.jetaprog.editor.state.HoverState
+import su.kidoz.jetaprog.editor.state.LineChangeMarker
 import su.kidoz.jetaprog.editor.state.NotificationType
 import su.kidoz.jetaprog.editor.state.QuickFixState
 import su.kidoz.jetaprog.editor.state.SignatureHelpState
@@ -74,8 +76,11 @@ import su.kidoz.jetaprog.plugins.api.services.LanguageDiagnostic
 import su.kidoz.jetaprog.plugins.api.services.LintService
 import su.kidoz.jetaprog.plugins.api.services.SignatureHelpContext
 import su.kidoz.jetaprog.plugins.api.services.SignatureHelpTriggerKind
+import su.kidoz.jetaprog.plugins.api.services.TextDocumentChangeEvent
+import su.kidoz.jetaprog.plugins.api.services.TextDocumentContentChange
 import su.kidoz.jetaprog.plugins.kotlin.KotlinFormatter
 import su.kidoz.jetaprog.plugins.runtime.activation.ActivationEventService
+import su.kidoz.jetaprog.plugins.runtime.services.EditorServiceImpl
 import su.kidoz.jetaprog.plugins.support.LanguageRegistry
 import su.kidoz.jetaprog.plugins.support.formatters.DefaultFormatter
 import su.kidoz.jetaprog.plugins.support.formatters.FormatterRegistry
@@ -100,6 +105,7 @@ private val logger = KotlinLogging.logger {}
  * @param lintService Service running registered lint rules to produce editor diagnostics.
  * @param quickFixProvider Supplies quick fixes for the caret position (Alt+Enter).
  * @param autoImportProvider Adds imports when an accepted completion needs one.
+ * @param pluginEditorService Publishes editor lifecycle events to installed plugins.
  */
 public class EditorViewModel(
     private val fileSystem: FileSystem,
@@ -110,8 +116,19 @@ public class EditorViewModel(
     private val lintService: LintService? = null,
     private val quickFixProvider: QuickFixProvider? = null,
     private val autoImportProvider: AutoImportProvider? = null,
+    private val pluginEditorService: EditorServiceImpl? = null,
 ) : MviViewModel<EditorIntent, EditorState, EditorEffect>(EditorState()) {
     private val completionController = CompletionController()
+
+    /** Live state retained for every open document, including dirty buffers. */
+    private data class DocumentSession(
+        val content: String,
+        val languageId: LanguageId,
+        val cursor: Cursor = Cursor.Zero,
+        val scrollLine: Int = 0,
+        val lineChangeMarkers: Map<Int, LineChangeMarker> = emptyMap(),
+        val version: Int = 1,
+    )
 
     /**
      * The result set exactly as the provider returned it.
@@ -124,11 +141,13 @@ public class EditorViewModel(
     private var hoverJob: Job? = null
     private var signatureHelpJob: Job? = null
     private var lintJob: Job? = null
+    private var autoSaveJob: Job? = null
     private val lspOpenDocuments = mutableSetOf<String>()
     private val undoManagers = mutableMapOf<String, UndoManager>()
     private val incrementalTokenizers = mutableMapOf<String, IncrementalTokenizer>()
     private val lspDiagnostics = mutableMapOf<String, List<Diagnostic>>()
     private val lintDiagnostics = mutableMapOf<String, List<Diagnostic>>()
+    private val documentSessions = mutableMapOf<String, DocumentSession>()
 
     /**
      * Layered highlighter that combines multiple token sources.
@@ -187,6 +206,13 @@ public class EditorViewModel(
         viewModelScope.launch {
             settingsService.settings.collect { newSettings ->
                 _settings.value = newSettings
+                updateState {
+                    copy(
+                        showLineNumbers = newSettings.editor.showLineNumbers,
+                        showMinimap = newSettings.editor.showMinimap,
+                        wordWrap = newSettings.editor.wordWrap,
+                    )
+                }
             }
         }
     }
@@ -205,16 +231,24 @@ public class EditorViewModel(
                 saveCurrentFile()
             }
 
+            is EditorIntent.SaveAll -> {
+                saveAllFiles()
+            }
+
             is EditorIntent.SaveAs -> {
                 saveAs(intent.path)
             }
 
             is EditorIntent.CloseTab -> {
-                closeTab(intent.index)
+                closeTab(intent.index, intent.discardChanges)
+            }
+
+            is EditorIntent.SaveAndCloseTab -> {
+                saveAndCloseTab(intent.index)
             }
 
             is EditorIntent.CloseAllTabs -> {
-                closeAllTabs()
+                closeAllTabs(intent.discardChanges)
             }
 
             is EditorIntent.SwitchTab -> {
@@ -235,10 +269,23 @@ public class EditorViewModel(
 
             is EditorIntent.SetLineChangeMarkers -> {
                 updateState { copy(lineChangeMarkers = intent.markers) }
+                updateActiveDocumentSession { copy(lineChangeMarkers = intent.markers) }
             }
 
             is EditorIntent.InsertText -> {
                 insertText(intent.text)
+            }
+
+            is EditorIntent.DeleteRange -> {
+                replaceRange(intent.range, "")
+            }
+
+            is EditorIntent.Backspace -> {
+                backspace()
+            }
+
+            is EditorIntent.Delete -> {
+                deleteForward()
             }
 
             is EditorIntent.GoToLine -> {
@@ -330,6 +377,82 @@ public class EditorViewModel(
 
             is EditorIntent.MoveCursor -> {
                 moveCursor(intent.position)
+            }
+
+            is EditorIntent.MoveUp -> {
+                moveCursorVertically(-1)
+            }
+
+            is EditorIntent.MoveDown -> {
+                moveCursorVertically(1)
+            }
+
+            is EditorIntent.MoveLeft -> {
+                moveCursorByOffset(-1)
+            }
+
+            is EditorIntent.MoveRight -> {
+                moveCursorByOffset(1)
+            }
+
+            is EditorIntent.MoveToLineStart -> {
+                moveCursorToLineBoundary(end = false)
+            }
+
+            is EditorIntent.MoveToLineEnd -> {
+                moveCursorToLineBoundary(end = true)
+            }
+
+            is EditorIntent.MoveToDocumentStart -> {
+                moveCursor(TextPosition.Zero, synchronizeUi = true)
+            }
+
+            is EditorIntent.MoveToDocumentEnd -> {
+                moveCursorToOffset(currentState.content, currentState.content.length)
+            }
+
+            is EditorIntent.Select -> {
+                select(intent.range)
+            }
+
+            is EditorIntent.SelectAll -> {
+                selectAll()
+            }
+
+            is EditorIntent.ClearSelection -> {
+                clearSelection()
+            }
+
+            is EditorIntent.SelectUp -> {
+                extendSelectionVertically(-1)
+            }
+
+            is EditorIntent.SelectDown -> {
+                extendSelectionVertically(1)
+            }
+
+            is EditorIntent.SelectLeft -> {
+                extendSelectionByOffset(-1)
+            }
+
+            is EditorIntent.SelectRight -> {
+                extendSelectionByOffset(1)
+            }
+
+            is EditorIntent.Copy -> {
+                copySelection()
+            }
+
+            is EditorIntent.Cut -> {
+                cutSelection()
+            }
+
+            is EditorIntent.Paste -> {
+                insertText(intent.text)
+            }
+
+            is EditorIntent.ScrollToLine -> {
+                goToLine(intent.lineNumber)
             }
 
             // Formatting intents
@@ -445,13 +568,18 @@ public class EditorViewModel(
             is EditorIntent.Replace -> {
                 handleLegacyReplace(intent)
             }
-
-            // Other intents not yet implemented
-            else -> { /* TODO: Implement other intents */ }
         }
     }
 
     private suspend fun openFile(path: String) {
+        val fileName = File(path).name
+        val uri = DocumentUri.file(path)
+        val existingIndex = currentState.tabs.indexOfFirst { it.uri == uri }
+        if (existingIndex >= 0) {
+            switchTab(existingIndex)
+            return
+        }
+
         updateState { copy(isLoading = true, error = null) }
 
         try {
@@ -460,18 +588,10 @@ public class EditorViewModel(
                     fileSystem.readText(path).getOrThrow()
                 }
 
-            val fileName = File(path).name
             val languageId = detectLanguage(fileName)
-            val uri = DocumentUri.file(path)
-
-            // Check if file is already open
-            val existingIndex = currentState.tabs.indexOfFirst { it.uri == uri }
-            if (existingIndex >= 0) {
-                switchTab(existingIndex)
-                return
-            }
 
             // Tokenize the content
+            layeredHighlighter.clearSemanticTokens()
             val tokens = tokenize(content, languageId, documentKey = uri.value)
 
             val newTab =
@@ -481,6 +601,12 @@ public class EditorViewModel(
                     isDirty = false,
                 )
 
+            documentSessions[uri.value] =
+                DocumentSession(
+                    content = content,
+                    languageId = languageId,
+                )
+
             updateState {
                 val newTabs = tabs + newTab
                 copy(
@@ -488,9 +614,13 @@ public class EditorViewModel(
                     activeTabIndex = newTabs.size - 1,
                     activeDocumentUri = uri,
                     content = content,
+                    documentVersion = 1,
                     languageId = languageId,
                     tokens = tokens,
                     diagnostics = emptyList(),
+                    cursor = Cursor.Zero,
+                    scrollLine = 0,
+                    lineChangeMarkers = emptyMap(),
                     isLoading = false,
                 )
             }
@@ -520,7 +650,7 @@ public class EditorViewModel(
         if (activeIndex >= 0) {
             switchTab(activeIndex)
         }
-        intent.cursor?.let { moveCursor(it) }
+        intent.cursor?.let { moveCursor(it, synchronizeUi = true) }
     }
 
     private suspend fun saveCurrentFile() {
@@ -528,25 +658,34 @@ public class EditorViewModel(
         val path = activeTab.uri.toPath() ?: return
         val uri = activeTab.uri
         val languageId = currentState.languageId
+        val contentToSave = prepareContentForSave(currentState.content)
+        if (contentToSave != currentState.content) {
+            updateContent(contentToSave, coalesceUndo = false)
+        }
 
-        updateState { copy(isSaving = true) }
+        updateState { copy(isSaving = true, error = null) }
 
         try {
             withContext(Dispatchers.IO) {
-                fileSystem.writeText(path, currentState.content).getOrThrow()
+                fileSystem.writeText(path, contentToSave).getOrThrow()
             }
 
             updateState {
                 val updatedTabs =
-                    tabs.mapIndexed { index, tab ->
-                        if (index == activeTabIndex) tab.copy(isDirty = false) else tab
+                    tabs.map { tab ->
+                        val sessionContent = documentSessions[tab.uri.value]?.content
+                        if (tab.uri == uri && sessionContent == contentToSave) {
+                            tab.copy(isDirty = false)
+                        } else {
+                            tab
+                        }
                     }
                 copy(tabs = updatedTabs, isSaving = false)
             }
 
             emitEffect(EditorEffect.FileSaved(path))
-            syncDocumentSaved(uri, languageId, currentState.content)
-            scheduleLint(uri, languageId, currentState.content, LintTrigger.SAVE)
+            syncDocumentSaved(uri, languageId, contentToSave)
+            scheduleLint(uri, languageId, contentToSave, LintTrigger.SAVE)
             emitEffect(EditorEffect.ShowNotification("File saved", NotificationType.SUCCESS))
         } catch (e: Exception) {
             updateState { copy(isSaving = false, error = "Failed to save: ${e.message}") }
@@ -554,22 +693,71 @@ public class EditorViewModel(
         }
     }
 
+    private suspend fun saveAllFiles() {
+        val originalUri = currentState.activeDocumentUri
+        val dirtyUris = currentState.tabs.filter { it.isDirty }.map { it.uri }
+        dirtyUris.forEach { uri ->
+            val index = currentState.tabs.indexOfFirst { it.uri == uri }
+            if (index >= 0) {
+                switchTab(index)
+                saveCurrentFile()
+            }
+        }
+        val originalIndex = currentState.tabs.indexOfFirst { it.uri == originalUri }
+        if (originalIndex >= 0) switchTab(originalIndex)
+    }
+
+    private suspend fun saveAndCloseTab(index: Int) {
+        val uri = currentState.tabs.getOrNull(index)?.uri ?: return
+        switchTab(index)
+        saveCurrentFile()
+        val savedIndex = currentState.tabs.indexOfFirst { it.uri == uri && !it.isDirty }
+        if (savedIndex >= 0) closeTab(savedIndex, discardChanges = true)
+    }
+
     private suspend fun saveAs(path: String) {
+        val sourceTab = currentState.activeTab ?: return
+        val sourceUri = sourceTab.uri
+        val sourceLanguageId = currentState.languageId
+        val contentToSave = prepareContentForSave(currentState.content)
+        if (contentToSave != currentState.content) {
+            updateContent(contentToSave, coalesceUndo = false)
+        }
+        val fileName = File(path).name
+        val uri = DocumentUri.file(path)
+        if (currentState.tabs.any { it.uri == uri && it.uri != sourceUri }) {
+            emitEffect(EditorEffect.ShowError("A tab for $fileName is already open"))
+            return
+        }
+
         updateState { copy(isSaving = true) }
 
         try {
             withContext(Dispatchers.IO) {
-                fileSystem.writeText(path, currentState.content).getOrThrow()
+                fileSystem.writeText(path, contentToSave).getOrThrow()
             }
 
-            val fileName = File(path).name
-            val uri = DocumentUri.file(path)
             val languageId = detectLanguage(fileName)
+            val oldSession =
+                documentSessions.remove(sourceUri.value)
+                    ?: DocumentSession(contentToSave, sourceLanguageId, currentState.cursor)
+            documentSessions[uri.value] =
+                oldSession.copy(
+                    content = contentToSave,
+                    languageId = languageId,
+                    version = oldSession.version + 1,
+                )
+            undoManagers.remove(sourceUri.value)?.let { undoManagers[uri.value] = it }
+            incrementalTokenizers.keys.removeAll { it.startsWith("${sourceUri.value}:") }
+            clearDiagnostics(sourceUri)
+            syncDocumentClosed(sourceUri, sourceLanguageId)
+            layeredHighlighter.clearSemanticTokens()
+            val tokens = tokenize(contentToSave, languageId, documentKey = uri.value)
 
             updateState {
                 val updatedTabs =
-                    tabs.mapIndexed { index, tab ->
-                        if (index == activeTabIndex) {
+                    tabs.map { tab ->
+                        if (tab.uri == sourceUri) {
                             tab.copy(uri = uri, name = fileName, isDirty = false)
                         } else {
                             tab
@@ -579,30 +767,60 @@ public class EditorViewModel(
                     tabs = updatedTabs,
                     activeDocumentUri = uri,
                     languageId = languageId,
+                    tokens = tokens,
+                    diagnostics = emptyList(),
                     isSaving = false,
                 )
             }
 
-            syncDocumentOpened(uri, languageId, currentState.content)
-            syncDocumentSaved(uri, languageId, currentState.content)
-            scheduleLint(uri, languageId, currentState.content, LintTrigger.SAVE)
+            syncDocumentOpened(uri, languageId, contentToSave)
+            syncDocumentSaved(uri, languageId, contentToSave)
+            scheduleLint(uri, languageId, contentToSave, LintTrigger.SAVE)
             emitEffect(EditorEffect.FileSaved(path))
         } catch (e: Exception) {
-            updateState { copy(isSaving = false) }
+            updateState { copy(isSaving = false, error = "Failed to save as: ${e.message}") }
             emitEffect(EditorEffect.ShowError("Failed to save file: ${e.message}"))
         }
     }
 
-    private fun closeTab(index: Int) {
+    private fun closeTab(
+        index: Int,
+        discardChanges: Boolean = false,
+    ) {
         if (index !in currentState.tabs.indices) return
 
         val tab = currentState.tabs[index]
+        if (tab.isDirty && !discardChanges) {
+            viewModelScope.launch {
+                emitEffect(
+                    EditorEffect.ShowConfirmation(
+                        message = "Discard unsaved changes to ${tab.name}?",
+                        onConfirm = {
+                            val confirmedIndex = currentState.tabs.indexOfFirst { it.uri == tab.uri }
+                            if (confirmedIndex >= 0) {
+                                dispatch(EditorIntent.CloseTab(confirmedIndex, discardChanges = true))
+                            }
+                        },
+                        onCancel = {},
+                        onSave = {
+                            val saveIndex = currentState.tabs.indexOfFirst { it.uri == tab.uri }
+                            if (saveIndex >= 0) dispatch(EditorIntent.SaveAndCloseTab(saveIndex))
+                        },
+                    ),
+                )
+            }
+            return
+        }
+
+        val oldActiveIndex = currentState.activeTabIndex
+        val closingActiveTab = index == oldActiveIndex
         val newTabs = currentState.tabs.filterIndexed { i, _ -> i != index }
         val newActiveIndex =
             when {
                 newTabs.isEmpty() -> -1
-                index >= newTabs.size -> newTabs.size - 1
-                else -> index
+                index < oldActiveIndex -> oldActiveIndex - 1
+                index == oldActiveIndex -> index.coerceAtMost(newTabs.lastIndex)
+                else -> oldActiveIndex
             }
 
         if (newTabs.isEmpty()) {
@@ -614,33 +832,49 @@ public class EditorViewModel(
                     content = "",
                     tokens = TokenList(emptyList()),
                     diagnostics = emptyList(),
+                    cursor = Cursor.Zero,
+                    scrollLine = 0,
+                    lineChangeMarkers = emptyMap(),
                 )
             }
+        } else if (closingActiveTab) {
+            activateTab(newTabs, newActiveIndex)
         } else {
             updateState { copy(tabs = newTabs, activeTabIndex = newActiveIndex) }
-            if (newActiveIndex >= 0) {
-                viewModelScope.launch {
-                    loadTabContent(newActiveIndex)
-                }
-            }
         }
 
+        syncDocumentClosed(tab.uri, detectLanguage(tab.name))
+        documentSessions.remove(tab.uri.value)
         undoManagers.remove(tab.uri.value)
         incrementalTokenizers.keys.removeAll { it.startsWith("${tab.uri.value}:") }
         clearDiagnostics(tab.uri)
-        syncDocumentClosed(tab.uri, detectLanguage(tab.name))
         viewModelScope.launch {
             emitEffect(EditorEffect.FileClosed(tab.uri.value))
         }
     }
 
-    private fun closeAllTabs() {
+    private fun closeAllTabs(discardChanges: Boolean = false) {
+        if (currentState.hasUnsavedChanges && !discardChanges) {
+            viewModelScope.launch {
+                emitEffect(
+                    EditorEffect.ShowConfirmation(
+                        message = "Discard unsaved changes in all open files?",
+                        onConfirm = { dispatch(EditorIntent.CloseAllTabs(discardChanges = true)) },
+                        onCancel = {},
+                        onSave = { dispatch(EditorIntent.SaveAll) },
+                    ),
+                )
+            }
+            return
+        }
         currentState.tabs.forEach { tab ->
             syncDocumentClosed(tab.uri, detectLanguage(tab.name))
         }
         undoManagers.clear()
         incrementalTokenizers.clear()
+        documentSessions.clear()
         lintJob?.cancel()
+        autoSaveJob?.cancel()
         lspDiagnostics.clear()
         lintDiagnostics.clear()
         updateState {
@@ -651,6 +885,9 @@ public class EditorViewModel(
                 content = "",
                 tokens = TokenList(emptyList()),
                 diagnostics = emptyList(),
+                cursor = Cursor.Zero,
+                scrollLine = 0,
+                lineChangeMarkers = emptyMap(),
             )
         }
     }
@@ -659,41 +896,60 @@ public class EditorViewModel(
         if (index !in currentState.tabs.indices) return
         if (index == currentState.activeTabIndex) return
 
-        updateState { copy(activeTabIndex = index) }
-        loadTabContent(index)
+        snapshotActiveDocument()
+        activateTab(currentState.tabs, index)
     }
 
-    private suspend fun loadTabContent(index: Int) {
-        val tab = currentState.tabs.getOrNull(index) ?: return
-        val path = tab.uri.toPath() ?: return
+    private fun activateTab(
+        updatedTabs: List<EditorTab>,
+        index: Int,
+    ) {
+        val tab = updatedTabs.getOrNull(index) ?: return
+        val session = documentSessions[tab.uri.value] ?: return
+        layeredHighlighter.clearSemanticTokens()
+        val tokens = tokenize(session.content, session.languageId, documentKey = tab.uri.value)
 
-        updateState { copy(isLoading = true) }
-
-        try {
-            val content =
-                withContext(Dispatchers.IO) {
-                    fileSystem.readText(path).getOrThrow()
-                }
-
-            val languageId = detectLanguage(tab.name)
-            val tokens = tokenize(content, languageId, documentKey = tab.uri.value)
-
-            updateState {
-                copy(
-                    activeDocumentUri = tab.uri,
-                    content = content,
-                    languageId = languageId,
-                    tokens = tokens,
-                    diagnostics = diagnosticsFor(tab.uri),
-                    isLoading = false,
-                )
-            }
-
-            syncDocumentOpened(tab.uri, languageId, content)
-            scheduleLint(tab.uri, languageId, content, LintTrigger.OPEN)
-        } catch (e: Exception) {
-            updateState { copy(isLoading = false, error = "Failed to load file: ${e.message}") }
+        updateState {
+            copy(
+                tabs = updatedTabs,
+                activeTabIndex = index,
+                activeDocumentUri = tab.uri,
+                content = session.content,
+                documentVersion = session.version,
+                languageId = session.languageId,
+                cursor = session.cursor,
+                scrollLine = session.scrollLine,
+                lineChangeMarkers = session.lineChangeMarkers,
+                tokens = tokens,
+                diagnostics = diagnosticsFor(tab.uri),
+                completionState = CompletionState(),
+                hoverState = HoverState(),
+                quickFixState = QuickFixState(),
+                signatureHelpState = SignatureHelpState(),
+                isLoading = false,
+                error = null,
+            )
         }
+        refreshFindMatches()
+    }
+
+    private fun snapshotActiveDocument() {
+        val uri = currentState.activeDocumentUri?.value ?: return
+        val previous = documentSessions[uri] ?: return
+        documentSessions[uri] =
+            previous.copy(
+                content = currentState.content,
+                languageId = currentState.languageId,
+                cursor = currentState.cursor,
+                scrollLine = currentState.scrollLine,
+                lineChangeMarkers = currentState.lineChangeMarkers,
+            )
+    }
+
+    private fun updateActiveDocumentSession(update: DocumentSession.() -> DocumentSession) {
+        val uri = currentState.activeDocumentUri?.value ?: return
+        val session = documentSessions[uri] ?: return
+        documentSessions[uri] = session.update()
     }
 
     private fun updateContent(
@@ -741,18 +997,61 @@ public class EditorViewModel(
         updateState {
             copy(
                 content = content,
+                documentVersion = documentVersion + 1,
                 tokens = tokens,
                 tabs = updatedTabs,
                 cursor = newCursor?.let { cursor.moveTo(it) } ?: cursor,
             )
         }
 
+        updateActiveDocumentSession {
+            copy(
+                content = content,
+                cursor = newCursor?.let { cursor.moveTo(it) } ?: cursor,
+                version = version + 1,
+            )
+        }
+
         currentState.activeDocumentUri?.let { uri ->
             syncDocumentChanged(uri, currentState.languageId, content)
             scheduleLint(uri, currentState.languageId, content, LintTrigger.TYPE)
+            scheduleAutoSave(uri)
         }
 
         refreshFindMatches()
+    }
+
+    private fun scheduleAutoSave(uri: DocumentUri) {
+        autoSaveJob?.cancel()
+        val editorSettings = _settings.value.editor
+        if (!editorSettings.autoSave) return
+        val expectedVersion = documentSessions[uri.value]?.version ?: return
+        autoSaveJob =
+            viewModelScope.launch {
+                delay(editorSettings.autoSaveDelayMs)
+                val session = documentSessions[uri.value]
+                val tab = currentState.tabs.firstOrNull { it.uri == uri }
+                if (
+                    currentState.activeDocumentUri == uri &&
+                    session?.version == expectedVersion &&
+                    tab?.isDirty == true
+                ) {
+                    dispatch(EditorIntent.Save)
+                }
+            }
+    }
+
+    private fun prepareContentForSave(content: String): String {
+        val editorSettings = _settings.value.editor
+        var prepared = content
+        if (editorSettings.trimTrailingWhitespace) {
+            prepared = TRAILING_WHITESPACE.replace(prepared, "")
+        }
+        if (editorSettings.insertFinalNewline && prepared.isNotEmpty() && !prepared.endsWith('\n')) {
+            val lineSeparator = if (prepared.contains("\r\n")) "\r\n" else "\n"
+            prepared += lineSeparator
+        }
+        return prepared
     }
 
     private fun undoManagerFor(uri: String): UndoManager = undoManagers.getOrPut(uri) { UndoManager() }
@@ -772,29 +1071,62 @@ public class EditorViewModel(
     }
 
     private fun deleteLine() {
-        val lines = currentState.content.lines()
+        val content = currentState.content
         val line = currentState.cursor.position.line
-        if (line !in lines.indices) return
-
-        val newLines = lines.toMutableList().apply { removeAt(line) }
-        val newLine = line.coerceAtMost((newLines.size - 1).coerceAtLeast(0))
-        val newColumn =
-            currentState.cursor.position.column
-                .coerceAtMost(newLines.getOrElse(newLine) { "" }.length)
-
-        updateContent(newLines.joinToString("\n"), coalesceUndo = false)
-        updateState { copy(cursor = cursor.moveTo(TextPosition(newLine, newColumn))) }
+        val bounds = lineBounds(content, line) ?: return
+        val removalStart =
+            if (bounds.separatorEnd == bounds.contentEnd && bounds.start > 0) {
+                if (bounds.start >= 2 && content[bounds.start - 2] == '\r') bounds.start - 2 else bounds.start - 1
+            } else {
+                bounds.start
+            }
+        val removalEnd = if (bounds.separatorEnd > bounds.contentEnd) bounds.separatorEnd else bounds.contentEnd
+        val updated = content.removeRange(removalStart, removalEnd)
+        updateContent(updated, coalesceUndo = false)
+        val newLine = line.coerceAtMost((updated.lines().size - 1).coerceAtLeast(0))
+        moveCursor(TextPosition(newLine, 0), synchronizeUi = true)
     }
 
     private fun duplicateLine() {
-        val lines = currentState.content.lines()
+        val content = currentState.content
         val position = currentState.cursor.position
-        if (position.line !in lines.indices) return
-
-        val newLines = lines.toMutableList().apply { add(position.line + 1, lines[position.line]) }
-        updateContent(newLines.joinToString("\n"), coalesceUndo = false)
-        updateState { copy(cursor = cursor.moveTo(TextPosition(position.line + 1, position.column))) }
+        val bounds = lineBounds(content, position.line) ?: return
+        val lineText = content.substring(bounds.start, bounds.contentEnd)
+        val separator = if (content.contains("\r\n")) "\r\n" else "\n"
+        val updated =
+            if (bounds.separatorEnd > bounds.contentEnd) {
+                content.replaceRange(bounds.separatorEnd, bounds.separatorEnd, lineText + separator)
+            } else {
+                content + separator + lineText
+            }
+        updateContent(updated, coalesceUndo = false)
+        moveCursor(TextPosition(position.line + 1, position.column), synchronizeUi = true)
     }
+
+    private fun lineBounds(
+        content: String,
+        targetLine: Int,
+    ): LineBounds? {
+        if (targetLine < 0) return null
+        var start = 0
+        var line = 0
+        while (line < targetLine) {
+            val newline = content.indexOf('\n', start)
+            if (newline < 0) return null
+            start = newline + 1
+            line++
+        }
+        val newline = content.indexOf('\n', start)
+        if (newline < 0) return LineBounds(start, content.length, content.length)
+        val contentEnd = if (newline > start && content[newline - 1] == '\r') newline - 1 else newline
+        return LineBounds(start, contentEnd, newline + 1)
+    }
+
+    private data class LineBounds(
+        val start: Int,
+        val contentEnd: Int,
+        val separatorEnd: Int,
+    )
 
     // ========================================================================
     // Find/Replace Methods
@@ -956,14 +1288,43 @@ public class EditorViewModel(
         content: String,
         position: TextPosition,
     ): Int {
-        if (position.line <= 0 && position.column <= 0) return 0
         var index = 0
         var line = 0
         while (index < content.length && line < position.line) {
-            if (content[index] == '\n') line++
+            if (content[index] == '\n') {
+                line++
+            }
             index++
         }
-        return (index + position.column).coerceIn(0, content.length)
+        var lineEnd = index
+        while (lineEnd < content.length && content[lineEnd] != '\r' && content[lineEnd] != '\n') {
+            lineEnd++
+        }
+        return (index + position.column).coerceIn(index, lineEnd)
+    }
+
+    private fun offsetToPosition(
+        content: String,
+        offset: Int,
+    ): TextPosition {
+        val safeOffset = offset.coerceIn(0, content.length)
+        var line = 0
+        var column = 0
+        for (index in 0 until safeOffset) {
+            when (content[index]) {
+                '\n' -> {
+                    line++
+                    column = 0
+                }
+
+                '\r' -> {}
+
+                else -> {
+                    column++
+                }
+            }
+        }
+        return TextPosition(line, column)
     }
 
     private fun setTokens(tokens: List<su.kidoz.jetaprog.editor.syntax.Token>) {
@@ -983,19 +1344,151 @@ public class EditorViewModel(
 
     private fun insertText(text: String) {
         val content = currentState.content
-        val offset = positionToOffset(content, currentState.cursor.position)
-        val newContent =
-            buildString {
-                append(content, 0, offset)
-                append(text)
-                append(content, offset, content.length)
-            }
-        updateContent(newContent)
+        val start = positionToOffset(content, currentState.cursor.selectionStart)
+        val end = positionToOffset(content, currentState.cursor.selectionEnd)
+        replaceOffsets(start, end, text)
+    }
+
+    private fun replaceRange(
+        range: TextRange,
+        replacement: String,
+    ) {
+        replaceOffsets(
+            positionToOffset(currentState.content, range.start),
+            positionToOffset(currentState.content, range.end),
+            replacement,
+        )
+    }
+
+    private fun replaceOffsets(
+        start: Int,
+        end: Int,
+        replacement: String,
+    ) {
+        val safeStart = minOf(start, end).coerceIn(0, currentState.content.length)
+        val safeEnd = maxOf(start, end).coerceIn(safeStart, currentState.content.length)
+        val updated = currentState.content.replaceRange(safeStart, safeEnd, replacement)
+        updateContent(updated, coalesceUndo = false)
+        moveCursorToOffset(updated, safeStart + replacement.length)
+    }
+
+    private fun backspace() {
+        val cursor = currentState.cursor
+        if (cursor.hasSelection) {
+            replaceOffsets(
+                positionToOffset(currentState.content, cursor.selectionStart),
+                positionToOffset(currentState.content, cursor.selectionEnd),
+                "",
+            )
+            return
+        }
+        val offset = positionToOffset(currentState.content, cursor.position)
+        if (offset > 0) replaceOffsets(offset - 1, offset, "")
+    }
+
+    private fun deleteForward() {
+        val cursor = currentState.cursor
+        if (cursor.hasSelection) {
+            replaceOffsets(
+                positionToOffset(currentState.content, cursor.selectionStart),
+                positionToOffset(currentState.content, cursor.selectionEnd),
+                "",
+            )
+            return
+        }
+        val offset = positionToOffset(currentState.content, cursor.position)
+        if (offset < currentState.content.length) replaceOffsets(offset, offset + 1, "")
+    }
+
+    private fun moveCursorByOffset(delta: Int) {
+        val currentOffset = positionToOffset(currentState.content, currentState.cursor.position)
+        moveCursorToOffset(currentState.content, currentOffset + delta)
+    }
+
+    private fun moveCursorVertically(delta: Int) {
+        val lines = currentState.content.lines()
+        val position = currentState.cursor.position
+        val line = (position.line + delta).coerceIn(0, lines.lastIndex.coerceAtLeast(0))
+        moveCursor(TextPosition(line, position.column.coerceAtMost(lines.getOrElse(line) { "" }.length)), true)
+    }
+
+    private fun moveCursorToLineBoundary(end: Boolean) {
+        val lines = currentState.content.lines()
+        val line =
+            currentState.cursor.position.line
+                .coerceIn(0, lines.lastIndex.coerceAtLeast(0))
+        moveCursor(TextPosition(line, if (end) lines.getOrElse(line) { "" }.length else 0), true)
+    }
+
+    private fun select(range: TextRange) {
+        updateState {
+            copy(
+                cursor = Cursor(position = range.end, anchor = range.start),
+                caretSyncVersion = caretSyncVersion + 1,
+            )
+        }
+        updateActiveDocumentSession { copy(cursor = currentState.cursor) }
+    }
+
+    private fun selectAll() {
+        select(TextRange(TextPosition.Zero, offsetToPosition(currentState.content, currentState.content.length)))
+    }
+
+    private fun clearSelection() {
+        updateState { copy(cursor = cursor.clearSelection(), caretSyncVersion = caretSyncVersion + 1) }
+        updateActiveDocumentSession { copy(cursor = currentState.cursor) }
+    }
+
+    private fun extendSelectionByOffset(delta: Int) {
+        val offset = positionToOffset(currentState.content, currentState.cursor.position)
+        extendSelectionTo(offsetToPosition(currentState.content, offset + delta))
+    }
+
+    private fun extendSelectionVertically(delta: Int) {
+        val lines = currentState.content.lines()
+        val position = currentState.cursor.position
+        val line = (position.line + delta).coerceIn(0, lines.lastIndex.coerceAtLeast(0))
+        extendSelectionTo(TextPosition(line, position.column.coerceAtMost(lines.getOrElse(line) { "" }.length)))
+    }
+
+    private fun extendSelectionTo(position: TextPosition) {
+        updateState {
+            copy(
+                cursor = cursor.selectTo(position),
+                caretSyncVersion = caretSyncVersion + 1,
+            )
+        }
+        updateActiveDocumentSession { copy(cursor = currentState.cursor) }
+    }
+
+    private suspend fun copySelection() {
+        val cursor = currentState.cursor
+        if (!cursor.hasSelection) return
+        val start = positionToOffset(currentState.content, cursor.selectionStart)
+        val end = positionToOffset(currentState.content, cursor.selectionEnd)
+        emitEffect(EditorEffect.CopyToClipboard(currentState.content.substring(start, end)))
+    }
+
+    private suspend fun cutSelection() {
+        val cursor = currentState.cursor
+        if (!cursor.hasSelection) return
+        copySelection()
+        replaceOffsets(
+            positionToOffset(currentState.content, cursor.selectionStart),
+            positionToOffset(currentState.content, cursor.selectionEnd),
+            "",
+        )
     }
 
     private fun goToLine(lineNumber: Int) {
-        // Scroll to the specified line
-        updateState { copy(scrollLine = lineNumber.coerceIn(1, lineCount)) }
+        val targetLine = lineNumber.coerceIn(1, currentState.lineCount)
+        updateState {
+            copy(
+                scrollLine = targetLine,
+                caretSyncVersion = caretSyncVersion + 1,
+            )
+        }
+        updateActiveDocumentSession { copy(scrollLine = currentState.scrollLine) }
     }
 
     private fun toggleLineNumbers() {
@@ -1165,7 +1658,7 @@ public class EditorViewModel(
         navigationService?.recordNavigation(path, position)
         openFile(path)
         goToLine(position.line + 1)
-        moveCursor(position)
+        moveCursor(position, synchronizeUi = true)
     }
 
     private fun tokenize(
@@ -1213,6 +1706,7 @@ public class EditorViewModel(
                 LanguageId.CMAKE -> "cmake"
                 LanguageId.XML -> "xml"
                 LanguageId.TOML -> "toml"
+                LanguageId.MARKDOWN -> "markdown"
                 LanguageId.PYTHON -> "python"
                 else -> null
             }
@@ -1701,23 +2195,7 @@ public class EditorViewModel(
         content: String,
         line: Int,
         column: Int,
-    ): Int {
-        var offset = 0
-        var currentLine = 0
-
-        for (char in content) {
-            if (currentLine == line) {
-                return (offset + column).coerceAtMost(content.length)
-            }
-            if (char == '\n') {
-                currentLine++
-            }
-            offset++
-        }
-
-        // If we reach here, we're at the last line
-        return (offset + column).coerceAtMost(content.length)
-    }
+    ): Int = positionToOffset(content, TextPosition(line, column))
 
     private fun dismissCompletion() {
         completionJob?.cancel()
@@ -1778,15 +2256,20 @@ public class EditorViewModel(
         content: String,
         offset: Int,
     ) {
-        val safe = offset.coerceIn(0, content.length)
-        val prefix = content.substring(0, safe)
-        val line = prefix.count { it == '\n' }
-        val column = safe - (prefix.lastIndexOf('\n') + 1)
-        moveCursor(TextPosition(line, column))
+        moveCursor(offsetToPosition(content, offset), synchronizeUi = true)
     }
 
-    private fun moveCursor(position: TextPosition) {
-        updateState { copy(cursor = cursor.moveTo(position)) }
+    private fun moveCursor(
+        position: TextPosition,
+        synchronizeUi: Boolean = false,
+    ) {
+        updateState {
+            copy(
+                cursor = cursor.moveTo(position),
+                caretSyncVersion = if (synchronizeUi) caretSyncVersion + 1 else caretSyncVersion,
+            )
+        }
+        updateActiveDocumentSession { copy(cursor = currentState.cursor) }
     }
 
     private fun setCompletionItems(
@@ -2252,7 +2735,8 @@ public class EditorViewModel(
         languageId: LanguageId,
         content: String,
     ) {
-        val registry = languageRegistry ?: return
+        val registry = languageRegistry
+        if (registry == null && pluginEditorService == null) return
         val uriValue = uri.value
         if (!uriValue.startsWith("file://")) return
         if (!lspOpenDocuments.add(uriValue)) return
@@ -2261,7 +2745,10 @@ public class EditorViewModel(
             // Fire language opened trigger (may activate pending plugins)
             activationEvents?.fireLanguageOpened(languageId.value)
 
-            registry.notifyDocumentOpened(uriValue, languageId.value, content)
+            registry?.notifyDocumentOpened(uriValue, languageId.value, content)
+            pluginDocument(uri, languageId, content).let { document ->
+                pluginEditorService?.notifyDocumentOpened(document)
+            }
         }
     }
 
@@ -2270,16 +2757,31 @@ public class EditorViewModel(
         languageId: LanguageId,
         content: String,
     ) {
-        val registry = languageRegistry ?: return
+        val registry = languageRegistry
+        if (registry == null && pluginEditorService == null) return
         val uriValue = uri.value
         if (!uriValue.startsWith("file://")) return
 
         viewModelScope.launch {
             if (!lspOpenDocuments.contains(uriValue)) {
-                registry.notifyDocumentOpened(uriValue, languageId.value, content)
+                registry?.notifyDocumentOpened(uriValue, languageId.value, content)
                 lspOpenDocuments.add(uriValue)
             } else {
-                registry.notifyDocumentChanged(uriValue, languageId.value, content)
+                registry?.notifyDocumentChanged(uriValue, languageId.value, content)
+            }
+            pluginDocument(uri, languageId, content).let { document ->
+                pluginEditorService?.notifyDocumentChanged(
+                    TextDocumentChangeEvent(
+                        document = document,
+                        contentChanges =
+                            listOf(
+                                TextDocumentContentChange(
+                                    range = TextRange(TextPosition.Zero, offsetToPosition(content, content.length)),
+                                    text = content,
+                                ),
+                            ),
+                    ),
+                )
             }
         }
     }
@@ -2289,12 +2791,17 @@ public class EditorViewModel(
         languageId: LanguageId,
         content: String?,
     ) {
-        val registry = languageRegistry ?: return
+        val registry = languageRegistry
+        if (registry == null && pluginEditorService == null) return
         val uriValue = uri.value
         if (!uriValue.startsWith("file://")) return
 
         viewModelScope.launch {
-            registry.notifyDocumentSaved(uriValue, languageId.value, content)
+            registry?.notifyDocumentSaved(uriValue, languageId.value, content)
+            val savedContent = content ?: documentSessions[uriValue]?.content.orEmpty()
+            pluginDocument(uri, languageId, savedContent).let { document ->
+                pluginEditorService?.notifyDocumentSaved(document)
+            }
         }
     }
 
@@ -2302,14 +2809,38 @@ public class EditorViewModel(
         uri: DocumentUri,
         languageId: LanguageId,
     ) {
-        val registry = languageRegistry ?: return
+        val registry = languageRegistry
+        if (registry == null && pluginEditorService == null) return
         val uriValue = uri.value
         if (!uriValue.startsWith("file://")) return
 
+        val document = pluginDocument(uri, languageId, documentSessions[uriValue]?.content.orEmpty())
         lspOpenDocuments.remove(uriValue)
         viewModelScope.launch {
-            registry.notifyDocumentClosed(uriValue, languageId.value)
+            registry?.notifyDocumentClosed(uriValue, languageId.value)
+            pluginEditorService?.notifyDocumentClosed(document)
         }
+    }
+
+    private fun pluginDocument(
+        uri: DocumentUri,
+        languageId: LanguageId,
+        content: String,
+    ): TextDocumentAdapter {
+        val tab =
+            currentState.tabs.firstOrNull { it.uri == uri }
+                ?: EditorTab(uri = uri, name = uri.value.substringAfterLast('/'))
+        val version = documentSessions[uri.value]?.version ?: 1
+        return TextDocumentAdapter(
+            EditorState(
+                tabs = listOf(tab),
+                activeTabIndex = 0,
+                activeDocumentUri = uri,
+                content = content,
+                documentVersion = version,
+                languageId = languageId,
+            ),
+        )
     }
 
     // ========================================================================
@@ -2429,5 +2960,7 @@ public class EditorViewModel(
          * highlighted to keep editing responsive.
          */
         const val MAX_HIGHLIGHT_CONTENT_LENGTH = 1_000_000
+
+        private val TRAILING_WHITESPACE = Regex("[\\t ]+(?=\\r?$)", RegexOption.MULTILINE)
     }
 }

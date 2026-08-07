@@ -17,11 +17,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import su.kidoz.jetaprog.app.adapter.EditorServiceBridge
 import su.kidoz.jetaprog.app.command.CommandPaletteIntent
 import su.kidoz.jetaprog.app.command.CommandPaletteViewModel
 import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
@@ -348,10 +350,21 @@ public class ProjectSession(
         LintServiceImpl(lintEngine, lintProviderRegistry)
     }
 
+    private val editorServiceBridge: EditorServiceBridge by lazy {
+        EditorServiceBridge(editorViewModel)
+    }
+
+    private val editorService: EditorServiceImpl by lazy {
+        EditorServiceImpl(
+            openDocumentHandler = { uri, options -> editorServiceBridge.openDocument(uri, options) },
+            showDocumentHandler = { document, options -> editorServiceBridge.showDocument(document, options) },
+        )
+    }
+
     private val serviceContainer: ServiceContainer by lazy {
         ServiceContainer(
             workspace = workspaceService,
-            editor = EditorServiceImpl(),
+            editor = editorService,
             languages = LanguageServiceImpl(languageRegistry, languageServerManager, projectPath),
             commands = commandService,
             notifications = NotificationServiceImpl(),
@@ -393,6 +406,7 @@ public class ProjectSession(
             lintService = lintService,
             quickFixProvider = kotlinQuickFixService,
             autoImportProvider = kotlinQuickFixService,
+            pluginEditorService = editorService,
         )
     }
 
@@ -553,6 +567,18 @@ public class ProjectSession(
 
         // Keep editor gutter VCS markers in sync with the active document and git state
         sessionScope.launch { observeGitLineMarkers() }
+
+        // Keep the plugin editor surface aligned with tab switches initiated by the UI.
+        sessionScope.launch {
+            editorViewModel.state
+                .map { it.activeDocumentUri }
+                .distinctUntilChanged()
+                .collect { uri ->
+                    val editor = uri?.let(editorServiceBridge::editorFor)
+                    editorService.setActiveEditor(editor)
+                    editorService.setVisibleEditors(editor?.let(::listOf).orEmpty())
+                }
+        }
 
         // Restore the previous editing session (open tabs, active tab, cursor)
         restoreWorkspaceState()

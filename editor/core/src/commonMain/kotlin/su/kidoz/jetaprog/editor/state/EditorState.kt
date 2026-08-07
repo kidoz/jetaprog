@@ -62,6 +62,10 @@ public data class EditorState(
      */
     val content: String = "",
     /**
+     * Version of the active document, incremented after each content change.
+     */
+    val documentVersion: Int = 1,
+    /**
      * The language ID of the active document.
      */
     val languageId: LanguageId = LanguageId.PLAIN_TEXT,
@@ -69,6 +73,10 @@ public data class EditorState(
      * The current cursor position.
      */
     val cursor: Cursor = Cursor.Zero,
+    /**
+     * Monotonic signal used to synchronize programmatic navigation with the text field.
+     */
+    val caretSyncVersion: Long = 0,
     /**
      * Whether the editor is loading a file.
      */

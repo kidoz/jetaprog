@@ -68,6 +68,7 @@ import su.kidoz.jetaprog.app.ui.components.createBreadcrumbsFromPath
 import su.kidoz.jetaprog.app.ui.debug.DebugBottomContent
 import su.kidoz.jetaprog.app.ui.debug.DebugIntent
 import su.kidoz.jetaprog.app.ui.debug.DebugSidePanel
+import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.dialogs.configuration.RunConfigurationDialog
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectDialog
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectEffect
@@ -109,6 +110,9 @@ import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.editor.state.EditorEffect
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.editor.state.NotificationType
+import java.awt.Toolkit
+import java.awt.datatransfer.DataFlavor
+import java.awt.datatransfer.StringSelection
 import java.io.File
 import javax.swing.JFileChooser
 
@@ -284,6 +288,8 @@ private fun MainScreenContent(
 
     val currentProjectPath = session.projectPath
     val notificationCenter = app.notificationCenter
+    var editorConfirmation by remember(session) { mutableStateOf<EditorEffect.ShowConfirmation?>(null) }
+    var showCloseProjectConfirmation by remember(session) { mutableStateOf(false) }
 
     // Unified bottom tool window (Terminal / Build / Problems). null = hidden.
     var selectedBottomTab by remember { mutableStateOf<BottomTab?>(null) }
@@ -370,6 +376,28 @@ private fun MainScreenContent(
                     }
                 }
 
+                is EditorEffect.ShowConfirmation -> {
+                    editorConfirmation = effect
+                }
+
+                is EditorEffect.CopyToClipboard -> {
+                    Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                        StringSelection(effect.text),
+                        null,
+                    )
+                }
+
+                is EditorEffect.RequestPaste -> {
+                    val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                    val text =
+                        runCatching {
+                            clipboard.getData(DataFlavor.stringFlavor) as? String
+                        }.getOrNull()
+                    if (text != null) {
+                        session.editorViewModel.dispatch(EditorIntent.Paste(text))
+                    }
+                }
+
                 else -> {
                     // Do nothing
                 }
@@ -439,7 +467,11 @@ private fun MainScreenContent(
                 onOpenFile = openFile,
                 onSave = { session.editorViewModel.dispatch(EditorIntent.Save) },
                 onCloseProject = {
-                    coroutineScope.launch { app.closeProject() }
+                    if (editorState.hasUnsavedChanges) {
+                        showCloseProjectConfirmation = true
+                    } else {
+                        coroutineScope.launch { app.closeProject() }
+                    }
                 },
                 onSettings = { app.settingsViewModel.dispatch(SettingsIntent.Show) },
                 onToggleBuild = {
@@ -699,6 +731,14 @@ private fun MainScreenContent(
                                                 EditorIntent.UpdateContent(content),
                                             )
                                         },
+                                        onIntent = { session.editorViewModel.dispatch(it) },
+                                        indentUnit =
+                                            if (editorSettings.editor.useTabs) {
+                                                "\t"
+                                            } else {
+                                                " ".repeat(editorSettings.editor.tabSize)
+                                            },
+                                        settings = editorSettings.editor,
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 } else {
@@ -787,6 +827,7 @@ private fun MainScreenContent(
                                             } else {
                                                 " ".repeat(editorSettings.editor.tabSize)
                                             },
+                                        settings = editorSettings.editor,
                                         debug =
                                             editorState.activeDocumentUri
                                                 ?.value
@@ -956,6 +997,48 @@ private fun MainScreenContent(
             state = settingsState,
             onIntent = { intent -> app.settingsViewModel.dispatch(intent) },
         )
+
+        editorConfirmation?.let { confirmation ->
+            ConfirmationDialog(
+                title = "Unsaved changes",
+                message = confirmation.message,
+                confirmLabel = "Discard",
+                onConfirm = {
+                    editorConfirmation = null
+                    confirmation.onConfirm()
+                },
+                onDismiss = {
+                    editorConfirmation = null
+                    confirmation.onCancel()
+                },
+                alternateLabel = confirmation.onSave?.let { "Save" },
+                onAlternate =
+                    confirmation.onSave?.let { save ->
+                        {
+                            editorConfirmation = null
+                            save()
+                        }
+                    },
+            )
+        }
+
+        if (showCloseProjectConfirmation) {
+            ConfirmationDialog(
+                title = "Close project?",
+                message = "The project has unsaved files. Closing it will discard those changes.",
+                confirmLabel = "Close Project",
+                onConfirm = {
+                    showCloseProjectConfirmation = false
+                    coroutineScope.launch { app.closeProject() }
+                },
+                onDismiss = { showCloseProjectConfirmation = false },
+                alternateLabel = "Save All",
+                onAlternate = {
+                    showCloseProjectConfirmation = false
+                    session.editorViewModel.dispatch(EditorIntent.SaveAll)
+                },
+            )
+        }
 
         // Rename refactoring (Shift+F6)
         val renamePlan by session.renamePlan.collectAsState()

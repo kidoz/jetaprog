@@ -27,7 +27,7 @@ public class TextDocumentAdapter(
         get() = state.languageId
 
     override val version: Int
-        get() = 1 // Version tracking not implemented in EditorState
+        get() = state.documentVersion
 
     override val isDirty: Boolean
         get() = state.activeTab?.isDirty ?: false
@@ -57,36 +57,36 @@ public class TextDocumentAdapter(
 
     override fun offsetAt(position: TextPosition): Int {
         val content = state.content
-        val lines = content.lines()
-        var offset = 0
-
-        // Add lengths of all lines before the target line
-        for (i in 0 until position.line.coerceAtMost(lines.size - 1)) {
-            offset += lines[i].length + 1 // +1 for newline
+        var start = 0
+        repeat(position.line) {
+            val newline = content.indexOf('\n', start)
+            if (newline < 0) return content.length
+            start = newline + 1
         }
-
-        // Add the column offset within the target line
-        val lineLength = if (position.line < lines.size) lines[position.line].length else 0
-        return offset + position.column.coerceAtMost(lineLength)
+        var end = start
+        while (end < content.length && content[end] != '\r' && content[end] != '\n') end++
+        return (start + position.column).coerceIn(start, end)
     }
 
     override fun positionAt(offset: Int): TextPosition {
         val content = state.content
-        var remaining = offset.coerceIn(0, content.length)
-        val lines = content.lines()
+        var line = 0
+        var column = 0
+        for (index in 0 until offset.coerceIn(0, content.length)) {
+            when (content[index]) {
+                '\n' -> {
+                    line++
+                    column = 0
+                }
 
-        for ((lineNum, line) in lines.withIndex()) {
-            if (remaining <= line.length) {
-                return TextPosition(lineNum, remaining)
+                '\r' -> {}
+
+                else -> {
+                    column++
+                }
             }
-            remaining -= line.length + 1 // +1 for newline
         }
-
-        // If offset exceeds content, return end position
-        return TextPosition(
-            (lines.size - 1).coerceAtLeast(0),
-            lines.lastOrNull()?.length ?: 0,
-        )
+        return TextPosition(line, column)
     }
 
     override suspend fun save(): Boolean {

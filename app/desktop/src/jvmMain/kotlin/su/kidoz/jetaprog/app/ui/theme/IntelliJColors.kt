@@ -408,6 +408,8 @@ public object Dimensions {
     public val tabHeight: Int = 32
     public val panelHeaderHeight: Int = 32
     public val breadcrumbsHeight: Int = 24
+    public val editorGuideWidth: Int = 1
+    public val editorMinimapWidth: Int = 80
     public val lineHeightCode: Int = 21
 
     // Controls

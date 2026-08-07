@@ -33,9 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
+import su.kidoz.jetaprog.editor.editing.TextEditingOps
+import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.editor.state.EditorState
 import su.kidoz.jetaprog.editor.syntax.highlighting.DarkSyntaxTheme
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
+import su.kidoz.jetaprog.settings.model.EditorSettings
 
 /**
  * View mode for markdown editor.
@@ -58,6 +61,9 @@ public enum class MarkdownViewMode {
 public fun MarkdownEditor(
     state: EditorState,
     onContentChange: (String) -> Unit,
+    onIntent: (EditorIntent) -> Unit = {},
+    indentUnit: String = TextEditingOps.DEFAULT_INDENT_UNIT,
+    settings: EditorSettings = EditorSettings.DEFAULT,
     modifier: Modifier = Modifier,
     syntaxTheme: SyntaxTheme = DarkSyntaxTheme,
 ) {
@@ -89,6 +95,33 @@ public fun MarkdownEditor(
                     CodeEditor(
                         state = state,
                         onContentChange = onContentChange,
+                        onCompletionRequest = { triggerKind, triggerCharacter, filterText ->
+                            onIntent(
+                                EditorIntent.RequestCompletion(
+                                    triggerKind = triggerKind,
+                                    triggerCharacter = triggerCharacter,
+                                    filterText = filterText,
+                                ),
+                            )
+                        },
+                        onCompletionSelect = { onIntent(EditorIntent.ApplyCompletion(it)) },
+                        onCompletionMoveUp = { onIntent(EditorIntent.CompletionMoveUp) },
+                        onCompletionMoveDown = { onIntent(EditorIntent.CompletionMoveDown) },
+                        onCompletionDismiss = { onIntent(EditorIntent.DismissCompletion) },
+                        onCompletionFilterChange = { onIntent(EditorIntent.UpdateCompletionFilter(it)) },
+                        onCursorMove = { onIntent(EditorIntent.MoveCursor(it)) },
+                        onHoverRequest = { onIntent(EditorIntent.RequestHover(it)) },
+                        onHoverDismiss = { onIntent(EditorIntent.DismissHover) },
+                        onSignatureHelpRequest = {
+                            onIntent(EditorIntent.RequestSignatureHelp(triggerCharacter = it, isRetrigger = false))
+                        },
+                        onSignatureHelpNextSignature = { onIntent(EditorIntent.NextSignature) },
+                        onSignatureHelpPreviousSignature = { onIntent(EditorIntent.PreviousSignature) },
+                        onSignatureHelpDismiss = { onIntent(EditorIntent.DismissSignatureHelp) },
+                        onFormatDocument = { onIntent(EditorIntent.FormatDocument) },
+                        onIntent = onIntent,
+                        indentUnit = indentUnit,
+                        settings = settings,
                         modifier = Modifier.fillMaxSize(),
                         syntaxTheme = syntaxTheme,
                     )

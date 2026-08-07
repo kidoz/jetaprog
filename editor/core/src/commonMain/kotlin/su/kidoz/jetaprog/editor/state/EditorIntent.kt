@@ -36,6 +36,11 @@ public sealed interface EditorIntent : Intent {
     public data object Save : EditorIntent
 
     /**
+     * Save every dirty document.
+     */
+    public data object SaveAll : EditorIntent
+
+    /**
      * Save the active document to a new path.
      */
     public data class SaveAs(
@@ -44,15 +49,28 @@ public sealed interface EditorIntent : Intent {
 
     /**
      * Close a tab.
+     *
+     * [discardChanges] is reserved for the confirmation flow. Normal callers
+     * must leave it false so dirty documents cannot be closed silently.
      */
     public data class CloseTab(
+        val index: Int,
+        val discardChanges: Boolean = false,
+    ) : EditorIntent
+
+    /**
+     * Save a tab and close it only if the save succeeds.
+     */
+    public data class SaveAndCloseTab(
         val index: Int,
     ) : EditorIntent
 
     /**
      * Close all tabs.
      */
-    public data object CloseAllTabs : EditorIntent
+    public data class CloseAllTabs(
+        val discardChanges: Boolean = false,
+    ) : EditorIntent
 
     /**
      * Switch to a tab by index.

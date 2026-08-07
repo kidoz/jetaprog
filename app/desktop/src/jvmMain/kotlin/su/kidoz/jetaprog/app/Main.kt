@@ -25,7 +25,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,8 +48,10 @@ import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.skia.Image
 import su.kidoz.jetaprog.app.ui.MainScreen
+import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
+import su.kidoz.jetaprog.editor.state.EditorIntent
 import java.awt.Cursor
 import java.awt.Window
 import kotlin.math.roundToInt
@@ -72,9 +76,22 @@ public fun main(): Unit =
             }
 
         val app = remember { JetaProgApplication() }
+        var showExitConfirmation by remember { mutableStateOf(false) }
+        val requestExit: () -> Unit = {
+            if (app.session.value
+                    ?.editorViewModel
+                    ?.state
+                    ?.value
+                    ?.hasUnsavedChanges == true
+            ) {
+                showExitConfirmation = true
+            } else {
+                exitApplication()
+            }
+        }
 
         Window(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = requestExit,
             title = "JetaProg",
             state = windowState,
             icon = iconPainter,
@@ -106,13 +123,32 @@ public fun main(): Unit =
                                 app = app,
                                 onMinimize = { windowState.isMinimized = true },
                                 onToggleMaximize = { toggleMaximize(windowState) },
-                                onClose = ::exitApplication,
+                                onClose = requestExit,
                             )
                             MainScreen(app)
                         }
                         // Edge/corner handles that resize the undecorated window.
                         if (windowState.placement == WindowPlacement.Floating) {
                             WindowResizeHandles(window)
+                        }
+                        if (showExitConfirmation) {
+                            ConfirmationDialog(
+                                title = "Exit JetaProg?",
+                                message = "There are unsaved files. Exiting will discard those changes.",
+                                confirmLabel = "Exit",
+                                onConfirm = {
+                                    showExitConfirmation = false
+                                    exitApplication()
+                                },
+                                onDismiss = { showExitConfirmation = false },
+                                alternateLabel = "Save All",
+                                onAlternate = {
+                                    showExitConfirmation = false
+                                    app.session.value
+                                        ?.editorViewModel
+                                        ?.dispatch(EditorIntent.SaveAll)
+                                },
+                            )
                         }
                     }
                 }
