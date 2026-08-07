@@ -98,7 +98,7 @@ public data class KotlinSemanticDiagnostic(
  * Access is serialized.
  */
 public class KotlinSemanticAnalyzer(
-    private val classpathProvider: () -> List<String> = { emptyList() },
+    private val classpathProvider: (String?) -> List<String> = { emptyList() },
 ) : Disposable {
     private val lock = Any()
     private var session: Session? = null
@@ -110,15 +110,18 @@ public class KotlinSemanticAnalyzer(
      * Whether a classpath is available. Semantic analysis without a classpath
      * produces false "unresolved" errors, so callers should gate on this.
      */
-    public fun isReady(): Boolean = classpathProvider().isNotEmpty()
+    public fun isReady(filePath: String? = null): Boolean = classpathProvider(filePath).isNotEmpty()
 
     /**
      * Analyzes [text] and returns its semantic diagnostics.
      */
-    public fun diagnostics(text: String): List<KotlinSemanticDiagnostic> =
+    public fun diagnostics(
+        text: String,
+        filePath: String? = null,
+    ): List<KotlinSemanticDiagnostic> =
         synchronized(lock) {
-            diagnosticsCache.getOrPut(cacheKey(text)) {
-                withAnalysis(text) { file, _, bindingContext ->
+            diagnosticsCache.getOrPut(cacheKey(text, filePath)) {
+                withAnalysis(text, filePath = filePath) { file, _, bindingContext ->
                     bindingContext.diagnostics
                         .all()
                         .filter { it.psiElement.containingFile == file }
@@ -135,10 +138,11 @@ public class KotlinSemanticAnalyzer(
     public fun memberCompletions(
         text: String,
         offset: Int,
+        filePath: String? = null,
     ): List<KotlinDeclaration> =
         synchronized(lock) {
-            completionCache.getOrPut("$offset@${cacheKey(text)}") {
-                withAnalysis(text) { file, _, bindingContext ->
+            completionCache.getOrPut("$offset@${cacheKey(text, filePath)}") {
+                withAnalysis(text, filePath = filePath) { file, _, bindingContext ->
                     val receiver = findReceiver(file, offset) ?: return@withAnalysis emptyList()
                     val type =
                         bindingContext.get(BindingContext.EXPRESSION_TYPE_INFO, receiver)?.type
@@ -159,8 +163,9 @@ public class KotlinSemanticAnalyzer(
     public fun definition(
         text: String,
         offset: Int,
+        filePath: String? = null,
     ): KotlinDefinitionLocation? =
-        definitionInContext(text, offset)
+        definitionInContext(text, offset, filePath = filePath)
             ?.takeIf { it.filePath == null }
             ?.let { KotlinDefinitionLocation(it.startOffset, it.endOffset) }
 
@@ -177,9 +182,10 @@ public class KotlinSemanticAnalyzer(
         text: String,
         offset: Int,
         contextFiles: List<String> = emptyList(),
+        filePath: String? = null,
     ): KotlinCrossFileDefinition? =
         synchronized(lock) {
-            withAnalysis(text, contextFiles) { file, _, bindingContext ->
+            withAnalysis(text, contextFiles, filePath) { file, _, bindingContext ->
                 val reference =
                     PsiTreeUtil.getParentOfType(
                         file.findElementAt(offset.coerceIn(0, maxOf(0, file.textLength - 1))),
@@ -218,9 +224,10 @@ public class KotlinSemanticAnalyzer(
         text: String,
         offset: Int,
         contextFiles: List<String> = emptyList(),
+        filePath: String? = null,
     ): List<KotlinReference> =
         synchronized(lock) {
-            withAnalysis(text, contextFiles) { file, context, bindingContext ->
+            withAnalysis(text, contextFiles, filePath) { file, context, bindingContext ->
                 val target = targetDeclarationAt(file, bindingContext, offset) ?: return@withAnalysis emptyList()
                 val results = mutableListOf<KotlinReference>()
 
@@ -300,9 +307,10 @@ public class KotlinSemanticAnalyzer(
     private fun <R> withAnalysis(
         text: String,
         contextFiles: List<String> = emptyList(),
+        filePath: String? = null,
         block: (KtFile, List<KtFile>, BindingContext) -> R,
     ): R? {
-        val active = session(classpathProvider())
+        val active = session(classpathProvider(filePath))
         val file = active.reparse(text) ?: return null
         val context = contextFiles.mapNotNull { active.loadFile(it) }.filter { it != file }
         val bindingContext =
@@ -365,7 +373,10 @@ public class KotlinSemanticAnalyzer(
         )
     }
 
-    private fun cacheKey(text: String): String = "${classpathProvider().hashCode()}:${text.hashCode()}:${text.length}"
+    private fun cacheKey(
+        text: String,
+        filePath: String?,
+    ): String = "${classpathProvider(filePath).hashCode()}:${text.hashCode()}:${text.length}"
 
     override fun dispose() {
         synchronized(lock) {

@@ -217,7 +217,7 @@ public class KotlinIndexNavigationService(
         candidateFiles: List<String>,
     ): List<UsageGroup>? {
         val analyzer = semanticAnalyzer ?: return null
-        if (!analyzer.isReady()) return null
+        if (!analyzer.isReady(filePath)) return null
 
         val context = candidateFiles.filter { it != filePath }.distinct()
         if (context.size > MAX_SEMANTIC_CONTEXT_FILES) return null
@@ -225,7 +225,14 @@ public class KotlinIndexNavigationService(
         val offset = position.toOffset(content)
         val references =
             withContext(Dispatchers.Default) {
-                runCatching { analyzer.references(content, offset, context) }.getOrNull()
+                runCatching {
+                    analyzer.references(
+                        text = content,
+                        offset = offset,
+                        contextFiles = context,
+                        filePath = filePath,
+                    )
+                }.getOrNull()
             }?.takeIf { it.isNotEmpty() } ?: return null
 
         return references

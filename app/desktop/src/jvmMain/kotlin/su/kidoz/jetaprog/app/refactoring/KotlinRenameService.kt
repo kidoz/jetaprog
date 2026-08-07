@@ -106,7 +106,7 @@ public class KotlinRenameService(
         if (!isKotlinFile(filePath)) {
             return RenamePreparation.Unavailable("Rename is available for Kotlin files only.")
         }
-        if (!semanticAnalyzer.isReady()) {
+        if (!semanticAnalyzer.isReady(filePath)) {
             return RenamePreparation.Unavailable(
                 "Rename needs the project classpath, which is still being imported.",
             )
@@ -125,7 +125,14 @@ public class KotlinRenameService(
         val offset = position.toOffset(content)
         val references =
             withContext(Dispatchers.Default) {
-                runCatching { semanticAnalyzer.references(content, offset, candidates) }.getOrNull()
+                runCatching {
+                    semanticAnalyzer.references(
+                        text = content,
+                        offset = offset,
+                        contextFiles = candidates,
+                        filePath = filePath,
+                    )
+                }.getOrNull()
             } ?: return RenamePreparation.Unavailable("Could not analyze \"$identifier\" for rename.")
 
         // Library symbols resolve to a descriptor with no source, so resolution

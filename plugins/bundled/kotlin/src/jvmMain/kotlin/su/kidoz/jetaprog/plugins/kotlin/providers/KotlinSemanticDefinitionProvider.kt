@@ -22,10 +22,11 @@ public class KotlinSemanticDefinitionProvider(
         document: TextDocument,
         position: TextPosition,
     ): List<Location> {
-        if (!analyzer.isReady()) return emptyList()
+        val filePath = document.uri.value.removePrefix("file://")
+        if (!analyzer.isReady(filePath)) return emptyList()
         val text = document.getText()
         val offset = position.toOffset(text)
-        val location = analyzer.definition(text, offset) ?: return emptyList()
+        val location = analyzer.definition(text, offset, filePath) ?: return emptyList()
         return listOf(
             Location(
                 uri = document.uri.value,

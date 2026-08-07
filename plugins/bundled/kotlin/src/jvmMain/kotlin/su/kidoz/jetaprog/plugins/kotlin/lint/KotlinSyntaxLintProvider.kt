@@ -116,8 +116,9 @@ public class KotlinSemanticRule(
     private val analyzer: KotlinSemanticAnalyzer,
 ) : AbstractLintRule(DESCRIPTOR) {
     override suspend fun check(context: LintContext): List<LintResult> {
-        if (!analyzer.isReady()) return emptyList()
-        return analyzer.diagnostics(context.content).map { diagnostic ->
+        val filePath = context.uri.removePrefix("file://")
+        if (!analyzer.isReady(filePath)) return emptyList()
+        return analyzer.diagnostics(context.content, filePath).map { diagnostic ->
             createResult(
                 message = diagnostic.message,
                 range = context.rangeFromOffsets(diagnostic.startOffset, diagnostic.endOffset),

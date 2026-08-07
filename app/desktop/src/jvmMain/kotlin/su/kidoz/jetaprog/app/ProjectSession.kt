@@ -51,6 +51,7 @@ import su.kidoz.jetaprog.app.viewmodel.GradleViewModel
 import su.kidoz.jetaprog.app.viewmodel.TerminalViewModel
 import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
 import su.kidoz.jetaprog.build.gradle.GradleTaskRunner
+import su.kidoz.jetaprog.build.gradle.importer.GradleClasspathResolver
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.text.TextPosition
@@ -167,7 +168,7 @@ public class ProjectSession(
      * built at most once per session. Owned and disposed by this session.
      */
     private val kotlinSemanticAnalyzer: KotlinSemanticAnalyzer =
-        KotlinSemanticAnalyzer(classpathProvider = { kotlinClasspath })
+        KotlinSemanticAnalyzer(classpathProvider = { filePath -> kotlinClasspath(filePath) })
 
     /**
      * The navigation service for code navigation features.
@@ -440,7 +441,7 @@ public class ProjectSession(
      * classpath-aware analysis.
      */
     @Volatile
-    private var kotlinClasspath: List<String> = emptyList()
+    private var kotlinClasspathResolver: GradleClasspathResolver? = null
 
     /**
      * The agent (ACP) session view model, driving an external coding agent.
@@ -535,7 +536,7 @@ public class ProjectSession(
         // Register bundled plugins (lazy activation handled by LazyPluginActivator)
         pluginManager.registerBundledPlugin(
             KotlinPlugin(
-                classpathProvider = { kotlinClasspath },
+                classpathProvider = { kotlinClasspathResolver?.workspaceClasspath().orEmpty() },
                 sharedSemanticAnalyzer = kotlinSemanticAnalyzer,
             ),
         )
@@ -775,8 +776,21 @@ public class ProjectSession(
         gradleImportCoordinator
             .importModel()
             .onSuccess { model ->
-                kotlinClasspath = model.modules.flatMap { it.classpath }.distinct()
+                kotlinClasspathResolver = GradleClasspathResolver(projectPath, model)
             }
+    }
+
+    /**
+     * Reimports the Gradle project model and refreshes module-aware Kotlin classpaths.
+     * The previous successful model remains active if synchronization fails.
+     */
+    public fun syncGradleProject() {
+        sessionScope.launch { loadKotlinClasspath() }
+    }
+
+    private fun kotlinClasspath(filePath: String?): List<String> {
+        val resolver = kotlinClasspathResolver ?: return emptyList()
+        return filePath?.let(resolver::classpathFor) ?: resolver.workspaceClasspath()
     }
 
     /**

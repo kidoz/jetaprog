@@ -211,7 +211,7 @@ public class KotlinEmbeddedServer(
         position: TextPosition,
     ): LspLocation? {
         val analyzer = semanticAnalyzer ?: return null
-        if (!analyzer.isReady()) return null
+        if (!analyzer.isReady(path)) return null
 
         val offset = position.toOffset(content)
         val identifier = identifierAt(content, position)
@@ -229,7 +229,14 @@ public class KotlinEmbeddedServer(
 
         val definition =
             withContext(Dispatchers.Default) {
-                runCatching { analyzer.definitionInContext(content, offset, candidates) }.getOrNull()
+                runCatching {
+                    analyzer.definitionInContext(
+                        text = content,
+                        offset = offset,
+                        contextFiles = candidates,
+                        filePath = path,
+                    )
+                }.getOrNull()
             } ?: return null
 
         val targetPath = definition.filePath ?: path

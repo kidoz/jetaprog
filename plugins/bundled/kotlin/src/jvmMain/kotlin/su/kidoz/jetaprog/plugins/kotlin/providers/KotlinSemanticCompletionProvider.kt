@@ -26,7 +26,8 @@ public class KotlinSemanticCompletionProvider(
         position: TextPosition,
         context: CompletionContext,
     ): CompletionList {
-        if (!analyzer.isReady()) return EMPTY
+        val filePath = document.uri.value.removePrefix("file://")
+        if (!analyzer.isReady(filePath)) return EMPTY
 
         val text = document.getText()
         val offset = position.toOffset(text)
@@ -37,7 +38,7 @@ public class KotlinSemanticCompletionProvider(
 
         val items =
             analyzer
-                .memberCompletions(text, offset)
+                .memberCompletions(text, offset, filePath)
                 .filter { prefix.isEmpty() || it.name.startsWith(prefix) }
                 .map { declaration ->
                     CompletionItem(

@@ -1,5 +1,10 @@
 package su.kidoz.jetaprog.app.gradle
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -8,6 +13,25 @@ import su.kidoz.jetaprog.build.gradle.importer.GradleImportModel
 import su.kidoz.jetaprog.build.gradle.importer.GradleImportReport
 import su.kidoz.jetaprog.build.gradle.importer.GradleImportService
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+
+/** Current state of the workspace Gradle model synchronization. */
+public sealed interface GradleSyncState {
+    /** No synchronization has started yet. */
+    public data object Idle : GradleSyncState
+
+    /** The Gradle model is currently being imported. */
+    public data object Syncing : GradleSyncState
+
+    /** The latest Gradle model was imported successfully. */
+    public data class Synchronized(
+        public val moduleCount: Int,
+    ) : GradleSyncState
+
+    /** The latest Gradle model import failed. */
+    public data class Failed(
+        public val message: String,
+    ) : GradleSyncState
+}
 
 /**
  * Bridges the Gradle Tooling-API importer to the editor's `.jetaprog` metadata.
@@ -26,11 +50,28 @@ public class GradleImportCoordinator(
     private val service: GradleImportService = GradleImportService(),
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private val importMutex = Mutex()
+    private val mutableState = MutableStateFlow<GradleSyncState>(GradleSyncState.Idle)
+
+    /** Observable synchronization state for status and error reporting. */
+    public val state: StateFlow<GradleSyncState> = mutableState.asStateFlow()
 
     /**
      * Imports the Gradle model only, without reconciliation.
      */
-    public suspend fun importModel(): Result<GradleImportModel> = service.importModel(projectPath)
+    public suspend fun importModel(): Result<GradleImportModel> =
+        importMutex.withLock {
+            mutableState.value = GradleSyncState.Syncing
+            service.importModel(projectPath).also { result ->
+                mutableState.value =
+                    result.fold(
+                        onSuccess = { model -> GradleSyncState.Synchronized(model.modules.size) },
+                        onFailure = { error ->
+                            GradleSyncState.Failed(error.message ?: "Gradle model import failed")
+                        },
+                    )
+            }
+        }
 
     /**
      * Imports the Gradle model and reconciles it against recorded metadata.

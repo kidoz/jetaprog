@@ -93,7 +93,7 @@ public class KotlinPlugin(
         // Classpath-aware semantic analyzer (diagnostics + member completion).
         // A host-provided analyzer is shared with the embedded LSP server so the
         // expensive compiler environment exists only once per session.
-        val semantics = sharedSemanticAnalyzer ?: KotlinSemanticAnalyzer(classpathProvider)
+        val semantics = sharedSemanticAnalyzer ?: KotlinSemanticAnalyzer { classpathProvider() }
         semanticAnalyzer = semantics
 
         // Register completion provider
