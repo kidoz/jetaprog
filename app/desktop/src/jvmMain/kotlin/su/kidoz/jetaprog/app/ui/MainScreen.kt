@@ -452,6 +452,19 @@ private fun MainScreenContent(
             session.editorViewModel.dispatch(EditorIntent.OpenFile(chooser.selectedFile.absolutePath))
         }
     }
+    val saveFileAs: () -> Unit = {
+        val activePath = editorState.activeDocumentUri?.value?.removePrefix("file://")
+        val chooser =
+            JFileChooser().apply {
+                fileSelectionMode = JFileChooser.FILES_ONLY
+                dialogTitle = "Save File As"
+                currentDirectory = activePath?.let(::File)?.parentFile ?: File(currentProjectPath)
+                activePath?.let(::File)?.name?.let { selectedFile = File(currentDirectory, it) }
+            }
+        if (chooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) {
+            session.editorViewModel.dispatch(EditorIntent.SaveAs(chooser.selectedFile.absolutePath))
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -466,6 +479,7 @@ private fun MainScreenContent(
                 onOpenProject = openProject,
                 onOpenFile = openFile,
                 onSave = { session.editorViewModel.dispatch(EditorIntent.Save) },
+                onSaveAs = saveFileAs,
                 onCloseProject = {
                     if (editorState.hasUnsavedChanges) {
                         showCloseProjectConfirmation = true
@@ -1089,6 +1103,7 @@ private fun IntelliJMenuBar(
     onOpenProject: () -> Unit,
     onOpenFile: () -> Unit,
     onSave: () -> Unit,
+    onSaveAs: () -> Unit,
     onCloseProject: () -> Unit,
     onSettings: () -> Unit,
     onToggleBuild: () -> Unit,
@@ -1108,7 +1123,7 @@ private fun IntelliJMenuBar(
             onOpenProject = onOpenProject,
             onOpenFile = onOpenFile,
             onSave = onSave,
-            onSaveAs = { /* TODO: Implement Save As */ },
+            onSaveAs = onSaveAs,
             onCloseProject = onCloseProject,
             onSettings = onSettings,
         )
