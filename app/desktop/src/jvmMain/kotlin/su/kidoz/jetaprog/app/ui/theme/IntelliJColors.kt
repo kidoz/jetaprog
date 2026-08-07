@@ -104,6 +104,9 @@ public object IntelliJColors {
     public val treeForeground: Color = textPrimary
     public val treeHoverBackground: Color = Color(0xFF252629)
 
+    /** Rows for paths excluded by `.gitignore` — dimmed, but still readable. */
+    public val treeForegroundIgnored: Color = Color(0xFF6E7175)
+
     /** Vertical indent-guide line in the project tree (one per depth level). */
     public val treeIndentGuide: Color = Color(0xFF2A2C30)
 
@@ -203,6 +206,9 @@ public object IntelliJColors {
     public val iconCpp: Color = Color(0xFF5C8DBC)
     public val iconVala: Color = Color(0xFF7239B3)
     public val iconPython: Color = Color(0xFF3776AB)
+
+    /** Git-owned files such as `.gitignore`. */
+    public val iconGit: Color = Color(0xFFF05033)
 
     // Line number text color (alias for navigation components)
     public val lineNumberText: Color = lineNumberForeground
@@ -554,6 +560,9 @@ public object IntelliJLightColors {
     public val treeSelectionBackground: Color = Color(0xFFCFE0F4)
     public val treeSelectionInactive: Color = Color(0xFFE2E2E2)
     public val treeForeground: Color = textPrimary
+
+    /** Rows for paths excluded by `.gitignore` — dimmed, but still readable. */
+    public val treeForegroundIgnored: Color = Color(0xFF8C8C8C)
     public val treeHoverBackground: Color = Color(0xFFEDEDED)
     public val treeIndentGuide: Color = Color(0xFFE2E2E2)
     public val treeSelectionAccent: Color = accent
@@ -635,6 +644,9 @@ public object IntelliJLightColors {
     public val iconCpp: Color = Color(0xFF3A6E9C)
     public val iconVala: Color = Color(0xFF552B85)
     public val iconPython: Color = Color(0xFF2E5A85)
+
+    /** Git-owned files such as `.gitignore`. */
+    public val iconGit: Color = Color(0xFFC63A20)
 
     public val lineNumberText: Color = lineNumberForeground
 

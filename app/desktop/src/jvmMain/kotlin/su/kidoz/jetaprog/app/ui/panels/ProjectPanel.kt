@@ -67,6 +67,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.project.FileActionResult
 import su.kidoz.jetaprog.app.project.ProjectFileActions
+import su.kidoz.jetaprog.app.project.projectGitignoreMatcher
 import su.kidoz.jetaprog.app.ui.components.ToolWindowButton
 import su.kidoz.jetaprog.app.ui.dialogs.projectfile.ProjectFileDeleteDialog
 import su.kidoz.jetaprog.app.ui.dialogs.projectfile.ProjectFileNameDialog
@@ -75,6 +76,7 @@ import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.search.ProjectTextSearcher
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.vcs.ignore.GitignoreMatcher
 import java.io.File
 
 /**
@@ -106,6 +108,12 @@ public fun ProjectPanel(
     var renamingPath by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
+    // Ignore rules are cached per matcher, so a new instance is how the tree
+    // picks up an edited .gitignore. Bumping the epoch replaces it.
+    var gitignoreEpoch by remember(projectPath) { mutableStateOf(0) }
+    val gitignore = remember(projectPath, gitignoreEpoch) { projectGitignoreMatcher(projectPath) }
+    val invalidateGitignore: () -> Unit = { gitignoreEpoch++ }
+
     // Mark the clicked file as selected, then open it.
     val handleFileClick: (String) -> Unit = { path ->
         selectedPath = path
@@ -123,7 +131,10 @@ public fun ProjectPanel(
     }
 
     // Keep the root in sync with disk; expanded directories watch themselves.
-    WatchDirectory(fileSystem, projectPath) { reloadDirectory(projectPath) }
+    WatchDirectory(fileSystem, projectPath) {
+        reloadDirectory(projectPath)
+        invalidateGitignore()
+    }
 
     val runAction: (suspend () -> FileActionResult) -> Unit = { operation ->
         scope.launch {
@@ -193,6 +204,7 @@ public fun ProjectPanel(
                     // Drop cached listings so expanded directories reload from disk.
                     childrenCache.keys.toList().forEach { path -> childrenCache[path] = listDirectory(path) }
                     rootFiles = listDirectory(projectPath)
+                    invalidateGitignore()
                 },
                 contentDescription = "Refresh",
             )
@@ -215,6 +227,7 @@ public fun ProjectPanel(
                     isExpanded = true,
                     indent = 0,
                     isSelected = false,
+                    isIgnored = false,
                     onFileClick = { }, // Root is always a directory, so no file click action
                     onToggleExpand = { },
                     menuItems = menuItemsFor,
@@ -234,6 +247,8 @@ public fun ProjectPanel(
                     selectedPath = selectedPath,
                     onFileClick = handleFileClick,
                     fileSystem = fileSystem,
+                    gitignore = gitignore,
+                    onGitignoreInvalidate = invalidateGitignore,
                     menuItems = menuItemsFor,
                     renamingPath = renamingPath,
                     onRenameCommit = commitRename,
@@ -426,6 +441,8 @@ private fun FileTreeNode(
     selectedPath: String?,
     onFileClick: (String) -> Unit,
     fileSystem: FileSystem?,
+    gitignore: GitignoreMatcher,
+    onGitignoreInvalidate: () -> Unit,
     menuItems: (File) -> List<ProjectTreeMenuItem>,
     renamingPath: String?,
     onRenameCommit: (String, String) -> Unit,
@@ -434,6 +451,8 @@ private fun FileTreeNode(
     val isDirectory = file.isDirectory
     val path = file.absolutePath
     val isExpanded = expandedDirs[path] == true
+    // Matching walks the whole ancestor chain, so cache it per row and matcher.
+    val isIgnored = remember(path, isDirectory, gitignore) { gitignore.isIgnored(path, isDirectory) }
 
     // Load children when expanded
     LaunchedEffect(isExpanded) {
@@ -444,7 +463,10 @@ private fun FileTreeNode(
 
     // Only expanded directories are watched, so the watcher set matches what is visible.
     if (isDirectory && isExpanded) {
-        WatchDirectory(fileSystem, path) { childrenCache[path] = listDirectory(path) }
+        WatchDirectory(fileSystem, path) {
+            childrenCache[path] = listDirectory(path)
+            onGitignoreInvalidate()
+        }
     }
 
     Column {
@@ -455,6 +477,7 @@ private fun FileTreeNode(
             isExpanded = isExpanded,
             indent = indent,
             isSelected = !isDirectory && path == selectedPath,
+            isIgnored = isIgnored,
             onFileClick = { onFileClick(path) },
             onToggleExpand = {
                 if (isDirectory) {
@@ -478,6 +501,8 @@ private fun FileTreeNode(
                     selectedPath = selectedPath,
                     onFileClick = onFileClick,
                     fileSystem = fileSystem,
+                    gitignore = gitignore,
+                    onGitignoreInvalidate = onGitignoreInvalidate,
                     menuItems = menuItems,
                     renamingPath = renamingPath,
                     onRenameCommit = onRenameCommit,
@@ -497,6 +522,7 @@ private fun ProjectTreeNode(
     isExpanded: Boolean,
     indent: Int,
     isSelected: Boolean,
+    isIgnored: Boolean,
     onFileClick: () -> Unit,
     onToggleExpand: () -> Unit,
     menuItems: (File) -> List<ProjectTreeMenuItem>,
@@ -565,12 +591,13 @@ private fun ProjectTreeNode(
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
                     contentDescription = null,
-                    tint = IntelliJColors.iconFolder,
+                    tint = if (isIgnored) IntelliJColors.treeForegroundIgnored else IntelliJColors.iconFolder,
                     modifier = Modifier.size(18.dp).padding(end = Spacing.xs.dp),
                 )
             } else {
                 FileTypeIcon(
                     fileName = file.name,
+                    isIgnored = isIgnored,
                     modifier = Modifier.size(18.dp).padding(end = Spacing.xs.dp),
                 )
             }
@@ -588,7 +615,12 @@ private fun ProjectTreeNode(
                     color =
                         when {
                             isSelected -> Color.White
+
+                            // Excluded by .gitignore — dimmed, the way IntelliJ and VS Code show it.
+                            isIgnored -> IntelliJColors.treeForegroundIgnored
+
                             isRoot -> IntelliJColors.textPrimary
+
                             else -> IntelliJColors.treeForeground
                         },
                     fontSize = 13.sp,
@@ -718,11 +750,12 @@ private fun IndentGuide() {
 @Composable
 private fun FileTypeIcon(
     fileName: String,
+    isIgnored: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val extension = fileName.substringAfterLast('.', "").lowercase()
 
-    val (color, label) =
+    val (typeColor, label) =
         when (extension) {
             "kt" -> IntelliJColors.iconKotlin to "K"
             "kts" -> IntelliJColors.iconKotlin to "K"
@@ -741,8 +774,11 @@ private fun FileTypeIcon(
             "py" -> Color(0xFF3776AB) to "P"
             "js", "jsx" -> Color(0xFFF7DF1E) to "J"
             "ts", "tsx" -> Color(0xFF3178C6) to "T"
+            "gitignore" -> IntelliJColors.iconGit to "G"
             else -> IntelliJColors.iconFile to ""
         }
+
+    val color = if (isIgnored) IntelliJColors.treeForegroundIgnored else typeColor
 
     Box(
         modifier =

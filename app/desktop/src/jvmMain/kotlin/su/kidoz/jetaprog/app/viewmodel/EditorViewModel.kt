@@ -57,6 +57,7 @@ import su.kidoz.jetaprog.editor.syntax.TokenList
 import su.kidoz.jetaprog.editor.syntax.c.CLexer
 import su.kidoz.jetaprog.editor.syntax.cmake.CMakeLexer
 import su.kidoz.jetaprog.editor.syntax.cpp.CppLexer
+import su.kidoz.jetaprog.editor.syntax.gitignore.GitignoreLexer
 import su.kidoz.jetaprog.editor.syntax.highlighting.LayeredHighlighter
 import su.kidoz.jetaprog.editor.syntax.java.JavaLexer
 import su.kidoz.jetaprog.editor.syntax.kotlin.KotlinLexer
@@ -182,6 +183,7 @@ public class EditorViewModel(
         LexerRegistry.register(TomlLexer())
         LexerRegistry.register(MarkdownLexer())
         LexerRegistry.register(PythonLexer())
+        LexerRegistry.register(GitignoreLexer())
 
         // Register formatters
         FormatterRegistry.register(KotlinFormatter())
@@ -1876,6 +1878,7 @@ public class EditorViewModel(
                 LanguageId.TOML -> "toml"
                 LanguageId.MARKDOWN -> "markdown"
                 LanguageId.PYTHON -> "python"
+                LanguageId.GITIGNORE -> "gitignore"
                 else -> null
             }
         return id?.let { LexerRegistry.get(it) }
@@ -2835,9 +2838,16 @@ public class EditorViewModel(
         val lowerFileName = fileName.lowercase()
         when {
             lowerFileName == "meson.build" || lowerFileName == "meson_options.txt" -> return LanguageId.MESON
+
             lowerFileName == "cmakelists.txt" || lowerFileName == "cmakecache.txt" -> return LanguageId.CMAKE
+
             lowerFileName == "cargo.toml" || lowerFileName == "cargo.lock" -> return LanguageId.TOML
+
             lowerFileName == "pom.xml" -> return LanguageId.XML
+
+            // ".gitignore" itself, plus the "<name>.gitignore" templates some tools keep around.
+            lowerFileName.endsWith(".gitignore") -> return LanguageId.GITIGNORE
+
             lowerFileName.endsWith(".sln") || lowerFileName.endsWith(".slnx") -> return LanguageId.MSBUILD
         }
 

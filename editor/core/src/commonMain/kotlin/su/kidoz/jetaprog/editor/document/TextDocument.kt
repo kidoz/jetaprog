@@ -66,6 +66,7 @@ public value class LanguageId(
         public val MESON: LanguageId = LanguageId("meson")
         public val CMAKE: LanguageId = LanguageId("cmake")
         public val GO: LanguageId = LanguageId("go")
+        public val GITIGNORE: LanguageId = LanguageId("gitignore")
 
         private val displayNames: Map<String, String> =
             mapOf(
@@ -92,6 +93,7 @@ public value class LanguageId(
                 "meson" to "Meson",
                 "cmake" to "CMake",
                 "go" to "Go",
+                "gitignore" to "Git Ignore",
             )
     }
 
