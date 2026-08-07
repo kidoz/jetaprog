@@ -4,6 +4,7 @@ import su.kidoz.jetaprog.app.project.BuildTool
 import su.kidoz.jetaprog.app.project.License
 import su.kidoz.jetaprog.app.project.ProjectLanguage
 import su.kidoz.jetaprog.app.project.ProjectTemplate
+import su.kidoz.jetaprog.app.project.ProjectTemplateVersions
 import su.kidoz.jetaprog.app.project.availableBuildTools
 import su.kidoz.jetaprog.app.project.getTemplate
 import su.kidoz.jetaprog.common.mvi.State
@@ -44,8 +45,8 @@ public data class NewProjectState(
     val availableSdkVersions: List<String>
         get() =
             when (language) {
-                ProjectLanguage.KOTLIN -> listOf("2.1.21", "2.0.21", "1.9.25")
-                ProjectLanguage.JAVA -> listOf("21", "17", "11", "8")
+                ProjectLanguage.KOTLIN -> ProjectTemplateVersions.supportedKotlinVersions
+                ProjectLanguage.JAVA -> ProjectTemplateVersions.supportedJavaVersions
                 ProjectLanguage.RUST -> listOf("1.83", "1.82", "1.81", "1.80")
                 ProjectLanguage.CPP -> listOf("C++26", "C++23", "C++20", "C++17")
                 ProjectLanguage.VALA -> listOf("0.56", "0.54", "0.52", "0.48")

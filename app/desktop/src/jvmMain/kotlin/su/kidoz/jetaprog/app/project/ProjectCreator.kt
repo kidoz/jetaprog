@@ -1,5 +1,8 @@
 package su.kidoz.jetaprog.app.project
 
+import kotlinx.coroutines.CancellationException
+import su.kidoz.jetaprog.build.gradle.wrapper.GradleWrapperGenerator
+import su.kidoz.jetaprog.build.gradle.wrapper.JvmGradleWrapperGenerator
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 
 /**
@@ -7,14 +10,26 @@ import su.kidoz.jetaprog.platform.filesystem.FileSystem
  */
 public class ProjectCreator(
     private val fileSystem: FileSystem,
+    private val gradleWrapperGenerator: GradleWrapperGenerator = JvmGradleWrapperGenerator(),
 ) {
     /**
      * Creates a new project from the given configuration.
      */
-    public suspend fun createProject(config: ProjectConfig): Result<String> =
-        try {
-            // Create project directory
+    public suspend fun createProject(config: ProjectConfig): Result<String> {
+        if (fileSystem.exists(config.projectPath)) {
+            return Result.failure(IllegalStateException("Project directory already exists: ${config.projectPath}"))
+        }
+
+        var projectDirectoryCreated = false
+        return try {
             fileSystem.createDirectory(config.projectPath).getOrThrow()
+            projectDirectoryCreated = true
+
+            if (config.template.buildTool == BuildTool.GRADLE) {
+                gradleWrapperGenerator
+                    .generate(config.projectPath, ProjectTemplateVersions.gradleWrapper)
+                    .getOrThrow()
+            }
 
             // Generate files based on template
             when (config.template) {
@@ -44,18 +59,29 @@ public class ProjectCreator(
             }
 
             Result.success(config.projectPath)
+        } catch (error: CancellationException) {
+            if (projectDirectoryCreated) rollback(config.projectPath, error)
+            throw error
         } catch (e: Exception) {
+            if (projectDirectoryCreated) rollback(config.projectPath, e)
             Result.failure(e)
         }
+    }
+
+    private suspend fun rollback(
+        projectPath: String,
+        cause: Throwable,
+    ) {
+        fileSystem.deleteRecursively(projectPath).exceptionOrNull()?.let(cause::addSuppressed)
+    }
 
     private suspend fun createKotlinGradleProject(config: ProjectConfig) {
         val projectPath = config.projectPath
         val packagePath = config.packageName.replace('.', '/')
 
         // Create directory structure
-        fileSystem.createDirectory("$projectPath/src/main/kotlin/$packagePath")
-        fileSystem.createDirectory("$projectPath/src/test/kotlin/$packagePath")
-        fileSystem.createDirectory("$projectPath/gradle/wrapper")
+        createDirectory("$projectPath/src/main/kotlin/$packagePath")
+        createDirectory("$projectPath/src/test/kotlin/$packagePath")
 
         // settings.gradle.kts
         writeFile(
@@ -66,7 +92,7 @@ public class ProjectCreator(
         )
 
         // build.gradle.kts
-        val kotlinVersion = config.sdkVersion.ifEmpty { "2.1.21" }
+        val kotlinVersion = config.sdkVersion.ifEmpty { ProjectTemplateVersions.KOTLIN }
         writeFile(
             "$projectPath/build.gradle.kts",
             """
@@ -91,7 +117,7 @@ public class ProjectCreator(
             }
 
             kotlin {
-                jvmToolchain(25)
+                jvmToolchain(${ProjectTemplateVersions.JVM_TOOLCHAIN})
             }
 
             application {
@@ -119,20 +145,6 @@ public class ProjectCreator(
             }
             """.trimIndent(),
         )
-
-        // gradle-wrapper.properties
-        writeFile(
-            "$projectPath/gradle/wrapper/gradle-wrapper.properties",
-            """
-            distributionBase=GRADLE_USER_HOME
-            distributionPath=wrapper/dists
-            distributionUrl=https\://services.gradle.org/distributions/gradle-9.2.1-bin.zip
-            networkTimeout=10000
-            validateDistributionUrl=true
-            zipStoreBase=GRADLE_USER_HOME
-            zipStorePath=wrapper/dists
-            """.trimIndent(),
-        )
     }
 
     private suspend fun createKotlinMavenProject(config: ProjectConfig) {
@@ -140,10 +152,10 @@ public class ProjectCreator(
         val packagePath = config.packageName.replace('.', '/')
 
         // Create directory structure
-        fileSystem.createDirectory("$projectPath/src/main/kotlin/$packagePath")
-        fileSystem.createDirectory("$projectPath/src/test/kotlin/$packagePath")
+        createDirectory("$projectPath/src/main/kotlin/$packagePath")
+        createDirectory("$projectPath/src/test/kotlin/$packagePath")
 
-        val kotlinVersion = config.sdkVersion.ifEmpty { "2.1.21" }
+        val kotlinVersion = config.sdkVersion.ifEmpty { ProjectTemplateVersions.KOTLIN }
 
         // pom.xml
         writeFile(
@@ -239,11 +251,10 @@ public class ProjectCreator(
         val packagePath = config.packageName.replace('.', '/')
 
         // Create directory structure
-        fileSystem.createDirectory("$projectPath/src/main/java/$packagePath")
-        fileSystem.createDirectory("$projectPath/src/test/java/$packagePath")
-        fileSystem.createDirectory("$projectPath/gradle/wrapper")
+        createDirectory("$projectPath/src/main/java/$packagePath")
+        createDirectory("$projectPath/src/test/java/$packagePath")
 
-        val javaVersion = config.sdkVersion.ifEmpty { "21" }
+        val javaVersion = config.sdkVersion.ifEmpty { ProjectTemplateVersions.JVM_TOOLCHAIN.toString() }
 
         // settings.gradle.kts
         writeFile(
@@ -311,20 +322,6 @@ public class ProjectCreator(
             }
             """.trimIndent(),
         )
-
-        // gradle-wrapper.properties
-        writeFile(
-            "$projectPath/gradle/wrapper/gradle-wrapper.properties",
-            """
-            distributionBase=GRADLE_USER_HOME
-            distributionPath=wrapper/dists
-            distributionUrl=https\://services.gradle.org/distributions/gradle-8.12-bin.zip
-            networkTimeout=10000
-            validateDistributionUrl=true
-            zipStoreBase=GRADLE_USER_HOME
-            zipStorePath=wrapper/dists
-            """.trimIndent(),
-        )
     }
 
     private suspend fun createJavaMavenProject(config: ProjectConfig) {
@@ -332,10 +329,10 @@ public class ProjectCreator(
         val packagePath = config.packageName.replace('.', '/')
 
         // Create directory structure
-        fileSystem.createDirectory("$projectPath/src/main/java/$packagePath")
-        fileSystem.createDirectory("$projectPath/src/test/java/$packagePath")
+        createDirectory("$projectPath/src/main/java/$packagePath")
+        createDirectory("$projectPath/src/test/java/$packagePath")
 
-        val javaVersion = config.sdkVersion.ifEmpty { "21" }
+        val javaVersion = config.sdkVersion.ifEmpty { ProjectTemplateVersions.JVM_TOOLCHAIN.toString() }
 
         // pom.xml
         writeFile(
@@ -407,7 +404,7 @@ public class ProjectCreator(
         val projectPath = config.projectPath
 
         // Create directory structure
-        fileSystem.createDirectory("$projectPath/src")
+        createDirectory("$projectPath/src")
 
         // Cargo.toml
         writeFile(
@@ -451,8 +448,8 @@ public class ProjectCreator(
         val projectPath = config.projectPath
 
         // Create directory structure
-        fileSystem.createDirectory("$projectPath/src")
-        fileSystem.createDirectory("$projectPath/include")
+        createDirectory("$projectPath/src")
+        createDirectory("$projectPath/include")
 
         // Determine C++ standard from sdkVersion
         val cppStandard =
@@ -507,7 +504,7 @@ public class ProjectCreator(
         val projectPath = config.projectPath
 
         // Create directory structure
-        fileSystem.createDirectory("$projectPath/src")
+        createDirectory("$projectPath/src")
 
         // meson.build
         val valaVersion = config.sdkVersion.ifEmpty { "0.56" }
@@ -747,7 +744,11 @@ public class ProjectCreator(
         path: String,
         content: String,
     ) {
-        fileSystem.writeBytes(path, content.toByteArray(Charsets.UTF_8))
+        fileSystem.writeBytes(path, content.toByteArray(Charsets.UTF_8)).getOrThrow()
+    }
+
+    private suspend fun createDirectory(path: String) {
+        fileSystem.createDirectory(path).getOrThrow()
     }
 
     private fun mitLicenseText(): String =
