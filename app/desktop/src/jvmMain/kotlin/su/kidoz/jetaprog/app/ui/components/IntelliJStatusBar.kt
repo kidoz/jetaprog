@@ -65,6 +65,9 @@ public fun IntelliJStatusBar(
     languageInfo: String? = null,
     isBuilding: Boolean = false,
     buildStatus: BuildStatus? = null,
+    gradleSyncStatus: String? = null,
+    isGradleSyncing: Boolean = false,
+    hasGradleSyncError: Boolean = false,
     onBranchClick: () -> Unit = {},
     onEncodingClick: () -> Unit = {},
     onLanguageClick: () -> Unit = {},
@@ -97,6 +100,24 @@ public fun IntelliJStatusBar(
                         iconColor = if (status.success) IntelliJColors.success else IntelliJColors.error,
                     )
                 }
+            }
+
+            gradleSyncStatus?.let { status ->
+                StatusBarItem(
+                    icon =
+                        when {
+                            isGradleSyncing -> Icons.Default.Sync
+                            hasGradleSyncError -> Icons.Default.Error
+                            else -> Icons.Default.CheckCircle
+                        },
+                    text = status,
+                    iconColor =
+                        when {
+                            hasGradleSyncError -> IntelliJColors.error
+                            isGradleSyncing -> IntelliJColors.info
+                            else -> IntelliJColors.success
+                        },
+                )
             }
 
             gitBranch?.let { branch ->

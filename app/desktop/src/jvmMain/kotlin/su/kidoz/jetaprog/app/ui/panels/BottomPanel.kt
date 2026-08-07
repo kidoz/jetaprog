@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.ui.panels
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -49,12 +51,13 @@ import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
-import su.kidoz.jetaprog.editor.syntax.Diagnostic
+import su.kidoz.jetaprog.editor.state.WorkspaceDiagnostic
 
 /** The tool shown in the unified bottom panel. */
 public enum class BottomTab {
     TERMINAL,
     BUILD,
+    TESTS,
     PROBLEMS,
     DEBUGGER,
 }
@@ -71,6 +74,7 @@ private const val DEFAULT_PANEL_HEIGHT = 260
  *
  * @param selectedTab The currently foreground tab.
  * @param problemsCount Total problems (errors + warnings) for the Problems badge.
+ * @param failedTestsCount Failed tests shown on the Tests badge.
  * @param onSelectTab Invoked when a tab is clicked.
  * @param onClose Invoked when the panel close button is pressed.
  * @param content Renders the body for the given [BottomTab].
@@ -79,6 +83,7 @@ private const val DEFAULT_PANEL_HEIGHT = 260
 public fun BottomPanel(
     selectedTab: BottomTab,
     problemsCount: Int,
+    failedTestsCount: Int = 0,
     onSelectTab: (BottomTab) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -120,6 +125,15 @@ public fun BottomPanel(
                 label = "Build",
                 selected = selectedTab == BottomTab.BUILD,
                 onClick = { onSelectTab(BottomTab.BUILD) },
+            )
+            BottomTabItem(
+                icon = Icons.Filled.Science,
+                label = "Tests",
+                selected = selectedTab == BottomTab.TESTS,
+                iconTint = if (failedTestsCount > 0) IntelliJColors.error else IntelliJColors.textSecondary,
+                badgeCount = failedTestsCount,
+                badgeColor = IntelliJColors.error,
+                onClick = { onSelectTab(BottomTab.TESTS) },
             )
             BottomTabItem(
                 icon = Icons.Filled.Warning,
@@ -164,6 +178,7 @@ private fun BottomTabItem(
     onClick: () -> Unit,
     iconTint: Color = IntelliJColors.textSecondary,
     badgeCount: Int = 0,
+    badgeColor: Color = IntelliJColors.warning,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -201,7 +216,7 @@ private fun BottomTabItem(
                     modifier =
                         Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(IntelliJColors.warning)
+                            .background(badgeColor)
                             .padding(horizontal = 5.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -232,11 +247,12 @@ private fun BottomTabItem(
 private fun Modifier.fillMaxHeightTabStrip(): Modifier = this.height(Dimensions.tabHeight.dp)
 
 /**
- * Problems tab content: a simple list of diagnostics for the active document.
+ * Problems tab content for all diagnostics retained in the current workspace.
  */
 @Composable
 public fun ProblemsContent(
-    diagnostics: List<Diagnostic>,
+    diagnostics: List<WorkspaceDiagnostic>,
+    onOpenDiagnostic: (WorkspaceDiagnostic) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (diagnostics.isEmpty()) {
@@ -246,9 +262,14 @@ public fun ProblemsContent(
         return
     }
     LazyColumn(modifier = modifier.fillMaxSize().padding(vertical = Spacing.xs.dp)) {
-        items(diagnostics) { diagnostic ->
+        items(diagnostics) { workspaceDiagnostic ->
+            val diagnostic = workspaceDiagnostic.diagnostic
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenDiagnostic(workspaceDiagnostic) }
+                        .padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
@@ -259,7 +280,25 @@ public fun ProblemsContent(
                     tint = if (isError) IntelliJColors.error else IntelliJColors.warning,
                     modifier = Modifier.size(Dimensions.iconSm.dp),
                 )
-                Text(text = diagnostic.message, color = IntelliJColors.textPrimary, fontSize = 13.sp)
+                Text(
+                    text =
+                        workspaceDiagnostic.uri.value
+                            .removePrefix("file://")
+                            .substringAfterLast('/'),
+                    color = IntelliJColors.textSecondary,
+                    fontSize = 12.sp,
+                )
+                Text(
+                    text = "${diagnostic.range.start.line + 1}:${diagnostic.range.start.column + 1}",
+                    color = IntelliJColors.textMuted,
+                    fontSize = 12.sp,
+                )
+                Text(
+                    text = diagnostic.message,
+                    color = IntelliJColors.textPrimary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.weight(1f),
+                )
                 diagnostic.source?.let { source ->
                     Text(text = source, color = IntelliJColors.textMuted, fontSize = 12.sp)
                 }

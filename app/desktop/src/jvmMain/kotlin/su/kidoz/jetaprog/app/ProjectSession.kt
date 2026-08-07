@@ -53,6 +53,7 @@ import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
 import su.kidoz.jetaprog.build.gradle.GradleTaskRunner
 import su.kidoz.jetaprog.build.gradle.importer.GradleClasspathResolver
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
+import su.kidoz.jetaprog.build.gradle.test.JvmGradleTestReportLoader
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.configuration.ConfigurationIntent
@@ -421,7 +422,8 @@ public class ProjectSession(
     /**
      * The Gradle view model.
      */
-    public val gradleViewModel: GradleViewModel = GradleViewModel(gradleTaskRunner)
+    public val gradleViewModel: GradleViewModel =
+        GradleViewModel(gradleTaskRunner, JvmGradleTestReportLoader())
 
     /**
      * Imports the project structure from Gradle (Tooling API) and reconciles it

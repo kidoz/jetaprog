@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.build.gradle.state
 
 import su.kidoz.jetaprog.build.gradle.GradleDiagnostic
 import su.kidoz.jetaprog.build.gradle.GradleProject
+import su.kidoz.jetaprog.build.gradle.test.GradleTestRun
 
 /**
  * State for the Gradle build panel.
@@ -19,6 +20,8 @@ public data class GradleState(
     val diagnostics: List<GradleDiagnostic> = emptyList(),
     /** The last build result. */
     val lastBuildResult: BuildResult? = null,
+    /** Structured test results produced by the last Gradle invocation. */
+    val testRun: GradleTestRun? = null,
     /** Whether the panel is visible. */
     val isVisible: Boolean = false,
     /** Favorite/pinned tasks for quick access. */

@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.JetaProgApplication
 import su.kidoz.jetaprog.app.ProjectSession
+import su.kidoz.jetaprog.app.gradle.GradleSyncState
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
 import su.kidoz.jetaprog.app.ui.agent.AgentToolWindow
@@ -92,6 +93,7 @@ import su.kidoz.jetaprog.app.ui.panels.GitPanel
 import su.kidoz.jetaprog.app.ui.panels.ProblemsContent
 import su.kidoz.jetaprog.app.ui.panels.ProjectPanel
 import su.kidoz.jetaprog.app.ui.panels.TerminalPanel
+import su.kidoz.jetaprog.app.ui.panels.TestResultsPanel
 import su.kidoz.jetaprog.app.ui.panels.VcsMainArea
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
@@ -282,6 +284,7 @@ private fun MainScreenContent(
     val editorSettings by session.editorViewModel.settings.collectAsState()
     val terminalState by session.terminalViewModel.state.collectAsState()
     val gradleState by session.gradleViewModel.state.collectAsState()
+    val gradleSyncState by session.gradleImportCoordinator.state.collectAsState()
     val configurationState by session.configurationViewModel.state.collectAsState()
     val gitState by session.gitViewModel.state.collectAsState()
     val debugState by session.debugViewModel.state.collectAsState()
@@ -290,6 +293,11 @@ private fun MainScreenContent(
     val notificationCenter = app.notificationCenter
     var editorConfirmation by remember(session) { mutableStateOf<EditorEffect.ShowConfirmation?>(null) }
     var showCloseProjectConfirmation by remember(session) { mutableStateOf(false) }
+
+    LaunchedEffect(gradleSyncState) {
+        val failure = gradleSyncState as? GradleSyncState.Failed ?: return@LaunchedEffect
+        notificationCenter.error(title = "Gradle sync failed", message = failure.message)
+    }
 
     // Unified bottom tool window (Terminal / Build / Problems). null = hidden.
     var selectedBottomTab by remember { mutableStateOf<BottomTab?>(null) }
@@ -308,6 +316,9 @@ private fun MainScreenContent(
         }
         selectedBottomTab = BottomTab.BUILD
     }
+    val openTestsTab: () -> Unit = {
+        selectedBottomTab = BottomTab.TESTS
+    }
     val openDebuggerTab: () -> Unit = {
         selectedBottomTab = BottomTab.DEBUGGER
     }
@@ -319,6 +330,10 @@ private fun MainScreenContent(
             session.gradleViewModel.dispatch(su.kidoz.jetaprog.build.gradle.state.GradleIntent.ToggleVisibility)
         }
         selectedBottomTab = null
+    }
+
+    LaunchedEffect(gradleState.testRun) {
+        if (gradleState.testRun != null) openTestsTab()
     }
 
     // Session-scoped effect collectors: toasts plus navigation effects
@@ -881,11 +896,13 @@ private fun MainScreenContent(
             selectedBottomTab?.let { tab ->
                 BottomPanel(
                     selectedTab = tab,
-                    problemsCount = editorState.diagnostics.size,
+                    problemsCount = editorState.workspaceDiagnostics.size,
+                    failedTestsCount = gradleState.testRun?.failedCount ?: 0,
                     onSelectTab = { newTab ->
                         when (newTab) {
                             BottomTab.TERMINAL -> openTerminalTab()
                             BottomTab.BUILD -> openBuildTab()
+                            BottomTab.TESTS -> openTestsTab()
                             BottomTab.PROBLEMS -> selectedBottomTab = BottomTab.PROBLEMS
                             BottomTab.DEBUGGER -> openDebuggerTab()
                         }
@@ -904,7 +921,12 @@ private fun MainScreenContent(
                         BottomTab.BUILD -> {
                             BuildOutputPanel(
                                 state = gradleState,
-                                onIntent = { intent -> session.gradleViewModel.dispatch(intent) },
+                                onIntent = { intent ->
+                                    if (intent is su.kidoz.jetaprog.build.gradle.state.GradleIntent.RefreshTasks) {
+                                        session.syncGradleProject()
+                                    }
+                                    session.gradleViewModel.dispatch(intent)
+                                },
                                 onOpenDiagnostic = { diagnostic ->
                                     session.editorViewModel.dispatch(
                                         EditorIntent.NavigateTo(
@@ -921,8 +943,32 @@ private fun MainScreenContent(
                             )
                         }
 
+                        BottomTab.TESTS -> {
+                            TestResultsPanel(
+                                testRun = gradleState.testRun,
+                                onRerunTest = { taskPath, pattern ->
+                                    session.gradleViewModel.dispatch(
+                                        su.kidoz.jetaprog.build.gradle.state.GradleIntent.RunTask(
+                                            taskPath = taskPath,
+                                            args = listOf("--tests", pattern),
+                                        ),
+                                    )
+                                },
+                            )
+                        }
+
                         BottomTab.PROBLEMS -> {
-                            ProblemsContent(diagnostics = editorState.diagnostics)
+                            ProblemsContent(
+                                diagnostics = editorState.workspaceDiagnostics,
+                                onOpenDiagnostic = { workspaceDiagnostic ->
+                                    session.editorViewModel.dispatch(
+                                        EditorIntent.NavigateTo(
+                                            path = workspaceDiagnostic.uri.value.removePrefix("file://"),
+                                            position = workspaceDiagnostic.diagnostic.range.start,
+                                        ),
+                                    )
+                                },
+                            )
                         }
 
                         BottomTab.DEBUGGER -> {
@@ -939,8 +985,14 @@ private fun MainScreenContent(
             IntelliJStatusBar(
                 gitBranch = gitState.branch,
                 isDirty = gitState.staged.isNotEmpty() || gitState.unstaged.isNotEmpty(),
-                errorCount = editorState.diagnostics.count { it.severity == DiagnosticSeverity.ERROR },
-                warningCount = editorState.diagnostics.count { it.severity == DiagnosticSeverity.WARNING },
+                errorCount =
+                    editorState.workspaceDiagnostics.count {
+                        it.diagnostic.severity == DiagnosticSeverity.ERROR
+                    },
+                warningCount =
+                    editorState.workspaceDiagnostics.count {
+                        it.diagnostic.severity == DiagnosticSeverity.WARNING
+                    },
                 lineInfo =
                     if (editorState.activeTab != null) {
                         "${editorState.currentLine}:${editorState.currentColumn}"
@@ -971,6 +1023,15 @@ private fun MainScreenContent(
                             message = if (result.success) "Build successful" else "Build failed",
                         )
                     },
+                gradleSyncStatus =
+                    when (val syncState = gradleSyncState) {
+                        GradleSyncState.Idle -> null
+                        GradleSyncState.Syncing -> "Syncing Gradle…"
+                        is GradleSyncState.Synchronized -> "${syncState.moduleCount} Gradle modules"
+                        is GradleSyncState.Failed -> "Gradle sync failed"
+                    },
+                isGradleSyncing = gradleSyncState == GradleSyncState.Syncing,
+                hasGradleSyncError = gradleSyncState is GradleSyncState.Failed,
             )
         }
 

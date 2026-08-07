@@ -16,6 +16,7 @@ import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.build.gradle.state.GradleState
 import su.kidoz.jetaprog.build.gradle.state.OutputLine
 import su.kidoz.jetaprog.build.gradle.state.OutputType
+import su.kidoz.jetaprog.build.gradle.test.GradleTestReportLoader
 import su.kidoz.jetaprog.common.Disposable
 
 /**
@@ -23,6 +24,7 @@ import su.kidoz.jetaprog.common.Disposable
  */
 public class GradleViewModel(
     private val taskRunner: GradleTaskRunner,
+    private val testReportLoader: GradleTestReportLoader,
 ) : Disposable {
     private val _state = MutableStateFlow(GradleState())
     public val state: StateFlow<GradleState> = _state.asStateFlow()
@@ -84,6 +86,7 @@ public class GradleViewModel(
                 output = emptyList(),
                 diagnostics = emptyList(),
                 lastBuildResult = null,
+                testRun = null,
                 isVisible = true,
             )
         }
@@ -108,7 +111,7 @@ public class GradleViewModel(
             }
     }
 
-    private fun handleOutput(
+    private suspend fun handleOutput(
         output: GradleOutput,
         taskPath: String,
     ) {
@@ -167,8 +170,26 @@ public class GradleViewModel(
                         lastBuildResult = result,
                     )
                 }
+                loadTestResults(taskPath)
             }
         }
+    }
+
+    private suspend fun loadTestResults(taskPath: String) {
+        val project = _state.value.project ?: return
+        testReportLoader
+            .load(project.rootPath, taskPath, buildStartTime)
+            .onSuccess { testRun ->
+                if (testRun.suites.isEmpty()) return@onSuccess
+                _state.update { state -> state.copy(testRun = testRun) }
+                appendOutput(
+                    "Tests: ${testRun.passedCount} passed, ${testRun.failedCount} failed, " +
+                        "${testRun.skippedCount} skipped",
+                    if (testRun.failedCount == 0) OutputType.SUCCESS else OutputType.ERROR,
+                )
+            }.onFailure { error ->
+                appendOutput("Could not load test results: ${error.message}", OutputType.ERROR)
+            }
     }
 
     private fun cancelTask() {
@@ -178,7 +199,7 @@ public class GradleViewModel(
     }
 
     private fun clearOutput() {
-        _state.update { it.copy(output = emptyList(), diagnostics = emptyList()) }
+        _state.update { it.copy(output = emptyList(), diagnostics = emptyList(), testRun = null) }
     }
 
     private fun toggleVisibility() {
