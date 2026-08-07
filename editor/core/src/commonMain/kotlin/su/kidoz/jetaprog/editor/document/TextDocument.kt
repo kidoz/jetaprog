@@ -167,28 +167,54 @@ public data class TextDocument(
      * Converts a position to an offset.
      */
     public fun positionToOffset(position: TextPosition): Int {
-        val lines = content.lines()
-        var offset = 0
-        for (i in 0 until position.line.coerceAtMost(lines.size - 1)) {
-            offset += lines[i].length + 1 // +1 for newline
+        var index = 0
+        var line = 0
+        while (index < content.length && line < position.line) {
+            if (content[index] == '\n' || content[index] == '\r') {
+                if (content[index] == '\r' && content.getOrNull(index + 1) == '\n') {
+                    index++
+                }
+                line++
+            }
+            index++
         }
-        val lineLength = if (position.line < lines.size) lines[position.line].length else 0
-        return offset + position.column.coerceAtMost(lineLength)
+        var lineEnd = index
+        while (lineEnd < content.length && content[lineEnd] != '\r' && content[lineEnd] != '\n') {
+            lineEnd++
+        }
+        return (index + position.column).coerceIn(index, lineEnd)
     }
 
     /**
      * Converts an offset to a position.
      */
     public fun offsetToPosition(offset: Int): TextPosition {
-        var remaining = offset.coerceIn(0, length)
-        val lines = content.lines()
-        for ((lineNum, line) in lines.withIndex()) {
-            if (remaining <= line.length) {
-                return TextPosition(lineNum, remaining)
+        val safeOffset = offset.coerceIn(0, length)
+        var line = 0
+        var column = 0
+        var index = 0
+        while (index < safeOffset) {
+            when (content[index]) {
+                '\r' -> {
+                    if (content.getOrNull(index + 1) == '\n' && index + 1 < safeOffset) {
+                        index++
+                    }
+                    line++
+                    column = 0
+                }
+
+                '\n' -> {
+                    line++
+                    column = 0
+                }
+
+                else -> {
+                    column++
+                }
             }
-            remaining -= line.length + 1 // +1 for newline
+            index++
         }
-        return TextPosition(lines.size - 1, lines.lastOrNull()?.length ?: 0)
+        return TextPosition(line, column)
     }
 
     /**

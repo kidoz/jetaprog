@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import su.kidoz.jetaprog.common.Disposable
 
 /**
@@ -42,6 +44,7 @@ public abstract class MviViewModel<I : Intent, S : State, E : Effect>(
     public val state: StateFlow<S> = _state.asStateFlow()
 
     private val _effects = Channel<E>(Channel.BUFFERED)
+    private val intentMutex = Mutex()
 
     /**
      * Effects as a Flow that should be collected to handle side effects.
@@ -60,7 +63,9 @@ public abstract class MviViewModel<I : Intent, S : State, E : Effect>(
      */
     public fun dispatch(intent: I) {
         viewModelScope.launch {
-            handleIntent(intent)
+            intentMutex.withLock {
+                handleIntent(intent)
+            }
         }
     }
 

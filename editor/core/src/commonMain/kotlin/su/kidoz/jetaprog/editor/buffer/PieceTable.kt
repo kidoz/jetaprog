@@ -5,7 +5,8 @@ package su.kidoz.jetaprog.editor.buffer
  *
  * The piece table maintains the original text and an "add buffer" for insertions.
  * Text is represented as a sequence of "pieces" that reference either the original
- * text or the add buffer. This allows O(1) insertions and efficient memory usage.
+ * text or the add buffer. Edits preserve unchanged text by reference and avoid
+ * rebuilding the full document string.
  *
  * Based on the data structure used in VS Code's editor.
  */
@@ -64,6 +65,7 @@ public class PieceTable private constructor(
 
         val newPieces = mutableListOf<Piece>()
         var currentOffset = 0
+        var inserted = false
 
         for (piece in pieces) {
             val pieceEnd = currentOffset + piece.length
@@ -76,10 +78,9 @@ public class PieceTable private constructor(
 
                 currentOffset >= offset -> {
                     // Piece is entirely after insertion point
-                    if (newPieces.lastOrNull()?.source != Source.ADDED ||
-                        newPieces.last().start + newPieces.last().length != addedStart
-                    ) {
+                    if (!inserted) {
                         newPieces.add(newPiece)
+                        inserted = true
                     }
                     newPieces.add(piece)
                 }
@@ -91,6 +92,7 @@ public class PieceTable private constructor(
                         newPieces.add(Piece(piece.source, piece.start, splitPoint))
                     }
                     newPieces.add(newPiece)
+                    inserted = true
                     val remaining = piece.length - splitPoint
                     if (remaining > 0) {
                         newPieces.add(Piece(piece.source, piece.start + splitPoint, remaining))
@@ -101,7 +103,7 @@ public class PieceTable private constructor(
         }
 
         // Handle insertion at the end
-        if (offset == length) {
+        if (!inserted) {
             newPieces.add(newPiece)
         }
 
