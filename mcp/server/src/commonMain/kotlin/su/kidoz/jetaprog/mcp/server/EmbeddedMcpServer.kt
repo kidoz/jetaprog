@@ -61,6 +61,8 @@ public class EmbeddedMcpServer(
             McpDispatcher(
                 serverInfo = ServerInfo(name = "jetaprog-ide", version = serverVersion, title = "JetaProg IDE"),
                 tools = toolsRegistry,
+                resources = resourcesManager,
+                prompts = promptsRegistry,
             )
         transport = createMcpTransport(config)
         transport?.start { request -> dispatcher.handle(request) }
