@@ -1,13 +1,13 @@
 package su.kidoz.jetaprog.app.ui.panels
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -132,17 +136,17 @@ public fun BottomPanel(
                 onClick = { onSelectTab(BottomTab.DEBUGGER) },
             )
             Spacer(modifier = Modifier.weight(1f))
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = "Close panel",
-                tint = IntelliJColors.textMuted,
-                modifier =
-                    Modifier
-                        .padding(horizontal = Spacing.sm.dp)
-                        .size(Dimensions.iconMd.dp)
-                        .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                        .clickable(onClick = onClose),
-            )
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.size(Dimensions.tabHeight.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Close panel",
+                    tint = IntelliJColors.textMuted,
+                    modifier = Modifier.size(Dimensions.iconMd.dp),
+                )
+            }
         }
 
         // Content for the selected tab.
@@ -167,9 +171,14 @@ private fun BottomTabItem(
         modifier =
             Modifier
                 .fillMaxHeightTabStrip()
+                .width(IntrinsicSize.Max)
                 .background(if (isHovered && !selected) IntelliJColors.tabBackgroundHover else Color.Transparent)
                 .hoverable(interactionSource)
-                .clickable(onClick = onClick),
+                .selectable(
+                    selected = selected,
+                    role = Role.Tab,
+                    onClick = onClick,
+                ),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = Spacing.md.dp),
