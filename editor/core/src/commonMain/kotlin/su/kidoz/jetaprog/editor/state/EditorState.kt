@@ -40,6 +40,15 @@ public data class EditorTab(
     val isPinned: Boolean = false,
 )
 
+/** A diagnostic associated with a document in the current workspace. */
+@Serializable
+public data class WorkspaceDiagnostic(
+    /** Document that owns the diagnostic. */
+    val uri: DocumentUri,
+    /** Diagnostic reported for [uri]. */
+    val diagnostic: Diagnostic,
+)
+
 /**
  * Immutable state for the editor.
  */
@@ -89,6 +98,8 @@ public data class EditorState(
      * The list of diagnostics for the active document.
      */
     val diagnostics: List<Diagnostic> = emptyList(),
+    /** Diagnostics retained across all documents reported in the workspace. */
+    val workspaceDiagnostics: List<WorkspaceDiagnostic> = emptyList(),
     /**
      * VCS change markers for the active document, keyed by 0-based line index.
      */

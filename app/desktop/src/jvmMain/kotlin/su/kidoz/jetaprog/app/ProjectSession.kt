@@ -408,6 +408,7 @@ public class ProjectSession(
             quickFixProvider = kotlinQuickFixService,
             autoImportProvider = kotlinQuickFixService,
             pluginEditorService = editorService,
+            workspacePath = projectPath,
         )
     }
 

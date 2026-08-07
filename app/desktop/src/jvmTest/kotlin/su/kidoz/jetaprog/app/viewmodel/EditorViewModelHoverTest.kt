@@ -51,6 +51,7 @@ class EditorViewModelHoverTest {
         every { settingsService.getCurrentSettings() } returns AllSettings()
         every { settingsService.settings } returns MutableStateFlow(AllSettings())
         every { languageRegistry.onDiagnostics(any()) } returns Disposable { }
+        every { languageRegistry.onWorkspaceEdit(any()) } returns Disposable { }
     }
 
     @AfterTest

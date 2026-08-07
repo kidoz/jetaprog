@@ -9,6 +9,7 @@ import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.lsp.client.LspClientConfig
+import su.kidoz.jetaprog.lsp.protocol.LspWorkspaceEdit
 import su.kidoz.jetaprog.lsp.protocol.WorkspaceFolder
 import su.kidoz.jetaprog.plugins.api.language.CompletionList
 import su.kidoz.jetaprog.plugins.api.language.Hover
@@ -41,6 +42,7 @@ public class LanguageRegistry(
     private val providers = mutableMapOf<String, HybridLanguageProvider>()
     private val lspServers = mutableMapOf<String, LspLanguageServer>()
     private val diagnosticsListeners = mutableListOf<DiagnosticsListener>()
+    private val workspaceEditListeners = mutableListOf<WorkspaceEditListener>()
 
     /**
      * Get or create a hybrid provider for a language.
@@ -209,6 +211,9 @@ public class LanguageRegistry(
         server.onDiagnostics { uri, diagnostics ->
             diagnosticsListeners.forEach { it.invoke(uri, diagnostics) }
         }
+        server.onWorkspaceEdit { label, edit ->
+            workspaceEditListeners.anyApplied { listener -> listener(label, edit) }
+        }
 
         return Disposable {
             disposables.forEach { it.dispose() }
@@ -236,6 +241,12 @@ public class LanguageRegistry(
     public fun onDiagnostics(listener: DiagnosticsListener): Disposable {
         diagnosticsListeners.add(listener)
         return Disposable { diagnosticsListeners.remove(listener) }
+    }
+
+    /** Adds a listener that can apply multi-document edits requested by LSP servers. */
+    public fun onWorkspaceEdit(listener: WorkspaceEditListener): Disposable {
+        workspaceEditListeners.add(listener)
+        return Disposable { workspaceEditListeners.remove(listener) }
     }
 
     // ========================================================================
@@ -393,7 +404,20 @@ public class LanguageRegistry(
         lspServers.clear()
         providers.clear()
         diagnosticsListeners.clear()
+        workspaceEditListeners.clear()
     }
+}
+
+/** Applies an LSP workspace edit and reports whether it succeeded. */
+public typealias WorkspaceEditListener = suspend (label: String?, edit: LspWorkspaceEdit) -> Boolean
+
+private suspend fun List<WorkspaceEditListener>.anyApplied(
+    apply: suspend (WorkspaceEditListener) -> Boolean,
+): Boolean {
+    for (listener in this) {
+        if (apply(listener)) return true
+    }
+    return false
 }
 
 /**

@@ -48,6 +48,7 @@ import su.kidoz.jetaprog.editor.state.QuickFixState
 import su.kidoz.jetaprog.editor.state.SignatureHelpState
 import su.kidoz.jetaprog.editor.state.SignatureInfo
 import su.kidoz.jetaprog.editor.state.SignatureParameter
+import su.kidoz.jetaprog.editor.state.WorkspaceDiagnostic
 import su.kidoz.jetaprog.editor.syntax.Diagnostic
 import su.kidoz.jetaprog.editor.syntax.IncrementalTokenizer
 import su.kidoz.jetaprog.editor.syntax.Lexer
@@ -69,6 +70,10 @@ import su.kidoz.jetaprog.editor.syntax.xml.XmlLexer
 import su.kidoz.jetaprog.editor.undo.EditSnapshot
 import su.kidoz.jetaprog.editor.undo.UndoManager
 import su.kidoz.jetaprog.lint.integration.DiagnosticConverter
+import su.kidoz.jetaprog.lsp.protocol.LspPosition
+import su.kidoz.jetaprog.lsp.protocol.LspRange
+import su.kidoz.jetaprog.lsp.protocol.LspTextEdit
+import su.kidoz.jetaprog.lsp.protocol.LspWorkspaceEdit
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.plugins.api.services.CodeActionContext
 import su.kidoz.jetaprog.plugins.api.services.FormattingOptions
@@ -91,6 +96,8 @@ import su.kidoz.jetaprog.plugins.support.formatters.YamlFormatter
 import su.kidoz.jetaprog.settings.SettingsService
 import su.kidoz.jetaprog.settings.model.AllSettings
 import java.io.File
+import java.net.URI
+import su.kidoz.jetaprog.plugins.api.services.WorkspaceEdit as LanguageWorkspaceEdit
 
 private val logger = KotlinLogging.logger {}
 
@@ -106,6 +113,7 @@ private val logger = KotlinLogging.logger {}
  * @param quickFixProvider Supplies quick fixes for the caret position (Alt+Enter).
  * @param autoImportProvider Adds imports when an accepted completion needs one.
  * @param pluginEditorService Publishes editor lifecycle events to installed plugins.
+ * @param workspacePath Root used to constrain file changes requested by language servers.
  */
 public class EditorViewModel(
     private val fileSystem: FileSystem,
@@ -117,6 +125,7 @@ public class EditorViewModel(
     private val quickFixProvider: QuickFixProvider? = null,
     private val autoImportProvider: AutoImportProvider? = null,
     private val pluginEditorService: EditorServiceImpl? = null,
+    private val workspacePath: String? = null,
 ) : MviViewModel<EditorIntent, EditorState, EditorEffect>(EditorState()) {
     private val completionController = CompletionController()
 
@@ -148,6 +157,7 @@ public class EditorViewModel(
     private val lspDiagnostics = mutableMapOf<String, List<Diagnostic>>()
     private val lintDiagnostics = mutableMapOf<String, List<Diagnostic>>()
     private val documentSessions = mutableMapOf<String, DocumentSession>()
+    private var pendingWorkspaceQuickFixes = emptyList<Pair<QuickFix, LanguageWorkspaceEdit>>()
 
     /**
      * Layered highlighter that combines multiple token sources.
@@ -189,9 +199,9 @@ public class EditorViewModel(
 
         languageRegistry?.onDiagnostics { uri, diagnostics ->
             lspDiagnostics[uri] = diagnostics.map { it.toEditorDiagnostic() }
-            if (uri != currentState.activeDocumentUri?.value) return@onDiagnostics
-            refreshActiveDiagnostics()
+            refreshDiagnosticsState()
         }
+        languageRegistry?.onWorkspaceEdit { label, edit -> applyWorkspaceEdit(label, edit) }
 
         // Plugins activate lazily when their language is first opened, so the
         // initial lint pass can run before their rules exist. Re-lint whenever
@@ -1533,18 +1543,17 @@ public class EditorViewModel(
         }
     }
 
-/**
+    /**
      * Code actions offered by the language provider (an LSP server, when one is
      * configured) for the caret position.
      *
-     * Actions whose edits touch other files are skipped: the editor applies
-     * fixes to the open buffer only, and silently dropping the rest of a
-     * multi-file edit would corrupt the change.
+     * Multi-file actions are retained as workspace edits and applied atomically
+     * when the user selects the corresponding quick fix.
      */
     private suspend fun languageCodeActions(position: TextPosition): List<QuickFix> {
         val registry = languageRegistry ?: return emptyList()
         val document = TextDocumentAdapter(currentState)
-        val uri = currentState.activeDocumentUri?.value ?: return emptyList()
+        if (currentState.activeDocumentUri == null) return emptyList()
         val caretRange = TextRange(position, position)
 
         val actions =
@@ -1556,25 +1565,161 @@ public class EditorViewModel(
                 )
             }.getOrNull() ?: return emptyList()
 
+        pendingWorkspaceQuickFixes = emptyList()
         return actions.mapNotNull { action ->
-            val changes = action.edit?.changes ?: return@mapNotNull null
-            if (changes.keys.any { it != uri }) return@mapNotNull null
-            val edits = changes[uri].orEmpty()
-            if (edits.isEmpty()) return@mapNotNull null
+            val workspaceEdit = action.edit ?: return@mapNotNull null
+            if (workspaceEdit.changes.values.all { edits -> edits.isEmpty() }) return@mapNotNull null
+            val fix = QuickFix(title = action.title, edits = emptyList())
+            pendingWorkspaceQuickFixes = pendingWorkspaceQuickFixes + (fix to workspaceEdit)
+            fix
+        }
+    }
 
-            QuickFix(
-                title = action.title,
-                edits =
-                    edits.map { edit ->
-                        TextReplacement(
-                            startOffset = edit.range.start.toOffset(currentState.content),
-                            endOffset = edit.range.end.toOffset(currentState.content),
-                            newText = edit.newText,
-                        )
+    /** Applies an LSP-requested multi-document edit to live buffers and files. */
+    private suspend fun applyWorkspaceEdit(
+        label: String?,
+        edit: LspWorkspaceEdit,
+    ): Boolean =
+        runCatching {
+            val editsByUri = mutableMapOf<String, MutableList<LspTextEdit>>()
+            edit.changes.orEmpty().forEach { (uri, edits) ->
+                editsByUri.getOrPut(uri, ::mutableListOf).addAll(edits)
+            }
+            edit.documentChanges.orEmpty().forEach { documentEdit ->
+                editsByUri
+                    .getOrPut(documentEdit.textDocument.uri, ::mutableListOf)
+                    .addAll(documentEdit.edits)
+            }
+            if (editsByUri.isEmpty()) return@runCatching true
+
+            val prepared =
+                editsByUri.map { (uri, edits) ->
+                    val path = workspaceEditPath(uri)
+                    val session = documentSessions[uri]
+                    val content =
+                        when {
+                            currentState.activeDocumentUri?.value == uri -> currentState.content
+                            session != null -> session.content
+                            else -> withContext(Dispatchers.IO) { fileSystem.readText(path).getOrThrow() }
+                        }
+                    PreparedWorkspaceEdit(
+                        uri = DocumentUri(uri),
+                        path = path,
+                        originalContent = content,
+                        updatedContent = applyLspTextEdits(content, edits),
+                        openSession = session,
+                    )
+                }
+
+            val closedChanges = prepared.filter { it.openSession == null }
+            if (closedChanges.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    closedChanges.forEach { change ->
+                        fileSystem.writeText(change.path, change.updatedContent).getOrThrow()
+                    }
+                }
+            }
+            val openChanges = prepared.filter { it.openSession != null }
+            if (openChanges.isNotEmpty()) {
+                withContext(Dispatchers.Main) {
+                    openChanges.forEach(::applyOpenWorkspaceEdit)
+                }
+            }
+            prepared.forEach { clearDiagnostics(it.uri) }
+            emitEffect(
+                EditorEffect.ShowNotification(
+                    label ?: "Applied workspace edit to ${prepared.size} file(s)",
+                    NotificationType.SUCCESS,
+                ),
+            )
+            true
+        }.getOrElse { error ->
+            logger.warn(error) { "Failed to apply LSP workspace edit" }
+            emitEffect(EditorEffect.ShowError("Could not apply workspace edit: ${error.message}"))
+            false
+        }
+
+    private fun workspaceEditPath(uri: String): String {
+        require(uri.startsWith("file:")) { "Only file workspace edits are supported" }
+        val target = File(URI(uri)).canonicalFile
+        workspacePath?.let { rootPath ->
+            val root = File(rootPath).canonicalFile
+            require(target == root || target.path.startsWith(root.path + File.separator)) {
+                "Workspace edit targets a file outside the project"
+            }
+        }
+        return target.path
+    }
+
+    private fun applyOpenWorkspaceEdit(change: PreparedWorkspaceEdit) {
+        val session = change.openSession ?: return
+        undoManagerFor(change.uri.value).recordBeforeEdit(
+            before = EditSnapshot(change.originalContent, session.cursor.position),
+            nowMs = System.currentTimeMillis(),
+            coalesce = false,
+        )
+        if (currentState.activeDocumentUri == change.uri) {
+            applyContent(change.updatedContent)
+            return
+        }
+        documentSessions[change.uri.value] =
+            session.copy(content = change.updatedContent, version = session.version + 1)
+        updateState {
+            copy(
+                tabs =
+                    tabs.map { tab ->
+                        if (tab.uri == change.uri) tab.copy(isDirty = true) else tab
                     },
             )
         }
+        syncDocumentChanged(change.uri, session.languageId, change.updatedContent)
     }
+
+    private fun applyLspTextEdits(
+        content: String,
+        edits: List<LspTextEdit>,
+    ): String {
+        val replacements =
+            edits.map { edit ->
+                val start = lspOffset(content, edit.range.start.line, edit.range.start.character)
+                val end = lspOffset(content, edit.range.end.line, edit.range.end.character)
+                require(start <= end) { "Workspace edit has an inverted range" }
+                TextReplacement(start, end, edit.newText)
+            }
+        val ordered = replacements.sortedBy(TextReplacement::startOffset)
+        ordered.zipWithNext().forEach { (first, second) ->
+            require(first.endOffset <= second.startOffset) { "Workspace edit contains overlapping ranges" }
+        }
+        return applyReplacements(content, replacements)
+    }
+
+    private fun lspOffset(
+        content: String,
+        line: Int,
+        character: Int,
+    ): Int {
+        require(line >= 0 && character >= 0) { "Workspace edit has a negative position" }
+        var currentLine = 0
+        var lineStart = 0
+        while (currentLine < line) {
+            val newline = content.indexOf('\n', lineStart)
+            require(newline >= 0) { "Workspace edit line is outside the document" }
+            lineStart = newline + 1
+            currentLine++
+        }
+        val newline = content.indexOf('\n', lineStart).let { if (it < 0) content.length else it }
+        val lineEnd = if (newline > lineStart && content[newline - 1] == '\r') newline - 1 else newline
+        require(character <= lineEnd - lineStart) { "Workspace edit character is outside the line" }
+        return lineStart + character
+    }
+
+    private data class PreparedWorkspaceEdit(
+        val uri: DocumentUri,
+        val path: String,
+        val originalContent: String,
+        val updatedContent: String,
+        val openSession: DocumentSession?,
+    )
 
     private fun moveQuickFixSelection(delta: Int) {
         val state = currentState.quickFixState
@@ -1587,12 +1732,35 @@ public class EditorViewModel(
      * Applies a fix by rewriting the document through the normal content update,
      * so the change lands on the undo stack like a manual edit.
      */
-    private fun applyQuickFix(index: Int) {
+    private suspend fun applyQuickFix(index: Int) {
         val fix = currentState.quickFixState.fixes.getOrNull(index) ?: return
+        val workspaceEdit = pendingWorkspaceQuickFixes.firstOrNull { (candidate) -> candidate === fix }?.second
+        if (workspaceEdit != null) {
+            applyWorkspaceEdit(fix.title, workspaceEdit.toLspWorkspaceEdit())
+            updateState { copy(quickFixState = QuickFixState()) }
+            return
+        }
         val updated = applyReplacements(currentState.content, fix.edits)
         updateState { copy(quickFixState = QuickFixState()) }
         updateContent(updated)
     }
+
+    private fun LanguageWorkspaceEdit.toLspWorkspaceEdit(): LspWorkspaceEdit =
+        LspWorkspaceEdit(
+            changes =
+                changes.mapValues { (_, edits) ->
+                    edits.map { edit ->
+                        LspTextEdit(
+                            range =
+                                LspRange(
+                                    start = LspPosition(edit.range.start.line, edit.range.start.column),
+                                    end = LspPosition(edit.range.end.line, edit.range.end.column),
+                                ),
+                            newText = edit.newText,
+                        )
+                    }
+                },
+        )
 
     private suspend fun handleGoToDefinition() {
         val service = navigationService
@@ -2860,10 +3028,26 @@ public class EditorViewModel(
     /**
      * Publish the merged LSP and lint diagnostics for the active document.
      */
-    private fun refreshActiveDiagnostics() {
-        val uri = currentState.activeDocumentUri?.value ?: return
+    private fun refreshDiagnosticsState() {
+        val activeUri = currentState.activeDocumentUri?.value
+        val workspaceDiagnostics =
+            (lspDiagnostics.keys + lintDiagnostics.keys)
+                .distinct()
+                .sorted()
+                .flatMap { uri ->
+                    (lspDiagnostics[uri].orEmpty() + lintDiagnostics[uri].orEmpty()).map { diagnostic ->
+                        WorkspaceDiagnostic(DocumentUri(uri), diagnostic)
+                    }
+                }
         updateState {
-            copy(diagnostics = lspDiagnostics[uri].orEmpty() + lintDiagnostics[uri].orEmpty())
+            copy(
+                diagnostics =
+                    activeUri
+                        ?.let { uri ->
+                            lspDiagnostics[uri].orEmpty() + lintDiagnostics[uri].orEmpty()
+                        }.orEmpty(),
+                workspaceDiagnostics = workspaceDiagnostics,
+            )
         }
     }
 
@@ -2908,9 +3092,7 @@ public class EditorViewModel(
                         service.lintFile(uri.value, languageId.value, content)
                     }
                 lintDiagnostics[uri.value] = DiagnosticConverter.toDiagnostics(results)
-                if (uri.value == currentState.activeDocumentUri?.value) {
-                    refreshActiveDiagnostics()
-                }
+                refreshDiagnosticsState()
             }
     }
 
@@ -2927,6 +3109,7 @@ public class EditorViewModel(
     private fun clearDiagnostics(uri: DocumentUri) {
         lspDiagnostics.remove(uri.value)
         lintDiagnostics.remove(uri.value)
+        refreshDiagnosticsState()
     }
 
     private fun LanguageDiagnostic.toEditorDiagnostic(): Diagnostic =

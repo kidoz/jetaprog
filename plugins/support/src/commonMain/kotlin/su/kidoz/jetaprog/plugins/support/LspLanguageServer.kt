@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.plugins.support
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.lsp.client.LspClient
 import su.kidoz.jetaprog.lsp.client.LspClientConfig
+import su.kidoz.jetaprog.lsp.client.WorkspaceEditCallback
 import su.kidoz.jetaprog.lsp.protocol.CodeActionContext
 import su.kidoz.jetaprog.lsp.protocol.CodeActionParams
 import su.kidoz.jetaprog.lsp.protocol.CompletionContext
@@ -86,6 +87,11 @@ public class LspLanguageServer(
             val diagnostics = params.diagnostics.map { it.toLanguageDiagnostic() }
             diagnosticsListener?.invoke(params.uri, diagnostics)
         }
+    }
+
+    /** Handles workspace edits requested by the language server. */
+    public fun onWorkspaceEdit(callback: WorkspaceEditCallback) {
+        client.onWorkspaceEdit(callback)
     }
 
     /**

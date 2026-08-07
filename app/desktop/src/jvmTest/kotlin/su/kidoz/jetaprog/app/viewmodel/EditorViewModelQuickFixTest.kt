@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.viewmodel
 
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ class EditorViewModelQuickFixTest {
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         coEvery { fileSystem.readText(any(), any()) } returns Result.success("fun main() {}\n")
+        coEvery { fileSystem.writeText(any(), any(), any()) } returns Result.success(Unit)
         every { settingsService.getCurrentSettings() } returns AllSettings()
         every { settingsService.settings } returns MutableStateFlow(AllSettings())
     }
@@ -105,7 +107,7 @@ class EditorViewModelQuickFixTest {
         }
 
     @Test
-    fun multiFileCodeActionsAreSkipped() =
+    fun multiFileCodeActionsAreApplied() =
         runTest {
             val viewModel = openEditor()
             val uri =
@@ -124,14 +126,12 @@ class EditorViewModelQuickFixTest {
                 )
 
             viewModel.dispatch(EditorIntent.RequestQuickFixes)
-            // Nothing applies, so the popup stays closed and the buffer is untouched.
-            viewModel.state.first { it.tabs.isNotEmpty() }
+            viewModel.state.first { it.quickFixState.isVisible }
+            viewModel.dispatch(EditorIntent.ApplyQuickFix(0))
+            viewModel.state.first { !it.quickFixState.isVisible }
 
-            assertFalse(
-                viewModel.state.value.quickFixState.isVisible,
-                "an edit spanning other files cannot be applied to the open buffer alone",
-            )
-            assertEquals("fun main() {}\n", viewModel.state.value.content)
+            assertEquals("val main() {}\n", viewModel.state.value.content)
+            coVerify { fileSystem.writeText("/other/File.kt", "val main() {}\n", any()) }
             viewModel.dispose()
         }
 
