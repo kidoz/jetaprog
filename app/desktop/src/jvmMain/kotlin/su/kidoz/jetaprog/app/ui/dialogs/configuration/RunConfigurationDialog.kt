@@ -527,6 +527,13 @@ private fun ConfigurationEditorPanel(
                 )
             }
 
+            is ConfigurationSettings.Go -> {
+                GoSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
+                )
+            }
+
             is ConfigurationSettings.DotNetBuild -> {
                 DotNetBuildSettingsEditor(
                     settings = settings,
@@ -1042,6 +1049,53 @@ private fun UvSettingsEditor(
 }
 
 @Composable
+private fun GoSettingsEditor(
+    settings: ConfigurationSettings.Go,
+    onSettingsChange: (ConfigurationSettings.Go) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
+        Text(
+            text = "Command: go ${settings.command.value}",
+            color = IntelliJColors.textPrimary,
+            fontSize = 12.sp,
+        )
+
+        IntelliJTextField(
+            value = settings.packagePattern,
+            onValueChange = { onSettingsChange(settings.copy(packagePattern = it)) },
+            label = "Package:",
+            placeholder = ". or ./...",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.arguments.joinToString(" "),
+            onValueChange = { onSettingsChange(settings.copy(arguments = parseArguments(it))) },
+            label = "Go arguments:",
+            placeholder = "-race -v",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (settings.command == su.kidoz.jetaprog.configuration.GoCommand.RUN) {
+            IntelliJTextField(
+                value = settings.programArguments.joinToString(" "),
+                onValueChange = { onSettingsChange(settings.copy(programArguments = parseArguments(it))) },
+                label = "Program arguments:",
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        IntelliJTextField(
+            value = settings.workingDirectory ?: "",
+            onValueChange = { onSettingsChange(settings.copy(workingDirectory = it.ifBlank { null })) },
+            label = "Working directory:",
+            placeholder = "Project root by default",
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
 private fun DotNetBuildSettingsEditor(
     settings: ConfigurationSettings.DotNetBuild,
     onSettingsChange: (ConfigurationSettings.DotNetBuild) -> Unit,
@@ -1373,6 +1427,9 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.CARGO_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.CARGO_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.CARGO_CLIPPY -> Icons.Filled.Build
+        ConfigurationType.GO_BUILD -> Icons.Filled.Build
+        ConfigurationType.GO_RUN -> Icons.Filled.PlayArrow
+        ConfigurationType.GO_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
         ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
         ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow
@@ -1396,6 +1453,9 @@ private val configurationCreationTypes =
         ConfigurationType.CARGO_BUILD,
         ConfigurationType.CARGO_TEST,
         ConfigurationType.CARGO_CLIPPY,
+        ConfigurationType.GO_RUN,
+        ConfigurationType.GO_BUILD,
+        ConfigurationType.GO_TEST,
         ConfigurationType.DOTNET_RUN,
         ConfigurationType.DOTNET_DEBUG,
         ConfigurationType.DOTNET_BUILD,

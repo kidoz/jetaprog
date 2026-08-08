@@ -230,11 +230,35 @@ public class ProjectDetector(
         val goMod = "$projectPath/go.mod"
         if (!fileSystem.exists(goMod)) return null
 
+        val modulePath =
+            fileSystem
+                .readText(goMod)
+                .getOrNull()
+                ?.let { content -> GO_MODULE_PATTERN.find(content)?.groupValues?.get(1) }
+        val mainEntry = findGoMainEntry(projectPath)
+
         return DetectedProject(
             type = ProjectType.GO,
             rootPath = projectPath,
             detectionFile = goMod,
+            projectName = modulePath?.substringAfterLast('/'),
+            mainEntry = mainEntry,
+            metadata = modulePath?.let { mapOf("modulePath" to it) }.orEmpty(),
         )
+    }
+
+    private suspend fun findGoMainEntry(projectPath: String): String? {
+        val entries = fileSystem.listDirectory(projectPath).getOrNull() ?: return null
+        return entries
+            .asSequence()
+            .filter { entry -> entry.isFile && entry.name.endsWith(".go") && !entry.name.endsWith("_test.go") }
+            .map { it.path }
+            .firstOrNull { path ->
+                fileSystem
+                    .readText(path)
+                    .getOrNull()
+                    ?.let(GO_MAIN_PACKAGE_PATTERN::containsMatchIn) == true
+            }
     }
 
     private suspend fun extractGradleProjectName(projectPath: String): String? {
@@ -339,5 +363,10 @@ public class ProjectDetector(
             .map { it.path }
             .filter { path -> extensions.any { path.endsWith(it) } }
             .toList()
+    }
+
+    private companion object {
+        val GO_MODULE_PATTERN: Regex = """(?m)^\s*module\s+(\S+)""".toRegex()
+        val GO_MAIN_PACKAGE_PATTERN: Regex = """(?m)^\s*package\s+main\b""".toRegex()
     }
 }

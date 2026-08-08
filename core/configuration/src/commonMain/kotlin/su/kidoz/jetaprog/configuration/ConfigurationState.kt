@@ -172,6 +172,14 @@ public sealed interface ConfigurationEffect : Effect {
         val exitCode: Int,
     ) : ConfigurationEffect
 
+    /** Structured summary from a Go test configuration. */
+    public data class GoTestsFinished(
+        val passed: Int,
+        val failed: Int,
+        val skipped: Int,
+        val failedPackages: Set<String>,
+    ) : ConfigurationEffect
+
     /** Show error notification. */
     public data class ShowError(
         val message: String,

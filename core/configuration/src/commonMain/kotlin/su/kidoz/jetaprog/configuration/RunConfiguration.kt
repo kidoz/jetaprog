@@ -75,6 +75,18 @@ public enum class ConfigurationType(
     @SerialName("cargo_clippy")
     CARGO_CLIPPY("Cargo Clippy", "rust"),
 
+    /** Go build. */
+    @SerialName("go_build")
+    GO_BUILD("Go Build", "go"),
+
+    /** Go run. */
+    @SerialName("go_run")
+    GO_RUN("Go Run", "go"),
+
+    /** Go test. */
+    @SerialName("go_test")
+    GO_TEST("Go Test", "go"),
+
     /** .NET build. */
     @SerialName("dotnet_build")
     DOTNET_BUILD(".NET Build", "dotnet"),
@@ -362,6 +374,26 @@ public sealed interface ConfigurationSettings {
     ) : ConfigurationSettings
 
     /**
+     * Go command configuration.
+     */
+    @Serializable
+    @SerialName("go")
+    public data class Go(
+        /** Go command to execute. */
+        val command: GoCommand,
+        /** Package or package pattern to build, run, or test. */
+        val packagePattern: String = ".",
+        /** Additional arguments placed before the package pattern. */
+        val arguments: List<String> = emptyList(),
+        /** Program arguments used by run configurations. */
+        val programArguments: List<String> = emptyList(),
+        /** Environment variables. */
+        val environment: Map<String, String> = emptyMap(),
+        /** Working directory. */
+        val workingDirectory: String? = null,
+    ) : ConfigurationSettings
+
+    /**
      * .NET build configuration.
      */
     @Serializable
@@ -498,6 +530,26 @@ public sealed interface ConfigurationSettings {
         /** Whether to run in parallel or sequentially. */
         val parallel: Boolean = false,
     ) : ConfigurationSettings
+}
+
+/**
+ * Go tool command used by a run configuration.
+ */
+@Serializable
+public enum class GoCommand(
+    public val value: String,
+) {
+    /** Compile the selected packages. */
+    @SerialName("build")
+    BUILD("build"),
+
+    /** Compile and run the selected main package. */
+    @SerialName("run")
+    RUN("run"),
+
+    /** Run tests for the selected packages. */
+    @SerialName("test")
+    TEST("test"),
 }
 
 /**

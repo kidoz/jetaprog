@@ -435,6 +435,10 @@ private fun RunConfiguration.subtitle(): String? =
             if (s.fix) "fix" else null
         }
 
+        is ConfigurationSettings.Go -> {
+            "go ${s.command.value} ${s.packagePattern}"
+        }
+
         is ConfigurationSettings.DotNetBuild -> {
             s.targetPath?.substringAfterLast('/') ?: s.configuration.displayName
         }
@@ -481,6 +485,9 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.CARGO_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.CARGO_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.CARGO_CLIPPY -> Icons.Filled.Build
+        ConfigurationType.GO_BUILD -> Icons.Filled.Build
+        ConfigurationType.GO_RUN -> Icons.Filled.PlayArrow
+        ConfigurationType.GO_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
         ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
         ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow

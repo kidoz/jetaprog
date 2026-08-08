@@ -435,6 +435,21 @@ private fun MainScreenContent(
                     notificationCenter.success(title = "Run configuration", message = effect.message)
                 }
 
+                is ConfigurationEffect.GoTestsFinished -> {
+                    val message =
+                        buildString {
+                            append("${effect.passed} passed, ${effect.failed} failed, ${effect.skipped} skipped")
+                            if (effect.failedPackages.isNotEmpty()) {
+                                append("; package failures: ${effect.failedPackages.joinToString()}")
+                            }
+                        }
+                    if (effect.failed > 0 || effect.failedPackages.isNotEmpty()) {
+                        notificationCenter.error(title = "Go tests", message = message)
+                    } else {
+                        notificationCenter.success(title = "Go tests", message = message)
+                    }
+                }
+
                 else -> {
                     // Do nothing
                 }

@@ -62,6 +62,7 @@ import su.kidoz.jetaprog.configuration.ConfigurationManager
 import su.kidoz.jetaprog.configuration.JvmConfigurationStorage
 import su.kidoz.jetaprog.configuration.discovery.ConfigurationDiscovery
 import su.kidoz.jetaprog.configuration.discovery.ProjectDetector
+import su.kidoz.jetaprog.configuration.execution.ExecutionOrchestrator
 import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.index.GoSymbolExtractor
@@ -144,6 +145,7 @@ public class ProjectSession(
 ) : Disposable {
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gradleExecutionService = JvmGradleExecutionService(processExecutor)
+    private val executionOrchestrator = ExecutionOrchestrator(processExecutor, sessionScope)
 
     // ========================================================================
     // LSP
@@ -546,6 +548,7 @@ public class ProjectSession(
             processExecutor = processExecutor,
             gradleExecutionService = gradleExecutionService,
             configurationDiscovery = configurationDiscovery,
+            executionOrchestrator = executionOrchestrator,
             debugService = debugService,
         )
 
@@ -849,6 +852,7 @@ public class ProjectSession(
      */
     public suspend fun shutdown() {
         gradleExecutionService.cancel()
+        executionOrchestrator.dispose()
         saveWorkspaceState()
         pluginManager.shutdown()
         embeddedServerRegistry.shutdownAll()

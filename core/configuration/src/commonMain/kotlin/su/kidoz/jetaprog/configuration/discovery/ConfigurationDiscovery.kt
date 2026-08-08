@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.configuration.discovery
 import su.kidoz.jetaprog.configuration.ConfigurationId
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationType
+import su.kidoz.jetaprog.configuration.GoCommand
 import su.kidoz.jetaprog.configuration.PoetryCommand
 import su.kidoz.jetaprog.configuration.RunConfiguration
 import su.kidoz.jetaprog.configuration.UvCommand
@@ -65,9 +66,8 @@ public class ConfigurationDiscovery(
             ProjectType.NODEJS -> emptyList()
 
             // Node.js support TODO
-            ProjectType.GO -> emptyList()
+            ProjectType.GO -> createGoConfigurations(project, existingNames)
 
-            // Go support TODO
             ProjectType.UNKNOWN -> emptyList()
         }
 
@@ -194,6 +194,72 @@ public class ConfigurationDiscovery(
                     isTemporary = true,
                     settings =
                         ConfigurationSettings.CargoClippy(
+                            workingDirectory = project.rootPath,
+                        ),
+                ),
+            )
+        }
+
+        return configs
+    }
+
+    private fun createGoConfigurations(
+        project: DetectedProject,
+        existingNames: Set<String>,
+    ): List<RunConfiguration> {
+        val configs = mutableListOf<RunConfiguration>()
+        val baseName = project.projectName ?: "Go"
+
+        val buildName = "$baseName Build"
+        if (buildName !in existingNames) {
+            configs.add(
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = buildName,
+                    type = ConfigurationType.GO_BUILD,
+                    isTemporary = false,
+                    settings =
+                        ConfigurationSettings.Go(
+                            command = GoCommand.BUILD,
+                            packagePattern = "./...",
+                            workingDirectory = project.rootPath,
+                        ),
+                ),
+            )
+        }
+
+        if (project.mainEntry != null) {
+            val runName = "$baseName Run"
+            if (runName !in existingNames) {
+                configs.add(
+                    RunConfiguration(
+                        id = ConfigurationId.generate(),
+                        name = runName,
+                        type = ConfigurationType.GO_RUN,
+                        isTemporary = false,
+                        settings =
+                            ConfigurationSettings.Go(
+                                command = GoCommand.RUN,
+                                workingDirectory = project.rootPath,
+                            ),
+                    ),
+                )
+            }
+        }
+
+        val testName = "$baseName Test"
+        if (testName !in existingNames) {
+            configs.add(
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = testName,
+                    type = ConfigurationType.GO_TEST,
+                    isTemporary = true,
+                    settings =
+                        ConfigurationSettings.Go(
+                            command = GoCommand.TEST,
+                            packagePattern = "./...",
+                            arguments = listOf("-json"),
                             workingDirectory = project.rootPath,
                         ),
                 ),

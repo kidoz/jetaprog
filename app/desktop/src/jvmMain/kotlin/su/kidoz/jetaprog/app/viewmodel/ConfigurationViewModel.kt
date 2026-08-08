@@ -1,8 +1,12 @@
 package su.kidoz.jetaprog.app.viewmodel
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.build.gradle.GradleOutput
@@ -22,12 +26,17 @@ import su.kidoz.jetaprog.configuration.DockerBuildSettings
 import su.kidoz.jetaprog.configuration.DockerComposeSettings
 import su.kidoz.jetaprog.configuration.DockerRunSettings
 import su.kidoz.jetaprog.configuration.DotNetConfigurationType
+import su.kidoz.jetaprog.configuration.GoCommand
 import su.kidoz.jetaprog.configuration.RunConfiguration
 import su.kidoz.jetaprog.configuration.SpringBootDevServerSettings
 import su.kidoz.jetaprog.configuration.SpringBootSettings
 import su.kidoz.jetaprog.configuration.TomcatLocalSettings
 import su.kidoz.jetaprog.configuration.TomcatRemoteSettings
 import su.kidoz.jetaprog.configuration.discovery.ConfigurationDiscovery
+import su.kidoz.jetaprog.configuration.execution.ExecutionOrchestrator
+import su.kidoz.jetaprog.configuration.execution.ExecutionOutput
+import su.kidoz.jetaprog.configuration.execution.ExecutionResult
+import su.kidoz.jetaprog.configuration.execution.GoTestJsonAccumulator
 import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.dap.service.DebugState
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
@@ -41,18 +50,21 @@ public class ConfigurationViewModel(
     private val processExecutor: ProcessExecutor,
     private val gradleExecutionService: GradleExecutionService,
     private val configurationDiscovery: ConfigurationDiscovery,
+    private val executionOrchestrator: ExecutionOrchestrator,
     private val debugService: DebugService,
 ) : MviViewModel<ConfigurationIntent, ConfigurationState, ConfigurationEffect>(ConfigurationState()) {
     private var projectPath: String = ""
     private var debugSessionId: String? = null
+    private var executionSessionId: String? = null
+    private var executionJob: Job? = null
 
     override suspend fun handleIntent(intent: ConfigurationIntent) {
         when (intent) {
             is ConfigurationIntent.Initialize -> initialize(intent.projectPath)
             is ConfigurationIntent.SelectConfiguration -> selectConfiguration(intent.id)
-            is ConfigurationIntent.RunActive -> runActiveConfiguration()
+            is ConfigurationIntent.RunActive -> startActiveConfiguration()
             is ConfigurationIntent.DebugActive -> debugActiveConfiguration()
-            is ConfigurationIntent.Run -> runConfiguration(intent.id)
+            is ConfigurationIntent.Run -> startConfiguration(intent.id)
             is ConfigurationIntent.Stop -> stopConfiguration()
             is ConfigurationIntent.Create -> createConfiguration(intent.configuration)
             is ConfigurationIntent.Update -> updateConfiguration(intent.configuration)
@@ -113,9 +125,14 @@ public class ConfigurationViewModel(
             }
     }
 
-    private suspend fun runActiveConfiguration() {
+    private fun startActiveConfiguration() {
         val activeConfig = currentState.activeConfiguration ?: return
-        runConfiguration(activeConfig.id)
+        startConfiguration(activeConfig.id)
+    }
+
+    private fun startConfiguration(id: ConfigurationId) {
+        if (executionJob?.isActive == true || currentState.isRunning) return
+        executionJob = viewModelScope.launch { runConfiguration(id) }
     }
 
     private suspend fun debugActiveConfiguration() {
@@ -193,25 +210,40 @@ public class ConfigurationViewModel(
             )
         }
 
-        emitEffect(ConfigurationEffect.ConfigurationStarted(config))
+        try {
+            emitEffect(ConfigurationEffect.ConfigurationStarted(config))
 
-        // Execute based on configuration type
-        val result = executeConfiguration(config)
-
-        updateState {
-            copy(
-                runningConfigurationId = null,
-                isRunning = false,
+            val result = executeConfiguration(config)
+            val exitCode = result.getOrNull() ?: -1
+            emitEffect(
+                ConfigurationEffect.ConfigurationFinished(
+                    configuration = config,
+                    success = result.isSuccess && exitCode == 0,
+                    exitCode = exitCode,
+                ),
             )
+        } catch (error: CancellationException) {
+            emitEffect(
+                ConfigurationEffect.ConfigurationFinished(
+                    configuration = config,
+                    success = false,
+                    exitCode = -1,
+                ),
+            )
+            throw error
+        } finally {
+            executionJob = null
+            updateState {
+                if (runningConfigurationId == id) {
+                    copy(
+                        runningConfigurationId = null,
+                        isRunning = false,
+                    )
+                } else {
+                    this
+                }
+            }
         }
-
-        emitEffect(
-            ConfigurationEffect.ConfigurationFinished(
-                configuration = config,
-                success = result.isSuccess,
-                exitCode = result.getOrNull() ?: -1,
-            ),
-        )
     }
 
     private suspend fun executeConfiguration(config: RunConfiguration): Result<Int> =
@@ -254,6 +286,10 @@ public class ConfigurationViewModel(
 
             is ConfigurationSettings.CargoClippy -> {
                 executeCargoClippy(settings)
+            }
+
+            is ConfigurationSettings.Go -> {
+                executeGo(config)
             }
 
             is ConfigurationSettings.DotNetBuild -> {
@@ -340,6 +376,58 @@ public class ConfigurationViewModel(
             Result.failure(error)
         }
     }
+
+    private suspend fun executeGo(config: RunConfiguration): Result<Int> =
+        coroutineScope {
+            val settings = config.settings as ConfigurationSettings.Go
+            val accumulator = if (settings.command == GoCommand.TEST) GoTestJsonAccumulator() else null
+            val session = executionOrchestrator.execute(config, projectPath)
+            executionSessionId = session.id
+            val outputJob =
+                accumulator?.let { summaryAccumulator ->
+                    launch {
+                        session.output.collect { output ->
+                            if (output is ExecutionOutput.Stdout) summaryAccumulator.accept(output.line)
+                        }
+                    }
+                }
+
+            val result =
+                try {
+                    when (val executionResult = session.result.filterNotNull().first()) {
+                        is ExecutionResult.Success -> {
+                            Result.success(executionResult.exitCode)
+                        }
+
+                        is ExecutionResult.Failure -> {
+                            if (executionResult.exitCode >= 0) {
+                                Result.success(executionResult.exitCode)
+                            } else {
+                                Result.failure(IllegalStateException(executionResult.message))
+                            }
+                        }
+
+                        is ExecutionResult.Cancelled -> {
+                            throw CancellationException("Go execution cancelled")
+                        }
+                    }
+                } finally {
+                    outputJob?.cancelAndJoin()
+                    if (executionSessionId == session.id) executionSessionId = null
+                }
+
+            accumulator?.summary()?.let { summary ->
+                emitEffect(
+                    ConfigurationEffect.GoTestsFinished(
+                        passed = summary.passed,
+                        failed = summary.failed,
+                        skipped = summary.skipped,
+                        failedPackages = summary.failedPackages,
+                    ),
+                )
+            }
+            result
+        }
 
     private suspend fun executeMesonBuild(settings: ConfigurationSettings.MesonBuild): Result<Int> {
         val command =
@@ -665,6 +753,9 @@ public class ConfigurationViewModel(
 
     private suspend fun stopConfiguration() {
         gradleExecutionService.cancel()
+        executionSessionId?.let(executionOrchestrator::stop)
+        executionSessionId = null
+        executionJob?.cancel(CancellationException("Run configuration stopped"))
         debugSessionId?.let { sessionId ->
             debugService.stopSession(sessionId)
             debugSessionId = null
@@ -787,6 +878,7 @@ public class ConfigurationViewModel(
             return ConfigurationType.GRADLE
         }
         if (exists("Cargo.toml")) return ConfigurationType.CARGO_RUN
+        if (exists("go.mod")) return ConfigurationType.GO_RUN
         if (hasDotNetProject(root)) return ConfigurationType.DOTNET_RUN
         if (exists("meson.build")) return ConfigurationType.MESON_BUILD
         if (exists("uv.lock") || hasPyprojectSection(root, "tool.uv")) return ConfigurationType.UV
@@ -934,6 +1026,30 @@ public class ConfigurationViewModel(
                 )
             }
 
+            ConfigurationType.GO_BUILD,
+            ConfigurationType.GO_RUN,
+            ConfigurationType.GO_TEST,
+            -> {
+                val command =
+                    when (type) {
+                        ConfigurationType.GO_BUILD -> GoCommand.BUILD
+                        ConfigurationType.GO_RUN -> GoCommand.RUN
+                        ConfigurationType.GO_TEST -> GoCommand.TEST
+                    }
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = name,
+                    type = type,
+                    settings =
+                        ConfigurationSettings.Go(
+                            command = command,
+                            packagePattern = if (command == GoCommand.RUN) "." else "./...",
+                            arguments = if (command == GoCommand.TEST) listOf("-json") else emptyList(),
+                            workingDirectory = projectPath.ifBlank { null },
+                        ),
+                )
+            }
+
             ConfigurationType.DOTNET_BUILD -> {
                 RunConfiguration(
                     id = ConfigurationId.generate(),
@@ -1072,6 +1188,9 @@ public class ConfigurationViewModel(
             ConfigurationType.CARGO_RUN -> "New Cargo Run"
             ConfigurationType.CARGO_TEST -> "New Cargo Test"
             ConfigurationType.CARGO_CLIPPY -> "New Cargo Clippy"
+            ConfigurationType.GO_BUILD -> "New Go Build"
+            ConfigurationType.GO_RUN -> "New Go Run"
+            ConfigurationType.GO_TEST -> "New Go Test"
             ConfigurationType.DOTNET_BUILD -> "New .NET Build"
             ConfigurationType.DOTNET_RUN -> "New .NET Run"
             ConfigurationType.DOTNET_TEST -> "New .NET Test"
@@ -1099,6 +1218,9 @@ public class ConfigurationViewModel(
             ConfigurationType.CARGO_RUN -> "Cargo Run"
             ConfigurationType.CARGO_TEST -> "Cargo Test"
             ConfigurationType.CARGO_CLIPPY -> "Cargo Clippy"
+            ConfigurationType.GO_BUILD -> "Go Build"
+            ConfigurationType.GO_RUN -> "Go Run"
+            ConfigurationType.GO_TEST -> "Go Test"
             ConfigurationType.DOTNET_BUILD -> ".NET Build"
             ConfigurationType.DOTNET_RUN -> ".NET Run"
             ConfigurationType.DOTNET_TEST -> ".NET Test"

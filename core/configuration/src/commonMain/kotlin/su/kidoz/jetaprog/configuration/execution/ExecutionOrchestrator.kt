@@ -1,8 +1,11 @@
 package su.kidoz.jetaprog.configuration.execution
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.configuration.BeforeLaunchTask
 import su.kidoz.jetaprog.configuration.CargoProfileType
@@ -157,6 +160,12 @@ public class ExecutionOrchestrator(
 
             session.emitOutput(ExecutionOutput.ExecutionFinished(result))
             session.setResult(result)
+        } catch (_: CancellationException) {
+            val result = ExecutionResult.Cancelled
+            session.setResult(result)
+            withContext(NonCancellable) {
+                session.emitOutput(ExecutionOutput.ExecutionFinished(result))
+            }
         } catch (e: Exception) {
             val result =
                 ExecutionResult.Failure(
@@ -260,6 +269,8 @@ public class ExecutionOrchestrator(
             is ConfigurationSettings.CargoTest -> buildCargoTestConfig(settings, workspacePath)
 
             is ConfigurationSettings.CargoClippy -> buildCargoClippyConfig(settings, workspacePath)
+
+            is ConfigurationSettings.Go -> buildGoConfig(settings, workspacePath)
 
             is ConfigurationSettings.DotNetBuild -> buildDotNetBuildConfig(settings, workspacePath)
 
@@ -516,6 +527,28 @@ public class ExecutionOrchestrator(
                     add("--")
                     add("-D")
                     add("warnings")
+                }
+            }
+
+        return ProcessConfig(
+            command = command,
+            workingDirectory = settings.workingDirectory ?: workspacePath,
+            environment = settings.environment,
+        )
+    }
+
+    private fun buildGoConfig(
+        settings: ConfigurationSettings.Go,
+        workspacePath: String,
+    ): ProcessConfig {
+        val command =
+            buildList {
+                add("go")
+                add(settings.command.value)
+                addAll(settings.arguments)
+                add(settings.packagePattern)
+                if (settings.command == su.kidoz.jetaprog.configuration.GoCommand.RUN) {
+                    addAll(settings.programArguments)
                 }
             }
 
