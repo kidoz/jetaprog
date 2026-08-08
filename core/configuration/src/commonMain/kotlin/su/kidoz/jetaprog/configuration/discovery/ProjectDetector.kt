@@ -1,5 +1,11 @@
 package su.kidoz.jetaprog.configuration.discovery
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import su.kidoz.jetaprog.configuration.NodePackageManager
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 
 /**
@@ -216,15 +222,68 @@ public class ProjectDetector(
         val packageJson = "$projectPath/package.json"
         if (!fileSystem.exists(packageJson)) return null
 
-        val projectName = extractNodeProjectName(projectPath)
+        val packageObject =
+            fileSystem
+                .readText(packageJson)
+                .getOrNull()
+                ?.let { content -> runCatching { Json.parseToJsonElement(content).jsonObject }.getOrNull() }
+        val projectName = packageObject?.stringValue("name")
+        val mainEntry = packageObject?.stringValue("main")
+        val scripts =
+            packageObject
+                ?.get("scripts")
+                ?.let { scriptsElement -> runCatching { scriptsElement.jsonObject }.getOrNull() }
+                .orEmpty()
+        val packageManager = detectNodePackageManager(projectPath, packageObject?.stringValue("packageManager"))
 
         return DetectedProject(
             type = ProjectType.NODEJS,
             rootPath = projectPath,
             detectionFile = packageJson,
             projectName = projectName,
+            mainEntry = mainEntry,
+            metadata =
+                buildMap {
+                    put(NODE_PACKAGE_MANAGER_METADATA_KEY, packageManager.executable)
+                    scripts.forEach { (name, command) ->
+                        runCatching { command.jsonPrimitive.contentOrNull }
+                            .getOrNull()
+                            ?.let { put("$NODE_SCRIPT_METADATA_PREFIX$name", it) }
+                    }
+                },
         )
     }
+
+    private suspend fun detectNodePackageManager(
+        projectPath: String,
+        declaredPackageManager: String?,
+    ): NodePackageManager {
+        val declaredExecutable = declaredPackageManager?.substringBefore('@')?.lowercase()
+        NodePackageManager.entries
+            .firstOrNull { it.executable == declaredExecutable }
+            ?.let { return it }
+
+        return when {
+            fileSystem.exists("$projectPath/pnpm-lock.yaml") -> {
+                NodePackageManager.PNPM
+            }
+
+            fileSystem.exists("$projectPath/yarn.lock") -> {
+                NodePackageManager.YARN
+            }
+
+            fileSystem.exists("$projectPath/bun.lock") || fileSystem.exists("$projectPath/bun.lockb") -> {
+                NodePackageManager.BUN
+            }
+
+            else -> {
+                NodePackageManager.NPM
+            }
+        }
+    }
+
+    private fun JsonObject.stringValue(key: String): String? =
+        get(key)?.let { element -> runCatching { element.jsonPrimitive.contentOrNull }.getOrNull() }
 
     private suspend fun detectGo(projectPath: String): DetectedProject? {
         val goMod = "$projectPath/go.mod"
@@ -341,15 +400,6 @@ public class ProjectDetector(
             )
 
         return candidates.firstOrNull { fileSystem.exists(it) }
-    }
-
-    private suspend fun extractNodeProjectName(projectPath: String): String? {
-        val packageJson = "$projectPath/package.json"
-        val content = fileSystem.readText(packageJson).getOrNull() ?: return null
-
-        // Simple regex to extract name from package.json
-        val pattern = """"name"\s*:\s*"([^"]+)"""".toRegex()
-        return pattern.find(content)?.groupValues?.get(1)
     }
 
     private suspend fun findChildFiles(

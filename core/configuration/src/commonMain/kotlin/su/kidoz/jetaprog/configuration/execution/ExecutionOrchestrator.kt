@@ -272,6 +272,8 @@ public class ExecutionOrchestrator(
 
             is ConfigurationSettings.Go -> buildGoConfig(settings, workspacePath)
 
+            is ConfigurationSettings.Node -> buildNodeConfig(settings, workspacePath)
+
             is ConfigurationSettings.DotNetBuild -> buildDotNetBuildConfig(settings, workspacePath)
 
             is ConfigurationSettings.DotNetRun -> buildDotNetRunConfig(settings, workspacePath)
@@ -549,6 +551,30 @@ public class ExecutionOrchestrator(
                 add(settings.packagePattern)
                 if (settings.command == su.kidoz.jetaprog.configuration.GoCommand.RUN) {
                     addAll(settings.programArguments)
+                }
+            }
+
+        return ProcessConfig(
+            command = command,
+            workingDirectory = settings.workingDirectory ?: workspacePath,
+            environment = settings.environment,
+        )
+    }
+
+    private fun buildNodeConfig(
+        settings: ConfigurationSettings.Node,
+        workspacePath: String,
+    ): ProcessConfig {
+        val command =
+            buildList {
+                add(settings.packageManager.executable)
+                add("run")
+                add(settings.script)
+                if (settings.arguments.isNotEmpty()) {
+                    if (settings.packageManager != su.kidoz.jetaprog.configuration.NodePackageManager.YARN) {
+                        add("--")
+                    }
+                    addAll(settings.arguments)
                 }
             }
 

@@ -92,6 +92,7 @@ import su.kidoz.jetaprog.app.ui.panels.FindInFilesPanel
 import su.kidoz.jetaprog.app.ui.panels.GitPanel
 import su.kidoz.jetaprog.app.ui.panels.ProblemsContent
 import su.kidoz.jetaprog.app.ui.panels.ProjectPanel
+import su.kidoz.jetaprog.app.ui.panels.RunOutputPanel
 import su.kidoz.jetaprog.app.ui.panels.TerminalPanel
 import su.kidoz.jetaprog.app.ui.panels.TestResultsPanel
 import su.kidoz.jetaprog.app.ui.panels.VcsMainArea
@@ -433,6 +434,12 @@ private fun MainScreenContent(
 
                 is ConfigurationEffect.ShowSuccess -> {
                     notificationCenter.success(title = "Run configuration", message = effect.message)
+                }
+
+                is ConfigurationEffect.ConfigurationStarted -> {
+                    if (effect.configuration.settings is ConfigurationSettings.Node) {
+                        selectedBottomTab = BottomTab.BUILD
+                    }
                 }
 
                 is ConfigurationEffect.GoTestsFinished -> {
@@ -934,28 +941,49 @@ private fun MainScreenContent(
                         }
 
                         BottomTab.BUILD -> {
-                            BuildOutputPanel(
-                                state = gradleState,
-                                onIntent = { intent ->
-                                    if (intent is su.kidoz.jetaprog.build.gradle.state.GradleIntent.RefreshTasks) {
-                                        session.syncGradleProject()
-                                    }
-                                    session.gradleViewModel.dispatch(intent)
-                                },
-                                onOpenDiagnostic = { diagnostic ->
-                                    session.editorViewModel.dispatch(
-                                        EditorIntent.NavigateTo(
-                                            path = diagnostic.filePath,
-                                            position =
-                                                TextPosition(
-                                                    diagnostic.position.line,
-                                                    diagnostic.position.column,
-                                                ),
-                                        ),
-                                    )
-                                },
-                                embedded = true,
-                            )
+                            val outputConfiguration =
+                                configurationState.outputConfigurationId?.let { id ->
+                                    configurationState.configurations.find { it.id == id }
+                                }
+                            if (outputConfiguration != null) {
+                                RunOutputPanel(
+                                    configurationName = outputConfiguration.name,
+                                    output = configurationState.executionOutput,
+                                    isRunning =
+                                        configurationState.isRunning &&
+                                            configurationState.runningConfigurationId == outputConfiguration.id,
+                                    exitCode = configurationState.lastExecutionExitCode,
+                                    onStop = { session.configurationViewModel.dispatch(ConfigurationIntent.Stop) },
+                                    onClear = {
+                                        session.configurationViewModel.dispatch(
+                                            ConfigurationIntent.ClearExecutionOutput,
+                                        )
+                                    },
+                                )
+                            } else {
+                                BuildOutputPanel(
+                                    state = gradleState,
+                                    onIntent = { intent ->
+                                        if (intent is su.kidoz.jetaprog.build.gradle.state.GradleIntent.RefreshTasks) {
+                                            session.syncGradleProject()
+                                        }
+                                        session.gradleViewModel.dispatch(intent)
+                                    },
+                                    onOpenDiagnostic = { diagnostic ->
+                                        session.editorViewModel.dispatch(
+                                            EditorIntent.NavigateTo(
+                                                path = diagnostic.filePath,
+                                                position =
+                                                    TextPosition(
+                                                        diagnostic.position.line,
+                                                        diagnostic.position.column,
+                                                    ),
+                                            ),
+                                        )
+                                    },
+                                    embedded = true,
+                                )
+                            }
                         }
 
                         BottomTab.TESTS -> {

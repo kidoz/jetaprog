@@ -439,6 +439,10 @@ private fun RunConfiguration.subtitle(): String? =
             "go ${s.command.value} ${s.packagePattern}"
         }
 
+        is ConfigurationSettings.Node -> {
+            "${s.packageManager.executable} run ${s.script}"
+        }
+
         is ConfigurationSettings.DotNetBuild -> {
             s.targetPath?.substringAfterLast('/') ?: s.configuration.displayName
         }
@@ -488,6 +492,9 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.GO_BUILD -> Icons.Filled.Build
         ConfigurationType.GO_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.GO_TEST -> Icons.Filled.PlayArrow
+        ConfigurationType.NODE_RUN -> Icons.Filled.PlayArrow
+        ConfigurationType.NODE_BUILD -> Icons.Filled.Build
+        ConfigurationType.NODE_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
         ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
         ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow

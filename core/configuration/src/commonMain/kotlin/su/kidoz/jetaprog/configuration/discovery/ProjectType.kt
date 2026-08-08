@@ -58,3 +58,6 @@ public data class DetectedProject(
     /** Additional metadata about the project. */
     val metadata: Map<String, String> = emptyMap(),
 )
+
+internal const val NODE_PACKAGE_MANAGER_METADATA_KEY: String = "node.packageManager"
+internal const val NODE_SCRIPT_METADATA_PREFIX: String = "node.script."

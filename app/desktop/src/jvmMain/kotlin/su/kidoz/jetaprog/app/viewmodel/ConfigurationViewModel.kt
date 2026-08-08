@@ -27,7 +27,10 @@ import su.kidoz.jetaprog.configuration.DockerComposeSettings
 import su.kidoz.jetaprog.configuration.DockerRunSettings
 import su.kidoz.jetaprog.configuration.DotNetConfigurationType
 import su.kidoz.jetaprog.configuration.GoCommand
+import su.kidoz.jetaprog.configuration.NodePackageManager
 import su.kidoz.jetaprog.configuration.RunConfiguration
+import su.kidoz.jetaprog.configuration.RunOutputLine
+import su.kidoz.jetaprog.configuration.RunOutputType
 import su.kidoz.jetaprog.configuration.SpringBootDevServerSettings
 import su.kidoz.jetaprog.configuration.SpringBootSettings
 import su.kidoz.jetaprog.configuration.TomcatLocalSettings
@@ -79,6 +82,7 @@ public class ConfigurationViewModel(
             is ConfigurationIntent.CloseDialog -> closeDialog()
             is ConfigurationIntent.SaveFromDialog -> saveFromDialog(intent.configuration)
             is ConfigurationIntent.ClearError -> clearError()
+            is ConfigurationIntent.ClearExecutionOutput -> clearExecutionOutput()
             is ConfigurationIntent.DiscoverConfigurations -> discoverConfigurations(intent.projectPath)
         }
     }
@@ -215,6 +219,9 @@ public class ConfigurationViewModel(
 
             val result = executeConfiguration(config)
             val exitCode = result.getOrNull() ?: -1
+            if (currentState.outputConfigurationId == id) {
+                updateState { copy(lastExecutionExitCode = exitCode) }
+            }
             emitEffect(
                 ConfigurationEffect.ConfigurationFinished(
                     configuration = config,
@@ -223,6 +230,9 @@ public class ConfigurationViewModel(
                 ),
             )
         } catch (error: CancellationException) {
+            if (currentState.outputConfigurationId == id) {
+                updateState { copy(lastExecutionExitCode = CANCELLED_EXECUTION_EXIT_CODE) }
+            }
             emitEffect(
                 ConfigurationEffect.ConfigurationFinished(
                     configuration = config,
@@ -290,6 +300,10 @@ public class ConfigurationViewModel(
 
             is ConfigurationSettings.Go -> {
                 executeGo(config)
+            }
+
+            is ConfigurationSettings.Node -> {
+                executeNode(config)
             }
 
             is ConfigurationSettings.DotNetBuild -> {
@@ -427,6 +441,47 @@ public class ConfigurationViewModel(
                 )
             }
             result
+        }
+
+    private suspend fun executeNode(config: RunConfiguration): Result<Int> =
+        coroutineScope {
+            updateState {
+                copy(
+                    outputConfigurationId = config.id,
+                    executionOutput = emptyList(),
+                    lastExecutionExitCode = null,
+                )
+            }
+            val session = executionOrchestrator.execute(config, projectPath)
+            executionSessionId = session.id
+            val outputJob =
+                launch {
+                    session.output.collect { output ->
+                        appendExecutionOutput(output.toRunOutputLine())
+                    }
+                }
+            try {
+                when (val executionResult = session.result.filterNotNull().first()) {
+                    is ExecutionResult.Success -> {
+                        Result.success(executionResult.exitCode)
+                    }
+
+                    is ExecutionResult.Failure -> {
+                        if (executionResult.exitCode >= 0) {
+                            Result.success(executionResult.exitCode)
+                        } else {
+                            Result.failure(IllegalStateException(executionResult.message))
+                        }
+                    }
+
+                    is ExecutionResult.Cancelled -> {
+                        throw CancellationException("Node.js execution cancelled")
+                    }
+                }
+            } finally {
+                outputJob.cancelAndJoin()
+                if (executionSessionId == session.id) executionSessionId = null
+            }
         }
 
     private suspend fun executeMesonBuild(settings: ConfigurationSettings.MesonBuild): Result<Int> {
@@ -879,6 +934,7 @@ public class ConfigurationViewModel(
         }
         if (exists("Cargo.toml")) return ConfigurationType.CARGO_RUN
         if (exists("go.mod")) return ConfigurationType.GO_RUN
+        if (exists("package.json")) return ConfigurationType.NODE_RUN
         if (hasDotNetProject(root)) return ConfigurationType.DOTNET_RUN
         if (exists("meson.build")) return ConfigurationType.MESON_BUILD
         if (exists("uv.lock") || hasPyprojectSection(root, "tool.uv")) return ConfigurationType.UV
@@ -1050,6 +1106,29 @@ public class ConfigurationViewModel(
                 )
             }
 
+            ConfigurationType.NODE_RUN,
+            ConfigurationType.NODE_BUILD,
+            ConfigurationType.NODE_TEST,
+            -> {
+                val script =
+                    when (type) {
+                        ConfigurationType.NODE_RUN -> "start"
+                        ConfigurationType.NODE_BUILD -> "build"
+                        ConfigurationType.NODE_TEST -> "test"
+                    }
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = name,
+                    type = type,
+                    settings =
+                        ConfigurationSettings.Node(
+                            packageManager = detectNodePackageManager(),
+                            script = script,
+                            workingDirectory = projectPath.ifBlank { null },
+                        ),
+                )
+            }
+
             ConfigurationType.DOTNET_BUILD -> {
                 RunConfiguration(
                     id = ConfigurationId.generate(),
@@ -1191,6 +1270,9 @@ public class ConfigurationViewModel(
             ConfigurationType.GO_BUILD -> "New Go Build"
             ConfigurationType.GO_RUN -> "New Go Run"
             ConfigurationType.GO_TEST -> "New Go Test"
+            ConfigurationType.NODE_RUN -> "New Node.js Run"
+            ConfigurationType.NODE_BUILD -> "New Node.js Build"
+            ConfigurationType.NODE_TEST -> "New Node.js Test"
             ConfigurationType.DOTNET_BUILD -> "New .NET Build"
             ConfigurationType.DOTNET_RUN -> "New .NET Run"
             ConfigurationType.DOTNET_TEST -> "New .NET Test"
@@ -1221,6 +1303,9 @@ public class ConfigurationViewModel(
             ConfigurationType.GO_BUILD -> "Go Build"
             ConfigurationType.GO_RUN -> "Go Run"
             ConfigurationType.GO_TEST -> "Go Test"
+            ConfigurationType.NODE_RUN -> "Node.js Run"
+            ConfigurationType.NODE_BUILD -> "Node.js Build"
+            ConfigurationType.NODE_TEST -> "Node.js Test"
             ConfigurationType.DOTNET_BUILD -> ".NET Build"
             ConfigurationType.DOTNET_RUN -> ".NET Run"
             ConfigurationType.DOTNET_TEST -> ".NET Test"
@@ -1232,6 +1317,17 @@ public class ConfigurationViewModel(
             ConfigurationType.DOCKER_RUN -> "Docker Run"
             ConfigurationType.DOCKER_COMPOSE -> "Docker Compose"
         }
+
+    private fun detectNodePackageManager(): NodePackageManager {
+        if (projectPath.isBlank()) return NodePackageManager.NPM
+        val root = File(projectPath)
+        return when {
+            File(root, "pnpm-lock.yaml").exists() -> NodePackageManager.PNPM
+            File(root, "yarn.lock").exists() -> NodePackageManager.YARN
+            File(root, "bun.lock").exists() || File(root, "bun.lockb").exists() -> NodePackageManager.BUN
+            else -> NodePackageManager.NPM
+        }
+    }
 
     private fun findDotNetTargetPath(): String? {
         if (projectPath.isBlank()) return null
@@ -1280,6 +1376,71 @@ public class ConfigurationViewModel(
         updateState { copy(error = null) }
     }
 
+    private fun clearExecutionOutput() {
+        updateState {
+            val keepOutputSelected = isRunning && runningConfigurationId == outputConfigurationId
+            copy(
+                outputConfigurationId = if (keepOutputSelected) outputConfigurationId else null,
+                executionOutput = emptyList(),
+                lastExecutionExitCode = if (keepOutputSelected) lastExecutionExitCode else null,
+            )
+        }
+    }
+
+    private fun appendExecutionOutput(line: RunOutputLine) {
+        updateState {
+            copy(executionOutput = (executionOutput + line).takeLast(MAX_EXECUTION_OUTPUT_LINES))
+        }
+    }
+
+    private fun ExecutionOutput.toRunOutputLine(): RunOutputLine =
+        when (this) {
+            is ExecutionOutput.Stdout -> {
+                RunOutputLine(line, RunOutputType.STDOUT)
+            }
+
+            is ExecutionOutput.Stderr -> {
+                RunOutputLine(line, RunOutputType.STDERR)
+            }
+
+            is ExecutionOutput.Status -> {
+                RunOutputLine(message, RunOutputType.INFO)
+            }
+
+            is ExecutionOutput.TaskStarted -> {
+                RunOutputLine("Starting: $taskDescription", RunOutputType.INFO)
+            }
+
+            is ExecutionOutput.TaskCompleted -> {
+                val type = if (success) RunOutputType.SUCCESS else RunOutputType.ERROR
+                val action = if (success) "Finished" else "Failed"
+                RunOutputLine("$action: $taskDescription", type)
+            }
+
+            is ExecutionOutput.MainExecutionStarted -> {
+                RunOutputLine("Starting: $configurationName", RunOutputType.INFO)
+            }
+
+            is ExecutionOutput.ExecutionFinished -> {
+                when (val executionResult = result) {
+                    is ExecutionResult.Success -> {
+                        RunOutputLine(
+                            "Process finished with exit code ${executionResult.exitCode}",
+                            RunOutputType.SUCCESS,
+                        )
+                    }
+
+                    is ExecutionResult.Failure -> {
+                        RunOutputLine(executionResult.message, RunOutputType.ERROR)
+                    }
+
+                    is ExecutionResult.Cancelled -> {
+                        RunOutputLine("Process cancelled", RunOutputType.ERROR)
+                    }
+                }
+            }
+        }
+
     private suspend fun discoverConfigurations(projectPath: String) {
         val existingNames = currentState.configurations.map { it.name }.toSet()
 
@@ -1325,3 +1486,5 @@ public class ConfigurationViewModel(
 
 private val targetFrameworkRegex = Regex("<TargetFramework>\\s*([^<\\s]+)\\s*</TargetFramework>")
 private val targetFrameworksRegex = Regex("<TargetFrameworks>\\s*([^<\\s]+)\\s*</TargetFrameworks>")
+private const val CANCELLED_EXECUTION_EXIT_CODE = -1
+private const val MAX_EXECUTION_OUTPUT_LINES = 5_000

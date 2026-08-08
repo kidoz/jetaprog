@@ -87,6 +87,18 @@ public enum class ConfigurationType(
     @SerialName("go_test")
     GO_TEST("Go Test", "go"),
 
+    /** Node.js package run script. */
+    @SerialName("node_run")
+    NODE_RUN("Node.js Run", "javascript"),
+
+    /** Node.js package build script. */
+    @SerialName("node_build")
+    NODE_BUILD("Node.js Build", "javascript"),
+
+    /** Node.js package test script. */
+    @SerialName("node_test")
+    NODE_TEST("Node.js Test", "javascript"),
+
     /** .NET build. */
     @SerialName("dotnet_build")
     DOTNET_BUILD(".NET Build", "dotnet"),
@@ -394,6 +406,24 @@ public sealed interface ConfigurationSettings {
     ) : ConfigurationSettings
 
     /**
+     * Node.js package script configuration.
+     */
+    @Serializable
+    @SerialName("node")
+    public data class Node(
+        /** Package manager used to execute the script. */
+        val packageManager: NodePackageManager = NodePackageManager.NPM,
+        /** Script name from package.json. */
+        val script: String,
+        /** Arguments forwarded to the package script. */
+        val arguments: List<String> = emptyList(),
+        /** Environment variables. */
+        val environment: Map<String, String> = emptyMap(),
+        /** Working directory. */
+        val workingDirectory: String? = null,
+    ) : ConfigurationSettings
+
+    /**
      * .NET build configuration.
      */
     @Serializable
@@ -550,6 +580,31 @@ public enum class GoCommand(
     /** Run tests for the selected packages. */
     @SerialName("test")
     TEST("test"),
+}
+
+/**
+ * Package manager used to run Node.js project scripts.
+ */
+@Serializable
+public enum class NodePackageManager(
+    public val executable: String,
+    public val displayName: String,
+) {
+    /** npm package manager. */
+    @SerialName("npm")
+    NPM("npm", "npm"),
+
+    /** pnpm package manager. */
+    @SerialName("pnpm")
+    PNPM("pnpm", "pnpm"),
+
+    /** Yarn package manager. */
+    @SerialName("yarn")
+    YARN("yarn", "Yarn"),
+
+    /** Bun package manager and runtime. */
+    @SerialName("bun")
+    BUN("bun", "Bun"),
 }
 
 /**

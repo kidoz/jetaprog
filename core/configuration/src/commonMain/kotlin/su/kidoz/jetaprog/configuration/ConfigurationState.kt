@@ -26,6 +26,12 @@ public data class ConfigurationState(
     val editingConfiguration: RunConfiguration? = null,
     /** Error message if any. */
     val error: String? = null,
+    /** Configuration whose streamed output is shown in the Build tool window. */
+    val outputConfigurationId: ConfigurationId? = null,
+    /** Streamed output from the active or most recent orchestrated run. */
+    val executionOutput: List<RunOutputLine> = emptyList(),
+    /** Exit code from the most recent orchestrated run. */
+    val lastExecutionExitCode: Int? = null,
 ) : State {
     /** Get the active configuration. */
     val activeConfiguration: RunConfiguration?
@@ -150,6 +156,9 @@ public sealed interface ConfigurationIntent : Intent {
     /** Clear error. */
     public data object ClearError : ConfigurationIntent
 
+    /** Clear streamed run output and return the Build tool window to Gradle output. */
+    public data object ClearExecutionOutput : ConfigurationIntent
+
     /** Auto-discover configurations from project. */
     public data class DiscoverConfigurations(
         val projectPath: String,
@@ -204,4 +213,36 @@ public sealed interface ConfigurationEffect : Effect {
     public data class ConfigurationSaved(
         val configuration: RunConfiguration,
     ) : ConfigurationEffect
+}
+
+/**
+ * A line displayed in the generic run-output view.
+ */
+@Serializable
+public data class RunOutputLine(
+    /** Text rendered for the output line. */
+    val text: String,
+    /** Visual category used to style the line. */
+    val type: RunOutputType,
+)
+
+/**
+ * Visual category for a streamed run-output line.
+ */
+@Serializable
+public enum class RunOutputType {
+    /** Informational lifecycle output. */
+    INFO,
+
+    /** Standard process output. */
+    STDOUT,
+
+    /** Standard process error output. */
+    STDERR,
+
+    /** Successful lifecycle result. */
+    SUCCESS,
+
+    /** Failed or cancelled lifecycle result. */
+    ERROR,
 }

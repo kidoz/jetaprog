@@ -61,6 +61,7 @@ import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationState
 import su.kidoz.jetaprog.configuration.ConfigurationType
 import su.kidoz.jetaprog.configuration.DotNetConfigurationType
+import su.kidoz.jetaprog.configuration.NodePackageManager
 import su.kidoz.jetaprog.configuration.RunConfiguration
 
 /**
@@ -529,6 +530,13 @@ private fun ConfigurationEditorPanel(
 
             is ConfigurationSettings.Go -> {
                 GoSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
+                )
+            }
+
+            is ConfigurationSettings.Node -> {
+                NodeSettingsEditor(
                     settings = settings,
                     onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
                 )
@@ -1096,6 +1104,73 @@ private fun GoSettingsEditor(
 }
 
 @Composable
+private fun NodeSettingsEditor(
+    settings: ConfigurationSettings.Node,
+    onSettingsChange: (ConfigurationSettings.Node) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
+        NodePackageManagerSelector(
+            packageManager = settings.packageManager,
+            onPackageManagerChange = { onSettingsChange(settings.copy(packageManager = it)) },
+        )
+
+        IntelliJTextField(
+            value = settings.script,
+            onValueChange = { onSettingsChange(settings.copy(script = it)) },
+            label = "Package script:",
+            placeholder = "start, dev, build, or test",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.arguments.joinToString(" "),
+            onValueChange = { onSettingsChange(settings.copy(arguments = parseArguments(it))) },
+            label = "Script arguments:",
+            placeholder = "--watch",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.workingDirectory ?: "",
+            onValueChange = { onSettingsChange(settings.copy(workingDirectory = it.ifBlank { null })) },
+            label = "Working directory:",
+            placeholder = "Project root by default",
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun NodePackageManagerSelector(
+    packageManager: NodePackageManager,
+    onPackageManagerChange: (NodePackageManager) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        IntelliJButton(
+            text = "Package manager: ${packageManager.displayName}",
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            NodePackageManager.entries.forEach { manager ->
+                DropdownMenuItem(
+                    text = { Text(manager.displayName) },
+                    onClick = {
+                        onPackageManagerChange(manager)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun DotNetBuildSettingsEditor(
     settings: ConfigurationSettings.DotNetBuild,
     onSettingsChange: (ConfigurationSettings.DotNetBuild) -> Unit,
@@ -1430,6 +1505,9 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.GO_BUILD -> Icons.Filled.Build
         ConfigurationType.GO_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.GO_TEST -> Icons.Filled.PlayArrow
+        ConfigurationType.NODE_RUN -> Icons.Filled.PlayArrow
+        ConfigurationType.NODE_BUILD -> Icons.Filled.Build
+        ConfigurationType.NODE_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
         ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
         ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow
@@ -1456,6 +1534,9 @@ private val configurationCreationTypes =
         ConfigurationType.GO_RUN,
         ConfigurationType.GO_BUILD,
         ConfigurationType.GO_TEST,
+        ConfigurationType.NODE_RUN,
+        ConfigurationType.NODE_BUILD,
+        ConfigurationType.NODE_TEST,
         ConfigurationType.DOTNET_RUN,
         ConfigurationType.DOTNET_DEBUG,
         ConfigurationType.DOTNET_BUILD,

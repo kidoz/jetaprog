@@ -22,10 +22,13 @@ import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.IntelliJStatusBar
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
+import su.kidoz.jetaprog.app.ui.panels.RunOutputPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
 import su.kidoz.jetaprog.app.ui.theme.Spacing
+import su.kidoz.jetaprog.configuration.RunOutputLine
+import su.kidoz.jetaprog.configuration.RunOutputType
 
 /**
  * IDE-native `@Preview` catalog. Open this file in the IDE and use the preview
@@ -93,6 +96,31 @@ private fun StatusBarPreview() {
             indentInfo = "4 spaces",
             languageInfo = "Kotlin",
             buildStatus = BuildStatus(success = true),
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun RunOutputPreview() {
+    JetaProgTheme {
+        RunOutputPanel(
+            configurationName = "web-app Dev",
+            output =
+                listOf(
+                    RunOutputLine("Starting: web-app Dev", RunOutputType.INFO),
+                    RunOutputLine("VITE ready in 241 ms", RunOutputType.STDOUT),
+                    RunOutputLine("Local: http://localhost:5173/", RunOutputType.SUCCESS),
+                ),
+            isRunning = true,
+            exitCode = null,
+            onStop = {},
+            onClear = {},
+            modifier =
+                Modifier.size(
+                    Dimensions.popupSearchWidth.dp,
+                    Dimensions.toolWindowDefaultBottomHeight.dp,
+                ),
         )
     }
 }
