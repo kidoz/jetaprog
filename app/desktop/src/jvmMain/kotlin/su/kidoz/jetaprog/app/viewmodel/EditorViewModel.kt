@@ -2939,30 +2939,35 @@ public class EditorViewModel(
                 .distinct()
                 .sorted()
                 .flatMap { uri ->
-                    (lspDiagnostics[uri].orEmpty() + lintDiagnostics[uri].orEmpty()).map { diagnostic ->
+                    mergedDiagnostics(uri).map { diagnostic ->
                         WorkspaceDiagnostic(DocumentUri(uri), diagnostic)
                     }
                 }
         updateState {
             copy(
-                diagnostics =
-                    activeUri
-                        ?.let { uri ->
-                            lspDiagnostics[uri].orEmpty() + lintDiagnostics[uri].orEmpty()
-                        }.orEmpty(),
+                diagnostics = activeUri?.let(::mergedDiagnostics).orEmpty(),
                 workspaceDiagnostics = workspaceDiagnostics,
             )
         }
     }
 
-    private fun diagnosticsFor(uri: DocumentUri): List<Diagnostic> =
-        lspDiagnostics[uri.value].orEmpty() + lintDiagnostics[uri.value].orEmpty()
+    /**
+     * Merges LSP and lint diagnostics for one document.
+     *
+     * Both sources always run; a diagnostic reported identically by both (same range,
+     * severity, and message) is shown once.
+     */
+    private fun mergedDiagnostics(uri: String): List<Diagnostic> =
+        (lspDiagnostics[uri].orEmpty() + lintDiagnostics[uri].orEmpty())
+            .distinctBy { Triple(it.range, it.severity, it.message) }
+
+    private fun diagnosticsFor(uri: DocumentUri): List<Diagnostic> = mergedDiagnostics(uri.value)
 
     /**
      * Run the lint engine against the document and surface results as diagnostics.
      *
-     * Skipped when an LSP server already provides diagnostics for the language,
-     * to avoid reporting the same issues twice.
+     * Lint always runs, even when an LSP server also reports diagnostics for the
+     * language; the two sources are merged and deduplicated when published.
      */
     private fun scheduleLint(
         uri: DocumentUri,
@@ -2975,7 +2980,6 @@ public class EditorViewModel(
         val configuration = service.getConfiguration()
 
         if (!configuration.enabled || configuration.isExcluded(path)) return
-        if (languageRegistry?.hasLspServer(languageId.value) == true) return
         val triggerEnabled =
             when (trigger) {
                 LintTrigger.OPEN -> true
