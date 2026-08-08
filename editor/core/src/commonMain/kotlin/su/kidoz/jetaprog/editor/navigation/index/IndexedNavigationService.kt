@@ -16,7 +16,10 @@ import su.kidoz.jetaprog.editor.navigation.SearchCategory
 import su.kidoz.jetaprog.editor.navigation.SearchScope
 import su.kidoz.jetaprog.editor.navigation.StructureItem
 import su.kidoz.jetaprog.editor.navigation.SymbolVisibility
+import su.kidoz.jetaprog.editor.navigation.UsageGroup
 import su.kidoz.jetaprog.editor.navigation.UsageHighlight
+import su.kidoz.jetaprog.editor.navigation.UsageInfo
+import su.kidoz.jetaprog.editor.navigation.UsageKind
 
 /**
  * Navigation service implementation backed by a local symbol index.
@@ -24,8 +27,9 @@ import su.kidoz.jetaprog.editor.navigation.UsageHighlight
  * This provides fast "Go to Symbol" functionality without requiring LSP,
  * using the local symbol index for instant results.
  *
- * For operations that require semantic analysis (definition, usages, etc.),
- * this implementation delegates to an optional LSP-backed service.
+ * The optional delegate (embedded servers, language registry, LSP) is always consulted
+ * first; the index answers only when the delegate has nothing, so index results never
+ * shadow semantically accurate ones.
  */
 public class IndexedNavigationService(
     private val symbolIndex: SymbolIndex,
@@ -34,7 +38,7 @@ public class IndexedNavigationService(
     private val fileContentProvider: FileContentProvider? = null,
 ) : NavigationService {
     // ========================================================================
-    // Symbol Search - Uses local index for fast results
+    // Symbol Search - Delegate first, local index as fallback
     // ========================================================================
 
     override suspend fun searchClasses(
@@ -42,6 +46,8 @@ public class IndexedNavigationService(
         scope: SearchScope,
         limit: Int,
     ): List<NavigationSearchResult> {
+        lspDelegate?.searchClasses(query, scope, limit)?.takeIf { it.isNotEmpty() }?.let { return it }
+
         val classKinds =
             setOf(
                 NavigationSymbolKind.CLASS,
@@ -59,6 +65,8 @@ public class IndexedNavigationService(
         scope: SearchScope,
         limit: Int,
     ): List<NavigationSearchResult> {
+        lspDelegate?.searchFiles(query, scope, limit)?.takeIf { it.isNotEmpty() }?.let { return it }
+
         // For file search, we search by file path rather than symbol name
         val matches = symbolIndex.findByPattern(query, scope, limit * 3)
 
@@ -87,6 +95,8 @@ public class IndexedNavigationService(
         scope: SearchScope,
         limit: Int,
     ): List<NavigationSearchResult> {
+        lspDelegate?.searchSymbols(query, scope, limit)?.takeIf { it.isNotEmpty() }?.let { return it }
+
         val matches = symbolIndex.findByPattern(query, scope, limit)
         return matches.map { match ->
             NavigationSearchResult(
@@ -174,7 +184,38 @@ public class IndexedNavigationService(
         filePath: String,
         position: TextPosition,
         scope: SearchScope,
-    ): FindUsagesResult? = lspDelegate?.findUsages(filePath, position, scope)
+    ): FindUsagesResult? {
+        lspDelegate?.findUsages(filePath, position, scope)?.let { return it }
+
+        // Fallback: textual references to the symbol name across indexed declarations
+        val symbol = findSymbolAtPosition(filePath, position) ?: return null
+        val declarations = symbolIndex.findByName(symbol.name)
+        if (declarations.isEmpty()) return null
+        val groups =
+            declarations
+                .groupBy { it.filePath }
+                .map { (path, symbols) ->
+                    UsageGroup(
+                        filePath = path,
+                        fileName = path.substringAfterLast('/'),
+                        usages =
+                            symbols.map { declaration ->
+                                UsageInfo(
+                                    target = declaration.toNavigationTarget(),
+                                    usageKind = UsageKind.DEFINITION,
+                                    contextLine = declaration.signature ?: declaration.name,
+                                    lineNumber = 1,
+                                    columnRange = MatchRange(0, declaration.nameLength - 1),
+                                )
+                            },
+                    )
+                }
+        return FindUsagesResult(
+            symbol = symbol.toNavigationTarget(),
+            groups = groups,
+            totalCount = groups.sumOf { it.usages.size },
+        )
+    }
 
     override suspend fun getUsageHighlights(
         filePath: String,

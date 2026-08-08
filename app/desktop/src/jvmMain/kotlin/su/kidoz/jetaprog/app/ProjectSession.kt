@@ -31,7 +31,9 @@ import su.kidoz.jetaprog.app.keymap.CommandActions
 import su.kidoz.jetaprog.app.keymap.DefaultKeymap
 import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
+import su.kidoz.jetaprog.app.navigation.DiskFileContentProvider
 import su.kidoz.jetaprog.app.navigation.KotlinIndexNavigationService
+import su.kidoz.jetaprog.app.navigation.WorkspaceSymbolIndexService
 import su.kidoz.jetaprog.app.project.ProjectFileActions
 import su.kidoz.jetaprog.app.quickfix.KotlinQuickFixService
 import su.kidoz.jetaprog.app.refactoring.KotlinRenameService
@@ -62,6 +64,12 @@ import su.kidoz.jetaprog.configuration.discovery.ConfigurationDiscovery
 import su.kidoz.jetaprog.configuration.discovery.ProjectDetector
 import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.editor.navigation.NavigationService
+import su.kidoz.jetaprog.editor.navigation.index.GoSymbolExtractor
+import su.kidoz.jetaprog.editor.navigation.index.InMemorySymbolIndex
+import su.kidoz.jetaprog.editor.navigation.index.IndexedNavigationService
+import su.kidoz.jetaprog.editor.navigation.index.JavaSymbolExtractor
+import su.kidoz.jetaprog.editor.navigation.index.SymbolIndexer
+import su.kidoz.jetaprog.editor.navigation.index.TypeScriptSymbolExtractor
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.editor.state.LineChangeMarker
 import su.kidoz.jetaprog.lint.JvmLintConfigurationStorage
@@ -173,21 +181,48 @@ public class ProjectSession(
         KotlinSemanticAnalyzer(classpathProvider = { filePath -> kotlinClasspath(filePath) })
 
     /**
+     * Generic workspace symbol index for languages that have a symbol extractor but no
+     * dedicated analyzer, so Go to Class/Symbol and definition fallback work without LSP.
+     */
+    private val workspaceSymbolIndex = InMemorySymbolIndex()
+
+    private val workspaceSymbolIndexer =
+        SymbolIndexer(workspaceSymbolIndex).apply {
+            // Kotlin is intentionally absent: it is covered by the richer KotlinSymbolIndex
+            registerExtractor(JavaSymbolExtractor())
+            registerExtractor(TypeScriptSymbolExtractor())
+            registerExtractor(GoSymbolExtractor())
+        }
+
+    private val workspaceSymbolIndexService = WorkspaceSymbolIndexService(workspaceSymbolIndexer)
+
+    /**
      * The navigation service for code navigation features.
+     *
+     * Layering, most authoritative first: embedded servers and the language registry
+     * (native providers + external LSP), the Kotlin index, then the generic workspace
+     * symbol index as the LSP-free fallback for other languages.
      */
     public val navigationService: NavigationService =
-        KotlinIndexNavigationService(
-            delegate =
-                DefaultNavigationService(
-                    lspClient = null,
+        IndexedNavigationService(
+            symbolIndex = workspaceSymbolIndex,
+            lspDelegate =
+                KotlinIndexNavigationService(
+                    delegate =
+                        DefaultNavigationService(
+                            lspClient = null,
+                            fileSystem = fileSystem,
+                            embeddedServerRegistry = embeddedServerRegistry,
+                            workspacePath = projectPath,
+                            // Lazy: the registry (and its LSP servers) spins up after navigation is built
+                            languageRegistryProvider = { languageRegistry },
+                        ),
+                    symbolIndex = kotlinSymbolIndex,
                     fileSystem = fileSystem,
-                    embeddedServerRegistry = embeddedServerRegistry,
                     workspacePath = projectPath,
+                    semanticAnalyzer = kotlinSemanticAnalyzer,
                 ),
-            symbolIndex = kotlinSymbolIndex,
-            fileSystem = fileSystem,
-            workspacePath = projectPath,
-            semanticAnalyzer = kotlinSemanticAnalyzer,
+            fileContentProvider = DiskFileContentProvider(),
         )
 
     /**
@@ -577,6 +612,10 @@ public class ProjectSession(
         // file structure and declaration navigation work without a language server.
         sessionScope.launch { kotlinSymbolIndex.indexDirectory(projectPath) }
 
+        // Build the generic workspace symbol index for the other extractor-backed
+        // languages (Java, TypeScript/JavaScript, Go) — their LSP-free fallback.
+        sessionScope.launch { workspaceSymbolIndexService.indexWorkspace(projectPath) }
+
         // Keep editor gutter VCS markers in sync with the active document and git state
         sessionScope.launch { observeGitLineMarkers() }
 
@@ -597,13 +636,14 @@ public class ProjectSession(
     }
 
     /**
-     * Re-indexes a single file in the Kotlin symbol index.
+     * Re-indexes a single file in the symbol indexes.
      *
      * Call after a file is saved or opened so navigation stays in sync with edits;
-     * non-Kotlin files are ignored by the index.
+     * each index ignores files it does not understand.
      */
     public fun reindexFile(path: String) {
         sessionScope.launch { kotlinSymbolIndex.indexFile(path) }
+        sessionScope.launch { workspaceSymbolIndexService.indexFile(path) }
     }
 
     /**
