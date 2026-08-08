@@ -31,6 +31,14 @@ public data class LanguageConfig(
      */
     val completionPreference: CompletionProviderPreference = CompletionProviderPreference.Hybrid,
     /**
+     * Preferred provider source per language feature, overriding the default routing.
+     *
+     * Keys are language feature names such as `Hover`, `Definition`, `References`,
+     * `SignatureHelp`, `Formatting`, or `CodeAction`. Features without an entry use
+     * native-first routing with LSP fallback.
+     */
+    val featurePreferences: Map<String, CompletionProviderPreference> = emptyMap(),
+    /**
      * Tab size override for this language (null = use default).
      */
     val tabSize: Int? = null,

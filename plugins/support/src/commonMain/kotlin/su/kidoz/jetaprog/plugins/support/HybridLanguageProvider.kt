@@ -299,9 +299,10 @@ public class HybridLanguageProvider(
         position: TextPosition,
         context: CompletionContext,
     ): CompletionList {
-        val languageConfig =
-            settingsService.getCurrentSettings().languages.languages[config.languageId] ?: LanguageConfig()
-        val preference = languageConfig.completionPreference
+        val languageConfig = languageConfig()
+        val preference =
+            languageConfig.featurePreferences[LanguageFeature.Completion.name]
+                ?: languageConfig.completionPreference
 
         val nativeProviders = completionProviders.filter { it.source == ProviderSource.InProcess }
         val lspProviders = completionProviders.filter { it.source == ProviderSource.Lsp }
@@ -343,7 +344,7 @@ public class HybridLanguageProvider(
         document: TextDocument,
         position: TextPosition,
     ): Hover? {
-        val providers = getOrderedProviders(hoverProviders)
+        val providers = getOrderedProviders(LanguageFeature.Hover, hoverProviders)
 
         for (registered in providers) {
             try {
@@ -367,7 +368,7 @@ public class HybridLanguageProvider(
         position: TextPosition,
         context: SignatureHelpContext,
     ): SignatureHelp? {
-        val providers = getOrderedProviders(signatureHelpProviders)
+        val providers = getOrderedProviders(LanguageFeature.SignatureHelp, signatureHelpProviders)
 
         for (registered in providers) {
             try {
@@ -390,7 +391,7 @@ public class HybridLanguageProvider(
         document: TextDocument,
         position: TextPosition,
     ): List<Location> {
-        val providers = getOrderedProviders(definitionProviders)
+        val providers = getOrderedProviders(LanguageFeature.Definition, definitionProviders)
 
         for (registered in providers) {
             try {
@@ -414,7 +415,7 @@ public class HybridLanguageProvider(
         position: TextPosition,
         includeDeclaration: Boolean,
     ): List<Location> {
-        val providers = getOrderedProviders(referencesProviders)
+        val providers = getOrderedProviders(LanguageFeature.References, referencesProviders)
 
         for (registered in providers) {
             try {
@@ -437,7 +438,7 @@ public class HybridLanguageProvider(
         document: TextDocument,
         options: FormattingOptions,
     ): List<TextEdit> {
-        val providers = getOrderedProviders(formattingProviders)
+        val providers = getOrderedProviders(LanguageFeature.Formatting, formattingProviders)
 
         for (registered in providers) {
             try {
@@ -461,7 +462,7 @@ public class HybridLanguageProvider(
         range: TextRange,
         context: CodeActionContext,
     ): List<CodeAction> {
-        val providers = getOrderedProviders(codeActionProviders)
+        val providers = getOrderedProviders(LanguageFeature.CodeAction, codeActionProviders)
 
         for (registered in providers) {
             try {
@@ -477,8 +478,26 @@ public class HybridLanguageProvider(
         return emptyList()
     }
 
-    private fun <T> getOrderedProviders(providers: List<RegisteredProvider<T>>): List<RegisteredProvider<T>> =
-        when (config.priority) {
+    private fun languageConfig(): LanguageConfig =
+        settingsService.getCurrentSettings().languages.languages[config.languageId] ?: LanguageConfig()
+
+    /**
+     * Resolves the effective routing for a feature: an explicit per-feature user preference
+     * wins; otherwise the provider-level configuration applies.
+     */
+    private fun effectivePriority(feature: LanguageFeature): ProviderPriority =
+        when (languageConfig().featurePreferences[feature.name]) {
+            CompletionProviderPreference.Native -> ProviderPriority.InProcessOnly
+            CompletionProviderPreference.Lsp -> ProviderPriority.LspOnly
+            CompletionProviderPreference.Hybrid -> config.priority
+            null -> config.priority
+        }
+
+    private fun <T> getOrderedProviders(
+        feature: LanguageFeature,
+        providers: List<RegisteredProvider<T>>,
+    ): List<RegisteredProvider<T>> =
+        when (effectivePriority(feature)) {
             ProviderPriority.InProcessFirst -> {
                 providers.sortedWith(
                     compareByDescending<RegisteredProvider<T>> { it.source == ProviderSource.InProcess }
