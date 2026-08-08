@@ -23,6 +23,10 @@ public data class DocumentSelector(
 ) {
     /**
      * Checks if this selector matches a document.
+     *
+     * Patterns follow the usual glob syntax: `*` matches within a path segment, `**` matches
+     * across segments, `?` matches a single character, and `{a,b}` matches alternatives.
+     * A pattern without a path separator is matched against the file name only.
      */
     public fun matches(
         languageId: LanguageId,
@@ -30,8 +34,15 @@ public data class DocumentSelector(
     ): Boolean {
         if (languages.isNotEmpty() && languageId !in languages) return false
         if (scheme != null && !uri.startsWith("$scheme:")) return false
-        // Pattern matching would require glob implementation
-        return true
+        val glob = pattern ?: return true
+        val path =
+            when {
+                "://" in uri -> uri.substringAfter("://")
+                ':' in uri -> uri.substringAfter(':')
+                else -> uri
+            }
+        val target = if ('/' in glob) path.removePrefix("/") else path.substringAfterLast('/')
+        return GlobPattern(glob).matches(target)
     }
 
     public companion object {

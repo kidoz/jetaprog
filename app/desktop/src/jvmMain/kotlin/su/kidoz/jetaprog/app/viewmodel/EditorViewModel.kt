@@ -26,6 +26,7 @@ import su.kidoz.jetaprog.editor.completion.smart.SmartCompletionFilter
 import su.kidoz.jetaprog.editor.cursor.Cursor
 import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.document.LanguageId
+import su.kidoz.jetaprog.editor.language.LanguageDefinitionRegistry
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.SearchScope
 import su.kidoz.jetaprog.editor.quickfix.AutoImportProvider
@@ -49,28 +50,13 @@ import su.kidoz.jetaprog.editor.state.SignatureHelpState
 import su.kidoz.jetaprog.editor.state.SignatureInfo
 import su.kidoz.jetaprog.editor.state.SignatureParameter
 import su.kidoz.jetaprog.editor.state.WorkspaceDiagnostic
+import su.kidoz.jetaprog.editor.syntax.BuiltinLexers
 import su.kidoz.jetaprog.editor.syntax.Diagnostic
 import su.kidoz.jetaprog.editor.syntax.IncrementalTokenizer
 import su.kidoz.jetaprog.editor.syntax.Lexer
 import su.kidoz.jetaprog.editor.syntax.LexerRegistry
 import su.kidoz.jetaprog.editor.syntax.TokenList
-import su.kidoz.jetaprog.editor.syntax.c.CLexer
-import su.kidoz.jetaprog.editor.syntax.cmake.CMakeLexer
-import su.kidoz.jetaprog.editor.syntax.cpp.CppLexer
-import su.kidoz.jetaprog.editor.syntax.gitignore.GitignoreLexer
-import su.kidoz.jetaprog.editor.syntax.go.GoLexer
 import su.kidoz.jetaprog.editor.syntax.highlighting.LayeredHighlighter
-import su.kidoz.jetaprog.editor.syntax.java.JavaLexer
-import su.kidoz.jetaprog.editor.syntax.javascript.JavaScriptLexer
-import su.kidoz.jetaprog.editor.syntax.javascript.TypeScriptLexer
-import su.kidoz.jetaprog.editor.syntax.kotlin.KotlinLexer
-import su.kidoz.jetaprog.editor.syntax.markdown.MarkdownLexer
-import su.kidoz.jetaprog.editor.syntax.meson.MesonLexer
-import su.kidoz.jetaprog.editor.syntax.python.PythonLexer
-import su.kidoz.jetaprog.editor.syntax.rust.RustLexer
-import su.kidoz.jetaprog.editor.syntax.toml.TomlLexer
-import su.kidoz.jetaprog.editor.syntax.vala.ValaLexer
-import su.kidoz.jetaprog.editor.syntax.xml.XmlLexer
 import su.kidoz.jetaprog.editor.undo.EditSnapshot
 import su.kidoz.jetaprog.editor.undo.UndoManager
 import su.kidoz.jetaprog.lint.integration.DiagnosticConverter
@@ -174,22 +160,7 @@ public class EditorViewModel(
 
     init {
         // Register lexers
-        LexerRegistry.register(KotlinLexer())
-        LexerRegistry.register(ValaLexer())
-        LexerRegistry.register(GoLexer())
-        LexerRegistry.register(JavaLexer())
-        LexerRegistry.register(JavaScriptLexer())
-        LexerRegistry.register(TypeScriptLexer())
-        LexerRegistry.register(RustLexer())
-        LexerRegistry.register(CLexer())
-        LexerRegistry.register(CppLexer())
-        LexerRegistry.register(MesonLexer())
-        LexerRegistry.register(CMakeLexer())
-        LexerRegistry.register(XmlLexer())
-        LexerRegistry.register(TomlLexer())
-        LexerRegistry.register(MarkdownLexer())
-        LexerRegistry.register(PythonLexer())
-        LexerRegistry.register(GitignoreLexer())
+        BuiltinLexers.registerAll()
 
         // Register formatters
         FormatterRegistry.register(KotlinFormatter())
@@ -1869,29 +1840,8 @@ public class EditorViewModel(
         return tokens
     }
 
-    private fun getLexerForLanguage(languageId: LanguageId): Lexer? {
-        val id =
-            when (languageId) {
-                LanguageId.KOTLIN -> "kotlin"
-                LanguageId.VALA -> "vala"
-                LanguageId.GO -> "go"
-                LanguageId.JAVA -> "java"
-                LanguageId.JAVASCRIPT -> "javascript"
-                LanguageId.TYPESCRIPT -> "typescript"
-                LanguageId.RUST -> "rust"
-                LanguageId.C -> "c"
-                LanguageId.CPP -> "cpp"
-                LanguageId.MESON -> "meson"
-                LanguageId.CMAKE -> "cmake"
-                LanguageId.XML -> "xml"
-                LanguageId.TOML -> "toml"
-                LanguageId.MARKDOWN -> "markdown"
-                LanguageId.PYTHON -> "python"
-                LanguageId.GITIGNORE -> "gitignore"
-                else -> null
-            }
-        return id?.let { LexerRegistry.get(it) }
-    }
+    private fun getLexerForLanguage(languageId: LanguageId): Lexer? =
+        LanguageDefinitionRegistry.lexerIdFor(languageId)?.let { LexerRegistry.get(it) }
 
     // ========================================================================
     // Completion Methods
@@ -2842,73 +2792,8 @@ public class EditorViewModel(
     // Language Detection
     // ========================================================================
 
-    private fun detectLanguage(fileName: String): LanguageId {
-        // Check for special filenames first
-        val lowerFileName = fileName.lowercase()
-        when {
-            lowerFileName == "meson.build" || lowerFileName == "meson_options.txt" -> return LanguageId.MESON
-
-            lowerFileName == "cmakelists.txt" || lowerFileName == "cmakecache.txt" -> return LanguageId.CMAKE
-
-            lowerFileName == "cargo.toml" || lowerFileName == "cargo.lock" -> return LanguageId.TOML
-
-            lowerFileName == "pom.xml" -> return LanguageId.XML
-
-            // ".gitignore" itself, plus the "<name>.gitignore" templates some tools keep around.
-            lowerFileName.endsWith(".gitignore") -> return LanguageId.GITIGNORE
-
-            lowerFileName.endsWith(".sln") || lowerFileName.endsWith(".slnx") -> return LanguageId.MSBUILD
-        }
-
-        val extension = fileName.substringAfterLast('.', "").lowercase()
-        return when (extension) {
-            "kt", "kts" -> LanguageId.KOTLIN
-
-            "java" -> LanguageId.JAVA
-
-            "js", "mjs", "cjs", "jsx" -> LanguageId.JAVASCRIPT
-
-            "ts", "mts", "cts", "tsx" -> LanguageId.TYPESCRIPT
-
-            "py" -> LanguageId.PYTHON
-
-            "cs", "csx" -> LanguageId.CSHARP
-
-            "csproj", "fsproj", "vbproj", "props", "targets" -> LanguageId.MSBUILD
-
-            "rs" -> LanguageId.RUST
-
-            "go" -> LanguageId.GO
-
-            // ".h" is shared between C and C++; clangd resolves the real dialect from
-            // the compilation database, so map it to C like most editors do.
-            "c", "h" -> LanguageId.C
-
-            "cpp", "cc", "cxx", "c++", "cppm", "ixx", "ccm", "cxxm", "c++m" -> LanguageId.CPP
-
-            "hpp", "hh", "hxx", "h++", "inl", "ipp", "tpp" -> LanguageId.CPP
-
-            "json" -> LanguageId.JSON
-
-            "yaml", "yml" -> LanguageId.YAML
-
-            "toml" -> LanguageId.TOML
-
-            "xml", "pom", "xsd", "xsl", "xslt", "svg" -> LanguageId.XML
-
-            "html", "htm" -> LanguageId.HTML
-
-            "css" -> LanguageId.CSS
-
-            "cmake" -> LanguageId.CMAKE
-
-            "md", "markdown" -> LanguageId.MARKDOWN
-
-            "vala", "vapi" -> LanguageId.VALA
-
-            else -> LanguageId.PLAIN_TEXT
-        }
-    }
+    private fun detectLanguage(fileName: String): LanguageId =
+        LanguageDefinitionRegistry.detect(fileName) ?: LanguageId.PLAIN_TEXT
 
     private fun DocumentUri.toPath(): String? =
         if (value.startsWith("file://")) {

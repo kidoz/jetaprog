@@ -2,6 +2,8 @@ package su.kidoz.jetaprog.plugins.runtime.services
 
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.DisposableCollection
+import su.kidoz.jetaprog.editor.language.LanguageDefinition
+import su.kidoz.jetaprog.editor.language.LanguageDefinitionRegistry
 import su.kidoz.jetaprog.plugins.api.language.DocumentSelector
 import su.kidoz.jetaprog.plugins.api.services.CodeActionProvider
 import su.kidoz.jetaprog.plugins.api.services.CompletionProvider
@@ -29,13 +31,18 @@ public class LanguageServiceImpl(
     private val languageServerManager: LanguageServerManager,
     private val workspacePath: String,
 ) : LanguageService {
-    private val languageConfigs = mutableMapOf<String, LanguageConfiguration>()
     private val diagnosticCollections = mutableListOf<DiagnosticCollectionImpl>()
 
-    override fun registerLanguage(config: LanguageConfiguration): Disposable {
-        languageConfigs[config.id.value] = config
-        return Disposable { languageConfigs.remove(config.id.value) }
-    }
+    override fun registerLanguage(config: LanguageConfiguration): Disposable =
+        LanguageDefinitionRegistry.register(
+            LanguageDefinition(
+                id = config.id,
+                extensions = config.extensions,
+                filenames = config.filenames,
+                aliases = config.aliases,
+                firstLine = config.firstLine,
+            ),
+        )
 
     override fun registerCompletionProvider(
         selector: DocumentSelector,
@@ -197,33 +204,11 @@ public class LanguageServiceImpl(
      */
     private fun DocumentSelector.getLanguageIds(): List<String> =
         languages.map { it.value }.ifEmpty {
-            // If no specific languages, try to infer from pattern
+            // If no specific languages, try to infer from the glob pattern's file part
             listOfNotNull(
-                pattern?.let { inferLanguageFromPattern(it) },
+                pattern?.let { LanguageDefinitionRegistry.detect(it)?.value },
             )
         }
-
-    private fun inferLanguageFromPattern(pattern: String): String? =
-        when {
-            pattern.endsWith(".kt") || pattern.endsWith(".kts") -> "kotlin"
-            pattern.endsWith(".py") || pattern.endsWith(".pyi") -> "python"
-            pattern.endsWith(".cs") || pattern.endsWith(".csx") -> "csharp"
-            pattern.endsWith(".csproj") || pattern.endsWith(".props") || pattern.endsWith(".targets") -> "msbuild"
-            pattern.endsWith(".vala") || pattern.endsWith(".vapi") -> "vala"
-            pattern.endsWith(".go") -> "go"
-            pattern.endsWith(".java") -> "java"
-            JAVASCRIPT_EXTENSIONS.any(pattern::endsWith) -> "javascript"
-            TYPESCRIPT_EXTENSIONS.any(pattern::endsWith) -> "typescript"
-            pattern.endsWith(".json") -> "json"
-            pattern.endsWith(".xml") -> "xml"
-            pattern.endsWith(".yaml") || pattern.endsWith(".yml") -> "yaml"
-            else -> null
-        }
-
-    private companion object {
-        val JAVASCRIPT_EXTENSIONS = listOf(".js", ".mjs", ".cjs", ".jsx")
-        val TYPESCRIPT_EXTENSIONS = listOf(".ts", ".mts", ".cts", ".tsx")
-    }
 }
 
 /**
