@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.plugins.support.formatters
 
+import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.document.LanguageId
 import su.kidoz.jetaprog.plugins.api.services.FormattingOptions
@@ -69,9 +70,19 @@ public object FormatterRegistry {
     /**
      * Registers a formatter for a language.
      * @param formatter The formatter to register
+     * @return A disposable that restores the previously registered formatter
      */
-    public fun register(formatter: CodeFormatter) {
-        formatters[formatter.languageId] = formatter
+    public fun register(formatter: CodeFormatter): Disposable {
+        val previous = formatters.put(formatter.languageId, formatter)
+        return Disposable {
+            if (formatters[formatter.languageId] === formatter) {
+                if (previous == null) {
+                    formatters.remove(formatter.languageId)
+                } else {
+                    formatters[formatter.languageId] = previous
+                }
+            }
+        }
     }
 
     /**

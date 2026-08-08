@@ -211,13 +211,18 @@ public class LanguageServiceImpl(
             pattern.endsWith(".csproj") || pattern.endsWith(".props") || pattern.endsWith(".targets") -> "msbuild"
             pattern.endsWith(".vala") || pattern.endsWith(".vapi") -> "vala"
             pattern.endsWith(".java") -> "java"
-            pattern.endsWith(".js") -> "javascript"
-            pattern.endsWith(".ts") -> "typescript"
+            JAVASCRIPT_EXTENSIONS.any(pattern::endsWith) -> "javascript"
+            TYPESCRIPT_EXTENSIONS.any(pattern::endsWith) -> "typescript"
             pattern.endsWith(".json") -> "json"
             pattern.endsWith(".xml") -> "xml"
             pattern.endsWith(".yaml") || pattern.endsWith(".yml") -> "yaml"
             else -> null
         }
+
+    private companion object {
+        val JAVASCRIPT_EXTENSIONS = listOf(".js", ".mjs", ".cjs", ".jsx")
+        val TYPESCRIPT_EXTENSIONS = listOf(".ts", ".mts", ".cts", ".tsx")
+    }
 }
 
 /**

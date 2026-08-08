@@ -75,6 +75,8 @@ import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.plugins.cfamily.CPlugin
 import su.kidoz.jetaprog.plugins.cfamily.CppPlugin
 import su.kidoz.jetaprog.plugins.dotnet.DotNetPlugin
+import su.kidoz.jetaprog.plugins.java.JavaPlugin
+import su.kidoz.jetaprog.plugins.javascript.JavaScriptTypeScriptPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
@@ -548,6 +550,8 @@ public class ProjectSession(
         pluginManager.registerBundledPlugin(CPlugin())
         pluginManager.registerBundledPlugin(CppPlugin())
         pluginManager.registerBundledPlugin(DotNetPlugin())
+        pluginManager.registerBundledPlugin(JavaPlugin())
+        pluginManager.registerBundledPlugin(JavaScriptTypeScriptPlugin())
         pluginManager.registerBundledPlugin(PythonPlugin())
         pluginManager.registerBundledPlugin(RustPlugin())
         pluginManager.registerBundledPlugin(ValaPlugin())

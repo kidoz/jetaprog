@@ -24,6 +24,8 @@ kotlin {
                 implementation(projects.plugins.bundled.kotlin)
                 implementation(projects.plugins.bundled.cfamily)
                 implementation(project(":plugins:bundled:dotnet"))
+                implementation(project(":plugins:bundled:java"))
+                implementation(project(":plugins:bundled:javascript"))
                 implementation(projects.plugins.bundled.python)
                 implementation(projects.plugins.bundled.rust)
                 implementation(projects.plugins.bundled.vala)

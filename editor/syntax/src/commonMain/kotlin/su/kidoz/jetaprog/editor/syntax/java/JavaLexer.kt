@@ -31,6 +31,7 @@ public class JavaLexer : Lexer {
                 "double",
                 "else",
                 "enum",
+                "exports",
                 "extends",
                 "final",
                 "finally",
@@ -46,10 +47,15 @@ public class JavaLexer : Lexer {
                 "long",
                 "native",
                 "new",
+                "module",
+                "open",
+                "opens",
                 "package",
                 "private",
                 "protected",
                 "public",
+                "provides",
+                "requires",
                 "return",
                 "short",
                 "static",
@@ -60,14 +66,14 @@ public class JavaLexer : Lexer {
                 "this",
                 "throw",
                 "throws",
+                "to",
                 "transient",
                 "try",
+                "uses",
                 "void",
                 "volatile",
                 "while",
-                "true",
-                "false",
-                "null",
+                "with",
                 // Java 10+
                 "var",
                 // Java 14+
@@ -80,6 +86,8 @@ public class JavaLexer : Lexer {
                 // Java 17+
                 "when",
             )
+
+        val CONSTANTS = setOf("true", "false", "null")
 
         val MODIFIERS =
             setOf(
@@ -214,6 +222,9 @@ public class JavaLexer : Lexer {
 
         if (state.inBlockComment) {
             return consumeBlockCommentContinuation(text, pos, line, state, baseOffset)
+        }
+        if (state.inMultilineString) {
+            return consumeTextBlockContinuation(text, pos, line, state, baseOffset)
         }
 
         val char = text[pos]
@@ -362,6 +373,24 @@ public class JavaLexer : Lexer {
         )
     }
 
+    private fun consumeTextBlockContinuation(
+        text: String,
+        pos: Int,
+        line: Int,
+        state: LexerState,
+        baseOffset: Int,
+    ): Triple<Token, LexerState, Int> {
+        var length = 0
+        while (pos + length < text.length) {
+            if (text.startsWith("\"\"\"", pos + length)) {
+                length += 3
+                return Triple(Token(TokenType.STRING, baseOffset + pos, length, line), LexerState.Initial, length)
+            }
+            length++
+        }
+        return Triple(Token(TokenType.STRING, baseOffset + pos, length, line), state, length)
+    }
+
     private fun consumeChar(
         text: String,
         pos: Int,
@@ -470,6 +499,15 @@ public class JavaLexer : Lexer {
         line: Int,
         baseOffset: Int,
     ): Triple<Token, LexerState, Int> {
+        val nonSealed = "non-sealed"
+        if (text.startsWith(nonSealed, pos) && !text.getOrNull(pos + nonSealed.length).isIdentifierPart()) {
+            return Triple(
+                Token(TokenType.MODIFIER, baseOffset + pos, nonSealed.length, line),
+                LexerState.Initial,
+                nonSealed.length,
+            )
+        }
+
         var length = 0
         while (pos + length < text.length && (text[pos + length].isLetterOrDigit() || text[pos + length] == '_')) {
             length++
@@ -478,6 +516,7 @@ public class JavaLexer : Lexer {
         val word = text.substring(pos, pos + length)
         val type =
             when {
+                word in CONSTANTS -> TokenType.CONSTANT
                 word in PRIMITIVE_TYPES -> TokenType.TYPE
                 word in KEYWORDS -> if (word in MODIFIERS) TokenType.MODIFIER else TokenType.KEYWORD
                 word.first().isUpperCase() -> TokenType.TYPE
@@ -504,4 +543,6 @@ public class JavaLexer : Lexer {
     }
 
     private fun Char.isHexDigit(): Boolean = this in '0'..'9' || this.lowercaseChar() in 'a'..'f'
+
+    private fun Char?.isIdentifierPart(): Boolean = this != null && (isLetterOrDigit() || this == '_')
 }

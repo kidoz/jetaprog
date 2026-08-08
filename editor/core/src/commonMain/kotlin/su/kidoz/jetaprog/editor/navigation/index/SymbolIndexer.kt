@@ -339,7 +339,7 @@ public class KotlinSymbolExtractor :
 public class TypeScriptSymbolExtractor :
     RegexSymbolExtractor(
         languageId = "typescript",
-        supportedExtensions = setOf("ts", "tsx", "js", "jsx"),
+        supportedExtensions = setOf("ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"),
     ) {
     override val patterns: List<SymbolPattern> =
         listOf(

@@ -59,7 +59,7 @@ public object GrammarRegistry {
                 GrammarInfo(
                     languageId = "javascript",
                     displayName = "JavaScript",
-                    fileExtensions = listOf("js", "mjs", "cjs"),
+                    fileExtensions = listOf("js", "mjs", "cjs", "jsx"),
                 ),
             "typescript" to
                 GrammarInfo(

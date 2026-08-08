@@ -60,6 +60,8 @@ import su.kidoz.jetaprog.editor.syntax.cpp.CppLexer
 import su.kidoz.jetaprog.editor.syntax.gitignore.GitignoreLexer
 import su.kidoz.jetaprog.editor.syntax.highlighting.LayeredHighlighter
 import su.kidoz.jetaprog.editor.syntax.java.JavaLexer
+import su.kidoz.jetaprog.editor.syntax.javascript.JavaScriptLexer
+import su.kidoz.jetaprog.editor.syntax.javascript.TypeScriptLexer
 import su.kidoz.jetaprog.editor.syntax.kotlin.KotlinLexer
 import su.kidoz.jetaprog.editor.syntax.markdown.MarkdownLexer
 import su.kidoz.jetaprog.editor.syntax.meson.MesonLexer
@@ -174,6 +176,8 @@ public class EditorViewModel(
         LexerRegistry.register(KotlinLexer())
         LexerRegistry.register(ValaLexer())
         LexerRegistry.register(JavaLexer())
+        LexerRegistry.register(JavaScriptLexer())
+        LexerRegistry.register(TypeScriptLexer())
         LexerRegistry.register(RustLexer())
         LexerRegistry.register(CLexer())
         LexerRegistry.register(CppLexer())
@@ -1869,6 +1873,8 @@ public class EditorViewModel(
                 LanguageId.KOTLIN -> "kotlin"
                 LanguageId.VALA -> "vala"
                 LanguageId.JAVA -> "java"
+                LanguageId.JAVASCRIPT -> "javascript"
+                LanguageId.TYPESCRIPT -> "typescript"
                 LanguageId.RUST -> "rust"
                 LanguageId.C -> "c"
                 LanguageId.CPP -> "cpp"
@@ -2857,9 +2863,9 @@ public class EditorViewModel(
 
             "java" -> LanguageId.JAVA
 
-            "js" -> LanguageId.JAVASCRIPT
+            "js", "mjs", "cjs", "jsx" -> LanguageId.JAVASCRIPT
 
-            "ts" -> LanguageId.TYPESCRIPT
+            "ts", "mts", "cts", "tsx" -> LanguageId.TYPESCRIPT
 
             "py" -> LanguageId.PYTHON
 
