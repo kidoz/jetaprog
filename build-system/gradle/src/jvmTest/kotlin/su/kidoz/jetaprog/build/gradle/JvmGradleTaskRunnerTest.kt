@@ -1,7 +1,7 @@
 package su.kidoz.jetaprog.build.gradle
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import su.kidoz.jetaprog.platform.process.ProcessConfig
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
@@ -75,7 +75,11 @@ class JvmGradleTaskRunnerTest {
 
                     override val isAlive: Boolean = false
 
-                    override val output: Flow<ProcessOutput> = emptyFlow()
+                    override val output: Flow<ProcessOutput> =
+                        flow {
+                            stdout.lineSequence().forEach { line -> emit(ProcessOutput.Stdout(line)) }
+                            emit(ProcessOutput.Exited(0))
+                        }
                 },
             )
     }

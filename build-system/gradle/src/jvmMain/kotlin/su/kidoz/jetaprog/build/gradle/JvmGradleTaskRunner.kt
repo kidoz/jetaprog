@@ -1,7 +1,14 @@
 package su.kidoz.jetaprog.build.gradle
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import su.kidoz.jetaprog.platform.process.ProcessConfig
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.platform.process.ProcessOutput
@@ -24,7 +31,7 @@ public class JvmGradleTaskRunner(
         taskPath: String,
         args: List<String>,
     ): Result<Flow<GradleOutput>> =
-        runCatching {
+        try {
             // Build the command
             val gradlewPath = getGradlewPath(project.rootPath)
             val command =
@@ -41,34 +48,40 @@ public class JvmGradleTaskRunner(
                     workingDirectory = project.rootPath,
                 )
 
-            val process = processExecutor.start(config).getOrThrow()
-            runningProcess = process
+            val process = startProcess(config)
 
-            // Transform ProcessOutput to GradleOutput
-            flow {
-                process.output.collect { output ->
-                    when (output) {
-                        is ProcessOutput.Stdout -> {
-                            val line = output.line
-                            emit(parseOutputLine(line))
-                        }
-
-                        is ProcessOutput.Stderr -> {
-                            emit(GradleOutput.Stderr(output.line))
-                        }
-
-                        is ProcessOutput.Exited -> {
-                            runningProcess = null
-                            emit(
-                                GradleOutput.BuildFinished(
-                                    success = output.exitCode == 0,
-                                    exitCode = output.exitCode,
-                                ),
-                            )
-                        }
+            Result.success(
+                flow {
+                    var exitCode: Int? = null
+                    try {
+                        process.output
+                            .takeWhile { output ->
+                                if (output is ProcessOutput.Exited) exitCode = output.exitCode
+                                output !is ProcessOutput.Exited
+                            }.collect { output ->
+                                when (output) {
+                                    is ProcessOutput.Stdout -> emit(parseOutputLine(output.line))
+                                    is ProcessOutput.Stderr -> emit(GradleOutput.Stderr(output.line))
+                                    is ProcessOutput.Exited -> Unit
+                                }
+                            }
+                        val completedExitCode = checkNotNull(exitCode) { "Gradle process ended without an exit code" }
+                        emit(
+                            GradleOutput.BuildFinished(
+                                success = completedExitCode == 0,
+                                exitCode = completedExitCode,
+                            ),
+                        )
+                    } finally {
+                        if (process.isAlive) process.kill()
+                        if (runningProcess === process) runningProcess = null
                     }
-                }
-            }
+                },
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(error)
         }
 
     override fun cancelTask() {
@@ -77,25 +90,69 @@ public class JvmGradleTaskRunner(
     }
 
     override suspend fun discoverTasks(project: GradleProject): Result<GradleProject> =
-        runCatching {
+        try {
             val gradlewPath = getGradlewPath(project.rootPath)
-            val result =
-                processExecutor
-                    .execute(
+            val process =
+                startProcess(
+                    ProcessConfig(
                         command = listOf(gradlewPath, "tasks", "--all", "--console=plain"),
                         workingDirectory = project.rootPath,
-                        timeoutMillis = 60_000, // 1 minute timeout
-                    ).getOrThrow()
+                    ),
+                )
 
-            val tasks = parseTasksOutput(result.stdout)
+            val stdout = StringBuilder()
+            val stderr = StringBuilder()
+            var exitCode: Int? = null
+            try {
+                withTimeout(TASK_DISCOVERY_TIMEOUT_MILLIS) {
+                    process.output
+                        .takeWhile { output ->
+                            if (output is ProcessOutput.Exited) exitCode = output.exitCode
+                            output !is ProcessOutput.Exited
+                        }.collect { output ->
+                            when (output) {
+                                is ProcessOutput.Stdout -> stdout.appendLine(output.line)
+                                is ProcessOutput.Stderr -> stderr.appendLine(output.line)
+                                is ProcessOutput.Exited -> Unit
+                            }
+                        }
+                }
+            } finally {
+                if (process.isAlive) process.kill()
+                if (runningProcess === process) runningProcess = null
+            }
+
+            val completedExitCode = checkNotNull(exitCode) { "Gradle task discovery ended without an exit code" }
+            check(completedExitCode == 0) {
+                stderr.toString().trim().ifEmpty { "Gradle task discovery failed with exit code $completedExitCode" }
+            }
+            val tasks = parseTasksOutput(stdout.toString())
             val projectName = parseProjectName(project.rootPath)
 
-            project.copy(
-                name = projectName,
-                tasks = tasks,
-                subprojects = parseSubprojects(tasks),
+            Result.success(
+                project.copy(
+                    name = projectName,
+                    tasks = tasks,
+                    subprojects = parseSubprojects(tasks),
+                ),
             )
+        } catch (error: CancellationException) {
+            cancelTask()
+            throw error
+        } catch (error: Exception) {
+            cancelTask()
+            Result.failure(error)
         }
+
+    private suspend fun startProcess(config: ProcessConfig): RunningProcess {
+        val process =
+            withContext(NonCancellable) {
+                processExecutor.start(config).getOrThrow()
+            }
+        runningProcess = process
+        currentCoroutineContext().ensureActive()
+        return process
+    }
 
     private fun getGradlewPath(projectPath: String): String {
         val isWindows = System.getProperty("os.name").lowercase().contains("win")
@@ -195,5 +252,6 @@ public class JvmGradleTaskRunner(
 
     private companion object {
         private const val GRADLE_TASK_PATH_PATTERN = "[:A-Za-z0-9_.-]+"
+        private const val TASK_DISCOVERY_TIMEOUT_MILLIS = 60_000L
     }
 }

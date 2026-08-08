@@ -1,30 +1,34 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.build.gradle.GradleDiagnostic
 import su.kidoz.jetaprog.build.gradle.GradleDiagnosticsParser
 import su.kidoz.jetaprog.build.gradle.GradleOutput
 import su.kidoz.jetaprog.build.gradle.GradleProject
-import su.kidoz.jetaprog.build.gradle.GradleTaskRunner
+import su.kidoz.jetaprog.build.gradle.execution.GradleExecutionEvent
+import su.kidoz.jetaprog.build.gradle.execution.GradleExecutionService
 import su.kidoz.jetaprog.build.gradle.state.BuildResult
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.build.gradle.state.GradleState
 import su.kidoz.jetaprog.build.gradle.state.OutputLine
 import su.kidoz.jetaprog.build.gradle.state.OutputType
-import su.kidoz.jetaprog.build.gradle.test.GradleTestReportLoader
+import su.kidoz.jetaprog.build.gradle.test.GradleTestRun
 import su.kidoz.jetaprog.common.Disposable
 
 /**
  * ViewModel for the Gradle build panel.
  */
 public class GradleViewModel(
-    private val taskRunner: GradleTaskRunner,
-    private val testReportLoader: GradleTestReportLoader,
+    private val executionService: GradleExecutionService,
 ) : Disposable {
     private val _state = MutableStateFlow(GradleState())
     public val state: StateFlow<GradleState> = _state.asStateFlow()
@@ -63,7 +67,7 @@ public class GradleViewModel(
 
         // Discover tasks in background
         viewModelScope.launch {
-            taskRunner.discoverTasks(project).onSuccess { updatedProject ->
+            executionService.discoverTasks(project).onSuccess { updatedProject ->
                 _state.update { it.copy(project = updatedProject) }
             }
         }
@@ -76,7 +80,7 @@ public class GradleViewModel(
         val project = _state.value.project ?: return
 
         // Cancel any existing build
-        buildJob?.cancel()
+        buildJob?.cancelAndJoin()
 
         // Clear previous output and diagnostics
         _state.update {
@@ -98,15 +102,26 @@ public class GradleViewModel(
 
         buildJob =
             viewModelScope.launch {
-                taskRunner
+                executionService
                     .runTask(project, taskPath, args)
-                    .onSuccess { outputFlow ->
-                        outputFlow.collect { output ->
-                            handleOutput(output, taskPath)
-                        }
-                    }.onFailure { error ->
+                    .catch { error ->
+                        if (error is CancellationException) throw error
                         appendOutput("Failed to start build: ${error.message}", OutputType.ERROR)
                         _state.update { it.copy(isRunning = false, runningTask = null) }
+                    }.collect { event ->
+                        when (event) {
+                            is GradleExecutionEvent.Output -> {
+                                handleOutput(event.value, taskPath)
+                            }
+
+                            is GradleExecutionEvent.TestResults -> {
+                                handleTestResults(event.value)
+                            }
+
+                            is GradleExecutionEvent.TestReportFailure -> {
+                                appendOutput("Could not load test results: ${event.message}", OutputType.ERROR)
+                            }
+                        }
                     }
             }
     }
@@ -170,30 +185,24 @@ public class GradleViewModel(
                         lastBuildResult = result,
                     )
                 }
-                loadTestResults(taskPath)
             }
         }
     }
 
-    private suspend fun loadTestResults(taskPath: String) {
-        val project = _state.value.project ?: return
-        testReportLoader
-            .load(project.rootPath, taskPath, buildStartTime)
-            .onSuccess { testRun ->
-                if (testRun.suites.isEmpty()) return@onSuccess
-                _state.update { state -> state.copy(testRun = testRun) }
-                appendOutput(
-                    "Tests: ${testRun.passedCount} passed, ${testRun.failedCount} failed, " +
-                        "${testRun.skippedCount} skipped",
-                    if (testRun.failedCount == 0) OutputType.SUCCESS else OutputType.ERROR,
-                )
-            }.onFailure { error ->
-                appendOutput("Could not load test results: ${error.message}", OutputType.ERROR)
-            }
+    private fun handleTestResults(testRun: GradleTestRun) {
+        if (testRun.suites.isEmpty()) return
+        _state.update { state -> state.copy(testRun = testRun) }
+        appendOutput(
+            "Tests: ${testRun.passedCount} passed, ${testRun.failedCount} failed, " +
+                "${testRun.skippedCount} skipped",
+            if (testRun.failedCount == 0) OutputType.SUCCESS else OutputType.ERROR,
+        )
     }
 
-    private fun cancelTask() {
-        taskRunner.cancelTask()
+    private suspend fun cancelTask() {
+        executionService.cancel()
+        buildJob?.cancelAndJoin()
+        buildJob = null
         appendOutput("Build cancelled", OutputType.ERROR)
         _state.update { it.copy(isRunning = false, runningTask = null) }
     }
@@ -209,7 +218,7 @@ public class GradleViewModel(
     private suspend fun refreshTasks() {
         val project = _state.value.project ?: return
 
-        taskRunner.discoverTasks(project).onSuccess { updatedProject ->
+        executionService.discoverTasks(project).onSuccess { updatedProject ->
             _state.update { it.copy(project = updatedProject) }
         }
     }
@@ -267,6 +276,6 @@ public class GradleViewModel(
 
     override fun dispose() {
         buildJob?.cancel()
-        viewModelScope.launch { }.cancel()
+        viewModelScope.cancel()
     }
 }

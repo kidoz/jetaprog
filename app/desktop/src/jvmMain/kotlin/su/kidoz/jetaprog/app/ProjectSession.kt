@@ -50,10 +50,9 @@ import su.kidoz.jetaprog.app.viewmodel.GitViewModel
 import su.kidoz.jetaprog.app.viewmodel.GradleViewModel
 import su.kidoz.jetaprog.app.viewmodel.TerminalViewModel
 import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
-import su.kidoz.jetaprog.build.gradle.GradleTaskRunner
+import su.kidoz.jetaprog.build.gradle.execution.JvmGradleExecutionService
 import su.kidoz.jetaprog.build.gradle.importer.GradleClasspathResolver
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
-import su.kidoz.jetaprog.build.gradle.test.JvmGradleTestReportLoader
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.configuration.ConfigurationIntent
@@ -121,7 +120,6 @@ import su.kidoz.jetaprog.vcs.GitLineChangeType
  * @param settingsService Global settings service instance.
  * @param lintEngine Global lint engine instance.
  * @param lintProviderRegistry Global lint provider registry instance.
- * @param gradleTaskRunner Global Gradle task runner instance.
  * @param languageServerManager Global language server manager instance.
  */
 public class ProjectSession(
@@ -131,10 +129,10 @@ public class ProjectSession(
     private val settingsService: SettingsService,
     private val lintEngine: DefaultLintEngine,
     private val lintProviderRegistry: LintProviderRegistry,
-    private val gradleTaskRunner: GradleTaskRunner,
     private val languageServerManager: LanguageServerManager,
 ) : Disposable {
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val gradleExecutionService = JvmGradleExecutionService(processExecutor)
 
     // ========================================================================
     // LSP
@@ -423,14 +421,18 @@ public class ProjectSession(
      * The Gradle view model.
      */
     public val gradleViewModel: GradleViewModel =
-        GradleViewModel(gradleTaskRunner, JvmGradleTestReportLoader())
+        GradleViewModel(gradleExecutionService)
 
     /**
      * Imports the project structure from Gradle (Tooling API) and reconciles it
      * against `.jetaprog` metadata to surface stale or missing modules.
      */
     public val gradleImportCoordinator: GradleImportCoordinator =
-        GradleImportCoordinator(projectPath = projectPath, fileSystem = fileSystem)
+        GradleImportCoordinator(
+            projectPath = projectPath,
+            fileSystem = fileSystem,
+            executionService = gradleExecutionService,
+        )
 
     /**
      * Persistence for the `.jetaprog` project directory (workspace state, config files).
@@ -504,7 +506,7 @@ public class ProjectSession(
         ConfigurationViewModel(
             configurationManager = configurationManager,
             processExecutor = processExecutor,
-            gradleTaskRunner = gradleTaskRunner,
+            gradleExecutionService = gradleExecutionService,
             configurationDiscovery = configurationDiscovery,
             debugService = debugService,
         )
@@ -800,6 +802,7 @@ public class ProjectSession(
      * Shuts down all project-scoped services in order.
      */
     public suspend fun shutdown() {
+        gradleExecutionService.cancel()
         saveWorkspaceState()
         pluginManager.shutdown()
         embeddedServerRegistry.shutdownAll()

@@ -1,11 +1,14 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import su.kidoz.jetaprog.build.gradle.GradleOutput
 import su.kidoz.jetaprog.build.gradle.GradleProject
-import su.kidoz.jetaprog.build.gradle.GradleTaskRunner
+import su.kidoz.jetaprog.build.gradle.execution.GradleExecutionEvent
+import su.kidoz.jetaprog.build.gradle.execution.GradleExecutionService
 import su.kidoz.jetaprog.common.mvi.MviViewModel
 import su.kidoz.jetaprog.configuration.CargoProfileType
 import su.kidoz.jetaprog.configuration.ConfigurationEffect
@@ -36,7 +39,7 @@ import java.io.File
 public class ConfigurationViewModel(
     private val configurationManager: ConfigurationManager,
     private val processExecutor: ProcessExecutor,
-    private val gradleTaskRunner: GradleTaskRunner,
+    private val gradleExecutionService: GradleExecutionService,
     private val configurationDiscovery: ConfigurationDiscovery,
     private val debugService: DebugService,
 ) : MviViewModel<ConfigurationIntent, ConfigurationState, ConfigurationEffect>(ConfigurationState()) {
@@ -314,20 +317,27 @@ public class ConfigurationViewModel(
     private suspend fun executeGradle(settings: ConfigurationSettings.Gradle): Result<Int> {
         val args = settings.arguments + settings.jvmArguments.map { "-D$it" }
         val project = GradleProject(rootPath = projectPath)
-        val result = gradleTaskRunner.runTask(project, settings.taskPath, args)
-
-        return result.map { outputFlow ->
+        return try {
             var exitCode = 0
-            outputFlow.collect { output ->
-                when (output) {
-                    is su.kidoz.jetaprog.build.gradle.GradleOutput.BuildFinished -> {
-                        exitCode = output.exitCode
+            gradleExecutionService.runTask(project, settings.taskPath, args).collect { event ->
+                when (event) {
+                    is GradleExecutionEvent.Output -> {
+                        val output = event.value
+                        if (output is GradleOutput.BuildFinished) exitCode = output.exitCode
                     }
 
-                    else -> { /* Ignore other outputs */ }
+                    is GradleExecutionEvent.TestResults,
+                    is GradleExecutionEvent.TestReportFailure,
+                    -> {
+                        // Test events are presented by the Gradle tool window.
+                    }
                 }
             }
-            exitCode
+            Result.success(exitCode)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -654,7 +664,7 @@ public class ConfigurationViewModel(
     }
 
     private suspend fun stopConfiguration() {
-        gradleTaskRunner.cancelTask()
+        gradleExecutionService.cancel()
         debugSessionId?.let { sessionId ->
             debugService.stopSession(sessionId)
             debugSessionId = null

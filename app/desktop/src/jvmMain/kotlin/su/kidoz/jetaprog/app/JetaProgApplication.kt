@@ -10,7 +10,6 @@ import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeViewModel
 import su.kidoz.jetaprog.app.viewmodel.NewProjectViewModel
 import su.kidoz.jetaprog.app.viewmodel.SettingsViewModel
-import su.kidoz.jetaprog.build.gradle.JvmGradleTaskRunner
 import su.kidoz.jetaprog.lint.engine.DefaultLintEngine
 import su.kidoz.jetaprog.lint.provider.LintProviderRegistry
 import su.kidoz.jetaprog.mcp.server.EmbeddedMcpServer
@@ -68,11 +67,6 @@ public class JetaProgApplication {
      * The lint provider registry.
      */
     private val lintProviderRegistry: LintProviderRegistry = LintProviderRegistry(lintEngine)
-
-    /**
-     * The Gradle task runner.
-     */
-    private val gradleTaskRunner: JvmGradleTaskRunner = JvmGradleTaskRunner(processExecutor)
 
     /**
      * The settings storage.
@@ -143,7 +137,6 @@ public class JetaProgApplication {
                 settingsService = settingsService,
                 lintEngine = lintEngine,
                 lintProviderRegistry = lintProviderRegistry,
-                gradleTaskRunner = gradleTaskRunner,
                 languageServerManager = languageServerManager,
             )
         _session.value = newSession

@@ -1,8 +1,10 @@
 package su.kidoz.jetaprog.build.gradle.importer
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.model.idea.IdeaContentRoot
 import org.gradle.tooling.model.idea.IdeaModule
@@ -23,7 +25,12 @@ private val logger = KotlinLogging.logger {}
  * and inter-module dependencies — the editor-neutral source of truth that
  * replaces hand-maintained `.jetaprog` metadata.
  */
-public class GradleProjectImporter {
+public class GradleProjectImporter : GradleModelImporter {
+    private val cancellationLock = Any()
+
+    @Volatile
+    private var activeCancellation: CancellationTokenSource? = null
+
     /**
      * Imports the model for the Gradle build rooted at [projectRoot].
      *
@@ -31,9 +38,11 @@ public class GradleProjectImporter {
      * may start a Gradle daemon. Failures (no wrapper, configuration errors,
      * daemon problems) are captured in the returned [Result].
      */
-    public suspend fun import(projectRoot: String): Result<GradleImportModel> =
+    override suspend fun import(projectRoot: String): Result<GradleImportModel> =
         withContext(Dispatchers.IO) {
-            runCatching {
+            val cancellation = GradleConnector.newCancellationTokenSource()
+            synchronized(cancellationLock) { activeCancellation = cancellation }
+            try {
                 val rootDir = File(projectRoot)
                 val connector =
                     GradleConnector
@@ -42,13 +51,28 @@ public class GradleProjectImporter {
                         .useBuildDistribution()
 
                 connector.connect().use { connection ->
-                    val ideaProject = connection.getModel(IdeaProject::class.java)
-                    mapModel(ideaProject, rootDir)
+                    val ideaProject =
+                        connection
+                            .model(IdeaProject::class.java)
+                            .withCancellationToken(cancellation.token())
+                            .get()
+                    Result.success(mapModel(ideaProject, rootDir))
                 }
-            }.onFailure { error ->
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
                 logger.warn(error) { "Gradle import failed for $projectRoot" }
+                Result.failure(error)
+            } finally {
+                synchronized(cancellationLock) {
+                    if (activeCancellation === cancellation) activeCancellation = null
+                }
             }
         }
+
+    override fun cancel() {
+        synchronized(cancellationLock) { activeCancellation }?.cancel()
+    }
 
     private fun mapModel(
         ideaProject: IdeaProject,
