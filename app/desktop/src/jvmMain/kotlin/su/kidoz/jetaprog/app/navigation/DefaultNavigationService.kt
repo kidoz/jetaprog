@@ -1,6 +1,9 @@
 package su.kidoz.jetaprog.app.navigation
 
+import su.kidoz.jetaprog.app.adapter.SnapshotTextDocument
 import su.kidoz.jetaprog.common.text.TextPosition
+import su.kidoz.jetaprog.editor.document.LanguageId
+import su.kidoz.jetaprog.editor.language.LanguageDefinitionRegistry
 import su.kidoz.jetaprog.editor.navigation.BreadcrumbItem
 import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
 import su.kidoz.jetaprog.editor.navigation.HierarchyNode
@@ -24,7 +27,9 @@ import su.kidoz.jetaprog.lsp.protocol.CallHierarchyOutgoingCallsParams
 import su.kidoz.jetaprog.lsp.protocol.DocumentHighlightParams
 import su.kidoz.jetaprog.lsp.protocol.DocumentSymbolParams
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentHighlightKind
+import su.kidoz.jetaprog.lsp.protocol.LspLocation
 import su.kidoz.jetaprog.lsp.protocol.LspPosition
+import su.kidoz.jetaprog.lsp.protocol.LspRange
 import su.kidoz.jetaprog.lsp.protocol.ReferenceContext
 import su.kidoz.jetaprog.lsp.protocol.ReferenceParams
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentIdentifier
@@ -35,13 +40,17 @@ import su.kidoz.jetaprog.lsp.protocol.WorkspaceSymbolParams
 import su.kidoz.jetaprog.lsp.server.EmbeddedLspServer
 import su.kidoz.jetaprog.lsp.server.EmbeddedServerRegistry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.plugins.support.LanguageRegistry
+import su.kidoz.jetaprog.plugins.api.language.Location as ProviderLocation
+import su.kidoz.jetaprog.plugins.api.services.TextDocument as ProviderTextDocument
 
 /**
  * Default implementation of NavigationService.
  *
  * Provides navigation features by delegating to:
  * 1. Embedded LSP servers (in-process, zero-latency)
- * 2. External LSP client (fallback)
+ * 2. The language registry (native providers and external LSP servers, hybrid-routed)
+ * 3. External LSP client (fallback)
  *
  * Features:
  * - Definition navigation via textDocument/definition
@@ -51,12 +60,16 @@ import su.kidoz.jetaprog.platform.filesystem.FileSystem
  * - Workspace search (classes, files, symbols)
  *
  * Also maintains navigation history for back/forward navigation.
+ *
+ * @param languageRegistryProvider Supplies the language registry lazily so navigation can be
+ *   constructed before plugin infrastructure is ready.
  */
 public class DefaultNavigationService(
     private val lspClient: LspClient?,
     private val fileSystem: FileSystem,
     private val embeddedServerRegistry: EmbeddedServerRegistry? = null,
     private val workspacePath: String = System.getProperty("user.dir"),
+    private val languageRegistryProvider: () -> LanguageRegistry? = { null },
 ) : NavigationService {
     private val history = NavigationHistory()
     private val adapter = LspNavigationAdapter()
@@ -205,6 +218,12 @@ public class DefaultNavigationService(
                 return adapter.toNavigationTarget(locations.first())
             }
         }
+
+        // Ask the language registry next: it aggregates native providers and external
+        // LSP servers behind the hybrid per-language routing rules.
+        registryLocations(filePath, position) { document, pos ->
+            provideDefinition(document, pos)
+        }.firstOrNull()?.let { return adapter.toNavigationTarget(it) }
 
         // Fall back to external LSP client
         val client = lspClient ?: return null
@@ -369,6 +388,23 @@ public class DefaultNavigationService(
                     )
                 return adapter.toFindUsagesResult(symbol, locations)
             }
+        }
+
+        // Ask the language registry next (native providers + external LSP servers)
+        val registryReferences =
+            registryLocations(filePath, position) { document, pos ->
+                provideReferences(document, pos)
+            }
+        if (registryReferences.isNotEmpty()) {
+            val symbol =
+                NavigationTarget(
+                    name = "Symbol",
+                    qualifiedName = "",
+                    kind = NavigationSymbolKind.UNKNOWN,
+                    filePath = filePath,
+                    position = position,
+                )
+            return adapter.toFindUsagesResult(symbol, registryReferences)
         }
 
         // Fall back to external LSP client
@@ -778,24 +814,37 @@ public class DefaultNavigationService(
     private fun uriToPath(uri: String): String? = uri.takeIf { it.startsWith("file://") }?.removePrefix("file://")
 
     /**
-     * Detect language ID from file extension.
+     * Detect language ID from the file name via the language definition registry.
      */
-    private fun detectLanguageId(filePath: String): String {
-        val extension = filePath.substringAfterLast('.', "").lowercase()
-        return when (extension) {
-            "kt", "kts" -> "kotlin"
-            "java" -> "java"
-            "py" -> "python"
-            "js", "mjs", "cjs" -> "javascript"
-            "ts", "mts", "cts" -> "typescript"
-            "rs" -> "rust"
-            "go" -> "go"
-            "c", "h" -> "c"
-            "cpp", "hpp", "cc", "cxx" -> "cpp"
-            "vala", "vapi" -> "vala"
-            else -> extension
-        }
+    private fun detectLanguageId(filePath: String): String =
+        LanguageDefinitionRegistry.detect(filePath)?.value
+            ?: filePath.substringAfterLast('.', "").lowercase()
+
+    /**
+     * Runs a language-registry query against a snapshot of the file and converts the
+     * resulting provider locations to LSP locations for the navigation adapter.
+     */
+    private suspend fun registryLocations(
+        filePath: String,
+        position: TextPosition,
+        query: suspend LanguageRegistry.(ProviderTextDocument, TextPosition) -> List<ProviderLocation>,
+    ): List<LspLocation> {
+        val registry = languageRegistryProvider() ?: return emptyList()
+        val content = fileSystem.readText(filePath).getOrNull() ?: return emptyList()
+        val languageId = LanguageId(detectLanguageId(filePath))
+        val document = SnapshotTextDocument.of(filePath, languageId, content)
+        return registry.query(document, position).map { it.toLspLocation() }
     }
+
+    private fun ProviderLocation.toLspLocation(): LspLocation =
+        LspLocation(
+            uri = uri,
+            range =
+                LspRange(
+                    start = LspPosition(range.start.line, range.start.column),
+                    end = LspPosition(range.end.line, range.end.column),
+                ),
+        )
 
     // ========================================================================
     // Search Helpers
