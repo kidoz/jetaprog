@@ -58,6 +58,7 @@ import su.kidoz.jetaprog.editor.syntax.c.CLexer
 import su.kidoz.jetaprog.editor.syntax.cmake.CMakeLexer
 import su.kidoz.jetaprog.editor.syntax.cpp.CppLexer
 import su.kidoz.jetaprog.editor.syntax.gitignore.GitignoreLexer
+import su.kidoz.jetaprog.editor.syntax.go.GoLexer
 import su.kidoz.jetaprog.editor.syntax.highlighting.LayeredHighlighter
 import su.kidoz.jetaprog.editor.syntax.java.JavaLexer
 import su.kidoz.jetaprog.editor.syntax.javascript.JavaScriptLexer
@@ -175,6 +176,7 @@ public class EditorViewModel(
         // Register lexers
         LexerRegistry.register(KotlinLexer())
         LexerRegistry.register(ValaLexer())
+        LexerRegistry.register(GoLexer())
         LexerRegistry.register(JavaLexer())
         LexerRegistry.register(JavaScriptLexer())
         LexerRegistry.register(TypeScriptLexer())
@@ -1872,6 +1874,7 @@ public class EditorViewModel(
             when (languageId) {
                 LanguageId.KOTLIN -> "kotlin"
                 LanguageId.VALA -> "vala"
+                LanguageId.GO -> "go"
                 LanguageId.JAVA -> "java"
                 LanguageId.JAVASCRIPT -> "javascript"
                 LanguageId.TYPESCRIPT -> "typescript"

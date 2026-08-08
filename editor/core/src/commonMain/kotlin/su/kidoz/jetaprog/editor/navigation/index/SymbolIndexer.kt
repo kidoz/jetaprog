@@ -450,3 +450,50 @@ public class JavaSymbolExtractor :
             ),
         )
 }
+
+/**
+ * Go symbol extractor using regex patterns.
+ */
+public class GoSymbolExtractor :
+    RegexSymbolExtractor(
+        languageId = "go",
+        supportedExtensions = setOf("go"),
+    ) {
+    override val patterns: List<SymbolPattern> =
+        listOf(
+            SymbolPattern(
+                regex = Regex("""^\s*package\s+(\w+)"""),
+                kind = NavigationSymbolKind.PACKAGE,
+            ),
+            SymbolPattern(
+                regex = Regex("""^\s*type\s+(\w+)\s+struct\b"""),
+                kind = NavigationSymbolKind.STRUCT,
+                opensScope = true,
+            ),
+            SymbolPattern(
+                regex = Regex("""^\s*type\s+(\w+)\s+interface\b"""),
+                kind = NavigationSymbolKind.INTERFACE,
+                opensScope = true,
+            ),
+            SymbolPattern(
+                regex = Regex("""^\s*type\s+(\w+)\s*(?:=\s*)?(?!struct\b|interface\b)[^\s{]+"""),
+                kind = NavigationSymbolKind.TYPE_ALIAS,
+            ),
+            SymbolPattern(
+                regex = Regex("""^\s*func\s+(\w+)\s*(?:\[[^]]+])?\s*\("""),
+                kind = NavigationSymbolKind.FUNCTION,
+            ),
+            SymbolPattern(
+                regex = Regex("""^\s*func\s+\([^)]*\)\s*(\w+)\s*(?:\[[^]]+])?\s*\("""),
+                kind = NavigationSymbolKind.METHOD,
+            ),
+            SymbolPattern(
+                regex = Regex("""^\s*const\s+(\w+)\b"""),
+                kind = NavigationSymbolKind.CONSTANT,
+            ),
+            SymbolPattern(
+                regex = Regex("""^\s*var\s+(\w+)\b"""),
+                kind = NavigationSymbolKind.VARIABLE,
+            ),
+        )
+}

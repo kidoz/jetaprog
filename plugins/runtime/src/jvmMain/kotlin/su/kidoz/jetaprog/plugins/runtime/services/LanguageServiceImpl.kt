@@ -210,6 +210,7 @@ public class LanguageServiceImpl(
             pattern.endsWith(".cs") || pattern.endsWith(".csx") -> "csharp"
             pattern.endsWith(".csproj") || pattern.endsWith(".props") || pattern.endsWith(".targets") -> "msbuild"
             pattern.endsWith(".vala") || pattern.endsWith(".vapi") -> "vala"
+            pattern.endsWith(".go") -> "go"
             pattern.endsWith(".java") -> "java"
             JAVASCRIPT_EXTENSIONS.any(pattern::endsWith) -> "javascript"
             TYPESCRIPT_EXTENSIONS.any(pattern::endsWith) -> "typescript"
