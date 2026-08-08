@@ -443,6 +443,10 @@ private fun RunConfiguration.subtitle(): String? =
             "${s.packageManager.executable} run ${s.script}"
         }
 
+        is ConfigurationSettings.Java -> {
+            "${s.buildTool.displayName} ${s.task}"
+        }
+
         is ConfigurationSettings.DotNetBuild -> {
             s.targetPath?.substringAfterLast('/') ?: s.configuration.displayName
         }
@@ -495,6 +499,9 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.NODE_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.NODE_BUILD -> Icons.Filled.Build
         ConfigurationType.NODE_TEST -> Icons.Filled.PlayArrow
+        ConfigurationType.JAVA_RUN -> Icons.Filled.PlayArrow
+        ConfigurationType.JAVA_DEBUG -> Icons.Default.BugReport
+        ConfigurationType.JAVA_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
         ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
         ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow

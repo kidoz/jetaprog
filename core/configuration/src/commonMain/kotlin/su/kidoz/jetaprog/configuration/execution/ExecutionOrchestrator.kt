@@ -274,6 +274,8 @@ public class ExecutionOrchestrator(
 
             is ConfigurationSettings.Node -> buildNodeConfig(settings, workspacePath)
 
+            is ConfigurationSettings.Java -> buildJavaConfig(settings, workspacePath)
+
             is ConfigurationSettings.DotNetBuild -> buildDotNetBuildConfig(settings, workspacePath)
 
             is ConfigurationSettings.DotNetRun -> buildDotNetRunConfig(settings, workspacePath)
@@ -584,6 +586,61 @@ public class ExecutionOrchestrator(
             environment = settings.environment,
         )
     }
+
+    private fun buildJavaConfig(
+        settings: ConfigurationSettings.Java,
+        workspacePath: String,
+    ): ProcessConfig {
+        val command =
+            when (settings.buildTool) {
+                su.kidoz.jetaprog.configuration.JavaBuildTool.GRADLE -> buildGradleJavaCommand(settings)
+                su.kidoz.jetaprog.configuration.JavaBuildTool.MAVEN -> buildMavenJavaCommand(settings)
+            }
+        val environment = settings.environment.toMutableMap()
+        if (
+            settings.buildTool == su.kidoz.jetaprog.configuration.JavaBuildTool.MAVEN &&
+            settings.jvmArguments.isNotEmpty()
+        ) {
+            environment["MAVEN_OPTS"] =
+                listOfNotNull(
+                    environment["MAVEN_OPTS"]?.takeIf { it.isNotBlank() },
+                    settings.jvmArguments.joinToString(" "),
+                ).joinToString(" ")
+        }
+
+        return ProcessConfig(
+            command = command,
+            workingDirectory = settings.workingDirectory ?: workspacePath,
+            environment = environment,
+        )
+    }
+
+    private fun buildGradleJavaCommand(settings: ConfigurationSettings.Java): List<String> =
+        buildList {
+            add(settings.executable ?: "./gradlew")
+            addAll(settings.task.split(' ').filter(String::isNotBlank))
+            addAll(settings.buildArguments)
+            settings.testFilter?.takeIf { it.isNotBlank() }?.let {
+                add("--tests")
+                add(it)
+            }
+            if (settings.programArguments.isNotEmpty()) {
+                add("--args=${settings.programArguments.joinToString(" ")}")
+            }
+            settings.jvmArguments.forEach { add("-D$it") }
+        }
+
+    private fun buildMavenJavaCommand(settings: ConfigurationSettings.Java): List<String> =
+        buildList {
+            add(settings.executable ?: settings.buildTool.defaultExecutable)
+            addAll(settings.task.split(' ').filter(String::isNotBlank))
+            addAll(settings.buildArguments)
+            settings.mainClass?.takeIf { it.isNotBlank() }?.let { add("-Dexec.mainClass=$it") }
+            if (settings.programArguments.isNotEmpty()) {
+                add("-Dexec.args=${settings.programArguments.joinToString(" ")}")
+            }
+            settings.testFilter?.takeIf { it.isNotBlank() }?.let { add("-Dtest=$it") }
+        }
 
     private fun buildDotNetBuildConfig(
         settings: ConfigurationSettings.DotNetBuild,

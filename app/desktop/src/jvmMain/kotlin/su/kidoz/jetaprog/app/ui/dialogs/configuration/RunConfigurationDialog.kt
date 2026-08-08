@@ -61,6 +61,8 @@ import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationState
 import su.kidoz.jetaprog.configuration.ConfigurationType
 import su.kidoz.jetaprog.configuration.DotNetConfigurationType
+import su.kidoz.jetaprog.configuration.JavaBuildTool
+import su.kidoz.jetaprog.configuration.JavaCommand
 import su.kidoz.jetaprog.configuration.NodePackageManager
 import su.kidoz.jetaprog.configuration.RunConfiguration
 
@@ -537,6 +539,13 @@ private fun ConfigurationEditorPanel(
 
             is ConfigurationSettings.Node -> {
                 NodeSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
+                )
+            }
+
+            is ConfigurationSettings.Java -> {
+                JavaSettingsEditor(
                     settings = settings,
                     onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
                 )
@@ -1171,6 +1180,138 @@ private fun NodePackageManagerSelector(
 }
 
 @Composable
+private fun JavaSettingsEditor(
+    settings: ConfigurationSettings.Java,
+    onSettingsChange: (ConfigurationSettings.Java) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
+        JavaBuildToolSelector(
+            buildTool = settings.buildTool,
+            onBuildToolChange = { buildTool ->
+                onSettingsChange(
+                    settings.copy(
+                        buildTool = buildTool,
+                        task =
+                            when {
+                                settings.command == JavaCommand.TEST -> "test"
+                                buildTool == JavaBuildTool.GRADLE -> "run"
+                                else -> "compile exec:java"
+                            },
+                        executable = null,
+                    ),
+                )
+            },
+        )
+
+        IntelliJTextField(
+            value = settings.task,
+            onValueChange = { onSettingsChange(settings.copy(task = it)) },
+            label = "Task or goal:",
+            placeholder = if (settings.buildTool == JavaBuildTool.GRADLE) "run" else "compile exec:java",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (settings.buildTool == JavaBuildTool.MAVEN) {
+            IntelliJTextField(
+                value = settings.executable ?: "",
+                onValueChange = { onSettingsChange(settings.copy(executable = it.ifBlank { null })) },
+                label = "Build tool executable:",
+                placeholder = settings.buildTool.defaultExecutable,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        if (settings.command != JavaCommand.TEST) {
+            IntelliJTextField(
+                value = settings.mainClass ?: "",
+                onValueChange = { onSettingsChange(settings.copy(mainClass = it.ifBlank { null })) },
+                label = "Main class:",
+                placeholder = "Configured by the build when empty",
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            IntelliJTextField(
+                value = settings.programArguments.joinToString(" "),
+                onValueChange = { onSettingsChange(settings.copy(programArguments = parseArguments(it))) },
+                label = "Program arguments:",
+                placeholder = "arg1 --flag",
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            IntelliJTextField(
+                value = settings.testFilter ?: "",
+                onValueChange = { onSettingsChange(settings.copy(testFilter = it.ifBlank { null })) },
+                label = "Test filter:",
+                placeholder = "com.example.MainTest or com.example.MainTest.method",
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        IntelliJTextField(
+            value = settings.buildArguments.joinToString(" "),
+            onValueChange = { onSettingsChange(settings.copy(buildArguments = parseArguments(it))) },
+            label = "Build arguments:",
+            placeholder = "--info or -Pprofile=dev",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.jvmArguments.joinToString(" "),
+            onValueChange = { onSettingsChange(settings.copy(jvmArguments = parseArguments(it))) },
+            label =
+                if (settings.buildTool == JavaBuildTool.GRADLE) {
+                    "Gradle JVM properties:"
+                } else {
+                    "JVM arguments:"
+                },
+            placeholder =
+                if (settings.buildTool ==
+                    JavaBuildTool.GRADLE
+                ) {
+                    "property=value"
+                } else {
+                    "-Xmx1g -Dproperty=value"
+                },
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.workingDirectory ?: "",
+            onValueChange = { onSettingsChange(settings.copy(workingDirectory = it.ifBlank { null })) },
+            label = "Working directory:",
+            placeholder = "Project root by default",
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun JavaBuildToolSelector(
+    buildTool: JavaBuildTool,
+    onBuildToolChange: (JavaBuildTool) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IntelliJButton(
+            text = "Build tool: ${buildTool.displayName}",
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            JavaBuildTool.entries.forEach { tool ->
+                DropdownMenuItem(
+                    text = { Text(tool.displayName) },
+                    onClick = {
+                        onBuildToolChange(tool)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun DotNetBuildSettingsEditor(
     settings: ConfigurationSettings.DotNetBuild,
     onSettingsChange: (ConfigurationSettings.DotNetBuild) -> Unit,
@@ -1508,6 +1649,9 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.NODE_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.NODE_BUILD -> Icons.Filled.Build
         ConfigurationType.NODE_TEST -> Icons.Filled.PlayArrow
+        ConfigurationType.JAVA_RUN -> Icons.Filled.PlayArrow
+        ConfigurationType.JAVA_DEBUG -> Icons.Default.BugReport
+        ConfigurationType.JAVA_TEST -> Icons.Filled.PlayArrow
         ConfigurationType.DOTNET_BUILD -> Icons.Default.Build
         ConfigurationType.DOTNET_RUN -> Icons.Default.PlayArrow
         ConfigurationType.DOTNET_TEST -> Icons.Default.PlayArrow
@@ -1537,6 +1681,9 @@ private val configurationCreationTypes =
         ConfigurationType.NODE_RUN,
         ConfigurationType.NODE_BUILD,
         ConfigurationType.NODE_TEST,
+        ConfigurationType.JAVA_RUN,
+        ConfigurationType.JAVA_DEBUG,
+        ConfigurationType.JAVA_TEST,
         ConfigurationType.DOTNET_RUN,
         ConfigurationType.DOTNET_DEBUG,
         ConfigurationType.DOTNET_BUILD,

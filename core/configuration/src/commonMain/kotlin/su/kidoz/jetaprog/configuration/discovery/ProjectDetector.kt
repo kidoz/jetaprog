@@ -26,6 +26,9 @@ public class ProjectDetector(
         // Check for Gradle project
         detectGradle(projectPath)?.let { detected.add(it) }
 
+        // Check for Maven project
+        detectMaven(projectPath)?.let { detected.add(it) }
+
         // Check for Cargo/Rust project
         detectCargo(projectPath)?.let { detected.add(it) }
 
@@ -71,14 +74,71 @@ public class ProjectDetector(
                 else -> return null
             }
 
-        // Try to extract project name from settings file
         val projectName = extractGradleProjectName(projectPath)
+        val buildContent = fileSystem.readText(detectionFile).getOrNull().orEmpty()
+        val isJavaProject =
+            fileSystem.exists("$projectPath/src/main/java") ||
+                JAVA_GRADLE_PLUGIN_PATTERN.containsMatchIn(buildContent)
+        val mainClass = JAVA_GRADLE_MAIN_CLASS_PATTERN.find(buildContent)?.groupValues?.get(1)
+        val isRunnable = mainClass != null || JAVA_GRADLE_APPLICATION_PATTERN.containsMatchIn(buildContent)
 
         return DetectedProject(
             type = ProjectType.GRADLE,
             rootPath = projectPath,
             detectionFile = detectionFile,
             projectName = projectName,
+            mainEntry = mainClass,
+            metadata =
+                buildMap {
+                    if (isJavaProject) put(JAVA_PROJECT_METADATA_KEY, "true")
+                    if (isRunnable) put(JAVA_RUNNABLE_METADATA_KEY, "true")
+                    mainClass?.let { put(JAVA_MAIN_CLASS_METADATA_KEY, it) }
+                },
+        )
+    }
+
+    private suspend fun detectMaven(projectPath: String): DetectedProject? {
+        val pom = "$projectPath/pom.xml"
+        if (!fileSystem.exists(pom)) return null
+
+        val content = fileSystem.readText(pom).getOrNull().orEmpty()
+        val projectContent = content.replace(MAVEN_PARENT_BLOCK_PATTERN, "")
+        val projectName =
+            MAVEN_ARTIFACT_PATTERN
+                .find(projectContent)
+                ?.groupValues
+                ?.get(1)
+                ?.trim()
+        val mainClass =
+            MAVEN_MAIN_CLASS_PATTERN
+                .find(content)
+                ?.groupValues
+                ?.get(1)
+                ?.trim()
+        val isJavaProject =
+            fileSystem.exists("$projectPath/src/main/java") ||
+                content.contains("maven-compiler-plugin") ||
+                content.contains("maven.compiler.source")
+        val executable =
+            when {
+                fileSystem.exists("$projectPath/mvnw") -> "$projectPath/mvnw"
+                fileSystem.exists("$projectPath/mvnw.cmd") -> "$projectPath/mvnw.cmd"
+                else -> "mvn"
+            }
+
+        return DetectedProject(
+            type = ProjectType.MAVEN,
+            rootPath = projectPath,
+            detectionFile = pom,
+            projectName = projectName,
+            mainEntry = mainClass,
+            metadata =
+                buildMap {
+                    if (isJavaProject) put(JAVA_PROJECT_METADATA_KEY, "true")
+                    if (mainClass != null) put(JAVA_RUNNABLE_METADATA_KEY, "true")
+                    mainClass?.let { put(JAVA_MAIN_CLASS_METADATA_KEY, it) }
+                    put(JAVA_EXECUTABLE_METADATA_KEY, executable)
+                },
         )
     }
 
@@ -418,5 +478,14 @@ public class ProjectDetector(
     private companion object {
         val GO_MODULE_PATTERN: Regex = """(?m)^\s*module\s+(\S+)""".toRegex()
         val GO_MAIN_PACKAGE_PATTERN: Regex = """(?m)^\s*package\s+main\b""".toRegex()
+        val JAVA_GRADLE_PLUGIN_PATTERN: Regex =
+            """(?m)(\bjava\b|id\s*\(\s*["']java(?:-library)?["']\s*\)|id\s+["']java(?:-library)?["'])""".toRegex()
+        val JAVA_GRADLE_APPLICATION_PATTERN: Regex =
+            """(?m)(\bapplication\b|id\s*\(\s*["']application["']\s*\)|id\s+["']application["'])""".toRegex()
+        val JAVA_GRADLE_MAIN_CLASS_PATTERN: Regex =
+            """mainClass(?:\.set\s*\(|\s*=\s*)["']([^"']+)["']""".toRegex()
+        val MAVEN_PARENT_BLOCK_PATTERN: Regex = """(?s)<parent\b[^>]*>.*?</parent>""".toRegex()
+        val MAVEN_ARTIFACT_PATTERN: Regex = """<artifactId>\s*([^<]+)\s*</artifactId>""".toRegex()
+        val MAVEN_MAIN_CLASS_PATTERN: Regex = """<mainClass>\s*([^<]+)\s*</mainClass>""".toRegex()
     }
 }

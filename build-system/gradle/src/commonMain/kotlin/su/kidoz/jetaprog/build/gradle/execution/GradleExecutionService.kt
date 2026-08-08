@@ -40,6 +40,7 @@ public interface GradleExecutionService {
         project: GradleProject,
         taskPath: String,
         args: List<String> = emptyList(),
+        environment: Map<String, String> = emptyMap(),
     ): Flow<GradleExecutionEvent>
 
     /** Discovers all tasks available in [project]. */

@@ -27,6 +27,8 @@ import su.kidoz.jetaprog.configuration.DockerComposeSettings
 import su.kidoz.jetaprog.configuration.DockerRunSettings
 import su.kidoz.jetaprog.configuration.DotNetConfigurationType
 import su.kidoz.jetaprog.configuration.GoCommand
+import su.kidoz.jetaprog.configuration.JavaBuildTool
+import su.kidoz.jetaprog.configuration.JavaCommand
 import su.kidoz.jetaprog.configuration.NodePackageManager
 import su.kidoz.jetaprog.configuration.RunConfiguration
 import su.kidoz.jetaprog.configuration.RunOutputLine
@@ -152,7 +154,7 @@ public class ConfigurationViewModel(
             )
         }
 
-        emitEffect(ConfigurationEffect.ConfigurationStarted(config))
+        emitEffect(ConfigurationEffect.DebugConfigurationStarted(config))
 
         debugService
             .startDebugSession(
@@ -306,6 +308,10 @@ public class ConfigurationViewModel(
                 executeNode(config)
             }
 
+            is ConfigurationSettings.Java -> {
+                executeJava(config)
+            }
+
             is ConfigurationSettings.DotNetBuild -> {
                 executeDotNetBuild(settings)
             }
@@ -369,7 +375,7 @@ public class ConfigurationViewModel(
         val project = GradleProject(rootPath = projectPath)
         return try {
             var exitCode = 0
-            gradleExecutionService.runTask(project, settings.taskPath, args).collect { event ->
+            gradleExecutionService.runTask(project, settings.taskPath, args, settings.environment).collect { event ->
                 when (event) {
                     is GradleExecutionEvent.Output -> {
                         val output = event.value
@@ -476,6 +482,109 @@ public class ConfigurationViewModel(
 
                     is ExecutionResult.Cancelled -> {
                         throw CancellationException("Node.js execution cancelled")
+                    }
+                }
+            } finally {
+                outputJob.cancelAndJoin()
+                if (executionSessionId == session.id) executionSessionId = null
+            }
+        }
+
+    private suspend fun executeJava(config: RunConfiguration): Result<Int> {
+        val settings = config.settings as ConfigurationSettings.Java
+        return if (settings.buildTool == JavaBuildTool.GRADLE) {
+            executeJavaGradle(config, settings)
+        } else {
+            executeJavaProcess(config)
+        }
+    }
+
+    private suspend fun executeJavaGradle(
+        config: RunConfiguration,
+        settings: ConfigurationSettings.Java,
+    ): Result<Int> {
+        prepareExecutionOutput(config.id)
+        val rootPath = settings.workingDirectory ?: projectPath
+        val args =
+            buildList {
+                addAll(settings.buildArguments)
+                settings.testFilter?.takeIf { it.isNotBlank() }?.let {
+                    add("--tests")
+                    add(it)
+                }
+                if (settings.programArguments.isNotEmpty()) {
+                    add("--args=${settings.programArguments.joinToString(" ")}")
+                }
+                settings.jvmArguments.forEach { add("-D$it") }
+            }
+        return try {
+            var exitCode = 0
+            gradleExecutionService
+                .runTask(GradleProject(rootPath = rootPath), settings.task, args, settings.environment)
+                .collect { event ->
+                    when (event) {
+                        is GradleExecutionEvent.Output -> {
+                            val output = event.value
+                            appendExecutionOutput(output.toRunOutputLine())
+                            if (output is GradleOutput.BuildFinished) exitCode = output.exitCode
+                        }
+
+                        is GradleExecutionEvent.TestResults -> {
+                            val results = event.value
+                            appendExecutionOutput(
+                                RunOutputLine(
+                                    "Tests: ${results.passedCount} passed, ${results.failedCount} failed, " +
+                                        "${results.skippedCount} skipped",
+                                    if (results.failedCount == 0) RunOutputType.SUCCESS else RunOutputType.ERROR,
+                                ),
+                            )
+                        }
+
+                        is GradleExecutionEvent.TestReportFailure -> {
+                            appendExecutionOutput(
+                                RunOutputLine(
+                                    "Could not load test results: ${event.message}",
+                                    RunOutputType.ERROR,
+                                ),
+                            )
+                        }
+                    }
+                }
+            Result.success(exitCode)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    private suspend fun executeJavaProcess(config: RunConfiguration): Result<Int> =
+        coroutineScope {
+            prepareExecutionOutput(config.id)
+            val session = executionOrchestrator.execute(config, projectPath)
+            executionSessionId = session.id
+            val outputJob =
+                launch {
+                    session.output.collect { output ->
+                        appendExecutionOutput(output.toRunOutputLine())
+                    }
+                }
+            try {
+                when (val executionResult = session.result.filterNotNull().first()) {
+                    is ExecutionResult.Success -> {
+                        Result.success(executionResult.exitCode)
+                    }
+
+                    is ExecutionResult.Failure -> {
+                        if (executionResult.exitCode >= 0) {
+                            Result.success(executionResult.exitCode)
+                        } else {
+                            Result.failure(IllegalStateException(executionResult.message))
+                        }
+                    }
+
+                    is ExecutionResult.Cancelled -> {
+                        throw CancellationException("Java execution cancelled")
                     }
                 }
             } finally {
@@ -930,8 +1039,9 @@ public class ConfigurationViewModel(
         val hasGradleSettings = exists("settings.gradle.kts") || exists("settings.gradle")
         val hasGradleBuild = exists("build.gradle.kts") || exists("build.gradle")
         if (hasGradleSettings || hasGradleBuild) {
-            return ConfigurationType.GRADLE
+            return if (isJavaProject(root)) ConfigurationType.JAVA_RUN else ConfigurationType.GRADLE
         }
+        if (exists("pom.xml") && isJavaProject(root)) return ConfigurationType.JAVA_RUN
         if (exists("Cargo.toml")) return ConfigurationType.CARGO_RUN
         if (exists("go.mod")) return ConfigurationType.GO_RUN
         if (exists("package.json")) return ConfigurationType.NODE_RUN
@@ -1129,6 +1239,38 @@ public class ConfigurationViewModel(
                 )
             }
 
+            ConfigurationType.JAVA_RUN,
+            ConfigurationType.JAVA_DEBUG,
+            ConfigurationType.JAVA_TEST,
+            -> {
+                val command =
+                    when (type) {
+                        ConfigurationType.JAVA_RUN -> JavaCommand.RUN
+                        ConfigurationType.JAVA_DEBUG -> JavaCommand.DEBUG
+                        ConfigurationType.JAVA_TEST -> JavaCommand.TEST
+                    }
+                val buildTool = detectJavaBuildTool()
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = name,
+                    type = type,
+                    settings =
+                        ConfigurationSettings.Java(
+                            command = command,
+                            buildTool = buildTool,
+                            task =
+                                when {
+                                    command == JavaCommand.TEST -> "test"
+                                    buildTool == JavaBuildTool.GRADLE -> "run"
+                                    else -> "compile exec:java"
+                                },
+                            executable = detectJavaBuildExecutable(buildTool),
+                            mainClass = detectJavaMainClass(buildTool),
+                            workingDirectory = projectPath.ifBlank { null },
+                        ),
+                )
+            }
+
             ConfigurationType.DOTNET_BUILD -> {
                 RunConfiguration(
                     id = ConfigurationId.generate(),
@@ -1273,6 +1415,9 @@ public class ConfigurationViewModel(
             ConfigurationType.NODE_RUN -> "New Node.js Run"
             ConfigurationType.NODE_BUILD -> "New Node.js Build"
             ConfigurationType.NODE_TEST -> "New Node.js Test"
+            ConfigurationType.JAVA_RUN -> "New Java Run"
+            ConfigurationType.JAVA_DEBUG -> "New Java Debug"
+            ConfigurationType.JAVA_TEST -> "New Java Test"
             ConfigurationType.DOTNET_BUILD -> "New .NET Build"
             ConfigurationType.DOTNET_RUN -> "New .NET Run"
             ConfigurationType.DOTNET_TEST -> "New .NET Test"
@@ -1306,6 +1451,9 @@ public class ConfigurationViewModel(
             ConfigurationType.NODE_RUN -> "Node.js Run"
             ConfigurationType.NODE_BUILD -> "Node.js Build"
             ConfigurationType.NODE_TEST -> "Node.js Test"
+            ConfigurationType.JAVA_RUN -> "Java Run"
+            ConfigurationType.JAVA_DEBUG -> "Java Debug"
+            ConfigurationType.JAVA_TEST -> "Java Test"
             ConfigurationType.DOTNET_BUILD -> ".NET Build"
             ConfigurationType.DOTNET_RUN -> ".NET Run"
             ConfigurationType.DOTNET_TEST -> ".NET Test"
@@ -1327,6 +1475,59 @@ public class ConfigurationViewModel(
             File(root, "bun.lock").exists() || File(root, "bun.lockb").exists() -> NodePackageManager.BUN
             else -> NodePackageManager.NPM
         }
+    }
+
+    private fun isJavaProject(root: File): Boolean {
+        if (File(root, "src/main/java").exists()) return true
+        val buildFile =
+            File(root, "build.gradle.kts").takeIf(File::exists)
+                ?: File(root, "build.gradle").takeIf(File::exists)
+                ?: File(root, "pom.xml").takeIf(File::exists)
+                ?: return false
+        return runCatching {
+            val content = buildFile.readText()
+            content.contains("maven-compiler-plugin") ||
+                content.contains("maven.compiler.source") ||
+                JAVA_BUILD_PLUGIN_PATTERN.containsMatchIn(content)
+        }.getOrDefault(false)
+    }
+
+    private fun detectJavaBuildTool(): JavaBuildTool =
+        if (projectPath.isNotBlank() && File(projectPath, "pom.xml").exists()) {
+            JavaBuildTool.MAVEN
+        } else {
+            JavaBuildTool.GRADLE
+        }
+
+    private fun detectJavaBuildExecutable(buildTool: JavaBuildTool): String? {
+        if (projectPath.isBlank() || buildTool == JavaBuildTool.GRADLE) return null
+        val root = File(projectPath)
+        return File(root, "mvnw").takeIf(File::exists)?.absolutePath
+            ?: File(root, "mvnw.cmd").takeIf(File::exists)?.absolutePath
+    }
+
+    private fun detectJavaMainClass(buildTool: JavaBuildTool): String? {
+        if (projectPath.isBlank()) return null
+        val root = File(projectPath)
+        val buildFile =
+            when (buildTool) {
+                JavaBuildTool.GRADLE -> {
+                    File(root, "build.gradle.kts").takeIf(File::exists)
+                        ?: File(root, "build.gradle").takeIf(File::exists)
+                }
+
+                JavaBuildTool.MAVEN -> {
+                    File(root, "pom.xml").takeIf(File::exists)
+                }
+            } ?: return null
+        val pattern = if (buildTool == JavaBuildTool.GRADLE) JAVA_GRADLE_MAIN_PATTERN else JAVA_MAVEN_MAIN_PATTERN
+        return runCatching {
+            pattern
+                .find(buildFile.readText())
+                ?.groupValues
+                ?.get(1)
+                ?.trim()
+        }.getOrNull()
     }
 
     private fun findDotNetTargetPath(): String? {
@@ -1387,6 +1588,16 @@ public class ConfigurationViewModel(
         }
     }
 
+    private fun prepareExecutionOutput(configurationId: ConfigurationId) {
+        updateState {
+            copy(
+                outputConfigurationId = configurationId,
+                executionOutput = emptyList(),
+                lastExecutionExitCode = null,
+            )
+        }
+    }
+
     private fun appendExecutionOutput(line: RunOutputLine) {
         updateState {
             copy(executionOutput = (executionOutput + line).takeLast(MAX_EXECUTION_OUTPUT_LINES))
@@ -1441,6 +1652,38 @@ public class ConfigurationViewModel(
             }
         }
 
+    private fun GradleOutput.toRunOutputLine(): RunOutputLine =
+        when (this) {
+            is GradleOutput.Stdout -> {
+                RunOutputLine(line, RunOutputType.STDOUT)
+            }
+
+            is GradleOutput.Stderr -> {
+                RunOutputLine(line, RunOutputType.STDERR)
+            }
+
+            is GradleOutput.TaskStarted -> {
+                RunOutputLine("Starting task: $taskPath", RunOutputType.INFO)
+            }
+
+            is GradleOutput.TaskCompleted -> {
+                val success =
+                    outcome != su.kidoz.jetaprog.build.gradle.TaskOutcome.FAILED &&
+                        outcome != su.kidoz.jetaprog.build.gradle.TaskOutcome.CANCELLED
+                RunOutputLine(
+                    "$taskPath $outcome",
+                    if (success) RunOutputType.INFO else RunOutputType.ERROR,
+                )
+            }
+
+            is GradleOutput.BuildFinished -> {
+                RunOutputLine(
+                    if (success) "BUILD SUCCESSFUL" else "BUILD FAILED (exit code $exitCode)",
+                    if (success) RunOutputType.SUCCESS else RunOutputType.ERROR,
+                )
+            }
+        }
+
     private suspend fun discoverConfigurations(projectPath: String) {
         val existingNames = currentState.configurations.map { it.name }.toSet()
 
@@ -1486,5 +1729,9 @@ public class ConfigurationViewModel(
 
 private val targetFrameworkRegex = Regex("<TargetFramework>\\s*([^<\\s]+)\\s*</TargetFramework>")
 private val targetFrameworksRegex = Regex("<TargetFrameworks>\\s*([^<\\s]+)\\s*</TargetFrameworks>")
+private val JAVA_BUILD_PLUGIN_PATTERN =
+    Regex("""(?m)(\bjava\b|id\s*\(\s*["']java(?:-library)?["']\s*\)|id\s+["']java(?:-library)?["'])""")
+private val JAVA_GRADLE_MAIN_PATTERN = Regex("""mainClass(?:\.set\s*\(|\s*=\s*)["']([^"']+)["']""")
+private val JAVA_MAVEN_MAIN_PATTERN = Regex("""<mainClass>\s*([^<]+)\s*</mainClass>""")
 private const val CANCELLED_EXECUTION_EXIT_CODE = -1
 private const val MAX_EXECUTION_OUTPUT_LINES = 5_000

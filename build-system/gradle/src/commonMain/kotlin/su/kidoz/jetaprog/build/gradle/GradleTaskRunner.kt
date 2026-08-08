@@ -12,12 +12,14 @@ public interface GradleTaskRunner {
      * @param project The Gradle project to run the task in.
      * @param taskPath The task path (e.g., "build", ":app:desktop:run").
      * @param args Additional arguments to pass to Gradle.
+     * @param environment Environment variables supplied to the Gradle process.
      * @return A flow of output from the task execution.
      */
     public suspend fun runTask(
         project: GradleProject,
         taskPath: String,
         args: List<String> = emptyList(),
+        environment: Map<String, String> = emptyMap(),
     ): Result<Flow<GradleOutput>>
 
     /**

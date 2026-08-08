@@ -4,6 +4,8 @@ import su.kidoz.jetaprog.configuration.ConfigurationId
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationType
 import su.kidoz.jetaprog.configuration.GoCommand
+import su.kidoz.jetaprog.configuration.JavaBuildTool
+import su.kidoz.jetaprog.configuration.JavaCommand
 import su.kidoz.jetaprog.configuration.NodePackageManager
 import su.kidoz.jetaprog.configuration.PoetryCommand
 import su.kidoz.jetaprog.configuration.RunConfiguration
@@ -45,30 +47,60 @@ public class ConfigurationDiscovery(
         existingNames: Set<String> = emptySet(),
     ): List<RunConfiguration> =
         when (project.type) {
-            ProjectType.GRADLE -> createGradleConfigurations(project, existingNames)
+            ProjectType.GRADLE -> {
+                if (project.metadata[JAVA_PROJECT_METADATA_KEY] == "true") {
+                    createJavaConfigurations(project, existingNames, JavaBuildTool.GRADLE)
+                } else {
+                    createGradleConfigurations(project, existingNames)
+                }
+            }
 
-            ProjectType.CARGO -> createCargoConfigurations(project, existingNames)
+            ProjectType.MAVEN -> {
+                createJavaConfigurations(project, existingNames, JavaBuildTool.MAVEN)
+            }
 
-            ProjectType.MESON -> createMesonConfigurations(project, existingNames)
+            ProjectType.CARGO -> {
+                createCargoConfigurations(project, existingNames)
+            }
 
-            ProjectType.POETRY -> createPoetryConfigurations(project, existingNames)
+            ProjectType.MESON -> {
+                createMesonConfigurations(project, existingNames)
+            }
 
-            ProjectType.UV -> createUvConfigurations(project, existingNames)
+            ProjectType.POETRY -> {
+                createPoetryConfigurations(project, existingNames)
+            }
 
-            ProjectType.DOTNET -> createDotNetConfigurations(project, existingNames)
+            ProjectType.UV -> {
+                createUvConfigurations(project, existingNames)
+            }
+
+            ProjectType.DOTNET -> {
+                createDotNetConfigurations(project, existingNames)
+            }
 
             ProjectType.PYTHON_PYPROJECT,
             ProjectType.PYTHON_SETUP,
-            -> createPythonConfigurations(project, existingNames)
+            -> {
+                createPythonConfigurations(project, existingNames)
+            }
 
-            ProjectType.CMAKE -> emptyList()
+            ProjectType.CMAKE -> {
+                emptyList()
+            }
 
             // CMake support TODO
-            ProjectType.NODEJS -> createNodeConfigurations(project, existingNames)
+            ProjectType.NODEJS -> {
+                createNodeConfigurations(project, existingNames)
+            }
 
-            ProjectType.GO -> createGoConfigurations(project, existingNames)
+            ProjectType.GO -> {
+                createGoConfigurations(project, existingNames)
+            }
 
-            ProjectType.UNKNOWN -> emptyList()
+            ProjectType.UNKNOWN -> {
+                emptyList()
+            }
         }
 
     private fun createGradleConfigurations(
@@ -122,6 +154,101 @@ public class ConfigurationDiscovery(
 
         return configs
     }
+
+    private fun createJavaConfigurations(
+        project: DetectedProject,
+        existingNames: Set<String>,
+        buildTool: JavaBuildTool,
+    ): List<RunConfiguration> {
+        if (project.metadata[JAVA_PROJECT_METADATA_KEY] != "true") return emptyList()
+
+        val configs = mutableListOf<RunConfiguration>()
+        val baseName = project.projectName ?: "Java"
+        val executable = project.metadata[JAVA_EXECUTABLE_METADATA_KEY]
+        val mainClass = project.metadata[JAVA_MAIN_CLASS_METADATA_KEY]
+        val isRunnable = project.metadata[JAVA_RUNNABLE_METADATA_KEY] == "true"
+
+        if (isRunnable) {
+            addJavaConfiguration(
+                target = configs,
+                existingNames = existingNames,
+                name = "$baseName Run",
+                type = ConfigurationType.JAVA_RUN,
+                command = JavaCommand.RUN,
+                buildTool = buildTool,
+                task = buildTool.runTask,
+                executable = executable,
+                mainClass = mainClass,
+                workingDirectory = project.rootPath,
+                isTemporary = false,
+            )
+            addJavaConfiguration(
+                target = configs,
+                existingNames = existingNames,
+                name = "$baseName Debug",
+                type = ConfigurationType.JAVA_DEBUG,
+                command = JavaCommand.DEBUG,
+                buildTool = buildTool,
+                task = buildTool.runTask,
+                executable = executable,
+                mainClass = mainClass,
+                workingDirectory = project.rootPath,
+                isTemporary = true,
+            )
+        }
+
+        addJavaConfiguration(
+            target = configs,
+            existingNames = existingNames,
+            name = "$baseName Test",
+            type = ConfigurationType.JAVA_TEST,
+            command = JavaCommand.TEST,
+            buildTool = buildTool,
+            task = "test",
+            executable = executable,
+            mainClass = mainClass,
+            workingDirectory = project.rootPath,
+            isTemporary = true,
+        )
+
+        return configs
+    }
+
+    private fun addJavaConfiguration(
+        target: MutableList<RunConfiguration>,
+        existingNames: Set<String>,
+        name: String,
+        type: ConfigurationType,
+        command: JavaCommand,
+        buildTool: JavaBuildTool,
+        task: String,
+        executable: String?,
+        mainClass: String?,
+        workingDirectory: String,
+        isTemporary: Boolean,
+    ) {
+        if (name in existingNames) return
+        target.add(
+            RunConfiguration(
+                id = ConfigurationId.generate(),
+                name = name,
+                type = type,
+                isTemporary = isTemporary,
+                settings =
+                    ConfigurationSettings.Java(
+                        command = command,
+                        buildTool = buildTool,
+                        task = task,
+                        executable = executable,
+                        mainClass = mainClass,
+                        workingDirectory = workingDirectory,
+                    ),
+            ),
+        )
+    }
+
+    private val JavaBuildTool.runTask: String
+        get() = if (this == JavaBuildTool.GRADLE) "run" else "compile exec:java"
 
     private fun createCargoConfigurations(
         project: DetectedProject,

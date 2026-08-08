@@ -437,9 +437,14 @@ private fun MainScreenContent(
                 }
 
                 is ConfigurationEffect.ConfigurationStarted -> {
-                    if (effect.configuration.settings is ConfigurationSettings.Node) {
+                    val settings = effect.configuration.settings
+                    if (settings is ConfigurationSettings.Node || settings is ConfigurationSettings.Java) {
                         selectedBottomTab = BottomTab.BUILD
                     }
+                }
+
+                is ConfigurationEffect.DebugConfigurationStarted -> {
+                    selectedBottomTab = BottomTab.DEBUGGER
                 }
 
                 is ConfigurationEffect.GoTestsFinished -> {
@@ -587,6 +592,7 @@ private fun MainScreenContent(
                 },
                 onDebugConfiguration = {
                     session.configurationViewModel.dispatch(ConfigurationIntent.DebugActive)
+                    openDebuggerTab()
                 },
                 onStopConfiguration = {
                     session.configurationViewModel.dispatch(ConfigurationIntent.Stop)

@@ -99,6 +99,18 @@ public enum class ConfigurationType(
     @SerialName("node_test")
     NODE_TEST("Node.js Test", "javascript"),
 
+    /** Java application run. */
+    @SerialName("java_run")
+    JAVA_RUN("Java Run", "java"),
+
+    /** Java application debug. */
+    @SerialName("java_debug")
+    JAVA_DEBUG("Java Debug", "java"),
+
+    /** Java test execution. */
+    @SerialName("java_test")
+    JAVA_TEST("Java Test", "java"),
+
     /** .NET build. */
     @SerialName("dotnet_build")
     DOTNET_BUILD(".NET Build", "dotnet"),
@@ -424,6 +436,36 @@ public sealed interface ConfigurationSettings {
     ) : ConfigurationSettings
 
     /**
+     * Java build-tool configuration used for running, debugging, or testing.
+     */
+    @Serializable
+    @SerialName("java")
+    public data class Java(
+        /** Operation performed by this configuration. */
+        val command: JavaCommand,
+        /** Build tool that owns compilation and launch. */
+        val buildTool: JavaBuildTool,
+        /** Gradle task or Maven goal used for the operation. */
+        val task: String,
+        /** Optional build-tool executable override. */
+        val executable: String? = null,
+        /** Main class override, primarily used by Maven exec configurations. */
+        val mainClass: String? = null,
+        /** Arguments forwarded to the Java application. */
+        val programArguments: List<String> = emptyList(),
+        /** Additional build-tool arguments. */
+        val buildArguments: List<String> = emptyList(),
+        /** JVM arguments forwarded where supported by the selected build tool. */
+        val jvmArguments: List<String> = emptyList(),
+        /** Optional test class or method filter. */
+        val testFilter: String? = null,
+        /** Environment variables. */
+        val environment: Map<String, String> = emptyMap(),
+        /** Working directory. */
+        val workingDirectory: String? = null,
+    ) : ConfigurationSettings
+
+    /**
      * .NET build configuration.
      */
     @Serializable
@@ -605,6 +647,41 @@ public enum class NodePackageManager(
     /** Bun package manager and runtime. */
     @SerialName("bun")
     BUN("bun", "Bun"),
+}
+
+/**
+ * Operation performed by a Java run configuration.
+ */
+@Serializable
+public enum class JavaCommand {
+    /** Compile and run the configured application. */
+    @SerialName("run")
+    RUN,
+
+    /** Compile and launch the application under the JVM debugger. */
+    @SerialName("debug")
+    DEBUG,
+
+    /** Compile and execute Java tests. */
+    @SerialName("test")
+    TEST,
+}
+
+/**
+ * Build tool used by a Java run configuration.
+ */
+@Serializable
+public enum class JavaBuildTool(
+    public val displayName: String,
+    public val defaultExecutable: String,
+) {
+    /** Gradle build. */
+    @SerialName("gradle")
+    GRADLE("Gradle", "gradle"),
+
+    /** Maven build. */
+    @SerialName("maven")
+    MAVEN("Maven", "mvn"),
 }
 
 /**

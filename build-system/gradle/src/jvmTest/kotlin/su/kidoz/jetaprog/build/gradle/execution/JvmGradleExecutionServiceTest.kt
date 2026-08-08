@@ -27,27 +27,33 @@ class JvmGradleExecutionServiceTest {
         runTest {
             val testRun = GradleTestRun(emptyList())
             val testLoader = FakeTestReportLoader(Result.success(testRun))
+            val taskRunner =
+                FakeTaskRunner(
+                    flowOf(
+                        GradleOutput.Stdout("compiling"),
+                        GradleOutput.BuildFinished(success = true, exitCode = 0),
+                    ),
+                )
             val service =
                 JvmGradleExecutionService(
-                    taskRunner =
-                        FakeTaskRunner(
-                            flowOf(
-                                GradleOutput.Stdout("compiling"),
-                                GradleOutput.BuildFinished(success = true, exitCode = 0),
-                            ),
-                        ),
+                    taskRunner = taskRunner,
                     modelImporter = ImmediateModelImporter,
                     testReportLoader = testLoader,
                     currentTimeMillis = { 42L },
                 )
 
-            val events = service.runTask(GradleProject(rootPath = "/workspace"), "test").toList()
+            val environment = mapOf("JAVA_HOME" to "/jdk")
+            val events =
+                service
+                    .runTask(GradleProject(rootPath = "/workspace"), "test", environment = environment)
+                    .toList()
 
             assertEquals(3, events.size)
             assertIs<GradleExecutionEvent.Output>(events[0])
             assertIs<GradleExecutionEvent.Output>(events[1])
             assertEquals(testRun, assertIs<GradleExecutionEvent.TestResults>(events[2]).value)
             assertEquals(TestLoadRequest("/workspace", "test", 42L), testLoader.lastRequest)
+            assertEquals(environment, taskRunner.lastEnvironment)
             assertFalse(service.isRunning)
         }
 
@@ -105,13 +111,19 @@ class JvmGradleExecutionServiceTest {
     private class FakeTaskRunner(
         private val output: Flow<GradleOutput>,
     ) : GradleTaskRunner {
+        var lastEnvironment: Map<String, String> = emptyMap()
+
         override val isRunning: Boolean = false
 
         override suspend fun runTask(
             project: GradleProject,
             taskPath: String,
             args: List<String>,
-        ): Result<Flow<GradleOutput>> = Result.success(output)
+            environment: Map<String, String>,
+        ): Result<Flow<GradleOutput>> {
+            lastEnvironment = environment
+            return Result.success(output)
+        }
 
         override fun cancelTask() = Unit
 
@@ -129,6 +141,7 @@ class JvmGradleExecutionServiceTest {
             project: GradleProject,
             taskPath: String,
             args: List<String>,
+            environment: Map<String, String>,
         ): Result<Flow<GradleOutput>> =
             Result.success(
                 flow {

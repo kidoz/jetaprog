@@ -7,6 +7,9 @@ public enum class ProjectType {
     /** Gradle-based project (build.gradle, build.gradle.kts). */
     GRADLE,
 
+    /** Maven-based project (pom.xml). */
+    MAVEN,
+
     /** Rust/Cargo project (Cargo.toml). */
     CARGO,
 
@@ -61,3 +64,7 @@ public data class DetectedProject(
 
 internal const val NODE_PACKAGE_MANAGER_METADATA_KEY: String = "node.packageManager"
 internal const val NODE_SCRIPT_METADATA_PREFIX: String = "node.script."
+internal const val JAVA_PROJECT_METADATA_KEY: String = "java.project"
+internal const val JAVA_RUNNABLE_METADATA_KEY: String = "java.runnable"
+internal const val JAVA_MAIN_CLASS_METADATA_KEY: String = "java.mainClass"
+internal const val JAVA_EXECUTABLE_METADATA_KEY: String = "java.executable"

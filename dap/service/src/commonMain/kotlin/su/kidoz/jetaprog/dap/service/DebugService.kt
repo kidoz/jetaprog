@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
+import su.kidoz.jetaprog.configuration.JavaBuildTool
+import su.kidoz.jetaprog.configuration.JavaCommand
 import su.kidoz.jetaprog.configuration.RunConfiguration
 import su.kidoz.jetaprog.dap.client.DapClient
 import su.kidoz.jetaprog.dap.protocol.InitializeRequestArguments
@@ -156,6 +158,8 @@ public class DebugService(
 
             is ConfigurationSettings.Gradle -> getJvmDebugAdapter(workspacePath)
 
+            is ConfigurationSettings.Java -> getJvmDebugAdapter(workspacePath)
+
             is ConfigurationSettings.Application -> getGenericDebugAdapter(workspacePath)
 
             is ConfigurationSettings.DotNetDebug -> getDotNetDebugAdapter(settings, workspacePath)
@@ -213,6 +217,8 @@ public class DebugService(
         when (configuration.settings) {
             is ConfigurationSettings.Gradle -> "jetaprog-jvm"
 
+            is ConfigurationSettings.Java -> "jetaprog-jvm"
+
             is ConfigurationSettings.Python -> "debugpy"
 
             is ConfigurationSettings.CargoRun,
@@ -234,6 +240,10 @@ public class DebugService(
         return when (settings) {
             is ConfigurationSettings.Gradle -> {
                 buildGradleLaunchArgs(settings, workspacePath)
+            }
+
+            is ConfigurationSettings.Java -> {
+                buildJavaLaunchArgs(settings, workspacePath)
             }
 
             is ConfigurationSettings.Python -> {
@@ -311,6 +321,96 @@ public class DebugService(
             ),
         )
     }
+
+    internal fun buildJavaLaunchArgs(
+        settings: ConfigurationSettings.Java,
+        workspacePath: String,
+    ): Result<LaunchRequestArguments> =
+        when (settings.buildTool) {
+            JavaBuildTool.GRADLE -> buildJavaGradleLaunchArgs(settings, workspacePath)
+            JavaBuildTool.MAVEN -> buildJavaMavenLaunchArgs(settings, workspacePath)
+        }
+
+    private fun buildJavaGradleLaunchArgs(
+        settings: ConfigurationSettings.Java,
+        workspacePath: String,
+    ): Result<LaunchRequestArguments> {
+        val cwd = settings.workingDirectory ?: workspacePath
+        val wrapper = File(cwd, if (isWindows()) "gradlew.bat" else "gradlew")
+        val gradleCommand = settings.executable ?: wrapper.takeIf(File::exists)?.absolutePath ?: "gradle"
+        return Result.success(
+            LaunchRequestArguments(
+                program = gradleCommand,
+                args =
+                    buildList {
+                        addAll(settings.task.split(' ').filter(String::isNotBlank))
+                        add("--debug-jvm")
+                        addAll(settings.buildArguments)
+                        settings.testFilter?.takeIf { it.isNotBlank() }?.let {
+                            add("--tests")
+                            add(it)
+                        }
+                        if (settings.programArguments.isNotEmpty()) {
+                            add("--args=${settings.programArguments.joinToString(" ")}")
+                        }
+                        settings.jvmArguments.forEach { add("-D$it") }
+                    },
+                cwd = cwd,
+                env = settings.environment,
+                attachPort = GRADLE_JDWP_PORT,
+                attachHost = "127.0.0.1",
+                attachTimeoutMs = GRADLE_ATTACH_TIMEOUT_MS,
+                sourceRoots = discoverSourceRoots(cwd),
+            ),
+        )
+    }
+
+    private fun buildJavaMavenLaunchArgs(
+        settings: ConfigurationSettings.Java,
+        workspacePath: String,
+    ): Result<LaunchRequestArguments> {
+        val cwd = settings.workingDirectory ?: workspacePath
+        val mavenCommand = settings.executable ?: discoverMavenCommand(cwd)
+        val debugAgent =
+            "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=127.0.0.1:$GRADLE_JDWP_PORT"
+        val environment = settings.environment.toMutableMap()
+        environment["MAVEN_OPTS"] =
+            listOfNotNull(
+                environment["MAVEN_OPTS"]?.takeIf { it.isNotBlank() },
+                settings.jvmArguments.takeIf { it.isNotEmpty() }?.joinToString(" "),
+                debugAgent,
+            ).joinToString(" ")
+
+        return Result.success(
+            LaunchRequestArguments(
+                program = mavenCommand,
+                args =
+                    buildList {
+                        addAll(settings.task.split(' ').filter(String::isNotBlank))
+                        addAll(settings.buildArguments)
+                        settings.mainClass?.takeIf { it.isNotBlank() }?.let { add("-Dexec.mainClass=$it") }
+                        if (settings.programArguments.isNotEmpty()) {
+                            add("-Dexec.args=${settings.programArguments.joinToString(" ")}")
+                        }
+                        settings.testFilter?.takeIf { it.isNotBlank() }?.let { add("-Dtest=$it") }
+                        if (settings.command == JavaCommand.TEST) add("-DforkCount=0")
+                    },
+                cwd = cwd,
+                env = environment,
+                attachPort = GRADLE_JDWP_PORT,
+                attachHost = "127.0.0.1",
+                attachTimeoutMs = GRADLE_ATTACH_TIMEOUT_MS,
+                sourceRoots = discoverSourceRoots(cwd),
+            ),
+        )
+    }
+
+    private fun discoverMavenCommand(workspacePath: String): String {
+        val wrapper = File(workspacePath, if (isWindows()) "mvnw.cmd" else "mvnw")
+        return wrapper.takeIf(File::exists)?.absolutePath ?: "mvn"
+    }
+
+    private fun isWindows(): Boolean = System.getProperty("os.name").lowercase().contains("win")
 
     /**
      * Collects conventional JVM source roots (`src/<sourceSet>/kotlin|java`)

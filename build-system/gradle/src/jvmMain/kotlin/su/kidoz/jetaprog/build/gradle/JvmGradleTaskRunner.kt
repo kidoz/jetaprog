@@ -30,6 +30,7 @@ public class JvmGradleTaskRunner(
         project: GradleProject,
         taskPath: String,
         args: List<String>,
+        environment: Map<String, String>,
     ): Result<Flow<GradleOutput>> =
         try {
             // Build the command
@@ -46,6 +47,7 @@ public class JvmGradleTaskRunner(
                 ProcessConfig(
                     command = command,
                     workingDirectory = project.rootPath,
+                    environment = environment,
                 )
 
             val process = startProcess(config)

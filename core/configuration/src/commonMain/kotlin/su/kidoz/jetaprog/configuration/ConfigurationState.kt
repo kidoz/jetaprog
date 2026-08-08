@@ -174,6 +174,11 @@ public sealed interface ConfigurationEffect : Effect {
         val configuration: RunConfiguration,
     ) : ConfigurationEffect
 
+    /** Configuration started under a debugger. */
+    public data class DebugConfigurationStarted(
+        val configuration: RunConfiguration,
+    ) : ConfigurationEffect
+
     /** Configuration finished. */
     public data class ConfigurationFinished(
         val configuration: RunConfiguration,

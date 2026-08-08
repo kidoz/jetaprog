@@ -47,6 +47,7 @@ public class JvmGradleExecutionService internal constructor(
         project: GradleProject,
         taskPath: String,
         args: List<String>,
+        environment: Map<String, String>,
     ): Flow<GradleExecutionEvent> =
         flow {
             operationMutex.withLock {
@@ -55,7 +56,7 @@ public class JvmGradleExecutionService internal constructor(
                 val startedAtMillis = currentTimeMillis()
                 try {
                     taskRunner
-                        .runTask(project, taskPath, args)
+                        .runTask(project, taskPath, args, environment)
                         .getOrThrow()
                         .collect { output ->
                             emit(GradleExecutionEvent.Output(output))
