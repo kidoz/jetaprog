@@ -1474,6 +1474,14 @@ private fun DotNetDebugSettingsEditor(
     )
 
     IntelliJTextField(
+        value = settings.assemblyName ?: "",
+        onValueChange = { onSettingsChange(settings.copy(assemblyName = it.ifBlank { null })) },
+        label = "Assembly name:",
+        placeholder = "Project filename by default",
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    IntelliJTextField(
         value = settings.programArguments.joinToString(" "),
         onValueChange = { onSettingsChange(settings.copy(programArguments = parseArguments(it))) },
         label = "Program arguments:",

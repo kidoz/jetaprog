@@ -248,22 +248,79 @@ public class ProjectDetector(
     }
 
     private suspend fun detectDotNet(projectPath: String): DetectedProject? {
-        val solutionFiles = findChildFiles(projectPath, ".sln", ".slnx")
-        val projectFiles = findChildFiles(projectPath, ".csproj", ".fsproj", ".vbproj")
+        val solutionFiles = findDescendantFiles(projectPath, DOTNET_SCAN_DEPTH, ".sln", ".slnx")
+        val projectFiles = findDescendantFiles(projectPath, DOTNET_SCAN_DEPTH, ".csproj", ".fsproj", ".vbproj")
         val detectionFile = solutionFiles.firstOrNull() ?: projectFiles.firstOrNull() ?: return null
-        val mainProject = projectFiles.firstOrNull()
+        val projectInfos = projectFiles.map { readDotNetProjectInfo(it) }
+        val mainProject =
+            projectInfos.firstOrNull { it.isCSharp && it.isRunnable && !it.isTestProject }
+                ?: projectInfos.firstOrNull { it.isCSharp && !it.isTestProject }
+        val testProject = projectInfos.firstOrNull { it.isTestProject }
+        val targetPath = solutionFiles.firstOrNull() ?: mainProject?.path ?: projectFiles.firstOrNull()
+        val testTargetPath = solutionFiles.firstOrNull() ?: testProject?.path ?: targetPath
+        val projectName =
+            solutionFiles.firstOrNull()?.let(fileSystem::fileName)?.substringBeforeLast('.')
+                ?: mainProject?.assemblyName
+                ?: fileSystem.fileName(detectionFile).substringBeforeLast('.')
 
         return DetectedProject(
             type = ProjectType.DOTNET,
             rootPath = projectPath,
             detectionFile = detectionFile,
-            projectName = detectionFile.substringAfterLast('/').substringBeforeLast('.'),
-            mainEntry = mainProject,
+            projectName = projectName,
+            mainEntry = mainProject?.path,
             metadata =
                 buildMap {
-                    put("targetPath", detectionFile)
-                    mainProject?.let { put("projectPath", it) }
+                    targetPath?.let { put(DOTNET_TARGET_PATH_METADATA_KEY, it) }
+                    testTargetPath?.let { put(DOTNET_TEST_TARGET_PATH_METADATA_KEY, it) }
+                    mainProject?.let { project ->
+                        put(DOTNET_PROJECT_PATH_METADATA_KEY, project.path)
+                        put(DOTNET_RUNNABLE_METADATA_KEY, project.isRunnable.toString())
+                        project.targetFramework?.let { put(DOTNET_TARGET_FRAMEWORK_METADATA_KEY, it) }
+                        put(DOTNET_ASSEMBLY_NAME_METADATA_KEY, project.assemblyName)
+                    }
                 },
+        )
+    }
+
+    private suspend fun readDotNetProjectInfo(path: String): DotNetProjectInfo {
+        val content = fileSystem.readText(path).getOrNull().orEmpty()
+        val sdk =
+            DOTNET_SDK_PATTERN
+                .find(content)
+                ?.groupValues
+                ?.get(1)
+                .orEmpty()
+        val outputType =
+            DOTNET_OUTPUT_TYPE_PATTERN
+                .find(content)
+                ?.groupValues
+                ?.get(1)
+                .orEmpty()
+        val isTestProject =
+            DOTNET_TEST_PROJECT_PATTERN.containsMatchIn(content) ||
+                content.contains("Microsoft.NET.Test.Sdk", ignoreCase = true)
+        val isRunnable =
+            outputType.equals("Exe", ignoreCase = true) ||
+                outputType.equals("WinExe", ignoreCase = true) ||
+                sdk.contains("Microsoft.NET.Sdk.Web", ignoreCase = true)
+        val targetFramework =
+            DOTNET_TARGET_FRAMEWORK_PATTERN.find(content)?.groupValues?.get(1)
+                ?: DOTNET_TARGET_FRAMEWORKS_PATTERN
+                    .find(content)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.substringBefore(';')
+        val assemblyName =
+            DOTNET_ASSEMBLY_NAME_PATTERN.find(content)?.groupValues?.get(1)
+                ?: fileSystem.fileName(path).substringBeforeLast('.')
+        return DotNetProjectInfo(
+            path = path,
+            isCSharp = path.endsWith(".csproj", ignoreCase = true),
+            isRunnable = isRunnable,
+            isTestProject = isTestProject,
+            targetFramework = targetFramework,
+            assemblyName = assemblyName,
         )
     }
 
@@ -462,18 +519,51 @@ public class ProjectDetector(
         return candidates.firstOrNull { fileSystem.exists(it) }
     }
 
-    private suspend fun findChildFiles(
+    private suspend fun findDescendantFiles(
         projectPath: String,
+        maxDepth: Int,
         vararg extensions: String,
     ): List<String> {
-        val entries = fileSystem.listDirectory(projectPath).getOrNull() ?: return emptyList()
-        return entries
-            .asSequence()
-            .filter { !it.isDirectory }
-            .map { it.path }
-            .filter { path -> extensions.any { path.endsWith(it) } }
-            .toList()
+        val matches = mutableListOf<String>()
+
+        suspend fun visit(
+            path: String,
+            depth: Int,
+        ) {
+            val entries =
+                fileSystem
+                    .listDirectory(path)
+                    .getOrNull()
+                    .orEmpty()
+                    .sortedBy { it.path }
+            entries.forEach { entry ->
+                when {
+                    entry.isFile && extensions.any { entry.path.endsWith(it, ignoreCase = true) } -> {
+                        matches += entry.path
+                    }
+
+                    entry.isDirectory &&
+                        !entry.isSymbolicLink &&
+                        depth < maxDepth &&
+                        entry.name.lowercase() !in DOTNET_EXCLUDED_DIRECTORIES -> {
+                        visit(entry.path, depth + 1)
+                    }
+                }
+            }
+        }
+
+        visit(projectPath, 0)
+        return matches
     }
+
+    private data class DotNetProjectInfo(
+        val path: String,
+        val isCSharp: Boolean,
+        val isRunnable: Boolean,
+        val isTestProject: Boolean,
+        val targetFramework: String?,
+        val assemblyName: String,
+    )
 
     private companion object {
         val GO_MODULE_PATTERN: Regex = """(?m)^\s*module\s+(\S+)""".toRegex()
@@ -487,5 +577,18 @@ public class ProjectDetector(
         val MAVEN_PARENT_BLOCK_PATTERN: Regex = """(?s)<parent\b[^>]*>.*?</parent>""".toRegex()
         val MAVEN_ARTIFACT_PATTERN: Regex = """<artifactId>\s*([^<]+)\s*</artifactId>""".toRegex()
         val MAVEN_MAIN_CLASS_PATTERN: Regex = """<mainClass>\s*([^<]+)\s*</mainClass>""".toRegex()
+        val DOTNET_SDK_PATTERN: Regex = """<Project\b[^>]*\bSdk\s*=\s*["']([^"']+)["']""".toRegex()
+        val DOTNET_OUTPUT_TYPE_PATTERN: Regex = """<OutputType>\s*([^<]+)\s*</OutputType>""".toRegex()
+        val DOTNET_TEST_PROJECT_PATTERN: Regex =
+            """<IsTestProject>\s*true\s*</IsTestProject>""".toRegex(
+                RegexOption.IGNORE_CASE,
+            )
+        val DOTNET_TARGET_FRAMEWORK_PATTERN: Regex = """<TargetFramework>\s*([^<\s]+)\s*</TargetFramework>""".toRegex()
+        val DOTNET_TARGET_FRAMEWORKS_PATTERN: Regex =
+            """<TargetFrameworks>\s*([^<\s]+)\s*</TargetFrameworks>"""
+                .toRegex()
+        val DOTNET_ASSEMBLY_NAME_PATTERN: Regex = """<AssemblyName>\s*([^<]+)\s*</AssemblyName>""".toRegex()
+        const val DOTNET_SCAN_DEPTH = 5
+        val DOTNET_EXCLUDED_DIRECTORIES = setOf(".git", ".idea", ".gradle", "bin", "obj", "build", "node_modules")
     }
 }

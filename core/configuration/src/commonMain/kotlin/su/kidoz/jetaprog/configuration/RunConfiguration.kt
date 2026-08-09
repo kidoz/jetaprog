@@ -539,6 +539,8 @@ public sealed interface ConfigurationSettings {
         val programPath: String? = null,
         /** Target framework moniker used when inferring the DLL path. */
         val targetFramework: String? = null,
+        /** Output assembly name used when it differs from the project file name. */
+        val assemblyName: String? = null,
         /** Build configuration. */
         val configuration: DotNetConfigurationType = DotNetConfigurationType.DEBUG,
         /** Program arguments. */

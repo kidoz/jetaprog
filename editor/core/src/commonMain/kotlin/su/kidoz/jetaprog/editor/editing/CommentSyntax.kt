@@ -13,6 +13,7 @@ public object CommentSyntax {
             LanguageId.RUST.value to "//",
             LanguageId.C.value to "//",
             LanguageId.CPP.value to "//",
+            LanguageId.CSHARP.value to "//",
             LanguageId.JAVASCRIPT.value to "//",
             LanguageId.TYPESCRIPT.value to "//",
             LanguageId.GO.value to "//",

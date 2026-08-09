@@ -266,6 +266,7 @@ class TextEditingOpsTest {
     @Test
     fun commentSyntaxKnowsCommonLanguages() {
         assertEquals("//", CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.KOTLIN))
+        assertEquals("//", CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.CSHARP))
         assertEquals("#", CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.PYTHON))
         assertNull(CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.XML))
     }

@@ -429,7 +429,7 @@ public class DebugService(
             .toList()
     }
 
-    private fun buildDotNetLaunchArgs(
+    internal fun buildDotNetLaunchArgs(
         settings: ConfigurationSettings.DotNetDebug,
         workspacePath: String,
     ): Result<LaunchRequestArguments> {
@@ -466,10 +466,11 @@ public class DebugService(
         val outputDirectory =
             projectFile.parentFile
                 ?: return null
+        val assemblyName = settings.assemblyName?.takeIf { it.isNotBlank() } ?: projectFile.nameWithoutExtension
 
         return File(
             outputDirectory,
-            "bin/${settings.configuration.value}/$targetFramework/${projectFile.nameWithoutExtension}.dll",
+            "bin/${settings.configuration.value}/$targetFramework/$assemblyName.dll",
         ).path
     }
 

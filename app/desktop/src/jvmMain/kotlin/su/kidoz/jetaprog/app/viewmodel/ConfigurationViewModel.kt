@@ -313,15 +313,15 @@ public class ConfigurationViewModel(
             }
 
             is ConfigurationSettings.DotNetBuild -> {
-                executeDotNetBuild(settings)
+                executeDotNet(config)
             }
 
             is ConfigurationSettings.DotNetRun -> {
-                executeDotNetRun(settings)
+                executeDotNet(config)
             }
 
             is ConfigurationSettings.DotNetTest -> {
-                executeDotNetTest(settings)
+                executeDotNet(config)
             }
 
             is ConfigurationSettings.DotNetDebug -> {
@@ -845,75 +845,40 @@ public class ConfigurationViewModel(
             ).map { it.exitCode }
     }
 
-    private suspend fun executeDotNetBuild(settings: ConfigurationSettings.DotNetBuild): Result<Int> {
-        val command =
-            buildList {
-                add("dotnet")
-                add("build")
-                settings.targetPath?.let { add(it) }
-                add("--configuration")
-                add(settings.configuration.value)
-                if (settings.noRestore) add("--no-restore")
-                addAll(settings.arguments)
-            }
-
-        return processExecutor
-            .execute(
-                command = command,
-                workingDirectory = settings.workingDirectory ?: projectPath,
-                environment = settings.environment,
-            ).map { it.exitCode }
-    }
-
-    private suspend fun executeDotNetRun(settings: ConfigurationSettings.DotNetRun): Result<Int> {
-        val command =
-            buildList {
-                add("dotnet")
-                add("run")
-                settings.projectPath?.let {
-                    add("--project")
-                    add(it)
+    private suspend fun executeDotNet(config: RunConfiguration): Result<Int> =
+        coroutineScope {
+            prepareExecutionOutput(config.id)
+            val session = executionOrchestrator.execute(config, projectPath)
+            executionSessionId = session.id
+            val outputJob =
+                launch {
+                    session.output.collect { output ->
+                        appendExecutionOutput(output.toRunOutputLine())
+                    }
                 }
-                add("--configuration")
-                add(settings.configuration.value)
-                if (settings.noRestore) add("--no-restore")
-                if (settings.programArguments.isNotEmpty()) {
-                    add("--")
-                    addAll(settings.programArguments)
+            try {
+                when (val executionResult = session.result.filterNotNull().first()) {
+                    is ExecutionResult.Success -> {
+                        Result.success(executionResult.exitCode)
+                    }
+
+                    is ExecutionResult.Failure -> {
+                        if (executionResult.exitCode >= 0) {
+                            Result.success(executionResult.exitCode)
+                        } else {
+                            Result.failure(IllegalStateException(executionResult.message))
+                        }
+                    }
+
+                    is ExecutionResult.Cancelled -> {
+                        throw CancellationException(".NET execution cancelled")
+                    }
                 }
+            } finally {
+                outputJob.cancelAndJoin()
+                if (executionSessionId == session.id) executionSessionId = null
             }
-
-        return processExecutor
-            .execute(
-                command = command,
-                workingDirectory = settings.workingDirectory ?: projectPath,
-                environment = settings.environment,
-            ).map { it.exitCode }
-    }
-
-    private suspend fun executeDotNetTest(settings: ConfigurationSettings.DotNetTest): Result<Int> {
-        val command =
-            buildList {
-                add("dotnet")
-                add("test")
-                settings.targetPath?.let { add(it) }
-                add("--configuration")
-                add(settings.configuration.value)
-                settings.filter?.let {
-                    add("--filter")
-                    add(it)
-                }
-                if (settings.noBuild) add("--no-build")
-                addAll(settings.arguments)
-            }
-
-        return processExecutor
-            .execute(
-                command = command,
-                workingDirectory = settings.workingDirectory ?: projectPath,
-                environment = settings.environment,
-            ).map { it.exitCode }
-    }
+        }
 
     private suspend fun stopConfiguration() {
         gradleExecutionService.cancel()
@@ -1320,6 +1285,7 @@ public class ConfigurationViewModel(
                         ConfigurationSettings.DotNetDebug(
                             projectPath = projectFile,
                             targetFramework = projectFile?.let { readDotNetTargetFramework(File(it)) },
+                            assemblyName = projectFile?.let { readDotNetAssemblyName(File(it)) },
                             workingDirectory = projectPath.ifBlank { null },
                         ),
                 )
@@ -1534,12 +1500,13 @@ public class ConfigurationViewModel(
         if (projectPath.isBlank()) return null
         val root = File(projectPath)
         return root.findChildPath(".sln", ".slnx")
-            ?: root.findChildPath(".csproj", ".fsproj", ".vbproj")
+            ?: root.findDescendantPath(".csproj", ".fsproj", ".vbproj")
     }
 
     private fun findDotNetProjectPath(): String? {
         if (projectPath.isBlank()) return null
-        return File(projectPath).findChildPath(".csproj", ".fsproj", ".vbproj")
+        val projectFiles = File(projectPath).findDescendantFiles(".csproj")
+        return projectFiles.firstOrNull(::isRunnableDotNetProject)?.path ?: projectFiles.firstOrNull()?.path
     }
 
     private fun File.findChildPath(vararg extensions: String): String? =
@@ -1547,6 +1514,30 @@ public class ConfigurationViewModel(
             ?.firstOrNull { file ->
                 file.isFile && extensions.any { file.name.endsWith(it) }
             }?.path
+
+    private fun File.findDescendantPath(vararg extensions: String): String? =
+        findDescendantFiles(*extensions).firstOrNull()?.path
+
+    private fun File.findDescendantFiles(vararg extensions: String): List<File> =
+        walkTopDown()
+            .onEnter { directory ->
+                directory == this ||
+                    (directory.name !in DOTNET_EXCLUDED_DIRECTORIES && !directory.name.startsWith('.'))
+            }.maxDepth(DOTNET_PROJECT_SCAN_DEPTH)
+            .filter { file -> file.isFile && extensions.any { file.name.endsWith(it, ignoreCase = true) } }
+            .sortedBy(File::getPath)
+            .toList()
+
+    private fun isRunnableDotNetProject(projectFile: File): Boolean =
+        runCatching {
+            val content = projectFile.readText()
+            dotNetOutputTypeRegex
+                .find(content)
+                ?.groupValues
+                ?.get(1)
+                ?.let { it.equals("Exe", true) || it.equals("WinExe", true) } == true ||
+                content.contains("Microsoft.NET.Sdk.Web", ignoreCase = true)
+        }.getOrDefault(false)
 
     private fun readDotNetTargetFramework(projectFile: File): String? =
         runCatching {
@@ -1557,6 +1548,12 @@ public class ConfigurationViewModel(
                     ?.groupValues
                     ?.get(1)
                     ?.substringBefore(";")
+        }.getOrNull()
+
+    private fun readDotNetAssemblyName(projectFile: File): String? =
+        runCatching {
+            dotNetAssemblyNameRegex.find(projectFile.readText())?.groupValues?.get(1)
+                ?: projectFile.nameWithoutExtension
         }.getOrNull()
 
     private fun closeDialog() {
@@ -1729,6 +1726,10 @@ public class ConfigurationViewModel(
 
 private val targetFrameworkRegex = Regex("<TargetFramework>\\s*([^<\\s]+)\\s*</TargetFramework>")
 private val targetFrameworksRegex = Regex("<TargetFrameworks>\\s*([^<\\s]+)\\s*</TargetFrameworks>")
+private val dotNetAssemblyNameRegex = Regex("<AssemblyName>\\s*([^<]+)\\s*</AssemblyName>")
+private val dotNetOutputTypeRegex = Regex("<OutputType>\\s*([^<]+)\\s*</OutputType>")
+private const val DOTNET_PROJECT_SCAN_DEPTH = 5
+private val DOTNET_EXCLUDED_DIRECTORIES = setOf(".git", ".idea", ".gradle", "bin", "obj", "build", "node_modules")
 private val JAVA_BUILD_PLUGIN_PATTERN =
     Regex("""(?m)(\bjava\b|id\s*\(\s*["']java(?:-library)?["']\s*\)|id\s+["']java(?:-library)?["'])""")
 private val JAVA_GRADLE_MAIN_PATTERN = Regex("""mainClass(?:\.set\s*\(|\s*=\s*)["']([^"']+)["']""")

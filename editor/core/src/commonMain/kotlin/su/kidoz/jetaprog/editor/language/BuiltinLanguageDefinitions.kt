@@ -45,6 +45,7 @@ internal object BuiltinLanguageDefinitions {
                 id = LanguageId.CSHARP,
                 extensions = listOf("cs", "csx"),
                 aliases = listOf("C#"),
+                lexerId = "csharp",
             ),
             LanguageDefinition(
                 id = LanguageId.MSBUILD,

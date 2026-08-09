@@ -438,7 +438,13 @@ private fun MainScreenContent(
 
                 is ConfigurationEffect.ConfigurationStarted -> {
                     val settings = effect.configuration.settings
-                    if (settings is ConfigurationSettings.Node || settings is ConfigurationSettings.Java) {
+                    if (
+                        settings is ConfigurationSettings.Node ||
+                        settings is ConfigurationSettings.Java ||
+                        settings is ConfigurationSettings.DotNetBuild ||
+                        settings is ConfigurationSettings.DotNetRun ||
+                        settings is ConfigurationSettings.DotNetTest
+                    ) {
                         selectedBottomTab = BottomTab.BUILD
                     }
                 }

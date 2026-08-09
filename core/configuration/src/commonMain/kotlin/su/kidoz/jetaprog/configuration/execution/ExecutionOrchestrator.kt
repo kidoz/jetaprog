@@ -660,7 +660,7 @@ public class ExecutionOrchestrator(
         return ProcessConfig(
             command = command,
             workingDirectory = settings.workingDirectory ?: workspacePath,
-            environment = settings.environment,
+            environment = dotNetEnvironment(settings.environment),
         )
     }
 
@@ -688,7 +688,7 @@ public class ExecutionOrchestrator(
         return ProcessConfig(
             command = command,
             workingDirectory = settings.workingDirectory ?: workspacePath,
-            environment = settings.environment,
+            environment = dotNetEnvironment(settings.environment),
         )
     }
 
@@ -703,7 +703,7 @@ public class ExecutionOrchestrator(
                 settings.targetPath?.let { add(it) }
                 add("--configuration")
                 add(settings.configuration.value)
-                settings.filter?.let {
+                settings.filter?.takeIf { it.isNotBlank() }?.let {
                     add("--filter")
                     add(it)
                 }
@@ -714,9 +714,12 @@ public class ExecutionOrchestrator(
         return ProcessConfig(
             command = command,
             workingDirectory = settings.workingDirectory ?: workspacePath,
-            environment = settings.environment,
+            environment = dotNetEnvironment(settings.environment),
         )
     }
+
+    private fun dotNetEnvironment(environment: Map<String, String>): Map<String, String> =
+        mapOf("DOTNET_CLI_UI_LANGUAGE" to "en") + environment
 
     private fun buildApplicationConfig(
         settings: ConfigurationSettings.Application,

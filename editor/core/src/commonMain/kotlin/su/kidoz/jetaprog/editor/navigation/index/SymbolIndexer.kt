@@ -452,6 +452,85 @@ public class JavaSymbolExtractor :
 }
 
 /**
+ * C# symbol extractor used when a Roslyn language server is unavailable.
+ */
+public class CSharpSymbolExtractor :
+    RegexSymbolExtractor(
+        languageId = "csharp",
+        supportedExtensions = setOf("cs", "csx"),
+    ) {
+    override val patterns: List<SymbolPattern> =
+        listOf(
+            SymbolPattern(
+                regex = Regex("""^\s*namespace\s+([\w.]+)"""),
+                kind = NavigationSymbolKind.NAMESPACE,
+                opensScope = true,
+            ),
+            SymbolPattern(
+                regex =
+                    Regex(
+                        """^\s*(?:(?:public|private|protected|internal|file|abstract|sealed|static|partial|unsafe)\s+)*class\s+(\w+)""",
+                    ),
+                kind = NavigationSymbolKind.CLASS,
+                opensScope = true,
+            ),
+            SymbolPattern(
+                regex =
+                    Regex(
+                        """^\s*(?:(?:public|private|protected|internal|file|partial|unsafe)\s+)*interface\s+(\w+)""",
+                    ),
+                kind = NavigationSymbolKind.INTERFACE,
+                opensScope = true,
+            ),
+            SymbolPattern(
+                regex =
+                    Regex(
+                        """^\s*(?:(?:public|private|protected|internal|file)\s+)*enum\s+(\w+)""",
+                    ),
+                kind = NavigationSymbolKind.ENUM,
+                opensScope = true,
+            ),
+            SymbolPattern(
+                regex =
+                    Regex(
+                        """^\s*(?:(?:public|private|protected|internal|file|readonly|ref|partial)\s+)*struct\s+(\w+)""",
+                    ),
+                kind = NavigationSymbolKind.STRUCT,
+                opensScope = true,
+            ),
+            SymbolPattern(
+                regex =
+                    Regex(
+                        """^\s*(?:(?:public|private|protected|internal|file|abstract|sealed|partial)\s+)*record(?:\s+(?:class|struct))?\s+(\w+)""",
+                    ),
+                kind = NavigationSymbolKind.CLASS,
+                opensScope = true,
+            ),
+            SymbolPattern(
+                regex =
+                    Regex(
+                        """^\s*(?:(?:public|private|protected|internal|static|virtual|abstract|override|sealed|async|unsafe|extern|new|partial)\s+)*(?!(?:class|interface|enum|struct|record|delegate)\b)(?:[\w.<>?\[\],]+)\s+(\w+)\s*(?:<[^>]+>)?\s*\(""",
+                    ),
+                kind = NavigationSymbolKind.METHOD,
+            ),
+            SymbolPattern(
+                regex =
+                    Regex(
+                        """^\s*(?:(?:public|private|protected|internal|static|virtual|abstract|override|sealed|readonly|required|new)\s+)*(?:[\w.<>?\[\],]+)\s+(\w+)\s*\{\s*(?:get|set|init)\b""",
+                    ),
+                kind = NavigationSymbolKind.PROPERTY,
+            ),
+            SymbolPattern(
+                regex =
+                    Regex(
+                        """^\s*(?!(?:namespace|using|class|interface|enum|struct|record)\b)(?:(?:public|private|protected|internal|static|readonly|volatile|const|event|new)\s+)*(?:[\w.<>?\[\],]+)\s+(\w+)\s*(?:=|;)""",
+                    ),
+                kind = NavigationSymbolKind.FIELD,
+            ),
+        )
+}
+
+/**
  * Go symbol extractor using regex patterns.
  */
 public class GoSymbolExtractor :

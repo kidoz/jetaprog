@@ -65,6 +65,7 @@ import su.kidoz.jetaprog.configuration.discovery.ProjectDetector
 import su.kidoz.jetaprog.configuration.execution.ExecutionOrchestrator
 import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.editor.navigation.NavigationService
+import su.kidoz.jetaprog.editor.navigation.index.CSharpSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.GoSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.InMemorySymbolIndex
 import su.kidoz.jetaprog.editor.navigation.index.IndexedNavigationService
@@ -194,6 +195,7 @@ public class ProjectSession(
             registerExtractor(JavaSymbolExtractor())
             registerExtractor(TypeScriptSymbolExtractor())
             registerExtractor(GoSymbolExtractor())
+            registerExtractor(CSharpSymbolExtractor())
         }
 
     private val workspaceSymbolIndexService = WorkspaceSymbolIndexService(workspaceSymbolIndexer)

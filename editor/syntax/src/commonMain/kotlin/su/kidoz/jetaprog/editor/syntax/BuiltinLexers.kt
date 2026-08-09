@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.editor.syntax
 import su.kidoz.jetaprog.editor.syntax.c.CLexer
 import su.kidoz.jetaprog.editor.syntax.cmake.CMakeLexer
 import su.kidoz.jetaprog.editor.syntax.cpp.CppLexer
+import su.kidoz.jetaprog.editor.syntax.csharp.CSharpLexer
 import su.kidoz.jetaprog.editor.syntax.gitignore.GitignoreLexer
 import su.kidoz.jetaprog.editor.syntax.go.GoLexer
 import su.kidoz.jetaprog.editor.syntax.java.JavaLexer
@@ -34,6 +35,7 @@ public object BuiltinLexers {
         LexerRegistry.register(RustLexer())
         LexerRegistry.register(CLexer())
         LexerRegistry.register(CppLexer())
+        LexerRegistry.register(CSharpLexer())
         LexerRegistry.register(MesonLexer())
         LexerRegistry.register(CMakeLexer())
         LexerRegistry.register(XmlLexer())

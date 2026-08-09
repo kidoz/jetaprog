@@ -55,6 +55,7 @@ class LanguageDefinitionRegistryTest {
     fun lexerIdResolvesForBuiltinLanguages() {
         assertEquals("kotlin", LanguageDefinitionRegistry.lexerIdFor(LanguageId.KOTLIN))
         assertEquals("typescript", LanguageDefinitionRegistry.lexerIdFor(LanguageId.TYPESCRIPT))
+        assertEquals("csharp", LanguageDefinitionRegistry.lexerIdFor(LanguageId.CSHARP))
         assertNull(LanguageDefinitionRegistry.lexerIdFor(LanguageId.JSON))
     }
 

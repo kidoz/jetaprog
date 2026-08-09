@@ -606,8 +606,12 @@ public class ConfigurationDiscovery(
     ): List<RunConfiguration> {
         val configs = mutableListOf<RunConfiguration>()
         val baseName = project.projectName ?: ".NET"
-        val targetPath = project.metadata["targetPath"] ?: project.detectionFile
-        val projectPath = project.metadata["projectPath"] ?: project.mainEntry
+        val targetPath = project.metadata[DOTNET_TARGET_PATH_METADATA_KEY] ?: project.detectionFile
+        val testTargetPath = project.metadata[DOTNET_TEST_TARGET_PATH_METADATA_KEY] ?: targetPath
+        val projectPath = project.metadata[DOTNET_PROJECT_PATH_METADATA_KEY] ?: project.mainEntry
+        val isRunnable = project.metadata[DOTNET_RUNNABLE_METADATA_KEY] == "true"
+        val targetFramework = project.metadata[DOTNET_TARGET_FRAMEWORK_METADATA_KEY]
+        val assemblyName = project.metadata[DOTNET_ASSEMBLY_NAME_METADATA_KEY]
 
         val buildName = "$baseName Build"
         if (buildName !in existingNames) {
@@ -626,7 +630,7 @@ public class ConfigurationDiscovery(
             )
         }
 
-        if (projectPath != null) {
+        if (projectPath != null && isRunnable) {
             val runName = "$baseName Run"
             if (runName !in existingNames) {
                 configs.add(
@@ -655,6 +659,8 @@ public class ConfigurationDiscovery(
                         settings =
                             ConfigurationSettings.DotNetDebug(
                                 projectPath = projectPath,
+                                targetFramework = targetFramework,
+                                assemblyName = assemblyName,
                                 workingDirectory = project.rootPath,
                             ),
                     ),
@@ -672,7 +678,7 @@ public class ConfigurationDiscovery(
                     isTemporary = true,
                     settings =
                         ConfigurationSettings.DotNetTest(
-                            targetPath = targetPath,
+                            targetPath = testTargetPath,
                             workingDirectory = project.rootPath,
                         ),
                 ),
