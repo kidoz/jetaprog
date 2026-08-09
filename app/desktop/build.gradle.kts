@@ -14,6 +14,7 @@ kotlin {
                 implementation(projects.core.platform)
                 implementation(projects.core.project)
                 implementation(projects.core.configuration)
+                implementation(projects.core.database)
                 implementation(projects.core.settings)
                 implementation(projects.core.lint)
                 implementation(projects.editor.core)

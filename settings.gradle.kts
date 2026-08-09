@@ -21,6 +21,7 @@ dependencyResolutionManagement {
 // Core
 include(":core:common")
 include(":core:configuration")
+include(":core:database")
 include(":core:lint")
 include(":core:platform")
 include(":core:project")

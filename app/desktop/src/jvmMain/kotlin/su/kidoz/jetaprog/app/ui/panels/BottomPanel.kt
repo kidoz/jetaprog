@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -60,6 +61,7 @@ public enum class BottomTab {
     TESTS,
     PROBLEMS,
     DEBUGGER,
+    DATABASE,
 }
 
 private const val MIN_PANEL_HEIGHT = 120
@@ -148,6 +150,12 @@ public fun BottomPanel(
                 label = "Debugger",
                 selected = selectedTab == BottomTab.DEBUGGER,
                 onClick = { onSelectTab(BottomTab.DEBUGGER) },
+            )
+            BottomTabItem(
+                icon = Icons.Filled.Storage,
+                label = "Query Results",
+                selected = selectedTab == BottomTab.DATABASE,
+                onClick = { onSelectTab(BottomTab.DATABASE) },
             )
             Spacer(modifier = Modifier.weight(1f))
             IconButton(

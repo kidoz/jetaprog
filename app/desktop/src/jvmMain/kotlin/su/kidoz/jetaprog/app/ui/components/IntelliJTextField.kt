@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
@@ -49,6 +50,7 @@ import su.kidoz.jetaprog.app.ui.theme.Spacing
  * @param error optional validation message displayed below the input.
  * @param enabled whether the input accepts interaction.
  * @param singleLine whether the input is restricted to one line.
+ * @param visualTransformation visual transformation applied to the displayed value.
  * @param trailingContent optional action or indicator displayed inside the input at its trailing edge.
  */
 @Composable
@@ -61,6 +63,7 @@ public fun IntelliJTextField(
     error: String? = null,
     enabled: Boolean = true,
     singleLine: Boolean = true,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -102,6 +105,7 @@ public fun IntelliJTextField(
             onValueChange = onValueChange,
             enabled = enabled,
             singleLine = singleLine,
+            visualTransformation = visualTransformation,
             textStyle =
                 TextStyle(
                     color = if (enabled) IntelliJColors.textPrimary else IntelliJColors.textDisabled,

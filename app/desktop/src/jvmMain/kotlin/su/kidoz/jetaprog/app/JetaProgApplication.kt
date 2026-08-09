@@ -10,6 +10,8 @@ import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeViewModel
 import su.kidoz.jetaprog.app.viewmodel.NewProjectViewModel
 import su.kidoz.jetaprog.app.viewmodel.SettingsViewModel
+import su.kidoz.jetaprog.database.JvmDatabaseProfileStore
+import su.kidoz.jetaprog.database.SessionDatabaseCredentialStore
 import su.kidoz.jetaprog.lint.engine.DefaultLintEngine
 import su.kidoz.jetaprog.lint.provider.LintProviderRegistry
 import su.kidoz.jetaprog.mcp.server.EmbeddedMcpServer
@@ -20,6 +22,7 @@ import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
 import su.kidoz.jetaprog.platform.process.JvmProcessExecutor
 import su.kidoz.jetaprog.plugins.support.LanguageServerManager
 import su.kidoz.jetaprog.settings.DefaultSettingsService
+import su.kidoz.jetaprog.settings.SettingsScope
 import su.kidoz.jetaprog.settings.recent.RecentProjectsService
 import su.kidoz.jetaprog.settings.storage.JvmSettingsStorage
 import java.io.File
@@ -72,6 +75,15 @@ public class JetaProgApplication {
      * The settings storage.
      */
     private val settingsStorage: JvmSettingsStorage = JvmSettingsStorage()
+
+    /** Password-free database profile persistence under the IDE configuration directory. */
+    private val databaseProfileStore: JvmDatabaseProfileStore =
+        JvmDatabaseProfileStore(
+            File(settingsStorage.getPath(SettingsScope.IDE)).resolveSibling("database-connections.json"),
+        )
+
+    /** Process-only database passwords, deliberately never written to disk. */
+    private val databaseCredentialStore: SessionDatabaseCredentialStore = SessionDatabaseCredentialStore()
 
     /**
      * The settings service.
@@ -138,6 +150,8 @@ public class JetaProgApplication {
                 lintEngine = lintEngine,
                 lintProviderRegistry = lintProviderRegistry,
                 languageServerManager = languageServerManager,
+                databaseProfileStore = databaseProfileStore,
+                databaseCredentialStore = databaseCredentialStore,
             )
         _session.value = newSession
         newSession.initialize()
@@ -204,6 +218,7 @@ public class JetaProgApplication {
         welcomeViewModel.dispose()
         newProjectViewModel.dispose()
         settingsViewModel.dispose()
+        databaseCredentialStore.dispose()
     }
 
     private suspend fun recordRecentProject(projectPath: String) {

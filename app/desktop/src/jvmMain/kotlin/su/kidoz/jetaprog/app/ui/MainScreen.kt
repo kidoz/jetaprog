@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.JetaProgApplication
 import su.kidoz.jetaprog.app.ProjectSession
+import su.kidoz.jetaprog.app.database.DatabaseEffect
 import su.kidoz.jetaprog.app.gradle.GradleSyncState
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
@@ -66,6 +67,8 @@ import su.kidoz.jetaprog.app.ui.components.VerticalDragHandle
 import su.kidoz.jetaprog.app.ui.components.VerticalSplitter
 import su.kidoz.jetaprog.app.ui.components.coerceInDp
 import su.kidoz.jetaprog.app.ui.components.createBreadcrumbsFromPath
+import su.kidoz.jetaprog.app.ui.database.DatabaseQueryResultsPanel
+import su.kidoz.jetaprog.app.ui.database.DatabaseToolWindow
 import su.kidoz.jetaprog.app.ui.debug.DebugBottomContent
 import su.kidoz.jetaprog.app.ui.debug.DebugIntent
 import su.kidoz.jetaprog.app.ui.debug.DebugSidePanel
@@ -127,6 +130,7 @@ private val SIDEBAR_PANEL_ITEMS =
         ActivityBarItem.VCS,
         ActivityBarItem.AGENT,
         ActivityBarItem.DEBUG,
+        ActivityBarItem.DATABASE,
     )
 
 /**
@@ -289,6 +293,7 @@ private fun MainScreenContent(
     val configurationState by session.configurationViewModel.state.collectAsState()
     val gitState by session.gitViewModel.state.collectAsState()
     val debugState by session.debugViewModel.state.collectAsState()
+    val databaseState by session.databaseViewModel.state.collectAsState()
 
     val currentProjectPath = session.projectPath
     val notificationCenter = app.notificationCenter
@@ -323,6 +328,9 @@ private fun MainScreenContent(
     val openDebuggerTab: () -> Unit = {
         selectedBottomTab = BottomTab.DEBUGGER
     }
+    val openDatabaseTab: () -> Unit = {
+        selectedBottomTab = BottomTab.DATABASE
+    }
     val closeBottomPanel: () -> Unit = {
         if (terminalState.isVisible) {
             session.terminalViewModel.dispatch(TerminalIntent.ToggleVisibility)
@@ -335,6 +343,20 @@ private fun MainScreenContent(
 
     LaunchedEffect(gradleState.testRun) {
         if (gradleState.testRun != null) openTestsTab()
+    }
+
+    LaunchedEffect(session) {
+        session.databaseViewModel.effects.collect { effect ->
+            when (effect) {
+                DatabaseEffect.OpenQueryResults -> {
+                    openDatabaseTab()
+                }
+
+                is DatabaseEffect.ShowMessage -> {
+                    notificationCenter.info(title = "Database", message = effect.message)
+                }
+            }
+        }
     }
 
     // Session-scoped effect collectors: toasts plus navigation effects
@@ -622,6 +644,7 @@ private fun MainScreenContent(
                             ActivityBarItem.SEARCH,
                             ActivityBarItem.VCS,
                             ActivityBarItem.AGENT,
+                            ActivityBarItem.DATABASE,
                             -> {
                                 onSelectedActivityItemChange(if (selectedActivityItem == item) null else item)
                             }
@@ -684,6 +707,15 @@ private fun MainScreenContent(
                             DebugSidePanel(
                                 state = debugState,
                                 dispatch = { intent -> session.debugViewModel.dispatch(intent) },
+                                modifier = panelModifier,
+                            )
+                        }
+
+                        ActivityBarItem.DATABASE -> {
+                            DatabaseToolWindow(
+                                state = databaseState,
+                                dispatch = { intent -> session.databaseViewModel.dispatch(intent) },
+                                onClose = { onSelectedActivityItemChange(null) },
                                 modifier = panelModifier,
                             )
                         }
@@ -939,6 +971,7 @@ private fun MainScreenContent(
                             BottomTab.TESTS -> openTestsTab()
                             BottomTab.PROBLEMS -> selectedBottomTab = BottomTab.PROBLEMS
                             BottomTab.DEBUGGER -> openDebuggerTab()
+                            BottomTab.DATABASE -> openDatabaseTab()
                         }
                     },
                     onClose = closeBottomPanel,
@@ -1030,6 +1063,13 @@ private fun MainScreenContent(
                             DebugBottomContent(
                                 state = debugState,
                                 dispatch = { intent -> session.debugViewModel.dispatch(intent) },
+                            )
+                        }
+
+                        BottomTab.DATABASE -> {
+                            DatabaseQueryResultsPanel(
+                                state = databaseState,
+                                dispatch = { intent -> session.databaseViewModel.dispatch(intent) },
                             )
                         }
                     }

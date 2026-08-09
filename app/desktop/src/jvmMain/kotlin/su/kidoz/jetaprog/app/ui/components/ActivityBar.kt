@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -53,7 +54,8 @@ public enum class ActivityBarItem(
     DEBUG(Icons.Default.BugReport, "Debug", "Alt+4"),
     TERMINAL(Icons.Default.Terminal, "Terminal", "Alt+5"),
     VCS(Icons.Default.AccountTree, "Git", "Alt+6"),
-    AGENT(Icons.Default.AutoAwesome, "AI Agent", "Alt+7"),
+    DATABASE(Icons.Default.Storage, "Database", "Alt+7"),
+    AGENT(Icons.Default.AutoAwesome, "AI Agent", "Alt+8"),
     SETTINGS(Icons.Default.Settings, "Settings", ""),
 }
 

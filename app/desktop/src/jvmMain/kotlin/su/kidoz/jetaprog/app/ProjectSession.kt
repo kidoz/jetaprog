@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.adapter.EditorServiceBridge
 import su.kidoz.jetaprog.app.command.CommandPaletteIntent
 import su.kidoz.jetaprog.app.command.CommandPaletteViewModel
+import su.kidoz.jetaprog.app.database.DatabaseViewModel
 import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
 import su.kidoz.jetaprog.app.keymap.CommandActions
 import su.kidoz.jetaprog.app.keymap.DefaultKeymap
@@ -64,6 +65,9 @@ import su.kidoz.jetaprog.configuration.discovery.ConfigurationDiscovery
 import su.kidoz.jetaprog.configuration.discovery.ProjectDetector
 import su.kidoz.jetaprog.configuration.execution.ExecutionOrchestrator
 import su.kidoz.jetaprog.dap.service.DebugService
+import su.kidoz.jetaprog.database.DatabaseProfileStore
+import su.kidoz.jetaprog.database.JvmDatabaseExecutionService
+import su.kidoz.jetaprog.database.SessionDatabaseCredentialStore
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.index.CSharpSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.GoSymbolExtractor
@@ -135,6 +139,8 @@ import su.kidoz.jetaprog.vcs.GitLineChangeType
  * @param lintEngine Global lint engine instance.
  * @param lintProviderRegistry Global lint provider registry instance.
  * @param languageServerManager Global language server manager instance.
+ * @param databaseProfileStore Global password-free database profile persistence.
+ * @param databaseCredentialStore Process-only database credential storage.
  */
 public class ProjectSession(
     public val projectPath: String,
@@ -144,10 +150,21 @@ public class ProjectSession(
     private val lintEngine: DefaultLintEngine,
     private val lintProviderRegistry: LintProviderRegistry,
     private val languageServerManager: LanguageServerManager,
+    databaseProfileStore: DatabaseProfileStore,
+    databaseCredentialStore: SessionDatabaseCredentialStore,
 ) : Disposable {
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gradleExecutionService = JvmGradleExecutionService(processExecutor)
     private val executionOrchestrator = ExecutionOrchestrator(processExecutor, sessionScope)
+    private val databaseExecutionService = JvmDatabaseExecutionService()
+
+    /** Database connections, schema metadata, and query execution for this project session. */
+    public val databaseViewModel: DatabaseViewModel =
+        DatabaseViewModel(
+            profileStore = databaseProfileStore,
+            credentialStore = databaseCredentialStore,
+            executionService = databaseExecutionService,
+        )
 
     // ========================================================================
     // LSP
@@ -871,6 +888,7 @@ public class ProjectSession(
         gitViewModel.dispose()
         configurationViewModel.dispose()
         debugViewModel.dispose()
+        databaseViewModel.dispose()
         debugService.dispose()
         embeddedServerRegistry.dispose()
         sessionScope.cancel()

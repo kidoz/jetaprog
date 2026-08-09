@@ -125,6 +125,7 @@ public fun ToolWindowButton(
     onClick: () -> Unit,
     contentDescription: String,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -135,15 +136,15 @@ public fun ToolWindowButton(
                 .size(18.dp)
                 .clip(RoundedCornerShape(2.dp))
                 .background(
-                    if (isHovered) IntelliJColors.buttonBackgroundHover else Color.Transparent,
+                    if (isHovered && enabled) IntelliJColors.buttonBackgroundHover else Color.Transparent,
                 ).hoverable(interactionSource)
-                .clickable(onClick = onClick),
+                .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = IntelliJColors.textSecondary,
+            tint = if (enabled) IntelliJColors.textSecondary else IntelliJColors.textDisabled,
             modifier = Modifier.size(14.dp),
         )
     }

@@ -410,6 +410,17 @@ public object Dimensions {
     public val toolWindowDefaultBottomHeight: Int = 240
     public val toolWindowMinBottomHeight: Int = 80
 
+    // Database tools
+    public val databaseConnectionListHeight: Int = 120
+    public val databaseSchemaRowHeight: Int = 24
+    public val databaseQueryEditorHeight: Int = 72
+    public val databaseResultCellWidth: Int = 180
+    public val databaseResultHeaderHeight: Int = 42
+    public val databaseResultRowHeight: Int = 26
+    public val databaseConnectionDialogMinWidth: Int = 520
+    public val databaseConnectionDialogMaxWidth: Int = 620
+    public val databasePortFieldWidth: Int = 110
+
     // Editor area
     public val tabHeight: Int = 32
     public val panelHeaderHeight: Int = 32
