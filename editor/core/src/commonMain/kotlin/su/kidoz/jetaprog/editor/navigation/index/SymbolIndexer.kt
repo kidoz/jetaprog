@@ -531,6 +531,65 @@ public class CSharpSymbolExtractor :
 }
 
 /**
+ * SQL schema-object extractor used for offline structure and workspace navigation.
+ *
+ * It recognizes portable declarations plus PostgreSQL and StarRocks object forms without
+ * attempting to parse query expressions.
+ */
+public class SqlSymbolExtractor :
+    RegexSymbolExtractor(
+        languageId = "sql",
+        supportedExtensions = setOf("sql", "pgsql", "psql", "starrocks"),
+    ) {
+    override val patterns: List<SymbolPattern> =
+        listOf(
+            sqlPattern("""^\s*CREATE\s+DATABASE\s+(?:IF\s+NOT\s+EXISTS\s+)?($SQL_NAME)""", NavigationSymbolKind.MODULE),
+            sqlPattern(
+                """^\s*CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?($SQL_NAME)""",
+                NavigationSymbolKind.NAMESPACE,
+            ),
+            sqlPattern(
+                """^\s*CREATE\s+(?:(?:EXTERNAL|TEMPORARY|TEMP|UNLOGGED)\s+)*TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?($SQL_NAME)""",
+                NavigationSymbolKind.STRUCT,
+            ),
+            sqlPattern(
+                """^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?($SQL_NAME)""",
+                NavigationSymbolKind.OBJECT,
+            ),
+            sqlPattern(
+                """^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:GLOBAL\s+)?(?:AGGREGATE\s+|TABLE\s+)?(?:FUNCTION|PROCEDURE)\s+($SQL_NAME)""",
+                NavigationSymbolKind.FUNCTION,
+            ),
+            sqlPattern(
+                """^\s*CREATE\s+(?:TYPE|DOMAIN)\s+($SQL_NAME)""",
+                NavigationSymbolKind.TYPE_ALIAS,
+            ),
+            sqlPattern(
+                """^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?($SQL_NAME)""",
+                NavigationSymbolKind.OBJECT,
+            ),
+            sqlPattern(
+                """^\s*CREATE\s+ROUTINE\s+LOAD\s+($SQL_NAME)""",
+                NavigationSymbolKind.OBJECT,
+            ),
+        )
+
+    private fun sqlPattern(
+        pattern: String,
+        kind: NavigationSymbolKind,
+    ): SymbolPattern =
+        SymbolPattern(
+            regex = Regex(pattern, RegexOption.IGNORE_CASE),
+            kind = kind,
+        )
+
+    private companion object {
+        const val SQL_IDENTIFIER = "(?:[A-Za-z_][A-Za-z0-9_\$]*|\"(?:\"\"|[^\"])+\"|`(?:``|[^`])+`)"
+        const val SQL_NAME = "$SQL_IDENTIFIER(?:\\.$SQL_IDENTIFIER)*"
+    }
+}
+
+/**
  * Go symbol extractor using regex patterns.
  */
 public class GoSymbolExtractor :

@@ -19,6 +19,7 @@ public object LanguageDefinitionRegistry {
     private val definitions = LinkedHashMap<String, LanguageDefinition>()
     private var filenameIndex: Map<String, LanguageId> = emptyMap()
     private var extensionIndex: Map<String, LanguageId> = emptyMap()
+    private var extensionSuffixes: List<String> = emptyList()
 
     init {
         BuiltinLanguageDefinitions.all.forEach { merge(it) }
@@ -65,8 +66,7 @@ public object LanguageDefinitionRegistry {
     public fun detect(fileName: String): LanguageId? {
         val lower = fileName.substringAfterLast('/').substringAfterLast('\\').lowercase()
         filenameIndex[lower]?.let { return it }
-        val extension = lower.substringAfterLast('.', "")
-        if (extension.isEmpty()) return null
+        val extension = extensionSuffixes.firstOrNull { lower.endsWith(".$it") } ?: return null
         return extensionIndex[extension]
     }
 
@@ -111,6 +111,7 @@ public object LanguageDefinitionRegistry {
         }
         filenameIndex = filenames
         extensionIndex = extensions
+        extensionSuffixes = extensions.keys.sortedByDescending { it.length }
     }
 
     private fun LanguageDefinition.normalized(): LanguageDefinition =

@@ -267,6 +267,9 @@ class TextEditingOpsTest {
     fun commentSyntaxKnowsCommonLanguages() {
         assertEquals("//", CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.KOTLIN))
         assertEquals("//", CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.CSHARP))
+        assertEquals("--", CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.SQL))
+        assertEquals("--", CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.POSTGRESQL))
+        assertEquals("--", CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.STARROCKS))
         assertEquals("#", CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.PYTHON))
         assertNull(CommentSyntax.lineCommentPrefix(su.kidoz.jetaprog.editor.document.LanguageId.XML))
     }

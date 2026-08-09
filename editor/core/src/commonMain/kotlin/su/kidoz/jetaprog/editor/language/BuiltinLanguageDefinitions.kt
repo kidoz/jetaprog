@@ -53,6 +53,24 @@ internal object BuiltinLanguageDefinitions {
                 aliases = listOf("MSBuild"),
             ),
             LanguageDefinition(
+                id = LanguageId.POSTGRESQL,
+                extensions = listOf("postgres.sql", "postgresql.sql", "pgsql", "psql"),
+                aliases = listOf("PostgreSQL", "Postgres", "PL/pgSQL"),
+                lexerId = "postgresql",
+            ),
+            LanguageDefinition(
+                id = LanguageId.STARROCKS,
+                extensions = listOf("starrocks.sql", "sr.sql", "starrocks"),
+                aliases = listOf("StarRocks", "StarRocks SQL"),
+                lexerId = "starrocks",
+            ),
+            LanguageDefinition(
+                id = LanguageId.SQL,
+                extensions = listOf("sql"),
+                aliases = listOf("SQL", "ANSI SQL"),
+                lexerId = "sql",
+            ),
+            LanguageDefinition(
                 id = LanguageId.RUST,
                 extensions = listOf("rs"),
                 aliases = listOf("Rust"),

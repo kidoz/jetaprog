@@ -54,6 +54,9 @@ public value class LanguageId(
         public val PYTHON: LanguageId = LanguageId("python")
         public val CSHARP: LanguageId = LanguageId("csharp")
         public val MSBUILD: LanguageId = LanguageId("msbuild")
+        public val SQL: LanguageId = LanguageId("sql")
+        public val POSTGRESQL: LanguageId = LanguageId("postgresql")
+        public val STARROCKS: LanguageId = LanguageId("starrocks")
         public val MARKDOWN: LanguageId = LanguageId("markdown")
         public val JSON: LanguageId = LanguageId("json")
         public val YAML: LanguageId = LanguageId("yaml")
@@ -81,6 +84,9 @@ public value class LanguageId(
                 "python" to "Python",
                 "csharp" to "C#",
                 "msbuild" to "MSBuild",
+                "sql" to "SQL",
+                "postgresql" to "PostgreSQL",
+                "starrocks" to "StarRocks SQL",
                 "markdown" to "Markdown",
                 "json" to "JSON",
                 "yaml" to "YAML",

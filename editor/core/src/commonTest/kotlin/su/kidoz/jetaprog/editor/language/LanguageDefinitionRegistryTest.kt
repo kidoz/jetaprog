@@ -11,6 +11,8 @@ class LanguageDefinitionRegistryTest {
         assertEquals(LanguageId.KOTLIN, LanguageDefinitionRegistry.detect("Main.kt"))
         assertEquals(LanguageId.GO, LanguageDefinitionRegistry.detect("main.go"))
         assertEquals(LanguageId.TYPESCRIPT, LanguageDefinitionRegistry.detect("app.tsx"))
+        assertEquals(LanguageId.SQL, LanguageDefinitionRegistry.detect("schema.sql"))
+        assertEquals(LanguageId.POSTGRESQL, LanguageDefinitionRegistry.detect("functions.pgsql"))
     }
 
     @Test
@@ -46,6 +48,14 @@ class LanguageDefinitionRegistryTest {
     }
 
     @Test
+    fun longestCompoundExtensionSelectsSqlDialect() {
+        assertEquals(LanguageId.POSTGRESQL, LanguageDefinitionRegistry.detect("schema.postgresql.sql"))
+        assertEquals(LanguageId.STARROCKS, LanguageDefinitionRegistry.detect("warehouse.starrocks.sql"))
+        assertEquals(LanguageId.STARROCKS, LanguageDefinitionRegistry.detect("warehouse.sr.sql"))
+        assertEquals(LanguageId.SQL, LanguageDefinitionRegistry.detect("warehouse.sql"))
+    }
+
+    @Test
     fun unknownFilesReturnNull() {
         assertNull(LanguageDefinitionRegistry.detect("archive.zip"))
         assertNull(LanguageDefinitionRegistry.detect("README"))
@@ -56,6 +66,9 @@ class LanguageDefinitionRegistryTest {
         assertEquals("kotlin", LanguageDefinitionRegistry.lexerIdFor(LanguageId.KOTLIN))
         assertEquals("typescript", LanguageDefinitionRegistry.lexerIdFor(LanguageId.TYPESCRIPT))
         assertEquals("csharp", LanguageDefinitionRegistry.lexerIdFor(LanguageId.CSHARP))
+        assertEquals("sql", LanguageDefinitionRegistry.lexerIdFor(LanguageId.SQL))
+        assertEquals("postgresql", LanguageDefinitionRegistry.lexerIdFor(LanguageId.POSTGRESQL))
+        assertEquals("starrocks", LanguageDefinitionRegistry.lexerIdFor(LanguageId.STARROCKS))
         assertNull(LanguageDefinitionRegistry.lexerIdFor(LanguageId.JSON))
     }
 

@@ -70,6 +70,7 @@ import su.kidoz.jetaprog.editor.navigation.index.GoSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.InMemorySymbolIndex
 import su.kidoz.jetaprog.editor.navigation.index.IndexedNavigationService
 import su.kidoz.jetaprog.editor.navigation.index.JavaSymbolExtractor
+import su.kidoz.jetaprog.editor.navigation.index.SqlSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.SymbolIndexer
 import su.kidoz.jetaprog.editor.navigation.index.TypeScriptSymbolExtractor
 import su.kidoz.jetaprog.editor.state.EditorIntent
@@ -196,6 +197,7 @@ public class ProjectSession(
             registerExtractor(TypeScriptSymbolExtractor())
             registerExtractor(GoSymbolExtractor())
             registerExtractor(CSharpSymbolExtractor())
+            registerExtractor(SqlSymbolExtractor())
         }
 
     private val workspaceSymbolIndexService = WorkspaceSymbolIndexService(workspaceSymbolIndexer)

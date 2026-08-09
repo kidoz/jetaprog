@@ -14,6 +14,8 @@ import su.kidoz.jetaprog.editor.syntax.markdown.MarkdownLexer
 import su.kidoz.jetaprog.editor.syntax.meson.MesonLexer
 import su.kidoz.jetaprog.editor.syntax.python.PythonLexer
 import su.kidoz.jetaprog.editor.syntax.rust.RustLexer
+import su.kidoz.jetaprog.editor.syntax.sql.SqlDialect
+import su.kidoz.jetaprog.editor.syntax.sql.SqlLexer
 import su.kidoz.jetaprog.editor.syntax.toml.TomlLexer
 import su.kidoz.jetaprog.editor.syntax.vala.ValaLexer
 import su.kidoz.jetaprog.editor.syntax.xml.XmlLexer
@@ -36,6 +38,9 @@ public object BuiltinLexers {
         LexerRegistry.register(CLexer())
         LexerRegistry.register(CppLexer())
         LexerRegistry.register(CSharpLexer())
+        LexerRegistry.register(SqlLexer())
+        LexerRegistry.register(SqlLexer(SqlDialect.POSTGRESQL))
+        LexerRegistry.register(SqlLexer(SqlDialect.STARROCKS))
         LexerRegistry.register(MesonLexer())
         LexerRegistry.register(CMakeLexer())
         LexerRegistry.register(XmlLexer())
