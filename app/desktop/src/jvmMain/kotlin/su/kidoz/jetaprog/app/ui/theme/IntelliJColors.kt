@@ -421,6 +421,10 @@ public object Dimensions {
     public val databaseConnectionDialogMaxWidth: Int = 620
     public val databasePortFieldWidth: Int = 110
 
+    // Git tools
+    public val gitChangesHeaderHeight: Int = 26
+    public val gitChangeRowHeight: Int = 24
+
     // Editor area
     public val tabHeight: Int = 32
     public val panelHeaderHeight: Int = 32

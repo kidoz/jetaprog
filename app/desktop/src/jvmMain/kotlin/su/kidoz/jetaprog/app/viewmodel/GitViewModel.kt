@@ -18,6 +18,15 @@ import su.kidoz.jetaprog.vcs.GitCommit
 import su.kidoz.jetaprog.vcs.GitLineChange
 import su.kidoz.jetaprog.vcs.GitService
 
+/** Available layouts for changes in the Git panel. */
+public enum class GitChangesViewMode {
+    /** Shows every change in one flat list. */
+    FLAT,
+
+    /** Groups changes into expandable repository-relative directories. */
+    DIRECTORY_TREE,
+}
+
 /** State of the Git panel. */
 public data class GitState(
     /** Whether the project is a Git repository. */
@@ -34,6 +43,8 @@ public data class GitState(
     val staged: List<GitChange> = emptyList(),
     /** Unstaged changes. */
     val unstaged: List<GitChange> = emptyList(),
+    /** The layout used to display staged and unstaged changes. */
+    val changesViewMode: GitChangesViewMode = GitChangesViewMode.FLAT,
     /** The change whose diff is shown. */
     val selected: GitChange? = null,
     /** The unified diff of [selected]. */
@@ -128,16 +139,30 @@ public class GitViewModel(
         if (change.staged) unstage(change) else stage(change)
     }
 
-    /** Stages all changes when [staged], otherwise unstages all staged changes. */
-    public fun setAllStaged(staged: Boolean) {
+    /** Stages or unstages the applicable entries in [changes] as one Git operation. */
+    public fun setStaged(
+        changes: List<GitChange>,
+        staged: Boolean,
+    ) {
         val paths =
-            if (staged) {
-                _state.value.unstaged.map { it.path }
-            } else {
-                _state.value.staged.map { it.path }
-            }
+            changes
+                .asSequence()
+                .filter { it.staged != staged }
+                .map { it.path }
+                .distinct()
+                .toList()
         if (paths.isEmpty()) return
         runThenRefresh { if (staged) service.stage(paths) else service.unstage(paths) }
+    }
+
+    /** Stages all changes when [staged], otherwise unstages all staged changes. */
+    public fun setAllStaged(staged: Boolean) {
+        setStaged(_state.value.staged + _state.value.unstaged, staged)
+    }
+
+    /** Changes how files are grouped in the Git panel. */
+    public fun setChangesViewMode(mode: GitChangesViewMode) {
+        _state.update { it.copy(changesViewMode = mode) }
     }
 
     /** Updates the commit message. */
