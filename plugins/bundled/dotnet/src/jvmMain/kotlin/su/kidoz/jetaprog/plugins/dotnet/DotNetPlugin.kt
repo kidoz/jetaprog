@@ -1,10 +1,7 @@
 package su.kidoz.jetaprog.plugins.dotnet
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.runBlocking
 import su.kidoz.jetaprog.build.dotnet.DotNetConfiguration
-import su.kidoz.jetaprog.build.dotnet.DotNetOutput
 import su.kidoz.jetaprog.build.dotnet.DotNetProject
 import su.kidoz.jetaprog.build.dotnet.DotNetRunner
 import su.kidoz.jetaprog.build.dotnet.JvmDotNetRunner
@@ -32,7 +29,7 @@ public class DotNetPlugin :
     BasePlugin(
         manifest =
             PluginManifest(
-                id = "su.kidoz.jetaprog.dotnet",
+                id = PLUGIN_ID,
                 name = ".NET Language Support",
                 version = "1.0.0",
                 description = ".NET support with Roslyn LSP and dotnet CLI integration",
@@ -212,60 +209,6 @@ public class DotNetPlugin :
             }.also { context.subscriptions.add(it) }
     }
 
-    private fun executeDotNetCommand(
-        command: suspend () -> Result<kotlinx.coroutines.flow.Flow<DotNetOutput>>,
-    ): String =
-        runBlocking {
-            command().fold(
-                onSuccess = { flow ->
-                    flow.toList().joinToString("\n") { output -> formatDotNetOutput(output) }
-                },
-                onFailure = { error ->
-                    "Command failed: ${error.message}"
-                },
-            )
-        }
-
-    private fun formatDotNetOutput(output: DotNetOutput): String =
-        when (output) {
-            is DotNetOutput.Stdout -> {
-                output.line
-            }
-
-            is DotNetOutput.Stderr -> {
-                "[stderr] ${output.line}"
-            }
-
-            is DotNetOutput.CommandStarted -> {
-                "Running: ${output.command} ${output.args.joinToString(" ")}"
-            }
-
-            DotNetOutput.Restoring -> {
-                "Restoring packages"
-            }
-
-            is DotNetOutput.Building -> {
-                "Building ${output.target ?: "workspace"}"
-            }
-
-            is DotNetOutput.Testing -> {
-                "Testing ${output.target ?: "workspace"}"
-            }
-
-            is DotNetOutput.Publishing -> {
-                "Publishing ${output.target ?: "workspace"}"
-            }
-
-            is DotNetOutput.Packing -> {
-                "Packing ${output.target ?: "workspace"}"
-            }
-
-            is DotNetOutput.CommandCompleted -> {
-                val status = if (output.success) "succeeded" else "failed"
-                "Command $status with exit code ${output.exitCode}"
-            }
-        }
-
     private fun List<Any?>.toConfiguration(
         default: DotNetConfiguration = DotNetConfiguration.DEBUG,
     ): DotNetConfiguration {
@@ -290,4 +233,9 @@ public class DotNetPlugin :
             equals("release", ignoreCase = true) ||
             equals("--debug", ignoreCase = true) ||
             equals("--release", ignoreCase = true)
+
+    public companion object {
+        /** Plugin identifier used by the bundled plugin manager. */
+        public const val PLUGIN_ID: String = "su.kidoz.jetaprog.dotnet"
+    }
 }

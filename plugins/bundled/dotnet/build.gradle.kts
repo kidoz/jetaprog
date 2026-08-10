@@ -19,5 +19,10 @@ kotlin {
                 implementation(libs.kotlin.logging)
             }
         }
+        jvmTest {
+            dependencies {
+                implementation(libs.bundles.testing)
+            }
+        }
     }
 }

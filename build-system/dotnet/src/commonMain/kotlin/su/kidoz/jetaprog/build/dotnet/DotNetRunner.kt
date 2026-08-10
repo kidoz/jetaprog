@@ -95,6 +95,18 @@ public interface DotNetRunner {
     ): Result<Flow<DotNetOutput>>
 
     /**
+     * Runs an Entity Framework Core CLI command.
+     *
+     * Equivalent to: `dotnet ef <arguments> --project <project>`. Requires the
+     * `dotnet-ef` global tool to be installed.
+     */
+    public suspend fun ef(
+        project: DotNetProject,
+        arguments: List<String>,
+        projectPath: String? = null,
+    ): Result<Flow<DotNetOutput>>
+
+    /**
      * Returns `dotnet --info`.
      */
     public suspend fun info(): Result<String>

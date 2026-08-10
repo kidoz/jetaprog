@@ -141,6 +141,21 @@ public class JvmDotNetRunner(
             }
         }
 
+    override suspend fun ef(
+        project: DotNetProject,
+        arguments: List<String>,
+        projectPath: String?,
+    ): Result<Flow<DotNetOutput>> =
+        runCommand(project.rootPath) {
+            add("ef")
+            addAll(arguments)
+            // "dotnet ef" targets a project file, never a solution
+            (projectPath ?: project.projectPath)?.let {
+                add("--project")
+                add(it)
+            }
+        }
+
     override suspend fun info(): Result<String> =
         processExecutor
             .execute(listOf(dotNetCommand, "--info"))
