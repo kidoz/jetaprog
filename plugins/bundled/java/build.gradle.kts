@@ -16,6 +16,7 @@ kotlin {
         jvmMain {
             dependencies {
                 implementation(libs.kotlin.logging)
+                implementation(libs.serialization.json)
             }
         }
         jvmTest {

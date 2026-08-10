@@ -94,6 +94,7 @@ import su.kidoz.jetaprog.plugins.cfamily.CppPlugin
 import su.kidoz.jetaprog.plugins.dotnet.DotNetPlugin
 import su.kidoz.jetaprog.plugins.go.GoPlugin
 import su.kidoz.jetaprog.plugins.java.JavaPlugin
+import su.kidoz.jetaprog.plugins.java.spring.SpringPlugin
 import su.kidoz.jetaprog.plugins.javascript.JavaScriptTypeScriptPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
@@ -628,6 +629,7 @@ public class ProjectSession(
         pluginManager.registerBundledPlugin(DotNetPlugin())
         pluginManager.registerBundledPlugin(GoPlugin())
         pluginManager.registerBundledPlugin(JavaPlugin())
+        pluginManager.registerBundledPlugin(SpringPlugin())
         pluginManager.registerBundledPlugin(JavaScriptTypeScriptPlugin())
         pluginManager.registerBundledPlugin(PythonPlugin())
         pluginManager.registerBundledPlugin(RustPlugin())
