@@ -24,6 +24,7 @@ import su.kidoz.jetaprog.plugins.api.services.DefinitionProvider
 import su.kidoz.jetaprog.plugins.api.services.FormattingOptions
 import su.kidoz.jetaprog.plugins.api.services.FormattingProvider
 import su.kidoz.jetaprog.plugins.api.services.HoverProvider
+import su.kidoz.jetaprog.plugins.api.services.LanguageDiagnostic
 import su.kidoz.jetaprog.plugins.api.services.ReferencesProvider
 import su.kidoz.jetaprog.plugins.api.services.SignatureHelpContext
 import su.kidoz.jetaprog.plugins.api.services.SignatureHelpProvider
@@ -41,7 +42,7 @@ public class LanguageRegistry(
 ) {
     private val providers = mutableMapOf<String, HybridLanguageProvider>()
     private val lspServers = mutableMapOf<String, LspLanguageServer>()
-    private val diagnosticsListeners = mutableListOf<DiagnosticsListener>()
+    private val diagnosticsListeners = mutableListOf<SourcedDiagnosticsListener>()
     private val workspaceEditListeners = mutableListOf<WorkspaceEditListener>()
 
     /**
@@ -207,9 +208,10 @@ public class LanguageRegistry(
             )
         }
 
-        // Forward diagnostics
+        // Forward diagnostics, tagged with the server name so diagnostics from multiple
+        // servers covering the same language never overwrite each other.
         server.onDiagnostics { uri, diagnostics ->
-            diagnosticsListeners.forEach { it.invoke(uri, diagnostics) }
+            diagnosticsListeners.forEach { it.invoke(config.name, uri, diagnostics) }
         }
         server.onWorkspaceEdit { label, edit ->
             workspaceEditListeners.anyApplied { listener -> listener(label, edit) }
@@ -236,9 +238,10 @@ public class LanguageRegistry(
     public fun hasLspServer(languageId: String): Boolean = lspServers.values.any { languageId in it.config.languageIds }
 
     /**
-     * Add a diagnostics listener.
+     * Add a diagnostics listener. The listener receives the name of the language server
+     * that produced the diagnostics, so consumers can keep per-source collections.
      */
-    public fun onDiagnostics(listener: DiagnosticsListener): Disposable {
+    public fun onDiagnostics(listener: SourcedDiagnosticsListener): Disposable {
         diagnosticsListeners.add(listener)
         return Disposable { diagnosticsListeners.remove(listener) }
     }
@@ -407,6 +410,13 @@ public class LanguageRegistry(
         workspaceEditListeners.clear()
     }
 }
+
+/** Receives diagnostics tagged with the language-server name that produced them. */
+public typealias SourcedDiagnosticsListener = (
+    source: String,
+    uri: String,
+    diagnostics: List<LanguageDiagnostic>,
+) -> Unit
 
 /** Applies an LSP workspace edit and reports whether it succeeded. */
 public typealias WorkspaceEditListener = suspend (label: String?, edit: LspWorkspaceEdit) -> Boolean

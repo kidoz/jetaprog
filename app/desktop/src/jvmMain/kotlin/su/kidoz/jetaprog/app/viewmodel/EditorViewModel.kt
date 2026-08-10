@@ -144,7 +144,9 @@ public class EditorViewModel(
     private val lspOpenDocuments = mutableSetOf<String>()
     private val undoManagers = mutableMapOf<String, UndoManager>()
     private val incrementalTokenizers = mutableMapOf<String, IncrementalTokenizer>()
-    private val lspDiagnostics = mutableMapOf<String, List<Diagnostic>>()
+
+    /** LSP diagnostics keyed by document URI, then by the server that published them. */
+    private val lspDiagnostics = mutableMapOf<String, MutableMap<String, List<Diagnostic>>>()
     private val lintDiagnostics = mutableMapOf<String, List<Diagnostic>>()
     private val documentSessions = mutableMapOf<String, DocumentSession>()
     private var pendingWorkspaceQuickFixes = emptyList<Pair<QuickFix, LanguageWorkspaceEdit>>()
@@ -176,8 +178,9 @@ public class EditorViewModel(
             }
         }
 
-        languageRegistry?.onDiagnostics { uri, diagnostics ->
-            lspDiagnostics[uri] = diagnostics.map { it.toEditorDiagnostic() }
+        languageRegistry?.onDiagnostics { source, uri, diagnostics ->
+            lspDiagnostics.getOrPut(uri) { mutableMapOf() }[source] =
+                diagnostics.map { it.toEditorDiagnostic() }
             refreshDiagnosticsState()
         }
         languageRegistry?.onWorkspaceEdit { label, edit -> applyWorkspaceEdit(label, edit) }
@@ -2958,7 +2961,7 @@ public class EditorViewModel(
      * severity, and message) is shown once.
      */
     private fun mergedDiagnostics(uri: String): List<Diagnostic> =
-        (lspDiagnostics[uri].orEmpty() + lintDiagnostics[uri].orEmpty())
+        (lspDiagnostics[uri]?.values?.flatten().orEmpty() + lintDiagnostics[uri].orEmpty())
             .distinctBy { Triple(it.range, it.severity, it.message) }
 
     private fun diagnosticsFor(uri: DocumentUri): List<Diagnostic> = mergedDiagnostics(uri.value)
