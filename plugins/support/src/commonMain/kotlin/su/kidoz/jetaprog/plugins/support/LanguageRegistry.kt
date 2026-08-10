@@ -12,6 +12,7 @@ import su.kidoz.jetaprog.lsp.client.LspClientConfig
 import su.kidoz.jetaprog.lsp.protocol.LspWorkspaceEdit
 import su.kidoz.jetaprog.lsp.protocol.WorkspaceFolder
 import su.kidoz.jetaprog.plugins.api.language.CompletionList
+import su.kidoz.jetaprog.plugins.api.language.DocumentSelector
 import su.kidoz.jetaprog.plugins.api.language.Hover
 import su.kidoz.jetaprog.plugins.api.language.Location
 import su.kidoz.jetaprog.plugins.api.language.SignatureHelp
@@ -70,7 +71,8 @@ public class LanguageRegistry(
         languageId: String,
         provider: CompletionProvider,
         priority: Int = 0,
-    ): Disposable = getOrCreateProvider(languageId).registerCompletionProvider(provider, priority)
+        selector: DocumentSelector? = null,
+    ): Disposable = getOrCreateProvider(languageId).registerCompletionProvider(provider, priority, selector)
 
     /**
      * Register an in-process hover provider.
@@ -79,7 +81,8 @@ public class LanguageRegistry(
         languageId: String,
         provider: HoverProvider,
         priority: Int = 0,
-    ): Disposable = getOrCreateProvider(languageId).registerHoverProvider(provider, priority)
+        selector: DocumentSelector? = null,
+    ): Disposable = getOrCreateProvider(languageId).registerHoverProvider(provider, priority, selector)
 
     /**
      * Register an in-process signature help provider.
@@ -88,7 +91,8 @@ public class LanguageRegistry(
         languageId: String,
         provider: SignatureHelpProvider,
         priority: Int = 0,
-    ): Disposable = getOrCreateProvider(languageId).registerSignatureHelpProvider(provider, priority)
+        selector: DocumentSelector? = null,
+    ): Disposable = getOrCreateProvider(languageId).registerSignatureHelpProvider(provider, priority, selector)
 
     /**
      * Register an in-process definition provider.
@@ -97,7 +101,8 @@ public class LanguageRegistry(
         languageId: String,
         provider: DefinitionProvider,
         priority: Int = 0,
-    ): Disposable = getOrCreateProvider(languageId).registerDefinitionProvider(provider, priority)
+        selector: DocumentSelector? = null,
+    ): Disposable = getOrCreateProvider(languageId).registerDefinitionProvider(provider, priority, selector)
 
     /**
      * Register an in-process references provider.
@@ -106,7 +111,8 @@ public class LanguageRegistry(
         languageId: String,
         provider: ReferencesProvider,
         priority: Int = 0,
-    ): Disposable = getOrCreateProvider(languageId).registerReferencesProvider(provider, priority)
+        selector: DocumentSelector? = null,
+    ): Disposable = getOrCreateProvider(languageId).registerReferencesProvider(provider, priority, selector)
 
     /**
      * Register an in-process formatting provider.
@@ -115,7 +121,8 @@ public class LanguageRegistry(
         languageId: String,
         provider: FormattingProvider,
         priority: Int = 0,
-    ): Disposable = getOrCreateProvider(languageId).registerFormattingProvider(provider, priority)
+        selector: DocumentSelector? = null,
+    ): Disposable = getOrCreateProvider(languageId).registerFormattingProvider(provider, priority, selector)
 
     /**
      * Register an in-process code action provider.
@@ -124,7 +131,8 @@ public class LanguageRegistry(
         languageId: String,
         provider: CodeActionProvider,
         priority: Int = 0,
-    ): Disposable = getOrCreateProvider(languageId).registerCodeActionProvider(provider, priority)
+        selector: DocumentSelector? = null,
+    ): Disposable = getOrCreateProvider(languageId).registerCodeActionProvider(provider, priority, selector)
 
     // ========================================================================
     // LSP Server Registration

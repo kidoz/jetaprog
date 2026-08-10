@@ -5,6 +5,7 @@ import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.plugins.api.language.CompletionItem
 import su.kidoz.jetaprog.plugins.api.language.CompletionList
+import su.kidoz.jetaprog.plugins.api.language.DocumentSelector
 import su.kidoz.jetaprog.plugins.api.language.Hover
 import su.kidoz.jetaprog.plugins.api.language.Location
 import su.kidoz.jetaprog.plugins.api.language.SignatureHelp
@@ -85,6 +86,12 @@ public data class RegisteredProvider<T>(
     val provider: T,
     val source: ProviderSource,
     val priority: Int = 0,
+    /**
+     * Optional selector restricting the provider to matching documents (e.g. a glob such
+     * as `**&#47;application*.yml`). Null means the provider applies to every document of
+     * the language.
+     */
+    val selector: DocumentSelector? = null,
 )
 
 /**
@@ -111,8 +118,9 @@ public class HybridLanguageProvider(
     public fun registerCompletionProvider(
         provider: CompletionProvider,
         priority: Int = 0,
+        selector: DocumentSelector? = null,
     ): Disposable {
-        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority)
+        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector)
         completionProviders.add(registered)
         completionProviders.sortByDescending { it.priority }
         return Disposable { completionProviders.remove(registered) }
@@ -124,8 +132,9 @@ public class HybridLanguageProvider(
     public fun registerHoverProvider(
         provider: HoverProvider,
         priority: Int = 0,
+        selector: DocumentSelector? = null,
     ): Disposable {
-        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority)
+        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector)
         hoverProviders.add(registered)
         hoverProviders.sortByDescending { it.priority }
         return Disposable { hoverProviders.remove(registered) }
@@ -137,8 +146,9 @@ public class HybridLanguageProvider(
     public fun registerSignatureHelpProvider(
         provider: SignatureHelpProvider,
         priority: Int = 0,
+        selector: DocumentSelector? = null,
     ): Disposable {
-        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority)
+        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector)
         signatureHelpProviders.add(registered)
         signatureHelpProviders.sortByDescending { it.priority }
         return Disposable { signatureHelpProviders.remove(registered) }
@@ -150,8 +160,9 @@ public class HybridLanguageProvider(
     public fun registerDefinitionProvider(
         provider: DefinitionProvider,
         priority: Int = 0,
+        selector: DocumentSelector? = null,
     ): Disposable {
-        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority)
+        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector)
         definitionProviders.add(registered)
         definitionProviders.sortByDescending { it.priority }
         return Disposable { definitionProviders.remove(registered) }
@@ -163,8 +174,9 @@ public class HybridLanguageProvider(
     public fun registerReferencesProvider(
         provider: ReferencesProvider,
         priority: Int = 0,
+        selector: DocumentSelector? = null,
     ): Disposable {
-        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority)
+        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector)
         referencesProviders.add(registered)
         referencesProviders.sortByDescending { it.priority }
         return Disposable { referencesProviders.remove(registered) }
@@ -176,8 +188,9 @@ public class HybridLanguageProvider(
     public fun registerFormattingProvider(
         provider: FormattingProvider,
         priority: Int = 0,
+        selector: DocumentSelector? = null,
     ): Disposable {
-        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority)
+        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector)
         formattingProviders.add(registered)
         formattingProviders.sortByDescending { it.priority }
         return Disposable { formattingProviders.remove(registered) }
@@ -189,8 +202,9 @@ public class HybridLanguageProvider(
     public fun registerCodeActionProvider(
         provider: CodeActionProvider,
         priority: Int = 0,
+        selector: DocumentSelector? = null,
     ): Disposable {
-        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority)
+        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector)
         codeActionProviders.add(registered)
         codeActionProviders.sortByDescending { it.priority }
         return Disposable { codeActionProviders.remove(registered) }
@@ -304,8 +318,9 @@ public class HybridLanguageProvider(
             languageConfig.featurePreferences[LanguageFeature.Completion.name]
                 ?: languageConfig.completionPreference
 
-        val nativeProviders = completionProviders.filter { it.source == ProviderSource.InProcess }
-        val lspProviders = completionProviders.filter { it.source == ProviderSource.Lsp }
+        val applicableProviders = forDocument(completionProviders, document)
+        val nativeProviders = applicableProviders.filter { it.source == ProviderSource.InProcess }
+        val lspProviders = applicableProviders.filter { it.source == ProviderSource.Lsp }
 
         val allItems = mutableListOf<CompletionItem>()
         var allIncomplete = false
@@ -314,7 +329,7 @@ public class HybridLanguageProvider(
             when (preference) {
                 CompletionProviderPreference.Native -> nativeProviders
                 CompletionProviderPreference.Lsp -> lspProviders
-                CompletionProviderPreference.Hybrid -> completionProviders // Both
+                CompletionProviderPreference.Hybrid -> applicableProviders // Both
             }
 
         for (registered in providersToRun.sortedByDescending { it.priority }) {
@@ -344,7 +359,7 @@ public class HybridLanguageProvider(
         document: TextDocument,
         position: TextPosition,
     ): Hover? {
-        val providers = getOrderedProviders(LanguageFeature.Hover, hoverProviders)
+        val providers = getOrderedProviders(LanguageFeature.Hover, forDocument(hoverProviders, document))
 
         for (registered in providers) {
             try {
@@ -368,7 +383,8 @@ public class HybridLanguageProvider(
         position: TextPosition,
         context: SignatureHelpContext,
     ): SignatureHelp? {
-        val providers = getOrderedProviders(LanguageFeature.SignatureHelp, signatureHelpProviders)
+        val providers =
+            getOrderedProviders(LanguageFeature.SignatureHelp, forDocument(signatureHelpProviders, document))
 
         for (registered in providers) {
             try {
@@ -391,7 +407,7 @@ public class HybridLanguageProvider(
         document: TextDocument,
         position: TextPosition,
     ): List<Location> {
-        val providers = getOrderedProviders(LanguageFeature.Definition, definitionProviders)
+        val providers = getOrderedProviders(LanguageFeature.Definition, forDocument(definitionProviders, document))
 
         for (registered in providers) {
             try {
@@ -415,7 +431,7 @@ public class HybridLanguageProvider(
         position: TextPosition,
         includeDeclaration: Boolean,
     ): List<Location> {
-        val providers = getOrderedProviders(LanguageFeature.References, referencesProviders)
+        val providers = getOrderedProviders(LanguageFeature.References, forDocument(referencesProviders, document))
 
         for (registered in providers) {
             try {
@@ -438,7 +454,7 @@ public class HybridLanguageProvider(
         document: TextDocument,
         options: FormattingOptions,
     ): List<TextEdit> {
-        val providers = getOrderedProviders(LanguageFeature.Formatting, formattingProviders)
+        val providers = getOrderedProviders(LanguageFeature.Formatting, forDocument(formattingProviders, document))
 
         for (registered in providers) {
             try {
@@ -462,7 +478,7 @@ public class HybridLanguageProvider(
         range: TextRange,
         context: CodeActionContext,
     ): List<CodeAction> {
-        val providers = getOrderedProviders(LanguageFeature.CodeAction, codeActionProviders)
+        val providers = getOrderedProviders(LanguageFeature.CodeAction, forDocument(codeActionProviders, document))
 
         for (registered in providers) {
             try {
@@ -477,6 +493,18 @@ public class HybridLanguageProvider(
 
         return emptyList()
     }
+
+    /**
+     * Keeps only providers whose selector matches the document (providers without a
+     * selector always apply).
+     */
+    private fun <T> forDocument(
+        providers: List<RegisteredProvider<T>>,
+        document: TextDocument,
+    ): List<RegisteredProvider<T>> =
+        providers.filter { registered ->
+            registered.selector?.matches(document.languageId, document.uri.value) ?: true
+        }
 
     private fun languageConfig(): LanguageConfig =
         settingsService.getCurrentSettings().languages.languages[config.languageId] ?: LanguageConfig()

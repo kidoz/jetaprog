@@ -56,6 +56,7 @@ public class LanguageServiceImpl(
                 languageRegistry.registerCompletionProvider(
                     languageId = languageId,
                     provider = provider,
+                    selector = selector,
                 ),
             )
         }
@@ -74,6 +75,7 @@ public class LanguageServiceImpl(
                 languageRegistry.registerHoverProvider(
                     languageId = languageId,
                     provider = provider,
+                    selector = selector,
                 ),
             )
         }
@@ -94,6 +96,7 @@ public class LanguageServiceImpl(
                 languageRegistry.registerSignatureHelpProvider(
                     languageId = languageId,
                     provider = provider,
+                    selector = selector,
                 ),
             )
         }
@@ -112,6 +115,7 @@ public class LanguageServiceImpl(
                 languageRegistry.registerDefinitionProvider(
                     languageId = languageId,
                     provider = provider,
+                    selector = selector,
                 ),
             )
         }
@@ -130,6 +134,7 @@ public class LanguageServiceImpl(
                 languageRegistry.registerReferencesProvider(
                     languageId = languageId,
                     provider = provider,
+                    selector = selector,
                 ),
             )
         }
@@ -148,6 +153,7 @@ public class LanguageServiceImpl(
                 languageRegistry.registerFormattingProvider(
                     languageId = languageId,
                     provider = provider,
+                    selector = selector,
                 ),
             )
         }
@@ -166,6 +172,7 @@ public class LanguageServiceImpl(
                 languageRegistry.registerCodeActionProvider(
                     languageId = languageId,
                     provider = provider,
+                    selector = selector,
                 ),
             )
         }
