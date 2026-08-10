@@ -18,6 +18,8 @@ import su.kidoz.jetaprog.acp.client.AcpClient
 import su.kidoz.jetaprog.acp.client.AcpClientHandler
 import su.kidoz.jetaprog.acp.client.StdioAcpTransport
 import su.kidoz.jetaprog.acp.client.StdioAgentConfig
+import su.kidoz.jetaprog.acp.protocol.AcpError
+import su.kidoz.jetaprog.acp.protocol.AcpRequestException
 import su.kidoz.jetaprog.acp.protocol.ClientCapabilities
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
 import su.kidoz.jetaprog.acp.protocol.FileSystemCapability
@@ -50,6 +52,9 @@ import su.kidoz.jetaprog.app.ui.agent.ToolStatus
 import su.kidoz.jetaprog.app.ui.agent.Turn
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.platform.filesystem.WorkspacePathException
+import su.kidoz.jetaprog.platform.filesystem.WorkspacePathGuard
+import java.io.File
 
 /**
  * Drives the AI agent surface from a single Agent Client Protocol session.
@@ -72,6 +77,7 @@ public class AgentSessionViewModel(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val agentCommand = defaultAgentCommand
     private val prefsStore = AgentPrefsStore(fileSystem, projectPath)
+    private val pathGuard = WorkspacePathGuard { projectPath }
 
     private val _state = MutableStateFlow(AgentUiState())
 
@@ -510,7 +516,8 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
 
     override suspend fun readTextFile(request: ReadTextFileRequest): ReadTextFileResponse {
-        val text = fileSystem.readText(request.path).getOrElse { throw it }
+        val path = guardedPath(request.path)
+        val text = fileSystem.readText(path).getOrElse { throw it }
         val sliced =
             if (request.line != null || request.limit != null) {
                 val lines = text.lines()
@@ -524,7 +531,57 @@ public class AgentSessionViewModel(
     }
 
     override suspend fun writeTextFile(request: WriteTextFileRequest) {
-        fileSystem.writeText(request.path, request.content).getOrElse { throw it }
+        val path = guardedPath(request.path)
+        // Agents may write directly instead of asking through session/request_permission,
+        // so apply the Edit policy here too rather than trusting them to request it.
+        if (!approveDirectWrite(path)) {
+            throw AcpRequestException(
+                code = AcpError.INVALID_REQUEST,
+                message = "The user denied writing ${File(path).name}",
+            )
+        }
+        fileSystem.writeText(path, request.content).getOrElse { throw it }
+    }
+
+    /**
+     * Resolves an agent-supplied path inside the workspace, refusing anything outside it.
+     */
+    private fun guardedPath(path: String): String =
+        try {
+            pathGuard.resolve(path)
+        } catch (exception: WorkspacePathException) {
+            throw AcpRequestException(
+                code = AcpError.INVALID_PARAMS,
+                message = exception.message ?: "Path is outside the open project",
+            )
+        }
+
+    /**
+     * Applies the Edit permission policy to a direct `fs/write_text_file` call, prompting
+     * the user when the policy is [PermissionPolicy.ASK].
+     */
+    private suspend fun approveDirectWrite(path: String): Boolean {
+        val fileName = File(path).name
+        return when (_state.value.permissions[PermissionKind.EDIT] ?: PermissionPolicy.ASK) {
+            PermissionPolicy.AUTO -> {
+                true
+            }
+
+            PermissionPolicy.NEVER -> {
+                false
+            }
+
+            PermissionPolicy.ASK -> {
+                val deferred = CompletableDeferred<RequestPermissionResponse>()
+                val callId = "write:$path:${seq++}"
+                pendingApprovals[callId] = PendingApproval(deferred, ALLOW_OPTION_ID, REJECT_OPTION_ID)
+                mutateAgentTurn { blocks ->
+                    blocks + Block.Approval(callId, "Write $fileName", path)
+                }
+                val outcome = deferred.await().outcome
+                outcome is PermissionOutcome.Selected && outcome.optionId == ALLOW_OPTION_ID
+            }
+        }
     }
 
     override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
@@ -593,6 +650,10 @@ public class AgentSessionViewModel(
         private const val MAX_RESULT_CHARS = 4000
         private const val MAX_DIFF_BODY_LINES = 10
         private const val CONTEXT_LINES = 2
+
+        /** Option ids used for approvals the IDE raises itself (direct file writes). */
+        private const val ALLOW_OPTION_ID = "allow"
+        private const val REJECT_OPTION_ID = "reject"
 
         /**
          * Default launch command driving Claude Code over ACP via the Zed adapter.

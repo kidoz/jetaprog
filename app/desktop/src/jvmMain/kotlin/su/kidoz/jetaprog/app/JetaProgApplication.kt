@@ -179,7 +179,14 @@ public class JetaProgApplication {
      * into the Welcome Hub ([session] is `null`) until the user opens a project.
      */
     public suspend fun initialize() {
-        registerIdeTools(mcpServer, fileSystem) { _session.value }
+        registerIdeTools(
+            server = mcpServer,
+            fileSystem = fileSystem,
+            currentSession = { _session.value },
+            onDestructiveTool = { message ->
+                notificationCenter.info(title = "MCP agent action", message = message)
+            },
+        )
         mcpServer.start()
     }
 

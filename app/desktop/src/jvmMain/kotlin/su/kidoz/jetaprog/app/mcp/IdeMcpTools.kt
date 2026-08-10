@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.mcp
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -20,7 +21,10 @@ import su.kidoz.jetaprog.mcp.server.tools.Tool
 import su.kidoz.jetaprog.mcp.server.tools.ToolContent
 import su.kidoz.jetaprog.mcp.server.tools.ToolResult
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.platform.filesystem.WorkspacePathGuard
 import java.io.File
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * Registers the IDE's tools on the embedded MCP [server], exposing live workspace
@@ -32,16 +36,11 @@ public fun registerIdeTools(
     server: EmbeddedMcpServer,
     fileSystem: FileSystem,
     currentSession: () -> ProjectSession?,
+    onDestructiveTool: (String) -> Unit = {},
 ) {
-    fun resolve(path: String): String {
-        val base = currentSession()?.projectPath ?: error("No project is open")
-        val root = File(base).canonicalFile
-        val target = (if (File(path).isAbsolute) File(path) else File(root, path)).canonicalFile
-        require(target == root || target.path.startsWith(root.path + File.separator)) {
-            "Path is outside the open project"
-        }
-        return target.path
-    }
+    val pathGuard = WorkspacePathGuard { currentSession()?.projectPath }
+
+    fun resolve(path: String): String = pathGuard.resolve(path)
 
     server.tools.register(
         Tool(
@@ -70,8 +69,14 @@ public fun registerIdeTools(
         ) { args ->
             val path = args.string("path") ?: return@Tool missing("path")
             val content = args.string("content") ?: return@Tool missing("content")
-            fileSystem.writeText(resolve(path), content).fold(
-                onSuccess = { text("Wrote ${content.length} chars to $path") },
+            val resolved = resolve(path)
+            fileSystem.writeText(resolved, content).fold(
+                onSuccess = {
+                    // Writes arrive from an external agent; make them visible rather than silent.
+                    logger.info { "MCP write_file: $resolved (${content.length} chars)" }
+                    onDestructiveTool("Agent wrote ${File(resolved).name}")
+                    text("Wrote ${content.length} chars to $path")
+                },
                 onFailure = { ToolResult.Error("Failed to write $path: ${it.message}") },
             )
         },
@@ -199,6 +204,8 @@ public fun registerIdeTools(
             if (session.gradleViewModel.state.value.isRunning) {
                 return@Tool ToolResult.Error("A Gradle task is already running")
             }
+            logger.info { "MCP run_gradle_task: $task" }
+            onDestructiveTool("Agent started Gradle task: $task")
             session.gradleViewModel
                 .dispatch(GradleIntent.RunTask(task))
             text("Started Gradle task: $task")

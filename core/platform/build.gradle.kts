@@ -22,5 +22,10 @@ kotlin {
                 implementation(libs.bundles.testing)
             }
         }
+        jvmTest {
+            dependencies {
+                implementation(libs.bundles.testing)
+            }
+        }
     }
 }
