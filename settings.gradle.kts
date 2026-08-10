@@ -51,7 +51,6 @@ include(":plugins:bundled:rust")
 include(":plugins:bundled:vala")
 
 // MCP
-include(":mcp:bridge")
 include(":mcp:server")
 
 // ACP (Agent Client Protocol)
