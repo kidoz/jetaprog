@@ -74,3 +74,5 @@ internal const val DOTNET_TEST_TARGET_PATH_METADATA_KEY: String = "dotnet.testTa
 internal const val DOTNET_RUNNABLE_METADATA_KEY: String = "dotnet.runnable"
 internal const val DOTNET_TARGET_FRAMEWORK_METADATA_KEY: String = "dotnet.targetFramework"
 internal const val DOTNET_ASSEMBLY_NAME_METADATA_KEY: String = "dotnet.assemblyName"
+internal const val DOTNET_SDK_METADATA_KEY: String = "dotnet.sdk"
+internal const val DOTNET_LAUNCH_PROFILES_METADATA_KEY: String = "dotnet.launchProfiles"

@@ -350,11 +350,11 @@ public class ConfigurationViewModel(
             }
 
             is SpringBootSettings -> {
-                Result.failure(UnsupportedOperationException("Spring Boot execution not implemented"))
+                executeViaOrchestrator(config)
             }
 
             is SpringBootDevServerSettings -> {
-                Result.failure(UnsupportedOperationException("Spring Boot execution not implemented"))
+                executeViaOrchestrator(config)
             }
 
             is DockerBuildSettings -> {
@@ -396,6 +396,46 @@ public class ConfigurationViewModel(
             Result.failure(error)
         }
     }
+
+    /**
+     * Runs a configuration through the execution orchestrator, which knows how to build
+     * its process (used for Spring Boot, whose launch logic lives in core/configuration),
+     * streaming its output to the run panel.
+     */
+    private suspend fun executeViaOrchestrator(config: RunConfiguration): Result<Int> =
+        coroutineScope {
+            prepareExecutionOutput(config.id)
+            val session = executionOrchestrator.execute(config, projectPath)
+            executionSessionId = session.id
+            val outputJob =
+                launch {
+                    session.output.collect { output ->
+                        appendExecutionOutput(output.toRunOutputLine())
+                    }
+                }
+            try {
+                when (val executionResult = session.result.filterNotNull().first()) {
+                    is ExecutionResult.Success -> {
+                        Result.success(executionResult.exitCode)
+                    }
+
+                    is ExecutionResult.Failure -> {
+                        if (executionResult.exitCode >= 0) {
+                            Result.success(executionResult.exitCode)
+                        } else {
+                            Result.failure(IllegalStateException(executionResult.message))
+                        }
+                    }
+
+                    is ExecutionResult.Cancelled -> {
+                        throw CancellationException("Execution cancelled")
+                    }
+                }
+            } finally {
+                outputJob.cancelAndJoin()
+                if (executionSessionId == session.id) executionSessionId = null
+            }
+        }
 
     private suspend fun executeGo(config: RunConfiguration): Result<Int> =
         coroutineScope {

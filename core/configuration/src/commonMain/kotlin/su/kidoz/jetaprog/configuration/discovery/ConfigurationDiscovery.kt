@@ -648,6 +648,31 @@ public class ConfigurationDiscovery(
                 )
             }
 
+            // One configuration per launchSettings.json profile (ASP.NET Core projects)
+            val launchProfiles =
+                project.metadata[DOTNET_LAUNCH_PROFILES_METADATA_KEY]
+                    ?.split('\n')
+                    ?.filter { it.isNotBlank() }
+                    .orEmpty()
+            for (profile in launchProfiles) {
+                val profileName = "$baseName Run ($profile)"
+                if (profileName in existingNames) continue
+                configs.add(
+                    RunConfiguration(
+                        id = ConfigurationId.generate(),
+                        name = profileName,
+                        type = ConfigurationType.DOTNET_RUN,
+                        isTemporary = false,
+                        settings =
+                            ConfigurationSettings.DotNetRun(
+                                projectPath = projectPath,
+                                workingDirectory = project.rootPath,
+                                launchProfile = profile,
+                            ),
+                    ),
+                )
+            }
+
             val debugName = "$baseName Debug"
             if (debugName !in existingNames) {
                 configs.add(

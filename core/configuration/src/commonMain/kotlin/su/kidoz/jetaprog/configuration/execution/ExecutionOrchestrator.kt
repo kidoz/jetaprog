@@ -678,6 +678,10 @@ public class ExecutionOrchestrator(
                 }
                 add("--configuration")
                 add(settings.configuration.value)
+                settings.launchProfile?.let {
+                    add("--launch-profile")
+                    add(it)
+                }
                 if (settings.noRestore) add("--no-restore")
                 if (settings.programArguments.isNotEmpty()) {
                     add("--")

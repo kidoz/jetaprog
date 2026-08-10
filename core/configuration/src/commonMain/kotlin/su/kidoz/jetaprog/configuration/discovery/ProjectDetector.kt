@@ -278,6 +278,10 @@ public class ProjectDetector(
                         put(DOTNET_RUNNABLE_METADATA_KEY, project.isRunnable.toString())
                         project.targetFramework?.let { put(DOTNET_TARGET_FRAMEWORK_METADATA_KEY, it) }
                         put(DOTNET_ASSEMBLY_NAME_METADATA_KEY, project.assemblyName)
+                        project.sdk.takeIf { it.isNotEmpty() }?.let { put(DOTNET_SDK_METADATA_KEY, it) }
+                        project.launchProfiles
+                            .takeIf { it.isNotEmpty() }
+                            ?.let { put(DOTNET_LAUNCH_PROFILES_METADATA_KEY, it.joinToString("\n")) }
                     }
                 },
         )
@@ -321,7 +325,27 @@ public class ProjectDetector(
             isTestProject = isTestProject,
             targetFramework = targetFramework,
             assemblyName = assemblyName,
+            sdk = sdk,
+            launchProfiles = readDotNetLaunchProfiles(path),
         )
+    }
+
+    /**
+     * Reads runnable launch profile names from `Properties/launchSettings.json` next to
+     * the project file. Only `"commandName": "Project"` profiles run via `dotnet run`.
+     */
+    private suspend fun readDotNetLaunchProfiles(projectFilePath: String): List<String> {
+        val projectDir = projectFilePath.substringBeforeLast('/')
+        val launchSettingsPath = "$projectDir/Properties/launchSettings.json"
+        val content = fileSystem.readText(launchSettingsPath).getOrNull() ?: return emptyList()
+        val root = runCatching { Json.parseToJsonElement(content).jsonObject }.getOrNull() ?: return emptyList()
+        val profiles =
+            root["profiles"]?.let { element -> runCatching { element.jsonObject }.getOrNull() }
+                ?: return emptyList()
+        return profiles.mapNotNull { (name, value) ->
+            val profile = runCatching { value.jsonObject }.getOrNull() ?: return@mapNotNull null
+            name.takeIf { profile.stringValue("commandName").equals("Project", ignoreCase = true) }
+        }
     }
 
     private suspend fun detectCMake(projectPath: String): DetectedProject? {
@@ -563,6 +587,8 @@ public class ProjectDetector(
         val isTestProject: Boolean,
         val targetFramework: String?,
         val assemblyName: String,
+        val sdk: String = "",
+        val launchProfiles: List<String> = emptyList(),
     )
 
     private companion object {

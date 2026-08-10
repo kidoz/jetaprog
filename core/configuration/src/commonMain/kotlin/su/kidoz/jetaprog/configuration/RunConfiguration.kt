@@ -503,6 +503,8 @@ public sealed interface ConfigurationSettings {
         val environment: Map<String, String> = emptyMap(),
         /** Working directory. */
         val workingDirectory: String? = null,
+        /** Launch profile from `Properties/launchSettings.json` (ASP.NET Core). */
+        val launchProfile: String? = null,
     ) : ConfigurationSettings
 
     /**
