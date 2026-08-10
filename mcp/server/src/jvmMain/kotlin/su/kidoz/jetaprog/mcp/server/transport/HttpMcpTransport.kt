@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.mcp.server.transport
 
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
@@ -26,17 +27,25 @@ private const val STOP_TIMEOUT_MILLIS = 1500L
  */
 public actual fun createMcpTransport(config: McpServerConfig): McpTransport? {
     if (!config.transports.sse.enabled) return null
-    return HttpMcpTransport(host = LOOPBACK_HOST, port = config.transports.sse.port)
+    return HttpMcpTransport(
+        host = LOOPBACK_HOST,
+        port = config.transports.sse.port,
+        authToken = config.security.authToken.takeIf { config.security.authenticationEnabled },
+    )
 }
 
 private const val LOOPBACK_HOST = "127.0.0.1"
 
 /**
  * Serves the MCP server over HTTP on [host]:[port] at `/mcp`.
+ *
+ * @param authToken When set, every request must carry `Authorization: Bearer <token>`.
+ *   Loopback binding alone does not isolate the endpoint from other local processes.
  */
 public class HttpMcpTransport(
     private val host: String,
     private val port: Int,
+    private val authToken: String? = null,
 ) : McpTransport {
     private val json =
         Json {
@@ -55,6 +64,16 @@ public class HttpMcpTransport(
                 routing {
                     get("/mcp") { call.respond(HttpStatusCode.MethodNotAllowed) }
                     post("/mcp") {
+                        // A browser-issued request carries Origin; genuine MCP clients do
+                        // not. Rejecting it blocks DNS-rebinding attacks on the local port.
+                        if (call.request.headers["Origin"] != null) {
+                            call.respond(HttpStatusCode.Forbidden)
+                            return@post
+                        }
+                        if (!call.isAuthorized()) {
+                            call.respond(HttpStatusCode.Unauthorized)
+                            return@post
+                        }
                         val request =
                             runCatching { json.parseToJsonElement(call.receiveText()) as? JsonObject }
                                 .getOrNull()
@@ -80,5 +99,11 @@ public class HttpMcpTransport(
     override suspend fun stop() {
         server?.stop(STOP_GRACE_MILLIS, STOP_TIMEOUT_MILLIS)
         server = null
+    }
+
+    private fun ApplicationCall.isAuthorized(): Boolean {
+        val expected = authToken ?: return true
+        val presented = request.headers["Authorization"]?.removePrefix("Bearer ")?.trim()
+        return presented == expected
     }
 }

@@ -36,6 +36,11 @@ public class EmbeddedMcpServer(
     public val endpoint: String? get() = transport?.endpointDescription
 
     /**
+     * The bearer token clients must present, or null when authentication is disabled.
+     */
+    public val authToken: String? get() = config.security.authToken.takeIf { config.security.authenticationEnabled }
+
+    /**
      * The tools registry.
      */
     public val tools: ToolsRegistry get() = toolsRegistry

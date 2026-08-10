@@ -4,6 +4,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import su.kidoz.jetaprog.app.mcp.registerIdeTools
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
@@ -16,6 +21,7 @@ import su.kidoz.jetaprog.lint.engine.DefaultLintEngine
 import su.kidoz.jetaprog.lint.provider.LintProviderRegistry
 import su.kidoz.jetaprog.mcp.server.EmbeddedMcpServer
 import su.kidoz.jetaprog.mcp.server.McpServerConfig
+import su.kidoz.jetaprog.mcp.server.SecurityConfig
 import su.kidoz.jetaprog.platform.JvmPlatform
 import su.kidoz.jetaprog.platform.Platform
 import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
@@ -27,6 +33,7 @@ import su.kidoz.jetaprog.settings.recent.RecentProjectsService
 import su.kidoz.jetaprog.settings.storage.JvmSettingsStorage
 import java.io.File
 import java.io.IOException
+import java.util.UUID
 
 /**
  * Main application class for JetaProg IDE.
@@ -54,7 +61,18 @@ public class JetaProgApplication {
     /**
      * The embedded MCP server.
      */
-    public val mcpServer: EmbeddedMcpServer = EmbeddedMcpServer(McpServerConfig())
+    public val mcpServer: EmbeddedMcpServer =
+        EmbeddedMcpServer(
+            McpServerConfig(
+                // The endpoint is loopback-bound but still reachable by every local
+                // process, so require a token minted fresh for this IDE run.
+                security =
+                    SecurityConfig(
+                        authenticationEnabled = true,
+                        authToken = UUID.randomUUID().toString(),
+                    ),
+            ),
+        )
 
     /**
      * The language server manager for LSP servers.
@@ -192,25 +210,14 @@ public class JetaProgApplication {
 
     /**
      * Writes a project-level `.mcp.json` pointing a terminal MCP client (e.g. Claude
-     * Code) at the IDE's embedded server. Skips if the project already has one.
+     * Code) at the IDE's embedded server, including the bearer token for this run.
      */
     private fun writeMcpConfig(projectPath: String) {
         val endpoint = mcpServer.endpoint ?: return
         val configFile = File(projectPath, ".mcp.json")
-        if (configFile.exists()) return
+        // The token changes every run, so refresh the file instead of skipping it.
         try {
-            configFile.writeText(
-                """
-                {
-                  "mcpServers": {
-                    "jetaprog": {
-                      "type": "http",
-                      "url": "$endpoint"
-                    }
-                  }
-                }
-                """.trimIndent() + "\n",
-            )
+            configFile.writeText(mcpClientConfigJson(endpoint, mcpServer.authToken))
         } catch (exception: IOException) {
             notificationCenter.warning(title = "MCP config not written", message = exception.message)
         }
@@ -248,3 +255,29 @@ public class JetaProgApplication {
         )
     }
 }
+
+/**
+ * Renders the `.mcp.json` an external MCP client uses to reach the embedded server.
+ */
+internal fun mcpClientConfigJson(
+    endpoint: String,
+    authToken: String?,
+): String {
+    val document =
+        buildJsonObject {
+            putJsonObject("mcpServers") {
+                putJsonObject("jetaprog") {
+                    put("type", "http")
+                    put("url", endpoint)
+                    if (authToken != null) {
+                        putJsonObject("headers") {
+                            put("Authorization", "Bearer $authToken")
+                        }
+                    }
+                }
+            }
+        }
+    return MCP_CONFIG_JSON.encodeToString(JsonObject.serializer(), document) + "\n"
+}
+
+private val MCP_CONFIG_JSON = Json { prettyPrint = true }

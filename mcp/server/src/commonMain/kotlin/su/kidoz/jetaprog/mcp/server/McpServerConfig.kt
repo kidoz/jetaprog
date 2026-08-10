@@ -80,6 +80,13 @@ public data class SecurityConfig(
      */
     val authenticationEnabled: Boolean = false,
     /**
+     * Bearer token required on every request when [authenticationEnabled] is set.
+     *
+     * Generated per IDE run and handed to clients through the project's `.mcp.json`;
+     * never persisted in settings.
+     */
+    val authToken: String? = null,
+    /**
      * Allowed origins for CORS.
      */
     val allowedOrigins: List<String> = listOf("*"),
