@@ -23,8 +23,10 @@ import su.kidoz.jetaprog.acp.protocol.AcpError
 import su.kidoz.jetaprog.acp.protocol.AcpRequestException
 import su.kidoz.jetaprog.acp.protocol.ClientCapabilities
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
+import su.kidoz.jetaprog.acp.protocol.EnvVariable
 import su.kidoz.jetaprog.acp.protocol.FileSystemCapability
 import su.kidoz.jetaprog.acp.protocol.Implementation
+import su.kidoz.jetaprog.acp.protocol.McpServer
 import su.kidoz.jetaprog.acp.protocol.PermissionOptionKind
 import su.kidoz.jetaprog.acp.protocol.PermissionOutcome
 import su.kidoz.jetaprog.acp.protocol.PermissionToolCall
@@ -67,11 +69,14 @@ import java.io.File
  *
  * @param projectPath the workspace root used as the session working directory.
  * @param fileSystem the file system used to satisfy the agent's file requests.
+ * @param ideMcpEndpoint supplies the IDE's embedded MCP server so the agent can use the
+ *   IDE's own tools; returns null when the server is not running.
  * @param defaultAgentCommand the command used to launch the agent process.
  */
 public class AgentSessionViewModel(
     private val projectPath: String,
     private val fileSystem: FileSystem,
+    private val ideMcpEndpoint: () -> IdeMcpEndpoint? = { null },
     defaultAgentCommand: String = DEFAULT_CLAUDE_CODE_COMMAND,
 ) : Disposable,
     AcpClientHandler {
@@ -232,7 +237,9 @@ public class AgentSessionViewModel(
         }
 
         val initialize = acpClient.initialize()
-        val session = acpClient.newSession(cwd = projectPath)
+        // Hand the agent the IDE's own MCP endpoint so the in-panel agent sees the same
+        // workspace tools (diagnostics, git status, project context) as an external CLI.
+        val session = acpClient.newSession(cwd = projectPath, mcpServers = ideMcpServers())
         sessionId = session.sessionId
         _state.update {
             it.copy(
@@ -660,6 +667,9 @@ public class AgentSessionViewModel(
         private const val MAX_DIFF_BODY_LINES = 10
         private const val CONTEXT_LINES = 2
 
+        /** Name the agent sees for the IDE's embedded MCP server. */
+        private const val IDE_MCP_SERVER_NAME = "jetaprog"
+
         /** Option ids used for approvals the IDE raises itself (direct file writes). */
         private const val ALLOW_OPTION_ID = "allow"
         private const val REJECT_OPTION_ID = "reject"
@@ -775,4 +785,35 @@ public class AgentSessionViewModel(
         val allowOptionId: String?,
         val rejectOptionId: String?,
     )
+
+    /**
+     * The IDE's embedded MCP server, described for the agent's own MCP client.
+     *
+     * Empty when the server is not running, in which case the agent falls back to
+     * plain file access.
+     */
+    private fun ideMcpServers(): List<McpServer> {
+        val endpoint = ideMcpEndpoint() ?: return emptyList()
+        return listOf(
+            McpServer(
+                name = IDE_MCP_SERVER_NAME,
+                command = endpoint.url,
+                args = emptyList(),
+                env =
+                    endpoint.authToken
+                        ?.let { listOf(EnvVariable(name = "AUTHORIZATION", value = "Bearer $it")) }
+                        .orEmpty(),
+            ),
+        )
+    }
 }
+
+/**
+ * Connection details for the IDE's embedded MCP server.
+ */
+public data class IdeMcpEndpoint(
+    /** Full endpoint URL, e.g. `http://127.0.0.1:3000/mcp`. */
+    val url: String,
+    /** Bearer token required by the server, when authentication is enabled. */
+    val authToken: String?,
+)

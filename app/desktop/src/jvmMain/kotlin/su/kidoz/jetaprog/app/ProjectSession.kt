@@ -52,6 +52,7 @@ import su.kidoz.jetaprog.app.viewmodel.DebugViewModel
 import su.kidoz.jetaprog.app.viewmodel.EditorViewModel
 import su.kidoz.jetaprog.app.viewmodel.GitViewModel
 import su.kidoz.jetaprog.app.viewmodel.GradleViewModel
+import su.kidoz.jetaprog.app.viewmodel.IdeMcpEndpoint
 import su.kidoz.jetaprog.app.viewmodel.TerminalViewModel
 import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
 import su.kidoz.jetaprog.build.gradle.execution.JvmGradleExecutionService
@@ -145,6 +146,7 @@ import su.kidoz.jetaprog.vcs.GitLineChangeType
  * @param languageServerManager Global language server manager instance.
  * @param databaseProfileStore Global password-free database profile persistence.
  * @param databaseCredentialStore Process-only database credential storage.
+ * @param ideMcpEndpoint Supplies the application's embedded MCP endpoint for the agent.
  */
 public class ProjectSession(
     public val projectPath: String,
@@ -156,6 +158,7 @@ public class ProjectSession(
     private val languageServerManager: LanguageServerManager,
     databaseProfileStore: DatabaseProfileStore,
     databaseCredentialStore: SessionDatabaseCredentialStore,
+    private val ideMcpEndpoint: () -> IdeMcpEndpoint? = { null },
 ) : Disposable {
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gradleExecutionService = JvmGradleExecutionService(processExecutor)
@@ -534,6 +537,7 @@ public class ProjectSession(
         AgentSessionViewModel(
             projectPath = projectPath,
             fileSystem = fileSystem,
+            ideMcpEndpoint = ideMcpEndpoint,
         )
 
     /**

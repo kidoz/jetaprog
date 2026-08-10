@@ -13,6 +13,7 @@ import su.kidoz.jetaprog.app.mcp.registerIdeTools
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeViewModel
+import su.kidoz.jetaprog.app.viewmodel.IdeMcpEndpoint
 import su.kidoz.jetaprog.app.viewmodel.NewProjectViewModel
 import su.kidoz.jetaprog.app.viewmodel.SettingsViewModel
 import su.kidoz.jetaprog.database.JvmDatabaseProfileStore
@@ -170,6 +171,9 @@ public class JetaProgApplication {
                 languageServerManager = languageServerManager,
                 databaseProfileStore = databaseProfileStore,
                 databaseCredentialStore = databaseCredentialStore,
+                ideMcpEndpoint = {
+                    mcpServer.endpoint?.let { IdeMcpEndpoint(url = it, authToken = mcpServer.authToken) }
+                },
             )
         _session.value = newSession
         newSession.initialize()
