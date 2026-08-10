@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -616,6 +617,14 @@ public class AgentSessionViewModel(
     }
 
     override fun dispose() {
+        // Close the connection before cancelling the scope: the agent runs as a child
+        // process and is otherwise left running after the project closes.
+        val openClient = client
+        client = null
+        sessionId = null
+        if (openClient != null) {
+            runBlocking { runCatching { openClient.close() } }
+        }
         scope.cancel()
     }
 
