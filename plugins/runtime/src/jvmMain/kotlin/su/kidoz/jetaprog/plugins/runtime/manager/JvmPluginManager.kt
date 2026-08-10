@@ -128,7 +128,45 @@ public class JvmPluginManager(
             )
         }
 
-    override suspend fun activatePlugin(pluginId: String): Result<Unit> =
+    override suspend fun activatePlugin(pluginId: String): Result<Unit> {
+        // Activate declared dependencies first (topological order, cycle-safe), so a
+        // plugin building on another one (e.g. Spring on Java) finds it already active.
+        val order = mutex.withLock { dependencyOrder(pluginId) }
+        for (dependencyId in order) {
+            if (dependencyId == pluginId) continue
+            activateSingle(dependencyId).onFailure { error ->
+                logger.warn { "Dependency $dependencyId of $pluginId failed to activate: ${error.message}" }
+            }
+        }
+        return activateSingle(pluginId)
+    }
+
+    /**
+     * Returns [pluginId] and its transitive dependencies in activation order
+     * (dependencies first). Unknown dependencies are skipped; cycles are broken
+     * by the visited set.
+     */
+    private fun dependencyOrder(pluginId: String): List<String> {
+        val order = mutableListOf<String>()
+        val visited = mutableSetOf<String>()
+
+        fun visit(id: String) {
+            if (!visited.add(id)) return
+            val entry = plugins[id] ?: return
+            entry.plugin.manifest.dependencies.keys.forEach { dependencyId ->
+                if (dependencyId !in plugins) {
+                    logger.warn { "Plugin $id depends on unknown plugin $dependencyId" }
+                }
+                visit(dependencyId)
+            }
+            order.add(id)
+        }
+
+        visit(pluginId)
+        return order
+    }
+
+    private suspend fun activateSingle(pluginId: String): Result<Unit> =
         mutex.withLock {
             val entry =
                 plugins[pluginId]
