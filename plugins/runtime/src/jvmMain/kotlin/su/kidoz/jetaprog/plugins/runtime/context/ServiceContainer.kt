@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.plugins.runtime.context
 
+import su.kidoz.jetaprog.plugins.api.services.BuildModelService
 import su.kidoz.jetaprog.plugins.api.services.CommandService
 import su.kidoz.jetaprog.plugins.api.services.EditorService
 import su.kidoz.jetaprog.plugins.api.services.LanguageService
@@ -61,6 +62,10 @@ public class ServiceContainer(
      * Read-only settings access service for plugins.
      */
     public val settingsAccess: SettingsAccessService,
+    /**
+     * Read-only access to the workspace build model (dependencies, classpath).
+     */
+    public val buildModel: BuildModelService,
 )
 
 /**

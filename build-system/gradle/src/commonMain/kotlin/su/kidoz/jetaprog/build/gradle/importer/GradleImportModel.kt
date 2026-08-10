@@ -23,6 +23,20 @@ public data class GradleModuleModel(
     val moduleDependencies: List<String> = emptyList(),
     /** Absolute paths of resolved library dependencies (jars) on the module classpath. */
     val classpath: List<String> = emptyList(),
+    /** Maven coordinates of the resolved external dependencies, when known. */
+    val externalDependencies: List<ExternalDependency> = emptyList(),
+)
+
+/**
+ * Maven coordinates of a resolved external library dependency.
+ */
+public data class ExternalDependency(
+    /** Group id, e.g. `org.springframework.boot`. */
+    val group: String,
+    /** Artifact name, e.g. `spring-boot-starter-web`. */
+    val name: String,
+    /** Resolved version, if reported by the build tool. */
+    val version: String? = null,
 )
 
 /**

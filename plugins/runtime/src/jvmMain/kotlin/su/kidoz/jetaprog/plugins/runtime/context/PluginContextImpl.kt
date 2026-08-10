@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.plugins.runtime.context
 import su.kidoz.jetaprog.common.DisposableCollection
 import su.kidoz.jetaprog.plugins.api.PluginContext
 import su.kidoz.jetaprog.plugins.api.PluginManifest
+import su.kidoz.jetaprog.plugins.api.services.BuildModelService
 import su.kidoz.jetaprog.plugins.api.services.CommandService
 import su.kidoz.jetaprog.plugins.api.services.EditorService
 import su.kidoz.jetaprog.plugins.api.services.LanguageService
@@ -41,6 +42,8 @@ public class PluginContextImpl(
     override val lint: LintService = services.lint
 
     override val settings: SettingsAccessService = services.settingsAccess
+
+    override val build: BuildModelService = services.buildModel
 
     override val extensionPath: String by lazy {
         File(basePath, "plugins/${manifest.id}").absolutePath.also { path ->

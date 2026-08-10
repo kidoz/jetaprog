@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.adapter.EditorServiceBridge
+import su.kidoz.jetaprog.app.build.WorkspaceBuildModelService
 import su.kidoz.jetaprog.app.command.CommandPaletteIntent
 import su.kidoz.jetaprog.app.command.CommandPaletteViewModel
 import su.kidoz.jetaprog.app.database.DatabaseViewModel
@@ -55,6 +56,7 @@ import su.kidoz.jetaprog.app.viewmodel.TerminalViewModel
 import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
 import su.kidoz.jetaprog.build.gradle.execution.JvmGradleExecutionService
 import su.kidoz.jetaprog.build.gradle.importer.GradleClasspathResolver
+import su.kidoz.jetaprog.build.gradle.importer.GradleImportModel
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.text.TextPosition
@@ -434,6 +436,7 @@ public class ProjectSession(
             storageFactory = { pluginId -> StorageServiceImpl(pluginId, projectPath) },
             activationEvents = activationEventService,
             settingsAccess = SettingsAccessServiceImpl(settingsService),
+            buildModel = buildModelService,
         )
     }
 
@@ -508,6 +511,19 @@ public class ProjectSession(
      */
     @Volatile
     private var kotlinClasspathResolver: GradleClasspathResolver? = null
+
+    /** Last successfully imported Gradle model; feeds the build model service. */
+    private var gradleImportModel: GradleImportModel? = null
+
+    /**
+     * Read-only build model (dependencies, classpath) exposed to plugins for
+     * framework detection and metadata lookup.
+     */
+    public val buildModelService: WorkspaceBuildModelService =
+        WorkspaceBuildModelService(
+            workspacePath = projectPath,
+            gradleModelProvider = { gradleImportModel },
+        )
 
     /**
      * The agent (ACP) session view model, driving an external coding agent.
@@ -851,6 +867,7 @@ public class ProjectSession(
         gradleImportCoordinator
             .importModel()
             .onSuccess { model ->
+                gradleImportModel = model
                 kotlinClasspathResolver = GradleClasspathResolver(projectPath, model)
             }
     }

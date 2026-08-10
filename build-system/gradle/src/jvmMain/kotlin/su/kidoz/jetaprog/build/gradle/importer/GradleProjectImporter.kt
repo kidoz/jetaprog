@@ -118,12 +118,27 @@ public class GradleProjectImporter : GradleModelImporter {
                 .distinct()
                 .sorted()
 
-        val classpath =
+        val libraryDependencies =
             module.dependencies
                 .filterIsInstance<IdeaSingleEntryLibraryDependency>()
+
+        val classpath =
+            libraryDependencies
                 .mapNotNull { it.file?.absolutePath }
                 .distinct()
                 .sorted()
+
+        val externalDependencies =
+            libraryDependencies
+                .mapNotNull { dependency ->
+                    val coordinates = dependency.gradleModuleVersion ?: return@mapNotNull null
+                    ExternalDependency(
+                        group = coordinates.group,
+                        name = coordinates.name,
+                        version = coordinates.version,
+                    )
+                }.distinct()
+                .sortedWith(compareBy({ it.group }, { it.name }))
 
         return GradleModuleModel(
             path = relativePath,
@@ -134,6 +149,7 @@ public class GradleProjectImporter : GradleModelImporter {
             generatedRoots = generatedRoots.distinct().sorted(),
             moduleDependencies = dependencies,
             classpath = classpath,
+            externalDependencies = externalDependencies,
         )
     }
 

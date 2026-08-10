@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.plugins.api
 
 import su.kidoz.jetaprog.common.DisposableCollection
+import su.kidoz.jetaprog.plugins.api.services.BuildModelService
 import su.kidoz.jetaprog.plugins.api.services.CommandService
 import su.kidoz.jetaprog.plugins.api.services.EditorService
 import su.kidoz.jetaprog.plugins.api.services.LanguageService
@@ -63,6 +64,12 @@ public interface PluginContext {
      * Plugins can read settings and observe changes but cannot write directly.
      */
     public val settings: SettingsAccessService
+
+    /**
+     * Read-only access to the workspace build model (dependencies, classpath).
+     * Framework plugins use this for dependency-based detection.
+     */
+    public val build: BuildModelService
 
     /**
      * The absolute path to the plugin's installation directory.
