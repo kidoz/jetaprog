@@ -23,6 +23,7 @@ kotlin {
                 api(projects.core.settings)
                 api(projects.plugins.api)
                 api(projects.plugins.support)
+                api(projects.buildSystem.gradle)
                 api(projects.editor.syntax)
                 implementation(libs.coroutines.core)
             }

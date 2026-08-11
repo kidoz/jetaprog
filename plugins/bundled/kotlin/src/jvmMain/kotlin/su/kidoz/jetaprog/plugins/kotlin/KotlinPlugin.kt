@@ -42,7 +42,7 @@ public class KotlinPlugin(
 ) : BasePlugin(
         manifest =
             PluginManifest(
-                id = "su.kidoz.jetaprog.kotlin",
+                id = PLUGIN_ID,
                 name = "Kotlin Language Support",
                 version = "1.0.0",
                 description = "Kotlin language support including code completion, navigation, and formatting",
@@ -259,7 +259,10 @@ public class KotlinPlugin(
             }
     }
 
-    private companion object {
+    public companion object {
+        /** Plugin identifier used by the bundled plugin manager. */
+        public const val PLUGIN_ID: String = "su.kidoz.jetaprog.kotlin"
+
         private const val DEFAULT_KOTLIN_LSP_COMMAND = "kotlin-language-server"
         private const val KOTLIN_LSP_ENV = "JETAPROG_KOTLIN_LSP"
     }
