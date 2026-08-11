@@ -101,6 +101,7 @@ import su.kidoz.jetaprog.plugins.javascript.JavaScriptTypeScriptPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinPlugin
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
+import su.kidoz.jetaprog.plugins.kotlin.mpp.KotlinMultiplatformPlugin
 import su.kidoz.jetaprog.plugins.kotlin.server.KotlinEmbeddedServer
 import su.kidoz.jetaprog.plugins.python.PythonPlugin
 import su.kidoz.jetaprog.plugins.runtime.activation.ActivationEventServiceImpl
@@ -629,6 +630,7 @@ public class ProjectSession(
                 sharedSemanticAnalyzer = kotlinSemanticAnalyzer,
             ),
         )
+        pluginManager.registerBundledPlugin(KotlinMultiplatformPlugin())
         pluginManager.registerBundledPlugin(CPlugin())
         pluginManager.registerBundledPlugin(CppPlugin())
         pluginManager.registerBundledPlugin(DotNetPlugin())
