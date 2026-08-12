@@ -27,6 +27,7 @@ public object CommentSyntax {
             LanguageId.TOML.value to "#",
             LanguageId.MESON.value to "#",
             LanguageId.CMAKE.value to "#",
+            LanguageId.DOTPROLOG.value to "%",
         )
 
     /**

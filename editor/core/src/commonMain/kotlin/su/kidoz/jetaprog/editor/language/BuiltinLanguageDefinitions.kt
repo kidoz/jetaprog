@@ -49,8 +49,14 @@ internal object BuiltinLanguageDefinitions {
             ),
             LanguageDefinition(
                 id = LanguageId.MSBUILD,
-                extensions = listOf("csproj", "fsproj", "vbproj", "props", "targets", "sln", "slnx"),
+                extensions = listOf("csproj", "fsproj", "vbproj", "dplproj", "props", "targets", "sln", "slnx"),
                 aliases = listOf("MSBuild"),
+            ),
+            LanguageDefinition(
+                id = LanguageId.DOTPROLOG,
+                extensions = listOf("pl", "dpli"),
+                aliases = listOf("DotProlog", "Prolog"),
+                lexerId = "dotprolog",
             ),
             LanguageDefinition(
                 id = LanguageId.POSTGRESQL,

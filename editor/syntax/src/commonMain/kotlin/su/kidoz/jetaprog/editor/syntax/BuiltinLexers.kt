@@ -12,6 +12,7 @@ import su.kidoz.jetaprog.editor.syntax.javascript.TypeScriptLexer
 import su.kidoz.jetaprog.editor.syntax.kotlin.KotlinLexer
 import su.kidoz.jetaprog.editor.syntax.markdown.MarkdownLexer
 import su.kidoz.jetaprog.editor.syntax.meson.MesonLexer
+import su.kidoz.jetaprog.editor.syntax.prolog.PrologLexer
 import su.kidoz.jetaprog.editor.syntax.python.PythonLexer
 import su.kidoz.jetaprog.editor.syntax.rust.RustLexer
 import su.kidoz.jetaprog.editor.syntax.sql.SqlDialect
@@ -48,5 +49,6 @@ public object BuiltinLexers {
         LexerRegistry.register(MarkdownLexer())
         LexerRegistry.register(PythonLexer())
         LexerRegistry.register(GitignoreLexer())
+        LexerRegistry.register(PrologLexer())
     }
 }

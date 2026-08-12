@@ -42,6 +42,13 @@ class LanguageDefinitionRegistryTest {
     }
 
     @Test
+    fun detectsDotPrologFiles() {
+        assertEquals(LanguageId.DOTPROLOG, LanguageDefinitionRegistry.detect("pricing.pl"))
+        assertEquals(LanguageId.DOTPROLOG, LanguageDefinitionRegistry.detect("pricing.dpli"))
+        assertEquals(LanguageId.MSBUILD, LanguageDefinitionRegistry.detect("Pricing.dplproj"))
+    }
+
+    @Test
     fun sharedHeaderExtensionMapsToC() {
         assertEquals(LanguageId.C, LanguageDefinitionRegistry.detect("util.h"))
         assertEquals(LanguageId.CPP, LanguageDefinitionRegistry.detect("util.hpp"))
@@ -69,6 +76,7 @@ class LanguageDefinitionRegistryTest {
         assertEquals("sql", LanguageDefinitionRegistry.lexerIdFor(LanguageId.SQL))
         assertEquals("postgresql", LanguageDefinitionRegistry.lexerIdFor(LanguageId.POSTGRESQL))
         assertEquals("starrocks", LanguageDefinitionRegistry.lexerIdFor(LanguageId.STARROCKS))
+        assertEquals("dotprolog", LanguageDefinitionRegistry.lexerIdFor(LanguageId.DOTPROLOG))
         assertNull(LanguageDefinitionRegistry.lexerIdFor(LanguageId.JSON))
     }
 

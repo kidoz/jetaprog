@@ -54,6 +54,7 @@ public value class LanguageId(
         public val PYTHON: LanguageId = LanguageId("python")
         public val CSHARP: LanguageId = LanguageId("csharp")
         public val MSBUILD: LanguageId = LanguageId("msbuild")
+        public val DOTPROLOG: LanguageId = LanguageId("dotprolog")
         public val SQL: LanguageId = LanguageId("sql")
         public val POSTGRESQL: LanguageId = LanguageId("postgresql")
         public val STARROCKS: LanguageId = LanguageId("starrocks")
@@ -84,6 +85,7 @@ public value class LanguageId(
                 "python" to "Python",
                 "csharp" to "C#",
                 "msbuild" to "MSBuild",
+                "dotprolog" to "DotProlog",
                 "sql" to "SQL",
                 "postgresql" to "PostgreSQL",
                 "starrocks" to "StarRocks SQL",
