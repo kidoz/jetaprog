@@ -38,6 +38,7 @@ public class DotNetPlugin :
                         "onLanguage:csharp",
                         "workspaceContains:*.sln",
                         "workspaceContains:*.csproj",
+                        "workspaceContains:*.dplproj",
                     ),
                 contributes =
                     Contributions(
@@ -50,7 +51,8 @@ public class DotNetPlugin :
                                 ),
                                 LanguageContribution(
                                     id = "msbuild",
-                                    extensions = listOf(".csproj", ".fsproj", ".vbproj", ".props", ".targets"),
+                                    extensions =
+                                        listOf(".csproj", ".fsproj", ".vbproj", ".dplproj", ".props", ".targets"),
                                     aliases = listOf("MSBuild", ".NET Project"),
                                 ),
                             ),
@@ -95,7 +97,9 @@ public class DotNetPlugin :
         val solutionPath =
             context.workspace.findFiles("*.sln", maxResults = 1).firstOrNull()
                 ?: context.workspace.findFiles("*.slnx", maxResults = 1).firstOrNull()
-        val projectPath = context.workspace.findFiles("*.csproj", maxResults = 1).firstOrNull()
+        val projectPath =
+            context.workspace.findFiles("*.csproj", maxResults = 1).firstOrNull()
+                ?: context.workspace.findFiles("*.dplproj", maxResults = 1).firstOrNull()
 
         return if (solutionPath != null || projectPath != null) {
             DotNetProject(
@@ -122,7 +126,7 @@ public class DotNetPlugin :
             .registerLanguage(
                 LanguageConfiguration(
                     id = LanguageId.MSBUILD,
-                    extensions = listOf(".csproj", ".fsproj", ".vbproj", ".props", ".targets"),
+                    extensions = listOf(".csproj", ".fsproj", ".vbproj", ".dplproj", ".props", ".targets"),
                     aliases = listOf("MSBuild", ".NET Project"),
                 ),
             ).also { context.subscriptions.add(it) }
