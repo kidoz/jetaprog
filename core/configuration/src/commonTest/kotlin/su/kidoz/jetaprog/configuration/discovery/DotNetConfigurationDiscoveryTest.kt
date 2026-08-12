@@ -103,6 +103,45 @@ class DotNetConfigurationDiscoveryTest {
             )
         }
 
+    @Test
+    fun `DotProlog console project discovers run debug build and test targets`() =
+        runTest {
+            val projectPath = "/workspace/HelloProlog.dplproj"
+            val fileSystem =
+                MapFileSystem(
+                    files =
+                        mapOf(
+                            projectPath to
+                                """
+                                <Project Sdk="Microsoft.NET.Sdk">
+                                  <Sdk Name="DotProlog.Sdk" Version="0.5.0" />
+                                  <PropertyGroup>
+                                    <OutputType>Exe</OutputType>
+                                    <TargetFramework>net10.0</TargetFramework>
+                                  </PropertyGroup>
+                                </Project>
+                                """.trimIndent(),
+                        ),
+                    directories = setOf("/workspace"),
+                )
+
+            val configurations =
+                ConfigurationDiscovery(ProjectDetector(fileSystem))
+                    .discoverConfigurations("/workspace")
+
+            assertEquals(
+                listOf(
+                    ConfigurationType.DOTNET_BUILD,
+                    ConfigurationType.DOTNET_RUN,
+                    ConfigurationType.DOTNET_DEBUG,
+                    ConfigurationType.DOTNET_TEST,
+                ),
+                configurations.map { it.type },
+            )
+            val run = assertIs<ConfigurationSettings.DotNetRun>(configurations[1].settings)
+            assertEquals(projectPath, run.projectPath)
+        }
+
     private class MapFileSystem(
         private val files: Map<String, String>,
         private val directories: Set<String>,

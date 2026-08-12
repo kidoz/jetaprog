@@ -86,7 +86,7 @@ public class WorkspaceBuildModelService(
         }
 
     private companion object {
-        val MSBUILD_PROJECT_EXTENSIONS = setOf("csproj", "fsproj", "vbproj")
+        val MSBUILD_PROJECT_EXTENSIONS = setOf("csproj", "fsproj", "vbproj", "dplproj")
         val JVM_BUILD_FILE_NAMES = setOf("build.gradle", "build.gradle.kts", "pom.xml")
         val EXCLUDED_DIRECTORIES = setOf("build", "out", "dist", "node_modules", "target", "bin", "obj")
         const val BUILD_FILE_SCAN_DEPTH = 4

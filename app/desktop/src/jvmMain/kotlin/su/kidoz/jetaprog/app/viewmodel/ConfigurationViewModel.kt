@@ -1068,7 +1068,8 @@ public class ConfigurationViewModel(
                             file.name.endsWith(".slnx") ||
                             file.name.endsWith(".csproj") ||
                             file.name.endsWith(".fsproj") ||
-                            file.name.endsWith(".vbproj")
+                            file.name.endsWith(".vbproj") ||
+                            file.name.endsWith(".dplproj")
                     )
             } ?: false
 
@@ -1540,12 +1541,12 @@ public class ConfigurationViewModel(
         if (projectPath.isBlank()) return null
         val root = File(projectPath)
         return root.findChildPath(".sln", ".slnx")
-            ?: root.findDescendantPath(".csproj", ".fsproj", ".vbproj")
+            ?: root.findDescendantPath(".csproj", ".fsproj", ".vbproj", ".dplproj")
     }
 
     private fun findDotNetProjectPath(): String? {
         if (projectPath.isBlank()) return null
-        val projectFiles = File(projectPath).findDescendantFiles(".csproj")
+        val projectFiles = File(projectPath).findDescendantFiles(".csproj", ".dplproj")
         return projectFiles.firstOrNull(::isRunnableDotNetProject)?.path ?: projectFiles.firstOrNull()?.path
     }
 

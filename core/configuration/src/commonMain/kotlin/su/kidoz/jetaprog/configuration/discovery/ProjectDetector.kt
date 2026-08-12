@@ -249,12 +249,13 @@ public class ProjectDetector(
 
     private suspend fun detectDotNet(projectPath: String): DetectedProject? {
         val solutionFiles = findDescendantFiles(projectPath, DOTNET_SCAN_DEPTH, ".sln", ".slnx")
-        val projectFiles = findDescendantFiles(projectPath, DOTNET_SCAN_DEPTH, ".csproj", ".fsproj", ".vbproj")
+        val projectFiles =
+            findDescendantFiles(projectPath, DOTNET_SCAN_DEPTH, ".csproj", ".fsproj", ".vbproj", ".dplproj")
         val detectionFile = solutionFiles.firstOrNull() ?: projectFiles.firstOrNull() ?: return null
         val projectInfos = projectFiles.map { readDotNetProjectInfo(it) }
         val mainProject =
-            projectInfos.firstOrNull { it.isCSharp && it.isRunnable && !it.isTestProject }
-                ?: projectInfos.firstOrNull { it.isCSharp && !it.isTestProject }
+            projectInfos.firstOrNull { it.isMainCandidate && it.isRunnable && !it.isTestProject }
+                ?: projectInfos.firstOrNull { it.isMainCandidate && !it.isTestProject }
         val testProject = projectInfos.firstOrNull { it.isTestProject }
         val targetPath = solutionFiles.firstOrNull() ?: mainProject?.path ?: projectFiles.firstOrNull()
         val testTargetPath = solutionFiles.firstOrNull() ?: testProject?.path ?: targetPath
@@ -320,7 +321,9 @@ public class ProjectDetector(
                 ?: fileSystem.fileName(path).substringBeforeLast('.')
         return DotNetProjectInfo(
             path = path,
-            isCSharp = path.endsWith(".csproj", ignoreCase = true),
+            isMainCandidate =
+                path.endsWith(".csproj", ignoreCase = true) ||
+                    path.endsWith(".dplproj", ignoreCase = true),
             isRunnable = isRunnable,
             isTestProject = isTestProject,
             targetFramework = targetFramework,
@@ -582,7 +585,8 @@ public class ProjectDetector(
 
     private data class DotNetProjectInfo(
         val path: String,
-        val isCSharp: Boolean,
+        /** Whether this project can be the workspace's main project (.csproj or .dplproj). */
+        val isMainCandidate: Boolean,
         val isRunnable: Boolean,
         val isTestProject: Boolean,
         val targetFramework: String?,
