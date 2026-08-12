@@ -51,6 +51,7 @@ internal object BuiltinLanguageDefinitions {
                 id = LanguageId.MSBUILD,
                 extensions = listOf("csproj", "fsproj", "vbproj", "dplproj", "props", "targets", "sln", "slnx"),
                 aliases = listOf("MSBuild"),
+                lexerId = "xml",
             ),
             LanguageDefinition(
                 id = LanguageId.DOTPROLOG,

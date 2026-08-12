@@ -77,6 +77,7 @@ class LanguageDefinitionRegistryTest {
         assertEquals("postgresql", LanguageDefinitionRegistry.lexerIdFor(LanguageId.POSTGRESQL))
         assertEquals("starrocks", LanguageDefinitionRegistry.lexerIdFor(LanguageId.STARROCKS))
         assertEquals("dotprolog", LanguageDefinitionRegistry.lexerIdFor(LanguageId.DOTPROLOG))
+        assertEquals("xml", LanguageDefinitionRegistry.lexerIdFor(LanguageId.MSBUILD))
         assertNull(LanguageDefinitionRegistry.lexerIdFor(LanguageId.JSON))
     }
 
