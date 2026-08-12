@@ -94,6 +94,7 @@ import su.kidoz.jetaprog.plugins.cfamily.CPlugin
 import su.kidoz.jetaprog.plugins.cfamily.CppPlugin
 import su.kidoz.jetaprog.plugins.dotnet.DotNetPlugin
 import su.kidoz.jetaprog.plugins.dotnet.ef.EntityFrameworkPlugin
+import su.kidoz.jetaprog.plugins.dotnet.prolog.DotPrologPlugin
 import su.kidoz.jetaprog.plugins.go.GoPlugin
 import su.kidoz.jetaprog.plugins.java.JavaPlugin
 import su.kidoz.jetaprog.plugins.java.spring.SpringPlugin
@@ -635,6 +636,7 @@ public class ProjectSession(
         pluginManager.registerBundledPlugin(CppPlugin())
         pluginManager.registerBundledPlugin(DotNetPlugin())
         pluginManager.registerBundledPlugin(EntityFrameworkPlugin())
+        pluginManager.registerBundledPlugin(DotPrologPlugin())
         pluginManager.registerBundledPlugin(GoPlugin())
         pluginManager.registerBundledPlugin(JavaPlugin())
         pluginManager.registerBundledPlugin(SpringPlugin())
