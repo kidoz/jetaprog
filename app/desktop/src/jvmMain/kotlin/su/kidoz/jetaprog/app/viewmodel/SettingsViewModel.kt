@@ -236,7 +236,7 @@ public class SettingsViewModel(
 
     private suspend fun handleShow() {
         updateState { copy(isVisible = true, isLoading = true) }
-        loadCurrentSettings()
+        loadScopeSettings(currentState.activeScope)
     }
 
     private fun handleHide() {
@@ -251,8 +251,18 @@ public class SettingsViewModel(
         updateState { copy(selectedSubItem = subItem) }
     }
 
-    private fun handleSetScope(scope: su.kidoz.jetaprog.settings.SettingsScope) {
-        updateState { copy(activeScope = scope) }
+    private suspend fun handleSetScope(scope: su.kidoz.jetaprog.settings.SettingsScope) {
+        updateState {
+            copy(
+                activeScope = scope,
+                // In-flight edits belong to the scope being edited; carrying them
+                // into the other scope would save them to the wrong layer.
+                pendingChanges = null,
+                hasUnsavedChanges = false,
+                isLoading = true,
+            )
+        }
+        loadScopeSettings(scope)
     }
 
     private fun handleSearch(query: String) {
@@ -467,7 +477,7 @@ public class SettingsViewModel(
         settingsService
             .resetToDefaults(currentState.activeScope, null)
             .onSuccess {
-                loadCurrentSettings()
+                loadScopeSettings(currentState.activeScope)
                 emitEffect(SettingsEffect.ShowSuccess("Settings reset to defaults"))
             }.onFailure { error ->
                 emitEffect(SettingsEffect.ShowError("Failed to reset settings: ${error.message}"))
@@ -478,7 +488,7 @@ public class SettingsViewModel(
         settingsService
             .resetToDefaults(currentState.activeScope, category)
             .onSuccess {
-                loadCurrentSettings()
+                loadScopeSettings(currentState.activeScope)
                 emitEffect(SettingsEffect.ShowSuccess("${category.displayName} settings reset to defaults"))
             }.onFailure { error ->
                 emitEffect(SettingsEffect.ShowError("Failed to reset settings: ${error.message}"))
@@ -505,9 +515,15 @@ public class SettingsViewModel(
         emitEffect(SettingsEffect.ShowError(error))
     }
 
-    private suspend fun loadCurrentSettings() {
-        val settings = settingsService.getCurrentSettings()
-        dispatch(SettingsIntent.LoadSettings(settings))
+    /**
+     * Loads the raw stored values of [scope] (falling back to defaults) into the form.
+     *
+     * Raw — not resolved — values are the correct edit surface: resolved settings
+     * mix in other scopes, and saving them would copy those overrides into this one.
+     */
+    private suspend fun loadScopeSettings(scope: su.kidoz.jetaprog.settings.SettingsScope) {
+        val raw = settingsService.getRawSettings(scope) ?: AllSettings.DEFAULT
+        dispatch(SettingsIntent.LoadSettings(raw))
     }
 
     private fun generateServerId(name: String): String {
