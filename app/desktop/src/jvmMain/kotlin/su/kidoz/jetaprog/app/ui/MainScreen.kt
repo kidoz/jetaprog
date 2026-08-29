@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.North
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.South
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,6 +51,8 @@ import su.kidoz.jetaprog.app.JetaProgApplication
 import su.kidoz.jetaprog.app.ProjectSession
 import su.kidoz.jetaprog.app.database.DatabaseEffect
 import su.kidoz.jetaprog.app.gradle.GradleSyncState
+import su.kidoz.jetaprog.app.keymap.DefaultKeymap
+import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
 import su.kidoz.jetaprog.app.ui.agent.AgentToolWindow
@@ -550,14 +554,25 @@ private fun MainScreenContent(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(IntelliJColors.background),
+                    .background(LocalIntelliJColors.current.background),
         ) {
             // Top menu bar
             IntelliJMenuBar(
+                session = session,
+                app = app,
+                editorState = editorState,
+                gitState = gitState,
+                configurationState = configurationState,
+                selectedActivityItem = selectedActivityItem,
+                onSelectedActivityItemChange = onSelectedActivityItemChange,
+                onSelectBottomTab = { selectedBottomTab = it },
+                onOpenTerminalTab = openTerminalTab,
+                onOpenBuildTab = openBuildTab,
+                onOpenTestsTab = openTestsTab,
+                onOpenDebuggerTab = openDebuggerTab,
                 onNewProject = { app.newProjectViewModel.dispatch(NewProjectIntent.Show) },
                 onOpenProject = openProject,
                 onOpenFile = openFile,
-                onSave = { session.editorViewModel.dispatch(EditorIntent.Save) },
                 onSaveAs = saveFileAs,
                 onCloseProject = {
                     if (editorState.hasUnsavedChanges) {
@@ -567,15 +582,6 @@ private fun MainScreenContent(
                     }
                 },
                 onSettings = { app.settingsViewModel.dispatch(SettingsIntent.Show) },
-                onToggleBuild = {
-                    session.gradleViewModel.dispatch(su.kidoz.jetaprog.build.gradle.state.GradleIntent.ToggleVisibility)
-                },
-                onBuild = {
-                    session.gradleViewModel.dispatch(
-                        su.kidoz.jetaprog.build.gradle.state.GradleIntent
-                            .RunTask("build"),
-                    )
-                },
             )
 
             // Main toolbar (project chip + branch + search-everywhere + run configuration)
@@ -1276,24 +1282,47 @@ private fun MainScreenContent(
  * toolbar actions live in [MainToolbar] beneath.
  */
 @Composable
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "CyclomaticComplexMethod")
 private fun IntelliJMenuBar(
+    session: ProjectSession,
+    app: JetaProgApplication,
+    editorState: EditorState,
+    gitState: GitState,
+    configurationState: ConfigurationState,
+    selectedActivityItem: ActivityBarItem?,
+    onSelectedActivityItemChange: (ActivityBarItem?) -> Unit,
+    onSelectBottomTab: (BottomTab?) -> Unit,
+    onOpenTerminalTab: () -> Unit,
+    onOpenBuildTab: () -> Unit,
+    onOpenTestsTab: () -> Unit,
+    onOpenDebuggerTab: () -> Unit,
     onNewProject: () -> Unit,
     onOpenProject: () -> Unit,
     onOpenFile: () -> Unit,
-    onSave: () -> Unit,
     onSaveAs: () -> Unit,
     onCloseProject: () -> Unit,
     onSettings: () -> Unit,
-    onToggleBuild: () -> Unit,
-    onBuild: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
+    val gradleState by session.gradleViewModel.state.collectAsState()
+    val palette = LocalIntelliJColors.current
+
+    fun toggleActivityItem(item: ActivityBarItem) {
+        onSelectedActivityItemChange(if (selectedActivityItem == item) null else item)
+    }
+
+    fun navigate(intent: NavigationIntent) {
+        scope.launch { session.navigationViewModel.processIntent(intent) }
+    }
+
+    fun keymapShortcut(action: String): String? = DefaultKeymap.getShortcut(action)?.toDisplayString()
+
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .height(Dimensions.menuBarHeight.dp)
-                .background(IntelliJColors.toolWindowHeader)
+                .background(palette.toolWindowHeader)
                 .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1301,22 +1330,202 @@ private fun IntelliJMenuBar(
             onNewProject = onNewProject,
             onOpenProject = onOpenProject,
             onOpenFile = onOpenFile,
-            onSave = onSave,
+            onSave = { session.editorViewModel.dispatch(EditorIntent.Save) },
             onSaveAs = onSaveAs,
             onCloseProject = onCloseProject,
             onSettings = onSettings,
         )
-        IntelliJMenuItem("Edit")
-        IntelliJMenuItem("View")
-        IntelliJMenuItem("Navigate")
-        IntelliJMenuItem("Code")
-        IntelliJMenuItem("Refactor")
-        IntelliJMenuItem("Build", onClick = onToggleBuild)
-        IntelliJMenuItem("Run", onClick = onBuild)
-        IntelliJMenuItem("Tools")
-        IntelliJMenuItem("VCS")
-        IntelliJMenuItem("Window")
-        IntelliJMenuItem("Help")
+        MenuBarItem(
+            text = "Edit",
+            entries =
+                listOf(
+                    MenuEntry("Undo", "Ctrl+Z") { session.editorViewModel.dispatch(EditorIntent.Undo) },
+                    MenuEntry("Redo", "Ctrl+Shift+Z") { session.editorViewModel.dispatch(EditorIntent.Redo) },
+                    null,
+                    MenuEntry("Find", "Ctrl+F") {
+                        session.editorViewModel.dispatch(EditorIntent.OpenFindBar(withReplace = false))
+                    },
+                    MenuEntry("Replace", "Ctrl+R") {
+                        session.editorViewModel.dispatch(EditorIntent.OpenFindBar(withReplace = true))
+                    },
+                    MenuEntry("Find Next", "F3") { session.editorViewModel.dispatch(EditorIntent.FindNext) },
+                    MenuEntry("Find Previous", "Shift+F3") {
+                        session.editorViewModel.dispatch(EditorIntent.FindPrevious)
+                    },
+                ),
+        )
+        MenuBarItem(
+            text = "View",
+            entries =
+                listOf(
+                    MenuEntry(
+                        "Project",
+                        ActivityBarItem.PROJECT.shortcut,
+                    ) { toggleActivityItem(ActivityBarItem.PROJECT) },
+                    MenuEntry(
+                        "Find in Files",
+                        ActivityBarItem.SEARCH.shortcut,
+                    ) { toggleActivityItem(ActivityBarItem.SEARCH) },
+                    MenuEntry(
+                        "Git",
+                        ActivityBarItem.VCS.shortcut,
+                    ) { toggleActivityItem(ActivityBarItem.VCS) },
+                    MenuEntry(
+                        "Agent",
+                        ActivityBarItem.AGENT.shortcut,
+                    ) { toggleActivityItem(ActivityBarItem.AGENT) },
+                    MenuEntry(
+                        "Debug",
+                        ActivityBarItem.DEBUG.shortcut,
+                    ) { toggleActivityItem(ActivityBarItem.DEBUG) },
+                    MenuEntry(
+                        "Database",
+                        ActivityBarItem.DATABASE.shortcut,
+                    ) { toggleActivityItem(ActivityBarItem.DATABASE) },
+                    null,
+                    MenuEntry("Terminal", onClick = onOpenTerminalTab),
+                    MenuEntry("Build", onClick = onOpenBuildTab),
+                    MenuEntry("Tests", onClick = onOpenTestsTab),
+                    MenuEntry("Debugger", onClick = onOpenDebuggerTab),
+                    MenuEntry("Problems", null) { onSelectBottomTab(BottomTab.PROBLEMS) },
+                ),
+        )
+        MenuBarItem(
+            text = "Navigate",
+            entries =
+                listOf(
+                    MenuEntry("Search Everywhere", keymapShortcut(NavigationActions.SEARCH_EVERYWHERE)) {
+                        navigate(NavigationIntent.ShowSearchPopup(SearchMode.ALL))
+                    },
+                    MenuEntry("Go to Class", keymapShortcut(NavigationActions.GOTO_CLASS)) {
+                        navigate(NavigationIntent.ShowSearchPopup(SearchMode.CLASSES))
+                    },
+                    MenuEntry("Go to File", keymapShortcut(NavigationActions.GOTO_FILE)) {
+                        navigate(NavigationIntent.ShowSearchPopup(SearchMode.FILES))
+                    },
+                    MenuEntry("Go to Symbol", keymapShortcut(NavigationActions.GOTO_SYMBOL)) {
+                        navigate(NavigationIntent.ShowSearchPopup(SearchMode.SYMBOLS))
+                    },
+                    null,
+                    MenuEntry("Recent Files", keymapShortcut(NavigationActions.RECENT_FILES)) {
+                        navigate(NavigationIntent.ShowRecentFiles)
+                    },
+                    MenuEntry("Recent Locations", keymapShortcut(NavigationActions.RECENT_LOCATIONS)) {
+                        navigate(NavigationIntent.ShowRecentLocations)
+                    },
+                    null,
+                    MenuEntry("Back", keymapShortcut(NavigationActions.BACK)) {
+                        navigate(NavigationIntent.GoBack)
+                    },
+                    MenuEntry("Forward", keymapShortcut(NavigationActions.FORWARD)) {
+                        navigate(NavigationIntent.GoForward)
+                    },
+                ),
+        )
+        MenuBarItem(
+            text = "Code",
+            entries =
+                listOf(
+                    MenuEntry("Format Document") {
+                        session.editorViewModel.dispatch(EditorIntent.FormatDocument)
+                    },
+                    null,
+                    MenuEntry("Delete Line") { session.editorViewModel.dispatch(EditorIntent.DeleteLine) },
+                    MenuEntry("Duplicate Line") {
+                        session.editorViewModel.dispatch(EditorIntent.DuplicateLine)
+                    },
+                ),
+        )
+        MenuBarItem(
+            text = "Refactor",
+            entries =
+                listOf(
+                    MenuEntry("Rename...", keymapShortcut(NavigationActions.RENAME)) { session.startRename() },
+                ),
+        )
+        MenuBarItem(
+            text = "Build",
+            entries =
+                listOf(
+                    MenuEntry("Toggle Build Tool Window") {
+                        session.gradleViewModel.dispatch(GradleIntent.ToggleVisibility)
+                    },
+                    null,
+                    MenuEntry("Build Project") {
+                        session.gradleViewModel.dispatch(GradleIntent.RunTask("build"))
+                        onOpenBuildTab()
+                    },
+                    MenuEntry(
+                        "Cancel Build",
+                        enabled = gradleState.isRunning,
+                    ) { session.gradleViewModel.dispatch(GradleIntent.CancelTask) },
+                    MenuEntry("Reload Gradle Project") { session.syncGradleProject() },
+                ),
+        )
+        MenuBarItem(
+            text = "Run",
+            entries =
+                listOf(
+                    MenuEntry("Run", "Shift+F10") {
+                        val gradleSettings =
+                            configurationState.activeConfiguration?.settings as? ConfigurationSettings.Gradle
+                        if (gradleSettings != null) {
+                            session.gradleViewModel.dispatch(
+                                GradleIntent.RunTask(
+                                    gradleSettings.taskPath,
+                                    args = gradleSettings.arguments + gradleSettings.jvmArguments.map { "-D$it" },
+                                ),
+                            )
+                            onOpenBuildTab()
+                        } else {
+                            session.configurationViewModel.dispatch(ConfigurationIntent.RunActive)
+                        }
+                    },
+                    MenuEntry("Debug", "Shift+F9") {
+                        session.configurationViewModel.dispatch(ConfigurationIntent.DebugActive)
+                        onOpenDebuggerTab()
+                    },
+                    MenuEntry("Stop", "Ctrl+F2") {
+                        session.configurationViewModel.dispatch(ConfigurationIntent.Stop)
+                    },
+                ),
+        )
+        MenuBarItem(
+            text = "VCS",
+            entries =
+                listOf(
+                    MenuEntry("Show Git Tool Window") { onSelectedActivityItemChange(ActivityBarItem.VCS) },
+                    null,
+                    MenuEntry("Commit...") { onSelectedActivityItemChange(ActivityBarItem.VCS) },
+                    MenuEntry("Update Project") { session.gitViewModel.pull() },
+                    MenuEntry("Push") { session.gitViewModel.push() },
+                    MenuEntry("Refresh", enabled = gitState.isBusy) { session.gitViewModel.refresh() },
+                ),
+        )
+        MenuBarItem(
+            text = "Window",
+            entries =
+                listOf(
+                    MenuEntry(
+                        "Close Editor Tab",
+                        enabled = editorState.activeTab != null,
+                    ) { session.editorViewModel.dispatch(EditorIntent.CloseTab(editorState.activeTabIndex)) },
+                    null,
+                    MenuEntry("Close Project") { onCloseProject() },
+                ),
+        )
+        MenuBarItem(
+            text = "Help",
+            entries =
+                listOf(
+                    MenuEntry("About JetaProg") {
+                        app.notificationCenter.info(
+                            title = "JetaProg IDE",
+                            message = "Cross-platform IDE built with Kotlin and Compose Multiplatform.",
+                        )
+                    },
+                ),
+        )
     }
 }
 
@@ -1542,48 +1751,111 @@ private fun SearchEverywhereField(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Filled.Search,
             contentDescription = null,
-            tint = IntelliJColors.textMuted,
-            modifier = Modifier.size(15.dp),
+            tint = LocalIntelliJColors.current.textMuted,
+            modifier = Modifier.size(Dimensions.iconMd.dp),
         )
         Text(
             text = "Search Everywhere",
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 12.sp,
         )
         Box(
             modifier =
                 Modifier
                     .clip(RoundedCornerShape(3.dp))
-                    .background(IntelliJColors.surfaceContainer)
+                    .background(LocalIntelliJColors.current.surfaceContainer)
                     .padding(horizontal = 5.dp, vertical = 1.dp),
         ) {
-            Text(text = "⇧⇧", color = IntelliJColors.iconDefault, fontSize = 10.sp)
+            Text(text = "⇧⇧", color = LocalIntelliJColors.current.iconDefault, fontSize = 10.sp)
         }
     }
 }
 
+/** One actionable row in a menu-bar dropdown; a `null` entry renders a divider. */
+private data class MenuEntry(
+    val label: String,
+    val shortcut: String? = null,
+    val enabled: Boolean = true,
+    val onClick: () -> Unit = {},
+)
+
+/**
+ * IntelliJ menu bar item: a hover-highlighted title that opens an on-contract
+ * dropdown of [MenuEntry] rows.
+ */
 @Composable
-private fun IntelliJMenuItem(
+private fun MenuBarItem(
     text: String,
-    onClick: () -> Unit = {},
+    entries: List<MenuEntry?>,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    var expanded by remember { mutableStateOf(false) }
+    var triggerHeightPx by remember { mutableStateOf(0) }
 
-    Box(
-        modifier =
-            Modifier
-                .clip(RoundedCornerShape(2.dp))
-                .background(
-                    if (isHovered) IntelliJColors.buttonBackgroundHover else Color.Transparent,
-                ).hoverable(interactionSource)
-                .clickable(onClick = onClick)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Text(
-            text = text,
-            color = IntelliJColors.textPrimary,
-            fontSize = 12.sp,
-        )
+    Box {
+        Box(
+            modifier =
+                Modifier
+                    .onSizeChanged { triggerHeightPx = it.height }
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(
+                        if (isHovered || expanded) {
+                            LocalIntelliJColors.current.buttonBackgroundHover
+                        } else {
+                            Color.Transparent
+                        },
+                    ).hoverable(interactionSource)
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Text(
+                text = text,
+                color = LocalIntelliJColors.current.textPrimary,
+                fontSize = 12.sp,
+            )
+        }
+        PopupChromeMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            offsetY = triggerHeightPx,
+        ) {
+            entries.forEachIndexed { index, entry ->
+                if (entry == null) {
+                    if (index != 0 && index != entries.lastIndex) {
+                        HorizontalDivider(color = LocalIntelliJColors.current.border)
+                    }
+                } else {
+                    PopupListRow(
+                        selected = false,
+                        onClick = {
+                            if (entry.enabled) {
+                                expanded = false
+                                entry.onClick()
+                            }
+                        },
+                    ) {
+                        Text(
+                            text = entry.label,
+                            color =
+                                if (entry.enabled) {
+                                    LocalIntelliJColors.current.textPrimary
+                                } else {
+                                    LocalIntelliJColors.current.textDisabled
+                                },
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (entry.shortcut != null) {
+                            Text(
+                                text = entry.shortcut,
+                                color = LocalIntelliJColors.current.textMuted,
+                                fontSize = 11.sp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
