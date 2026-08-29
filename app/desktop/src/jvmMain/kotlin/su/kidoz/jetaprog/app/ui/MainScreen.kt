@@ -601,6 +601,8 @@ private fun MainScreenContent(
                 onPush = { session.gitViewModel.push() },
                 onCheckoutBranch = { name -> session.gitViewModel.checkoutBranch(name) },
                 onCreateBranch = { name -> session.gitViewModel.createBranch(name) },
+                onDeleteBranch = { name -> session.gitViewModel.deleteBranch(name) },
+                onRenameBranch = { oldName, newName -> session.gitViewModel.renameBranch(oldName, newName) },
                 configurationState = configurationState,
                 onSelectConfiguration = { id ->
                     session.configurationViewModel.dispatch(ConfigurationIntent.SelectConfiguration(id))
@@ -1323,6 +1325,8 @@ private fun MainToolbar(
     onPush: () -> Unit,
     onCheckoutBranch: (String) -> Unit,
     onCreateBranch: (String) -> Unit,
+    onDeleteBranch: (String) -> Unit,
+    onRenameBranch: (oldName: String, newName: String) -> Unit,
     configurationState: su.kidoz.jetaprog.configuration.ConfigurationState,
     onSelectConfiguration: (su.kidoz.jetaprog.configuration.ConfigurationId) -> Unit,
     onRunConfiguration: () -> Unit,
@@ -1363,13 +1367,19 @@ private fun MainToolbar(
                         .size(Dimensions.iconLg.dp),
             )
             ToolbarDivider()
-            ToolbarChip(icon = Icons.Filled.Folder, iconTint = IntelliJColors.iconFolder, label = projectName)
+            ToolbarChip(
+                icon = Icons.Filled.Folder,
+                iconTint = LocalIntelliJColors.current.iconFolder,
+                label = projectName,
+            )
             if (!branchName.isNullOrBlank()) {
                 BranchSelector(
                     branchName = branchName,
                     branches = branches,
                     onCheckoutBranch = onCheckoutBranch,
                     onCreateBranch = onCreateBranch,
+                    onDeleteBranch = onDeleteBranch,
+                    onRenameBranch = onRenameBranch,
                 )
                 ToolbarDivider()
                 ToolbarAction(icon = Icons.Filled.South, label = "Update", onClick = onUpdate)

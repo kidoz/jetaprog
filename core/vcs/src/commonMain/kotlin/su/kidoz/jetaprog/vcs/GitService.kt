@@ -48,6 +48,15 @@ public interface GitService {
     /** Creates the branch [name] and checks it out; returns git's output. */
     public suspend fun createBranch(name: String): Result<String>
 
+    /** Deletes the local branch [name]; fails if it is not fully merged. */
+    public suspend fun deleteBranch(name: String): Result<String>
+
+    /** Renames the branch [oldName] to [newName]; returns git's output. */
+    public suspend fun renameBranch(
+        oldName: String,
+        newName: String,
+    ): Result<String>
+
     /**
      * Returns the per-line changes of [path]'s working tree relative to HEAD,
      * with 0-based line indices into the current file contents.
@@ -142,6 +151,21 @@ public class DefaultGitService(
     override suspend fun createBranch(name: String): Result<String> =
         run("checkout", "-b", name).mapCatching { result ->
             if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git checkout -b failed" } })
+            result.stderr.ifBlank { result.stdout }
+        }
+
+    override suspend fun deleteBranch(name: String): Result<String> =
+        run("branch", "-d", name).mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { "git branch -d failed" })
+            result.stderr.ifBlank { result.stdout }
+        }
+
+    override suspend fun renameBranch(
+        oldName: String,
+        newName: String,
+    ): Result<String> =
+        run("branch", "-m", oldName, newName).mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { "git branch -m failed" })
             result.stderr.ifBlank { result.stdout }
         }
 

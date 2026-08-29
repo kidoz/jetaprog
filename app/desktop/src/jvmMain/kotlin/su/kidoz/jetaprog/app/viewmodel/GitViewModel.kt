@@ -249,6 +249,33 @@ public class GitViewModel(
         }
     }
 
+    /** Deletes the local branch [name]; fails when it is not fully merged. */
+    public fun deleteBranch(name: String) {
+        scope.launch {
+            _state.update { it.copy(isBusy = true, error = null) }
+            service
+                .deleteBranch(name)
+                .onSuccess { refresh() }
+                .onFailure { error -> fail(error) }
+        }
+    }
+
+    /** Renames the branch [oldName] to [newName]. */
+    public fun renameBranch(
+        oldName: String,
+        newName: String,
+    ) {
+        val branchName = newName.trim()
+        if (branchName.isEmpty()) return
+        scope.launch {
+            _state.update { it.copy(isBusy = true, error = null) }
+            service
+                .renameBranch(oldName, branchName)
+                .onSuccess { refresh() }
+                .onFailure { error -> fail(error) }
+        }
+    }
+
     /**
      * Returns the per-line working-tree changes of [path] relative to HEAD,
      * or an empty list when unavailable (e.g. untracked file, not a repository).
