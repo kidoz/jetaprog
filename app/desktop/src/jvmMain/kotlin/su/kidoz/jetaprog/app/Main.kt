@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -49,9 +50,12 @@ import kotlinx.coroutines.runBlocking
 import org.jetbrains.skia.Image
 import su.kidoz.jetaprog.app.ui.MainScreen
 import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.editor.state.EditorIntent
+import su.kidoz.jetaprog.settings.model.AppearanceSettings
+import su.kidoz.jetaprog.settings.model.Theme
 import java.awt.Cursor
 import java.awt.Window
 import kotlin.math.roundToInt
@@ -77,6 +81,14 @@ public fun main(): Unit =
 
         val app = remember { JetaProgApplication() }
         var showExitConfirmation by remember { mutableStateOf(false) }
+        // The stored appearance setting picks the palette; SYSTEM follows the OS.
+        val appearance by app.appearanceSettings.collectAsState(initial = AppearanceSettings.DEFAULT)
+        val darkTheme =
+            when (appearance.theme) {
+                Theme.DARK -> true
+                Theme.LIGHT -> false
+                Theme.SYSTEM -> isSystemInDarkTheme()
+            }
         val requestExit: () -> Unit = {
             if (app.session.value
                     ?.editorViewModel
@@ -112,10 +124,10 @@ public fun main(): Unit =
                 }
             }
 
-            JetaProgTheme {
+            JetaProgTheme(darkTheme = darkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = IntelliJColors.background,
+                    color = LocalIntelliJColors.current.background,
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Column(modifier = Modifier.fillMaxSize()) {
@@ -187,8 +199,8 @@ private fun FrameWindowScope.IdeTitleBar(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(30.dp)
-                    .background(IntelliJColors.toolWindowHeader),
+                    .height(Dimensions.titleBarHeight.dp)
+                    .background(LocalIntelliJColors.current.toolWindowHeader),
         ) {
             Box(
                 modifier =
@@ -196,20 +208,28 @@ private fun FrameWindowScope.IdeTitleBar(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(1.dp)
-                        .background(IntelliJColors.background),
+                        .background(LocalIntelliJColors.current.background),
             )
             Row(
                 modifier = Modifier.align(Alignment.CenterStart).padding(start = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TrafficLight(color = IntelliJColors.windowCloseButton, label = "Close", onClick = onClose)
-                TrafficLight(color = IntelliJColors.windowMinimizeButton, label = "Minimize", onClick = onMinimize)
-                TrafficLight(color = IntelliJColors.windowZoomButton, label = "Zoom", onClick = onToggleMaximize)
+                TrafficLight(color = LocalIntelliJColors.current.windowCloseButton, label = "Close", onClick = onClose)
+                TrafficLight(
+                    color = LocalIntelliJColors.current.windowMinimizeButton,
+                    label = "Minimize",
+                    onClick = onMinimize,
+                )
+                TrafficLight(
+                    color = LocalIntelliJColors.current.windowZoomButton,
+                    label = "Zoom",
+                    onClick = onToggleMaximize,
+                )
             }
             Text(
                 text = title,
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.align(Alignment.Center),
             )

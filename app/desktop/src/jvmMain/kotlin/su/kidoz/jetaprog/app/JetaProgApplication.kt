@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +31,7 @@ import su.kidoz.jetaprog.platform.process.JvmProcessExecutor
 import su.kidoz.jetaprog.plugins.support.LanguageServerManager
 import su.kidoz.jetaprog.settings.DefaultSettingsService
 import su.kidoz.jetaprog.settings.SettingsScope
+import su.kidoz.jetaprog.settings.model.AppearanceSettings
 import su.kidoz.jetaprog.settings.recent.RecentProjectsService
 import su.kidoz.jetaprog.settings.storage.JvmSettingsStorage
 import java.io.File
@@ -108,6 +110,11 @@ public class JetaProgApplication {
      * The settings service.
      */
     private val settingsService: DefaultSettingsService = DefaultSettingsService(settingsStorage)
+
+    /**
+     * The appearance settings stream, used to drive the IDE color theme.
+     */
+    public val appearanceSettings: Flow<AppearanceSettings> = settingsService.appearance
 
     /**
      * The settings view model (global).
