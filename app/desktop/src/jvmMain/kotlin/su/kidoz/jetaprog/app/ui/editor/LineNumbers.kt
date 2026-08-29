@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.editor.state.LineChangeMarker
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxColor
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
@@ -94,7 +95,7 @@ public fun LineNumbers(
         modifier =
             modifier
                 .width(gutterWidth)
-                .background(IntelliJColors.gutterBackground),
+                .background(LocalIntelliJColors.current.gutterBackground),
     ) {
         // Fold markers column
         Box(
@@ -135,7 +136,12 @@ public fun LineNumbers(
                                             Icons.Default.KeyboardArrowDown
                                         },
                                     contentDescription = if (foldRegion.isFolded) "Expand" else "Collapse",
-                                    tint = if (isHovered) IntelliJColors.textPrimary else IntelliJColors.textSecondary,
+                                    tint =
+                                        if (isHovered) {
+                                            LocalIntelliJColors.current.textPrimary
+                                        } else {
+                                            LocalIntelliJColors.current.textSecondary
+                                        },
                                     modifier =
                                         Modifier
                                             .size(12.dp)
@@ -148,7 +154,7 @@ public fun LineNumbers(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowRightAlt,
                                     contentDescription = "Execution line",
-                                    tint = IntelliJColors.warning,
+                                    tint = LocalIntelliJColors.current.warning,
                                     modifier = Modifier.size(15.dp),
                                 )
                             }
@@ -159,7 +165,7 @@ public fun LineNumbers(
                                         Modifier
                                             .size(10.dp)
                                             .clip(CircleShape)
-                                            .background(IntelliJColors.breakpointRed),
+                                            .background(LocalIntelliJColors.current.breakpointRed),
                                 )
                             }
                         }
@@ -174,7 +180,7 @@ public fun LineNumbers(
                 Modifier
                     .width(1.dp)
                     .fillMaxHeight()
-                    .background(IntelliJColors.divider),
+                    .background(LocalIntelliJColors.current.divider),
         )
 
         // Line numbers column
@@ -193,7 +199,7 @@ public fun LineNumbers(
                             .padding(end = 8.dp)
                             .background(
                                 if (isCurrentLine) {
-                                    IntelliJColors.editorCaretRow
+                                    LocalIntelliJColors.current.editorCaretRow
                                 } else {
                                     Color.Transparent
                                 },
@@ -222,9 +228,9 @@ public fun LineNumbers(
                         lineHeight = 21.sp,
                         color =
                             if (isCurrentLine) {
-                                IntelliJColors.lineNumberForegroundActive
+                                LocalIntelliJColors.current.lineNumberForegroundActive
                             } else {
-                                IntelliJColors.lineNumberForeground
+                                LocalIntelliJColors.current.lineNumberForeground
                             },
                         textAlign = TextAlign.End,
                         modifier = Modifier.padding(horizontal = 4.dp),
@@ -239,7 +245,7 @@ public fun LineNumbers(
                 Modifier
                     .width(1.dp)
                     .fillMaxHeight()
-                    .background(IntelliJColors.divider),
+                    .background(LocalIntelliJColors.current.divider),
         )
     }
 }
@@ -252,9 +258,10 @@ private fun SyntaxColor.toComposeColor(): Color = Color(red = red, green = green
 /**
  * Gutter bar color for a VCS line change marker.
  */
+@Composable
 private fun LineChangeMarker.toGutterColor(): Color =
     when (this) {
-        LineChangeMarker.ADDED -> IntelliJColors.diffAddedGutter
-        LineChangeMarker.MODIFIED -> IntelliJColors.accent
-        LineChangeMarker.DELETED -> IntelliJColors.diffRemovedText
+        LineChangeMarker.ADDED -> LocalIntelliJColors.current.diffAddedGutter
+        LineChangeMarker.MODIFIED -> LocalIntelliJColors.current.accent
+        LineChangeMarker.DELETED -> LocalIntelliJColors.current.diffRemovedText
     }

@@ -52,6 +52,7 @@ import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
 import su.kidoz.jetaprog.editor.navigation.UsageGroup
@@ -214,7 +215,7 @@ public fun UsagesPopup(
                 ) {
                     Text(
                         text = "No usages found",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 13.sp,
                     )
                 }
@@ -232,25 +233,25 @@ private fun UsagesHeader(result: FindUsagesResult) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
         Text(
             text = "Usages of",
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 13.sp,
         )
         Text(
             text = result.symbol.name,
-            color = IntelliJColors.accent,
+            color = LocalIntelliJColors.current.accent,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
         )
         Text(
             text = "(${result.totalCount} usages in ${result.groups.size} files)",
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 12.sp,
         )
     }
@@ -277,7 +278,7 @@ private fun UsageGroupHeaderRow(
             Icon(
                 imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = IntelliJColors.textSecondary,
+                tint = LocalIntelliJColors.current.textSecondary,
                 modifier = Modifier.size(16.dp),
             )
 
@@ -285,14 +286,14 @@ private fun UsageGroupHeaderRow(
             Icon(
                 imageVector = Icons.Default.Description,
                 contentDescription = null,
-                tint = IntelliJColors.iconFile,
+                tint = LocalIntelliJColors.current.iconFile,
                 modifier = Modifier.size(16.dp),
             )
 
             // File name
             Text(
                 text = group.fileName,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f),
@@ -303,12 +304,12 @@ private fun UsageGroupHeaderRow(
             // Usage count
             Text(
                 text = "${group.usages.size}",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
                 modifier =
                     Modifier
                         .background(
-                            IntelliJColors.surfaceContainer,
+                            LocalIntelliJColors.current.surfaceContainer,
                             RoundedCornerShape(8.dp),
                         ).padding(horizontal = 6.dp, vertical = 1.dp),
             )
@@ -338,7 +339,7 @@ private fun UsageRow(
             // Line number
             Text(
                 text = "${usage.lineNumber}:",
-                color = IntelliJColors.lineNumberText,
+                color = LocalIntelliJColors.current.lineNumberText,
                 fontSize = 11.sp,
                 fontFamily = JetaProgFonts.codeFont,
             )
@@ -363,16 +364,16 @@ private fun UsageRow(
 private fun UsageKindBadge(kind: UsageKind) {
     val (text, color) =
         when (kind) {
-            UsageKind.DEFINITION -> "def" to IntelliJColors.success
-            UsageKind.READ -> "read" to IntelliJColors.info
-            UsageKind.WRITE -> "write" to IntelliJColors.warning
-            UsageKind.CALL -> "call" to IntelliJColors.accent
-            UsageKind.IMPORT -> "import" to IntelliJColors.textSecondary
-            UsageKind.TYPE_REFERENCE -> "type" to IntelliJColors.iconKotlin
-            UsageKind.OVERRIDE -> "override" to IntelliJColors.iconJava
-            UsageKind.IMPLEMENTATION -> "impl" to IntelliJColors.iconRust
-            UsageKind.INHERITANCE -> "extends" to IntelliJColors.iconPython
-            UsageKind.UNKNOWN -> "use" to IntelliJColors.textMuted
+            UsageKind.DEFINITION -> "def" to LocalIntelliJColors.current.success
+            UsageKind.READ -> "read" to LocalIntelliJColors.current.info
+            UsageKind.WRITE -> "write" to LocalIntelliJColors.current.warning
+            UsageKind.CALL -> "call" to LocalIntelliJColors.current.accent
+            UsageKind.IMPORT -> "import" to LocalIntelliJColors.current.textSecondary
+            UsageKind.TYPE_REFERENCE -> "type" to LocalIntelliJColors.current.iconKotlin
+            UsageKind.OVERRIDE -> "override" to LocalIntelliJColors.current.iconJava
+            UsageKind.IMPLEMENTATION -> "impl" to LocalIntelliJColors.current.iconRust
+            UsageKind.INHERITANCE -> "extends" to LocalIntelliJColors.current.iconPython
+            UsageKind.UNKNOWN -> "use" to LocalIntelliJColors.current.textMuted
         }
 
     Text(
@@ -395,7 +396,7 @@ private fun UsagesFooter() {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
     ) {
@@ -416,19 +417,19 @@ private fun UsageFooterHint(
     ) {
         Text(
             text = shortcut,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             modifier =
                 Modifier
                     .background(
-                        IntelliJColors.surfaceContainer,
+                        LocalIntelliJColors.current.surfaceContainer,
                         RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 4.dp, vertical = 1.dp),
         )
         Text(
             text = description,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
         )
     }
@@ -469,6 +470,7 @@ private fun buildVisibleItems(
 /**
  * Highlight the usage range in a context line.
  */
+@Composable
 private fun highlightUsageInLine(
     line: String,
     range: IntRange,
@@ -479,7 +481,7 @@ private fun highlightUsageInLine(
 
         // Text before usage
         if (start > 0) {
-            withStyle(SpanStyle(color = IntelliJColors.textSecondary)) {
+            withStyle(SpanStyle(color = LocalIntelliJColors.current.textSecondary)) {
                 append(line.substring(0, start))
             }
         }
@@ -488,7 +490,7 @@ private fun highlightUsageInLine(
         if (start < end) {
             withStyle(
                 SpanStyle(
-                    color = IntelliJColors.accent,
+                    color = LocalIntelliJColors.current.accent,
                     fontWeight = FontWeight.Bold,
                 ),
             ) {
@@ -498,7 +500,7 @@ private fun highlightUsageInLine(
 
         // Text after usage
         if (end < line.length) {
-            withStyle(SpanStyle(color = IntelliJColors.textSecondary)) {
+            withStyle(SpanStyle(color = LocalIntelliJColors.current.textSecondary)) {
                 append(line.substring(end))
             }
         }

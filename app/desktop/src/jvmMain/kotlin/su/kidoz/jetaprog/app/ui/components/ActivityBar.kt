@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -79,7 +80,7 @@ public fun ActivityBar(
             modifier
                 .width(Dimensions.activityBarWidth.dp)
                 .fillMaxHeight()
-                .background(IntelliJColors.activityBarBackground),
+                .background(LocalIntelliJColors.current.activityBarBackground),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(modifier = Modifier.height(Spacing.sm.dp))
@@ -117,16 +118,16 @@ private fun ActivityBarButton(
 
     val backgroundColor =
         when {
-            isSelected -> IntelliJColors.accentSubtle
-            isHovered -> IntelliJColors.activityBarHover
+            isSelected -> LocalIntelliJColors.current.accentSubtle
+            isHovered -> LocalIntelliJColors.current.activityBarHover
             else -> Color.Transparent
         }
 
     val iconColor =
         when {
-            isSelected -> IntelliJColors.activityBarForegroundActive
-            isHovered -> IntelliJColors.activityBarForegroundActive
-            else -> IntelliJColors.activityBarForeground
+            isSelected -> LocalIntelliJColors.current.activityBarForegroundActive
+            isHovered -> LocalIntelliJColors.current.activityBarForegroundActive
+            else -> LocalIntelliJColors.current.activityBarForeground
         }
 
     Box(
@@ -149,7 +150,7 @@ private fun ActivityBarButton(
                         .width(3.dp)
                         .height(20.dp)
                         .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
-                        .background(IntelliJColors.activityBarIndicator),
+                        .background(LocalIntelliJColors.current.activityBarIndicator),
             )
         }
 
@@ -175,13 +176,13 @@ public fun ToolWindowHeader(
         modifier =
             modifier
                 .height(Dimensions.panelHeaderHeight.dp)
-                .background(IntelliJColors.toolWindowHeader)
+                .background(LocalIntelliJColors.current.toolWindowHeader)
                 .padding(horizontal = Spacing.md.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(
             text = title,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
             modifier = Modifier.align(Alignment.CenterStart),
         )

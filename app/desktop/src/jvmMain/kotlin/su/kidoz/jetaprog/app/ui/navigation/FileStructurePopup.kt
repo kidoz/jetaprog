@@ -57,6 +57,7 @@ import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.navigation.NavigationSymbolKind
 import su.kidoz.jetaprog.editor.navigation.StructureItem
@@ -126,13 +127,13 @@ public fun FileStructurePopup(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .background(IntelliJColors.surfaceElevated)
+                        .background(LocalIntelliJColors.current.surfaceElevated)
                         .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = "Structure of $fileName",
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                 )
@@ -222,7 +223,7 @@ public fun FileStructurePopup(
                 ) {
                     Text(
                         text = if (query.isEmpty()) "No structure available" else "No matches found",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 13.sp,
                     )
                 }
@@ -252,7 +253,7 @@ private fun StructureSearchInput(
         Icon(
             imageVector = Icons.Default.Search,
             contentDescription = null,
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(18.dp),
         )
 
@@ -261,10 +262,10 @@ private fun StructureSearchInput(
             onValueChange = onQueryChange,
             textStyle =
                 TextStyle(
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 13.sp,
                 ),
-            cursorBrush = SolidColor(IntelliJColors.accent),
+            cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
             singleLine = true,
             modifier =
                 Modifier
@@ -276,7 +277,7 @@ private fun StructureSearchInput(
                     if (query.isEmpty()) {
                         Text(
                             text = "Filter by name...",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 13.sp,
                         )
                     }
@@ -325,7 +326,7 @@ private fun StructureItemRow(
             // Name
             Text(
                 text = item.target.name,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
                 fontStyle = if (item.isAbstract) FontStyle.Italic else FontStyle.Normal,
                 maxLines = 1,
@@ -337,7 +338,7 @@ private fun StructureItemRow(
             item.target.detail?.let { detail ->
                 Text(
                     text = detail,
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -348,12 +349,12 @@ private fun StructureItemRow(
             if (item.isStatic) {
                 Text(
                     text = "static",
-                    color = IntelliJColors.textSecondary,
+                    color = LocalIntelliJColors.current.textSecondary,
                     fontSize = 10.sp,
                     modifier =
                         Modifier
                             .background(
-                                IntelliJColors.surfaceContainer,
+                                LocalIntelliJColors.current.surfaceContainer,
                                 RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                             ).padding(horizontal = 4.dp, vertical = 1.dp),
                 )
@@ -361,12 +362,12 @@ private fun StructureItemRow(
             if (item.isFinal) {
                 Text(
                     text = "final",
-                    color = IntelliJColors.textSecondary,
+                    color = LocalIntelliJColors.current.textSecondary,
                     fontSize = 10.sp,
                     modifier =
                         Modifier
                             .background(
-                                IntelliJColors.surfaceContainer,
+                                LocalIntelliJColors.current.surfaceContainer,
                                 RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                             ).padding(horizontal = 4.dp, vertical = 1.dp),
                 )
@@ -381,7 +382,7 @@ private fun StructureFooter() {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
     ) {
@@ -402,19 +403,19 @@ private fun StructureFooterHint(
     ) {
         Text(
             text = shortcut,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             modifier =
                 Modifier
                     .background(
-                        IntelliJColors.surfaceContainer,
+                        LocalIntelliJColors.current.surfaceContainer,
                         RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 4.dp, vertical = 1.dp),
         )
         Text(
             text = description,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
         )
     }
@@ -447,12 +448,13 @@ private fun SymbolVisibility.toIcon(): ImageVector =
         SymbolVisibility.PRIVATE -> Icons.Default.Lock
     }
 
+@Composable
 private fun SymbolVisibility.toColor(): Color =
     when (this) {
-        SymbolVisibility.PUBLIC -> IntelliJColors.success
-        SymbolVisibility.PROTECTED -> IntelliJColors.warning
-        SymbolVisibility.INTERNAL -> IntelliJColors.info
-        SymbolVisibility.PRIVATE -> IntelliJColors.error
+        SymbolVisibility.PUBLIC -> LocalIntelliJColors.current.success
+        SymbolVisibility.PROTECTED -> LocalIntelliJColors.current.warning
+        SymbolVisibility.INTERNAL -> LocalIntelliJColors.current.info
+        SymbolVisibility.PRIVATE -> LocalIntelliJColors.current.error
     }
 
 private fun NavigationSymbolKind.toStructureIcon(): ImageVector =
@@ -479,23 +481,24 @@ private fun NavigationSymbolKind.toStructureIcon(): ImageVector =
         else -> Icons.Default.Code
     }
 
+@Composable
 private fun NavigationSymbolKind.toStructureColor(): Color =
     when (this) {
         NavigationSymbolKind.CLASS,
         NavigationSymbolKind.INTERFACE,
         NavigationSymbolKind.TRAIT,
-        -> IntelliJColors.iconKotlin
+        -> LocalIntelliJColors.current.iconKotlin
 
         NavigationSymbolKind.FUNCTION,
         NavigationSymbolKind.METHOD,
         NavigationSymbolKind.CONSTRUCTOR,
-        -> IntelliJColors.iconJava
+        -> LocalIntelliJColors.current.iconJava
 
         NavigationSymbolKind.PROPERTY,
         NavigationSymbolKind.FIELD,
-        -> IntelliJColors.iconRust
+        -> LocalIntelliJColors.current.iconRust
 
-        NavigationSymbolKind.ENUM -> IntelliJColors.iconPython
+        NavigationSymbolKind.ENUM -> LocalIntelliJColors.current.iconPython
 
-        else -> IntelliJColors.textSecondary
+        else -> LocalIntelliJColors.current.textSecondary
     }

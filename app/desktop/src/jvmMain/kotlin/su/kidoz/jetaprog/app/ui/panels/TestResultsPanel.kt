@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.build.gradle.test.GradleTestCase
 import su.kidoz.jetaprog.build.gradle.test.GradleTestRun
@@ -47,13 +48,13 @@ public fun TestResultsPanel(
     onRerunTest: (taskPath: String, pattern: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize().background(IntelliJColors.toolWindowBackground)) {
+    Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.toolWindowBackground)) {
         TestSummary(testRun)
         if (testRun == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     text = "Run a Gradle test task to see structured results",
-                    color = IntelliJColors.textSecondary,
+                    color = LocalIntelliJColors.current.textSecondary,
                     fontSize = 12.sp,
                 )
             }
@@ -84,24 +85,24 @@ private fun TestSummary(testRun: GradleTestRun?) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.toolWindowHeader)
+                .background(LocalIntelliJColors.current.toolWindowHeader)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "TEST RESULTS",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
         )
         testRun?.let { run ->
-            SummaryItem("${run.passedCount} passed", IntelliJColors.success)
-            SummaryItem("${run.failedCount} failed", IntelliJColors.error)
-            SummaryItem("${run.skippedCount} skipped", IntelliJColors.warning)
+            SummaryItem("${run.passedCount} passed", LocalIntelliJColors.current.success)
+            SummaryItem("${run.failedCount} failed", LocalIntelliJColors.current.error)
+            SummaryItem("${run.skippedCount} skipped", LocalIntelliJColors.current.warning)
             Text(
                 text = formatTestDuration(run.durationMs),
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 12.sp,
             )
         }
@@ -122,12 +123,12 @@ private fun TestSuiteHeader(suite: GradleTestSuite) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
     ) {
         Text(
             text = suite.name,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -135,7 +136,7 @@ private fun TestSuiteHeader(suite: GradleTestSuite) {
         )
         Text(
             text = suite.taskPath,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
             fontFamily = JetaProgFonts.codeFont,
         )
@@ -164,7 +165,7 @@ private fun TestCaseRow(
             )
             Text(
                 text = testCase.name,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
                 modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm.dp),
                 maxLines = 1,
@@ -172,7 +173,7 @@ private fun TestCaseRow(
             )
             Text(
                 text = formatTestDuration(testCase.durationMs),
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 11.sp,
                 fontFamily = JetaProgFonts.codeFont,
             )
@@ -180,7 +181,7 @@ private fun TestCaseRow(
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = "Rerun ${testCase.name}",
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.size(Dimensions.iconMd.dp),
                 )
             }
@@ -188,7 +189,7 @@ private fun TestCaseRow(
         if (expanded) {
             Text(
                 text = testCase.failureMessage ?: testCase.failureDetails.orEmpty(),
-                color = IntelliJColors.error,
+                color = LocalIntelliJColors.current.error,
                 fontSize = 11.sp,
                 fontFamily = JetaProgFonts.codeFont,
                 modifier = Modifier.padding(start = (Dimensions.iconSm + Spacing.sm).dp, bottom = Spacing.sm.dp),
@@ -204,11 +205,12 @@ private fun GradleTestStatus.icon() =
         GradleTestStatus.SKIPPED -> Icons.Default.RemoveCircle
     }
 
+@Composable
 private fun GradleTestStatus.color() =
     when (this) {
-        GradleTestStatus.PASSED -> IntelliJColors.success
-        GradleTestStatus.FAILED -> IntelliJColors.error
-        GradleTestStatus.SKIPPED -> IntelliJColors.warning
+        GradleTestStatus.PASSED -> LocalIntelliJColors.current.success
+        GradleTestStatus.FAILED -> LocalIntelliJColors.current.error
+        GradleTestStatus.SKIPPED -> LocalIntelliJColors.current.warning
     }
 
 private fun formatTestDuration(durationMs: Long): String =

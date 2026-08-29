@@ -50,6 +50,7 @@ import su.kidoz.jetaprog.app.notification.NotificationSeverity
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.Elevation
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 private const val MAX_VISIBLE_TOASTS = 3
@@ -110,10 +111,10 @@ private fun NotificationToast(
                 .height(IntrinsicSize.Min)
                 .shadow(Elevation.popup.dp, RoundedCornerShape(Dimensions.cornerRadius.dp))
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .background(IntelliJColors.notificationBackground)
+                .background(LocalIntelliJColors.current.notificationBackground)
                 .border(
                     width = 1.dp,
-                    color = IntelliJColors.notificationBorder,
+                    color = LocalIntelliJColors.current.notificationBorder,
                     shape = RoundedCornerShape(Dimensions.cornerRadius.dp),
                 ),
         verticalAlignment = Alignment.Top,
@@ -144,14 +145,14 @@ private fun NotificationToast(
             ) {
                 Text(
                     text = notification.title,
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                 )
                 notification.message?.let {
                     Text(
                         text = it,
-                        color = IntelliJColors.textSecondary,
+                        color = LocalIntelliJColors.current.textSecondary,
                         fontSize = 12.sp,
                     )
                 }
@@ -181,7 +182,7 @@ private fun NotificationActionLink(
     val hovered by source.collectIsHoveredAsState()
     Text(
         text = label,
-        color = if (hovered) IntelliJColors.accentHover else IntelliJColors.textLink,
+        color = if (hovered) LocalIntelliJColors.current.accentHover else LocalIntelliJColors.current.textLink,
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         modifier =
@@ -200,7 +201,7 @@ private fun CloseButton(onClick: () -> Unit) {
             Modifier
                 .size(Dimensions.iconMd.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .background(if (hovered) IntelliJColors.surfaceHover else Color.Transparent)
+                .background(if (hovered) LocalIntelliJColors.current.surfaceHover else Color.Transparent)
                 .hoverable(source)
                 .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -208,18 +209,19 @@ private fun CloseButton(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Default.Close,
             contentDescription = "Dismiss notification",
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(Dimensions.iconXs.dp),
         )
     }
 }
 
+@Composable
 private fun NotificationSeverity.stripe(): Color =
     when (this) {
-        NotificationSeverity.INFO -> IntelliJColors.notificationInfoStripe
-        NotificationSeverity.SUCCESS -> IntelliJColors.notificationSuccessStripe
-        NotificationSeverity.WARNING -> IntelliJColors.notificationWarningStripe
-        NotificationSeverity.ERROR -> IntelliJColors.notificationErrorStripe
+        NotificationSeverity.INFO -> LocalIntelliJColors.current.notificationInfoStripe
+        NotificationSeverity.SUCCESS -> LocalIntelliJColors.current.notificationSuccessStripe
+        NotificationSeverity.WARNING -> LocalIntelliJColors.current.notificationWarningStripe
+        NotificationSeverity.ERROR -> LocalIntelliJColors.current.notificationErrorStripe
     }
 
 private fun NotificationSeverity.icon(): ImageVector =
@@ -230,6 +232,7 @@ private fun NotificationSeverity.icon(): ImageVector =
         NotificationSeverity.ERROR -> Icons.Default.Error
     }
 
+@Composable
 private fun NotificationSeverity.iconTint(): Color = stripe()
 
 private fun NotificationSeverity.contentDescription(): String =

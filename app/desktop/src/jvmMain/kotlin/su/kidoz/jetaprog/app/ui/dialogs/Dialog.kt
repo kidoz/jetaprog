@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 
 /**
  * IntelliJ-styled modal dialog.
@@ -42,7 +43,7 @@ public fun IntelliJDialog(
                     .widthIn(min = minWidth, max = maxWidth)
                     .shadow(16.dp, RoundedCornerShape(8.dp))
                     .clip(RoundedCornerShape(8.dp))
-                    .background(IntelliJColors.toolWindowBackground),
+                    .background(LocalIntelliJColors.current.toolWindowBackground),
         ) {
             content()
         }
@@ -65,7 +66,7 @@ public fun DialogOverlay(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(IntelliJColors.dialogOverlay)
+                .background(LocalIntelliJColors.current.dialogOverlay)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -100,7 +101,7 @@ public fun DialogContainer(
             modifier
                 .shadow(16.dp, RoundedCornerShape(8.dp))
                 .clip(RoundedCornerShape(8.dp))
-                .background(IntelliJColors.toolWindowBackground)
+                .background(LocalIntelliJColors.current.toolWindowBackground)
                 .padding(16.dp),
     ) {
         content()

@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.components.HorizontalDragHandle
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.editor.state.WorkspaceDiagnostic
@@ -98,7 +99,7 @@ public fun BottomPanel(
             modifier
                 .fillMaxWidth()
                 .height(panelHeight)
-                .background(IntelliJColors.background),
+                .background(LocalIntelliJColors.current.background),
     ) {
         // Top resize handle: 1dp visible line centered in the shared wide hit area.
         HorizontalDragHandle(
@@ -113,7 +114,7 @@ public fun BottomPanel(
                 Modifier
                     .fillMaxWidth()
                     .height(Dimensions.tabHeight.dp)
-                    .background(IntelliJColors.surface),
+                    .background(LocalIntelliJColors.current.surface),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BottomTabItem(
@@ -132,16 +133,23 @@ public fun BottomPanel(
                 icon = Icons.Filled.Science,
                 label = "Tests",
                 selected = selectedTab == BottomTab.TESTS,
-                iconTint = if (failedTestsCount > 0) IntelliJColors.error else IntelliJColors.textSecondary,
+                iconTint =
+                    if (failedTestsCount >
+                        0
+                    ) {
+                        LocalIntelliJColors.current.error
+                    } else {
+                        LocalIntelliJColors.current.textSecondary
+                    },
                 badgeCount = failedTestsCount,
-                badgeColor = IntelliJColors.error,
+                badgeColor = LocalIntelliJColors.current.error,
                 onClick = { onSelectTab(BottomTab.TESTS) },
             )
             BottomTabItem(
                 icon = Icons.Filled.Warning,
                 label = "Problems",
                 selected = selectedTab == BottomTab.PROBLEMS,
-                iconTint = IntelliJColors.warning,
+                iconTint = LocalIntelliJColors.current.warning,
                 badgeCount = problemsCount,
                 onClick = { onSelectTab(BottomTab.PROBLEMS) },
             )
@@ -165,7 +173,7 @@ public fun BottomPanel(
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = "Close panel",
-                    tint = IntelliJColors.textMuted,
+                    tint = LocalIntelliJColors.current.textMuted,
                     modifier = Modifier.size(Dimensions.iconMd.dp),
                 )
             }
@@ -184,9 +192,9 @@ private fun BottomTabItem(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    iconTint: Color = IntelliJColors.textSecondary,
+    iconTint: Color = LocalIntelliJColors.current.textSecondary,
     badgeCount: Int = 0,
-    badgeColor: Color = IntelliJColors.warning,
+    badgeColor: Color = LocalIntelliJColors.current.warning,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -195,8 +203,15 @@ private fun BottomTabItem(
             Modifier
                 .fillMaxHeightTabStrip()
                 .width(IntrinsicSize.Max)
-                .background(if (isHovered && !selected) IntelliJColors.tabBackgroundHover else Color.Transparent)
-                .hoverable(interactionSource)
+                .background(
+                    if (isHovered &&
+                        !selected
+                    ) {
+                        LocalIntelliJColors.current.tabBackgroundHover
+                    } else {
+                        Color.Transparent
+                    },
+                ).hoverable(interactionSource)
                 .selectable(
                     selected = selected,
                     role = Role.Tab,
@@ -211,12 +226,17 @@ private fun BottomTabItem(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (selected) IntelliJColors.textPrimary else iconTint,
+                tint = if (selected) LocalIntelliJColors.current.textPrimary else iconTint,
                 modifier = Modifier.size(15.dp),
             )
             Text(
                 text = label,
-                color = if (selected) IntelliJColors.textPrimary else IntelliJColors.textSecondary,
+                color =
+                    if (selected) {
+                        LocalIntelliJColors.current.textPrimary
+                    } else {
+                        LocalIntelliJColors.current.textSecondary
+                    },
                 fontSize = 12.sp,
             )
             if (badgeCount > 0) {
@@ -230,7 +250,7 @@ private fun BottomTabItem(
                 ) {
                     Text(
                         text = badgeCount.toString(),
-                        color = IntelliJColors.background,
+                        color = LocalIntelliJColors.current.background,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -245,7 +265,7 @@ private fun BottomTabItem(
                         .padding(horizontal = Spacing.sm.dp)
                         .fillMaxWidth()
                         .height(2.dp)
-                        .background(IntelliJColors.accent),
+                        .background(LocalIntelliJColors.current.accent),
             )
         }
     }
@@ -265,7 +285,7 @@ public fun ProblemsContent(
 ) {
     if (diagnostics.isEmpty()) {
         Box(modifier = modifier.fillMaxSize().padding(Spacing.md.dp)) {
-            Text(text = "No problems found.", color = IntelliJColors.textMuted, fontSize = 13.sp)
+            Text(text = "No problems found.", color = LocalIntelliJColors.current.textMuted, fontSize = 13.sp)
         }
         return
     }
@@ -285,7 +305,7 @@ public fun ProblemsContent(
                 Icon(
                     imageVector = if (isError) Icons.Filled.Error else Icons.Filled.Warning,
                     contentDescription = null,
-                    tint = if (isError) IntelliJColors.error else IntelliJColors.warning,
+                    tint = if (isError) LocalIntelliJColors.current.error else LocalIntelliJColors.current.warning,
                     modifier = Modifier.size(Dimensions.iconSm.dp),
                 )
                 Text(
@@ -293,22 +313,22 @@ public fun ProblemsContent(
                         workspaceDiagnostic.uri.value
                             .removePrefix("file://")
                             .substringAfterLast('/'),
-                    color = IntelliJColors.textSecondary,
+                    color = LocalIntelliJColors.current.textSecondary,
                     fontSize = 12.sp,
                 )
                 Text(
                     text = "${diagnostic.range.start.line + 1}:${diagnostic.range.start.column + 1}",
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 12.sp,
                 )
                 Text(
                     text = diagnostic.message,
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 13.sp,
                     modifier = Modifier.weight(1f),
                 )
                 diagnostic.source?.let { source ->
-                    Text(text = source, color = IntelliJColors.textMuted, fontSize = 12.sp)
+                    Text(text = source, color = LocalIntelliJColors.current.textMuted, fontSize = 12.sp)
                 }
             }
         }

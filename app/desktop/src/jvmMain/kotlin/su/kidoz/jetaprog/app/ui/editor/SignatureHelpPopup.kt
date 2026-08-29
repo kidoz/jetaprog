@@ -34,6 +34,7 @@ import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.state.SignatureHelpState
 import su.kidoz.jetaprog.editor.state.SignatureInfo
@@ -79,11 +80,11 @@ public fun SignatureHelpPopup(
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp,
-                            color = IntelliJColors.accent,
+                            color = LocalIntelliJColors.current.accent,
                         )
                         Text(
                             text = "Loading...",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 12.sp,
                         )
                     }
@@ -99,7 +100,7 @@ public fun SignatureHelpPopup(
                         onPrevious = onPreviousSignature,
                         onNext = onNextSignature,
                     )
-                    HorizontalDivider(color = IntelliJColors.border)
+                    HorizontalDivider(color = LocalIntelliJColors.current.border)
                 }
 
                 // Signature content
@@ -141,9 +142,9 @@ private fun SignatureNavigationHeader(
                     .clickable(enabled = currentIndex > 0) { onPrevious() },
             tint =
                 if (currentIndex > 0) {
-                    IntelliJColors.textPrimary
+                    LocalIntelliJColors.current.textPrimary
                 } else {
-                    IntelliJColors.textMuted.copy(alpha = 0.5f)
+                    LocalIntelliJColors.current.textMuted.copy(alpha = 0.5f)
                 },
         )
 
@@ -151,7 +152,7 @@ private fun SignatureNavigationHeader(
 
         Text(
             text = "${currentIndex + 1} of $totalCount",
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
         )
 
@@ -166,9 +167,9 @@ private fun SignatureNavigationHeader(
                     .clickable(enabled = currentIndex < totalCount - 1) { onNext() },
             tint =
                 if (currentIndex < totalCount - 1) {
-                    IntelliJColors.textPrimary
+                    LocalIntelliJColors.current.textPrimary
                 } else {
-                    IntelliJColors.textMuted.copy(alpha = 0.5f)
+                    LocalIntelliJColors.current.textMuted.copy(alpha = 0.5f)
                 },
         )
     }
@@ -197,12 +198,12 @@ private fun SignatureContent(
         val paramDoc = activeParam?.documentation
         if (paramDoc != null) {
             HorizontalDivider(
-                color = IntelliJColors.border,
+                color = LocalIntelliJColors.current.border,
                 modifier = Modifier.padding(vertical = Spacing.xs.dp),
             )
             Text(
                 text = paramDoc,
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 11.sp,
                 lineHeight = 14.sp,
             )
@@ -212,12 +213,12 @@ private fun SignatureContent(
         val sigDoc = signature.documentation
         if (sigDoc != null) {
             HorizontalDivider(
-                color = IntelliJColors.border,
+                color = LocalIntelliJColors.current.border,
                 modifier = Modifier.padding(vertical = Spacing.xs.dp),
             )
             Text(
                 text = sigDoc,
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
                 lineHeight = 14.sp,
             )
@@ -269,9 +270,9 @@ private fun SignatureLabel(
                                 fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
                                 color =
                                     if (isActive) {
-                                        IntelliJColors.accent
+                                        LocalIntelliJColors.current.accent
                                     } else {
-                                        IntelliJColors.textPrimary
+                                        LocalIntelliJColors.current.textPrimary
                                     },
                             ),
                         ) {
@@ -294,7 +295,7 @@ private fun SignatureLabel(
 
     Text(
         text = annotatedString,
-        color = IntelliJColors.textPrimary,
+        color = LocalIntelliJColors.current.textPrimary,
         fontSize = 12.sp,
         fontFamily = JetaProgFonts.codeFont,
         lineHeight = 16.sp,

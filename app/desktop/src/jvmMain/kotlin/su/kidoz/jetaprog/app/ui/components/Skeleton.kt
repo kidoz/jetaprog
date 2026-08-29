@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 private const val SKELETON_ALPHA_LOW = 0.35f
@@ -60,7 +61,7 @@ public fun SkeletonBar(
                 .let { if (width == Dp.Unspecified) it.fillMaxWidth() else it.width(width) }
                 .height(height)
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .background(IntelliJColors.surfaceContainer.copy(alpha = alpha)),
+                .background(LocalIntelliJColors.current.surfaceContainer.copy(alpha = alpha)),
     )
 }
 

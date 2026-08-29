@@ -57,11 +57,15 @@ import su.kidoz.jetaprog.app.ui.panels.FileBadge
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /** The brand blue→purple gradient used as the agent's signature accent. */
-internal val agentGradient: Brush
-    get() = Brush.linearGradient(listOf(IntelliJColors.brandGradientStart, IntelliJColors.brandGradientEnd))
+@Composable
+internal fun agentGradient(): Brush =
+    Brush.linearGradient(
+        listOf(LocalIntelliJColors.current.brandGradientStart, LocalIntelliJColors.current.brandGradientEnd),
+    )
 
 /** A rounded gradient tile with the [AutoAwesome] glyph — the agent's avatar. */
 @Composable
@@ -75,7 +79,7 @@ internal fun AgentAvatar(
             Modifier
                 .size(tileSize.dp)
                 .clip(RoundedCornerShape(cornerRadius.dp))
-                .background(agentGradient),
+                .background(agentGradient()),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -119,7 +123,7 @@ internal fun StreamingCaret() {
                 .padding(start = 2.dp)
                 .size(width = 7.dp, height = 14.dp)
                 .alpha(if (a > 0.5f) 1f else 0f)
-                .background(IntelliJColors.agentEffortText),
+                .background(LocalIntelliJColors.current.agentEffortText),
     )
 }
 
@@ -135,8 +139,8 @@ internal fun ToolCallCard(
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(IntelliJColors.toolCardBackground)
-                .border(1.dp, IntelliJColors.divider, shape),
+                .background(LocalIntelliJColors.current.toolCardBackground)
+                .border(1.dp, LocalIntelliJColors.current.divider, shape),
     ) {
         Row(
             modifier =
@@ -151,14 +155,14 @@ internal fun ToolCallCard(
             Icon(
                 imageVector = toolIconFor(block.kind),
                 contentDescription = null,
-                tint = IntelliJColors.iconFile,
+                tint = LocalIntelliJColors.current.iconFile,
                 modifier = Modifier.size(Dimensions.iconMd.dp),
             )
-            Text(block.name, color = IntelliJColors.editorIdentifier, fontSize = 12.5.sp)
+            Text(block.name, color = LocalIntelliJColors.current.editorIdentifier, fontSize = 12.5.sp)
             if (block.args.isNotEmpty()) {
                 Text(
                     text = block.args,
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 12.sp,
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
@@ -170,12 +174,12 @@ internal fun ToolCallCard(
             Icon(
                 imageVector = if (block.expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                 contentDescription = null,
-                tint = IntelliJColors.textMuted,
+                tint = LocalIntelliJColors.current.textMuted,
                 modifier = Modifier.size(Dimensions.iconLg.dp),
             )
         }
         if (block.expanded && !block.result.isNullOrBlank()) {
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(IntelliJColors.divider))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
             Column(
                 modifier =
                     Modifier
@@ -185,11 +189,21 @@ internal fun ToolCallCard(
             ) {
                 Text(
                     text = "RESULT",
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
                 )
-                CodeBlock(block.result, tint = if (block.status == ToolStatus.FAILED) IntelliJColors.error else null)
+                CodeBlock(
+                    block.result,
+                    tint =
+                        if (block.status ==
+                            ToolStatus.FAILED
+                        ) {
+                            LocalIntelliJColors.current.error
+                        } else {
+                            null
+                        },
+                )
             }
         }
     }
@@ -201,7 +215,7 @@ private fun ToolStatusIndicator(status: ToolStatus) {
         ToolStatus.RUNNING -> {
             CircularProgressIndicator(
                 modifier = Modifier.size(14.dp),
-                color = IntelliJColors.accent,
+                color = LocalIntelliJColors.current.accent,
                 strokeWidth = 2.dp,
             )
         }
@@ -210,7 +224,7 @@ private fun ToolStatusIndicator(status: ToolStatus) {
             Icon(
                 Icons.Default.CheckCircle,
                 contentDescription = "Completed",
-                tint = IntelliJColors.success,
+                tint = LocalIntelliJColors.current.success,
                 modifier = Modifier.size(15.dp),
             )
         }
@@ -219,7 +233,7 @@ private fun ToolStatusIndicator(status: ToolStatus) {
             Icon(
                 Icons.Default.Error,
                 contentDescription = "Failed",
-                tint = IntelliJColors.error,
+                tint = LocalIntelliJColors.current.error,
                 modifier = Modifier.size(15.dp),
             )
         }
@@ -235,15 +249,15 @@ internal fun CodeBlock(
     val shape = RoundedCornerShape(Dimensions.cornerRadius.dp)
     Text(
         text = text,
-        color = tint ?: IntelliJColors.textSecondary,
+        color = tint ?: LocalIntelliJColors.current.textSecondary,
         fontSize = 12.sp,
         fontFamily = JetaProgFonts.codeFont,
         modifier =
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(IntelliJColors.codeBlockBackground)
-                .border(1.dp, IntelliJColors.divider, shape)
+                .background(LocalIntelliJColors.current.codeBlockBackground)
+                .border(1.dp, LocalIntelliJColors.current.divider, shape)
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.sm.dp),
     )
 }
@@ -261,8 +275,8 @@ internal fun ProposedDiffCard(
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(IntelliJColors.toolCardBackground)
-                .border(1.dp, IntelliJColors.agentCardBorder, shape),
+                .background(LocalIntelliJColors.current.toolCardBackground)
+                .border(1.dp, LocalIntelliJColors.current.agentCardBorder, shape),
     ) {
         Row(
             modifier =
@@ -271,20 +285,24 @@ internal fun ProposedDiffCard(
                     .height(36.dp)
                     .background(
                         Brush.horizontalGradient(
-                            listOf(IntelliJColors.brandGradientEnd.copy(alpha = 0.10f), Color.Transparent),
+                            listOf(LocalIntelliJColors.current.brandGradientEnd.copy(alpha = 0.10f), Color.Transparent),
                         ),
                     ).padding(horizontal = Spacing.md.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
             FileBadge(block.fileName)
-            Text(block.fileName, color = IntelliJColors.editorIdentifier, fontSize = 12.5.sp)
+            Text(block.fileName, color = LocalIntelliJColors.current.editorIdentifier, fontSize = 12.5.sp)
             if (block.path.isNotEmpty()) {
-                Text("…/${block.path.substringAfterLast('/')}", color = IntelliJColors.textMuted, fontSize = 11.sp)
+                Text(
+                    "…/${block.path.substringAfterLast('/')}",
+                    color = LocalIntelliJColors.current.textMuted,
+                    fontSize = 11.sp,
+                )
             }
             Spacer(Modifier.weight(1f))
-            Text("+${block.added}", color = IntelliJColors.diffAddedGutter, fontSize = 11.sp)
-            Text("−${block.removed}", color = IntelliJColors.diffRemovedText, fontSize = 11.sp)
+            Text("+${block.added}", color = LocalIntelliJColors.current.diffAddedGutter, fontSize = 11.sp)
+            Text("−${block.removed}", color = LocalIntelliJColors.current.diffRemovedText, fontSize = 11.sp)
             DecisionPill(block.decision)
         }
         Column(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs.dp)) {
@@ -296,14 +314,20 @@ internal fun ProposedDiffCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
-                PillButton("Accept", Icons.Default.Check, IntelliJColors.diffAcceptBackground, Color.White, onAccept)
+                PillButton(
+                    "Accept",
+                    Icons.Default.Check,
+                    LocalIntelliJColors.current.diffAcceptBackground,
+                    Color.White,
+                    onAccept,
+                )
                 PillButton(
                     text = "Reject",
                     icon = Icons.Default.Close,
-                    background = IntelliJColors.buttonBackground,
-                    foreground = IntelliJColors.textPrimary,
+                    background = LocalIntelliJColors.current.buttonBackground,
+                    foreground = LocalIntelliJColors.current.textPrimary,
                     onClick = onReject,
-                    iconTint = IntelliJColors.diffRemovedText,
+                    iconTint = LocalIntelliJColors.current.diffRemovedText,
                     bordered = true,
                 )
                 Spacer(Modifier.weight(1f))
@@ -316,15 +340,15 @@ internal fun ProposedDiffCard(
 private fun DiffLineRow(line: DiffLine) {
     val background =
         when (line.kind) {
-            DiffLineKind.ADDED -> IntelliJColors.diffAddedBackground
-            DiffLineKind.REMOVED -> IntelliJColors.diffRemovedBackground
+            DiffLineKind.ADDED -> LocalIntelliJColors.current.diffAddedBackground
+            DiffLineKind.REMOVED -> LocalIntelliJColors.current.diffRemovedBackground
             DiffLineKind.CONTEXT -> Color.Transparent
         }
     val textColor =
         when (line.kind) {
-            DiffLineKind.ADDED -> IntelliJColors.diffAddedText
-            DiffLineKind.REMOVED -> IntelliJColors.diffRemovedText
-            DiffLineKind.CONTEXT -> IntelliJColors.textSecondary
+            DiffLineKind.ADDED -> LocalIntelliJColors.current.diffAddedText
+            DiffLineKind.REMOVED -> LocalIntelliJColors.current.diffRemovedText
+            DiffLineKind.CONTEXT -> LocalIntelliJColors.current.textSecondary
         }
     Row(
         modifier = Modifier.fillMaxWidth().height(20.dp).background(background),
@@ -332,7 +356,7 @@ private fun DiffLineRow(line: DiffLine) {
     ) {
         Text(
             text = line.number?.toString().orEmpty(),
-            color = IntelliJColors.lineNumberForeground,
+            color = LocalIntelliJColors.current.lineNumberForeground,
             fontSize = 12.sp,
             fontFamily = JetaProgFonts.codeFont,
             modifier = Modifier.width(40.dp).padding(end = Spacing.sm.dp),
@@ -358,16 +382,19 @@ private fun DiffLineRow(line: DiffLine) {
 private fun DecisionPill(decision: DiffDecision) {
     val (label, color) =
         when (decision) {
-            DiffDecision.PROPOSED -> "Proposed" to IntelliJColors.agentPillText
-            DiffDecision.ACCEPTED -> "Accepted" to IntelliJColors.success
-            DiffDecision.REJECTED -> "Reverted" to IntelliJColors.textMuted
+            DiffDecision.PROPOSED -> "Proposed" to LocalIntelliJColors.current.agentPillText
+            DiffDecision.ACCEPTED -> "Accepted" to LocalIntelliJColors.current.success
+            DiffDecision.REJECTED -> "Reverted" to LocalIntelliJColors.current.textMuted
         }
     Box(
         modifier =
             Modifier
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .border(1.dp, IntelliJColors.agentPillBorder, RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .padding(horizontal = Spacing.sm.dp, vertical = 1.dp),
+                .border(
+                    1.dp,
+                    LocalIntelliJColors.current.agentPillBorder,
+                    RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
+                ).padding(horizontal = Spacing.sm.dp, vertical = 1.dp),
     ) {
         Text(label, color = color, fontSize = 10.sp)
     }
@@ -386,8 +413,8 @@ internal fun ApprovalCard(
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(IntelliJColors.warning.copy(alpha = 0.06f))
-                .border(1.dp, IntelliJColors.approvalBorder, shape),
+                .background(LocalIntelliJColors.current.warning.copy(alpha = 0.06f))
+                .border(1.dp, LocalIntelliJColors.current.approvalBorder, shape),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
@@ -397,14 +424,14 @@ internal fun ApprovalCard(
             Icon(
                 Icons.Default.Security,
                 contentDescription = null,
-                tint = IntelliJColors.warning,
+                tint = LocalIntelliJColors.current.warning,
                 modifier = Modifier.size(Dimensions.iconLg.dp),
             )
-            Text(block.title, color = IntelliJColors.approvalText, fontSize = 12.5.sp)
+            Text(block.title, color = LocalIntelliJColors.current.approvalText, fontSize = 12.5.sp)
             Spacer(Modifier.weight(1f))
             Text(
                 text = if (block.resolved) "resolved" else "requires approval",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 10.sp,
             )
         }
@@ -421,8 +448,8 @@ internal fun ApprovalCard(
                 PillButton(
                     text = "Deny",
                     icon = null,
-                    background = IntelliJColors.buttonBackground,
-                    foreground = IntelliJColors.textPrimary,
+                    background = LocalIntelliJColors.current.buttonBackground,
+                    foreground = LocalIntelliJColors.current.textPrimary,
                     onClick = onDeny,
                     bordered = true,
                 )
@@ -449,7 +476,7 @@ internal fun PillButton(
                 .height(28.dp)
                 .clip(shape)
                 .background(background)
-                .then(if (bordered) Modifier.border(1.dp, IntelliJColors.border, shape) else Modifier)
+                .then(if (bordered) Modifier.border(1.dp, LocalIntelliJColors.current.border, shape) else Modifier)
                 .clickable(onClick = onClick)
                 .padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -475,7 +502,7 @@ internal fun GradientButton(
             Modifier
                 .height(28.dp)
                 .clip(shape)
-                .background(agentGradient)
+                .background(agentGradient())
                 .clickable(onClick = onClick)
                 .padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -497,7 +524,7 @@ internal fun SendButton(
             Modifier
                 .size(30.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                .background(agentGradient)
+                .background(agentGradient())
                 .alpha(if (enabled) 1f else 0.5f)
                 .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,

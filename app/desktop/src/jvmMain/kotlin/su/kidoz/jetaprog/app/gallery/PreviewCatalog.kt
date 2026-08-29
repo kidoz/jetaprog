@@ -26,6 +26,7 @@ import su.kidoz.jetaprog.app.ui.panels.RunOutputPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.configuration.RunOutputLine
 import su.kidoz.jetaprog.configuration.RunOutputType
@@ -46,7 +47,7 @@ private fun GalleryPreview() {
 private fun ButtonsPreview() {
     JetaProgTheme {
         Column(
-            modifier = Modifier.background(IntelliJColors.background).padding(Spacing.lg.dp),
+            modifier = Modifier.background(LocalIntelliJColors.current.background).padding(Spacing.lg.dp),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
             IntelliJButton(text = "Primary", onClick = {}, style = ButtonStyle.PRIMARY, icon = Icons.Default.Add)
@@ -63,7 +64,7 @@ private fun TextFieldsPreview() {
     var query by remember { mutableStateOf("") }
     JetaProgTheme {
         Column(
-            modifier = Modifier.background(IntelliJColors.background).padding(Spacing.lg.dp),
+            modifier = Modifier.background(LocalIntelliJColors.current.background).padding(Spacing.lg.dp),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
             IntelliJTextField(
@@ -74,7 +75,7 @@ private fun TextFieldsPreview() {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search files",
-                        tint = IntelliJColors.textSecondary,
+                        tint = LocalIntelliJColors.current.textSecondary,
                         modifier = Modifier.size(Dimensions.iconMd.dp),
                     )
                 },

@@ -32,11 +32,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.editing.TextEditingOps
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.editor.state.EditorState
-import su.kidoz.jetaprog.editor.syntax.highlighting.DarkSyntaxTheme
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
 import su.kidoz.jetaprog.settings.model.EditorSettings
 
@@ -65,7 +65,7 @@ public fun MarkdownEditor(
     indentUnit: String = TextEditingOps.DEFAULT_INDENT_UNIT,
     settings: EditorSettings = EditorSettings.DEFAULT,
     modifier: Modifier = Modifier,
-    syntaxTheme: SyntaxTheme = DarkSyntaxTheme,
+    syntaxTheme: SyntaxTheme? = null,
 ) {
     var viewMode by remember { mutableStateOf(MarkdownViewMode.SPLIT) }
     val content = state.content
@@ -135,7 +135,7 @@ public fun MarkdownEditor(
                         Modifier
                             .width(1.dp)
                             .fillMaxHeight()
-                            .background(IntelliJColors.border),
+                            .background(LocalIntelliJColors.current.border),
                 )
             }
 
@@ -146,7 +146,7 @@ public fun MarkdownEditor(
                         Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .background(IntelliJColors.background),
+                            .background(LocalIntelliJColors.current.background),
                 ) {
                     MarkdownPreview(
                         content = content,
@@ -168,7 +168,7 @@ private fun MarkdownToolbar(
             Modifier
                 .fillMaxWidth()
                 .height(32.dp)
-                .background(IntelliJColors.toolWindowBackground)
+                .background(LocalIntelliJColors.current.toolWindowBackground)
                 .padding(horizontal = Spacing.sm.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.End,
@@ -176,7 +176,7 @@ private fun MarkdownToolbar(
         Text(
             text = "Markdown",
             fontSize = 12.sp,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.weight(1f),
         )
 
@@ -215,15 +215,15 @@ private fun ViewModeButton(
 ) {
     val backgroundColor =
         if (isSelected) {
-            IntelliJColors.selectionBackground
+            LocalIntelliJColors.current.selectionBackground
         } else {
-            IntelliJColors.toolWindowBackground
+            LocalIntelliJColors.current.toolWindowBackground
         }
     val iconColor =
         if (isSelected) {
-            IntelliJColors.accent
+            LocalIntelliJColors.current.accent
         } else {
-            IntelliJColors.textSecondary
+            LocalIntelliJColors.current.textSecondary
         }
 
     Row(

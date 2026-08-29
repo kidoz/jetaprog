@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.state.EditorTab
 
@@ -57,7 +58,7 @@ public fun IntelliJEditorTabs(
             modifier
                 .fillMaxWidth()
                 .height(Dimensions.tabHeight.dp)
-                .background(IntelliJColors.surface)
+                .background(LocalIntelliJColors.current.surface)
                 .horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -84,16 +85,16 @@ private fun IntelliJTab(
 
     val backgroundColor =
         when {
-            isActive -> IntelliJColors.tabBackgroundSelected
-            isHovered -> IntelliJColors.tabBackgroundHover
+            isActive -> LocalIntelliJColors.current.tabBackgroundSelected
+            isHovered -> LocalIntelliJColors.current.tabBackgroundHover
             else -> Color.Transparent
         }
 
     val textColor =
         when {
-            isActive -> IntelliJColors.textPrimary
-            isHovered -> IntelliJColors.textPrimary
-            else -> IntelliJColors.textSecondary
+            isActive -> LocalIntelliJColors.current.textPrimary
+            isHovered -> LocalIntelliJColors.current.textPrimary
+            else -> LocalIntelliJColors.current.textSecondary
         }
 
     Box(
@@ -143,7 +144,7 @@ private fun IntelliJTab(
                                 Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(IntelliJColors.accent),
+                                    .background(LocalIntelliJColors.current.accent),
                         )
                     }
 
@@ -165,7 +166,7 @@ private fun IntelliJTab(
                         .fillMaxWidth()
                         .height(2.dp)
                         .clip(RoundedCornerShape(topStart = 1.dp, topEnd = 1.dp))
-                        .background(IntelliJColors.tabUnderline),
+                        .background(LocalIntelliJColors.current.tabUnderline),
             )
         }
     }
@@ -182,7 +183,7 @@ private fun CloseButton(onClick: () -> Unit) {
                 .size(16.dp)
                 .clip(CircleShape)
                 .background(
-                    if (isHovered) IntelliJColors.error.copy(alpha = 0.15f) else Color.Transparent,
+                    if (isHovered) LocalIntelliJColors.current.error.copy(alpha = 0.15f) else Color.Transparent,
                 ).hoverable(interactionSource)
                 .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -190,7 +191,7 @@ private fun CloseButton(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Default.Close,
             contentDescription = "Close",
-            tint = if (isHovered) IntelliJColors.error else IntelliJColors.textSecondary,
+            tint = if (isHovered) LocalIntelliJColors.current.error else LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(12.dp),
         )
     }
@@ -226,21 +227,22 @@ public fun FileIcon(
 /**
  * Returns the icon color for a file extension.
  */
+@Composable
 private fun getFileIconColor(extension: String): Color =
     when (extension) {
-        "kt", "kts" -> IntelliJColors.iconKotlin
-        "java" -> IntelliJColors.iconJava
-        "rs" -> IntelliJColors.iconRust
-        "cpp", "cc", "cxx", "c", "h", "hpp" -> IntelliJColors.iconCpp
-        "vala", "vapi" -> IntelliJColors.iconVala
-        "xml", "html", "htm" -> Color(0xFFCC7832)
-        "json" -> Color(0xFF6A8759)
-        "md", "markdown" -> Color(0xFF6897BB)
-        "gradle", "gradle.kts" -> Color(0xFF499C54)
-        "yaml", "yml" -> Color(0xFFCC7832)
-        "toml" -> Color(0xFFE76D50)
-        "py" -> Color(0xFF3776AB)
-        "js", "jsx" -> Color(0xFFF7DF1E)
-        "ts", "tsx" -> Color(0xFF3178C6)
-        else -> IntelliJColors.iconFile
+        "kt", "kts" -> LocalIntelliJColors.current.iconKotlin
+        "java" -> LocalIntelliJColors.current.iconJava
+        "rs" -> LocalIntelliJColors.current.iconRust
+        "cpp", "cc", "cxx", "c", "h", "hpp" -> LocalIntelliJColors.current.iconCpp
+        "vala", "vapi" -> LocalIntelliJColors.current.iconVala
+        "xml", "html", "htm" -> LocalIntelliJColors.current.fileIconMarkup
+        "json" -> LocalIntelliJColors.current.fileIconData
+        "md", "markdown" -> LocalIntelliJColors.current.fileIconMarkdown
+        "gradle", "gradle.kts" -> LocalIntelliJColors.current.fileIconGradle
+        "yaml", "yml" -> LocalIntelliJColors.current.fileIconMarkup
+        "toml" -> LocalIntelliJColors.current.fileIconToml
+        "py" -> LocalIntelliJColors.current.iconPython
+        "js", "jsx" -> LocalIntelliJColors.current.fileIconJavascript
+        "ts", "tsx" -> LocalIntelliJColors.current.fileIconTypescript
+        else -> LocalIntelliJColors.current.iconFile
     }

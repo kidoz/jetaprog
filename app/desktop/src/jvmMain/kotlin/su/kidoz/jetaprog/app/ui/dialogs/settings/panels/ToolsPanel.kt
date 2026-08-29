@@ -32,6 +32,7 @@ import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingRow
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingSection
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.model.McpServerConfig
 import su.kidoz.jetaprog.settings.model.ToolsSettings
@@ -66,35 +67,35 @@ public fun ToolsPanel(
 
             Text(
                 text = "Gradle",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(top = Spacing.md.dp, bottom = Spacing.xs.dp),
             )
             Text(
                 text = "Use Wrapper: ${if (settings.buildSystems.gradle.useWrapper) "Yes" else "No"}",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
             )
             Text(
                 text = "Parallel Builds: ${if (settings.buildSystems.gradle.parallelBuilds) "Yes" else "No"}",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
             )
 
             Text(
                 text = "Meson",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(top = Spacing.md.dp, bottom = Spacing.xs.dp),
             )
             Text(
                 text = "Build Type: ${settings.buildSystems.meson.buildType.value}",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
             )
             Text(
                 text = "Backend: ${settings.buildSystems.meson.backend.value}",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
             )
         }
@@ -103,7 +104,7 @@ public fun ToolsPanel(
         SettingSection(title = "MCP SERVERS") {
             Text(
                 text = "Configure Model Context Protocol (MCP) servers for AI integration.",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(bottom = Spacing.md.dp),
             )
@@ -144,19 +145,19 @@ public fun ToolsPanel(
             if (settings.externalTools.isEmpty()) {
                 Text(
                     text = "No external tools configured.",
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 12.sp,
                 )
             } else {
                 settings.externalTools.forEach { tool ->
                     Text(
                         text = "• ${tool.name}",
-                        color = IntelliJColors.textPrimary,
+                        color = LocalIntelliJColors.current.textPrimary,
                         fontSize = 13.sp,
                     )
                     Text(
                         text = tool.command,
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 11.sp,
                         modifier = Modifier.padding(bottom = Spacing.xs.dp),
                     )
@@ -181,7 +182,7 @@ private fun McpServerRow(
                 .fillMaxWidth()
                 .padding(vertical = Spacing.xs.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .background(IntelliJColors.surfaceContainer)
+                .background(LocalIntelliJColors.current.surfaceContainer)
                 .padding(Spacing.sm.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -197,12 +198,12 @@ private fun McpServerRow(
             Column(modifier = Modifier.padding(start = Spacing.sm.dp)) {
                 Text(
                     text = server.name,
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 13.sp,
                 )
                 Text(
                     text = "${server.command} ${server.args.joinToString(" ")}",
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 11.sp,
                 )
             }
@@ -213,14 +214,14 @@ private fun McpServerRow(
                 Icon(
                     imageVector = Icons.Default.Edit,
                     contentDescription = "Edit",
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                 )
             }
             IconButton(onClick = onRemove) {
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Remove",
-                    tint = IntelliJColors.error,
+                    tint = LocalIntelliJColors.current.error,
                 )
             }
         }
@@ -241,12 +242,12 @@ private fun McpServerEditPanel(
                 .fillMaxWidth()
                 .padding(top = Spacing.lg.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(Spacing.md.dp),
     ) {
         Text(
             text = if (editingServer.isNew) "Add MCP Server" else "Edit MCP Server",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 14.sp,
             modifier = Modifier.padding(bottom = Spacing.md.dp),
         )

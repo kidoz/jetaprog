@@ -53,6 +53,7 @@ import su.kidoz.jetaprog.app.ui.dialogs.IntelliJDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.database.DatabaseColumn
 import su.kidoz.jetaprog.database.DatabaseConnectionProfile
@@ -116,7 +117,7 @@ public fun DatabaseToolWindow(
                     Modifier
                         .fillMaxWidth()
                         .height(Dimensions.editorGuideWidth.dp)
-                        .background(IntelliJColors.borderSubtle),
+                        .background(LocalIntelliJColors.current.borderSubtle),
             )
             ConnectionToolbar(state = state, dispatch = dispatch)
             DatabaseSchemaTree(
@@ -124,7 +125,7 @@ public fun DatabaseToolWindow(
                 isLoading = state.operation == DatabaseOperation.INTROSPECTING,
                 modifier = Modifier.weight(1f),
             )
-            state.error?.let { InlineStatus(it, IntelliJColors.error) }
+            state.error?.let { InlineStatus(it, LocalIntelliJColors.current.error) }
         }
     }
 
@@ -163,8 +164,13 @@ private fun ConnectionList(
                             Modifier
                                 .fillMaxWidth()
                                 .height(Dimensions.treeNodeHeight.dp)
-                                .background(if (selected) IntelliJColors.treeSelectionBackground else Color.Transparent)
-                                .clickable { dispatch(DatabaseIntent.SelectProfile(profile.id)) }
+                                .background(
+                                    if (selected) {
+                                        LocalIntelliJColors.current.treeSelectionBackground
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                ).clickable { dispatch(DatabaseIntent.SelectProfile(profile.id)) }
                                 .padding(horizontal = Spacing.sm.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
@@ -172,20 +178,25 @@ private fun ConnectionList(
                         Icon(
                             imageVector = Icons.Default.Storage,
                             contentDescription = null,
-                            tint = if (selected) IntelliJColors.accent else IntelliJColors.textSecondary,
+                            tint =
+                                if (selected) {
+                                    LocalIntelliJColors.current.accent
+                                } else {
+                                    LocalIntelliJColors.current.textSecondary
+                                },
                             modifier = Modifier.size(Dimensions.iconSm.dp),
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = profile.name,
-                                color = IntelliJColors.textPrimary,
+                                color = LocalIntelliJColors.current.textPrimary,
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
                                 text = "${profile.dialect.displayName} · ${profile.host}:${profile.port}",
-                                color = IntelliJColors.textMuted,
+                                color = LocalIntelliJColors.current.textMuted,
                                 fontSize = 10.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -227,7 +238,7 @@ private fun ConnectionToolbar(
         }
     }
     state.connectionInfo?.let { info ->
-        InlineStatus("${info.productName} ${info.productVersion}", IntelliJColors.success)
+        InlineStatus("${info.productName} ${info.productVersion}", LocalIntelliJColors.current.success)
     }
 }
 
@@ -292,13 +303,18 @@ private fun SchemaTreeRow(
                 } else {
                     ""
                 },
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
             modifier = Modifier.width(Dimensions.iconXs.dp),
         )
         Text(
             text = node.label,
-            color = if (node is SchemaTreeNode.ColumnNode) IntelliJColors.textSecondary else IntelliJColors.textPrimary,
+            color =
+                if (node is SchemaTreeNode.ColumnNode) {
+                    LocalIntelliJColors.current.textSecondary
+                } else {
+                    LocalIntelliJColors.current.textPrimary
+                },
             fontSize = 11.sp,
             fontFamily = JetaProgFonts.codeFont,
             maxLines = 1,
@@ -314,7 +330,7 @@ public fun DatabaseQueryResultsPanel(
     dispatch: (DatabaseIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize().background(IntelliJColors.background)) {
+    Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(Spacing.sm.dp),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
@@ -352,15 +368,15 @@ public fun DatabaseQueryResultsPanel(
                 Modifier
                     .fillMaxWidth()
                     .height(Dimensions.editorGuideWidth.dp)
-                    .background(IntelliJColors.border),
+                    .background(LocalIntelliJColors.current.border),
         )
-        state.error?.let { InlineStatus(it, IntelliJColors.error) }
+        state.error?.let { InlineStatus(it, LocalIntelliJColors.current.error) }
         state.result?.let { result ->
             QueryResultGrid(result = result, modifier = Modifier.weight(1f))
         } ?: Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Text(
                 text = if (state.isBusy) "Executing query…" else "Run a query to see results.",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
             )
         }
@@ -379,13 +395,13 @@ private fun QueryResultGrid(
             } else {
                 "${result.rows.size} rows${if (result.truncated) " (limited)" else ""} · ${result.elapsedMillis} ms"
             }
-        InlineStatus(status, IntelliJColors.textSecondary)
-        result.warnings.forEach { warning -> InlineStatus(warning, IntelliJColors.warning) }
+        InlineStatus(status, LocalIntelliJColors.current.textSecondary)
+        result.warnings.forEach { warning -> InlineStatus(warning, LocalIntelliJColors.current.warning) }
         if (result.columns.isNotEmpty()) {
             val horizontalScroll = rememberScrollState()
             LazyColumn(modifier = Modifier.fillMaxSize().horizontalScroll(horizontalScroll)) {
                 item(key = "header") {
-                    Row(modifier = Modifier.background(IntelliJColors.surfaceContainer)) {
+                    Row(modifier = Modifier.background(LocalIntelliJColors.current.surfaceContainer)) {
                         result.columns.forEach { column ->
                             ResultCell(
                                 value = "${column.label}\n${column.typeName}",
@@ -420,13 +436,13 @@ private fun ResultCell(
                     } else {
                         Dimensions.databaseResultRowHeight.dp
                     },
-                ).border(Dimensions.editorGuideWidth.dp, IntelliJColors.borderSubtle)
+                ).border(Dimensions.editorGuideWidth.dp, LocalIntelliJColors.current.borderSubtle)
                 .padding(horizontal = Spacing.sm.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(
             text = value.replace('\n', ' '),
-            color = if (nullValue) IntelliJColors.textMuted else IntelliJColors.textPrimary,
+            color = if (nullValue) LocalIntelliJColors.current.textMuted else LocalIntelliJColors.current.textPrimary,
             fontSize = if (header) 11.sp else 12.sp,
             fontWeight = if (header) FontWeight.Medium else FontWeight.Normal,
             fontFamily = JetaProgFonts.codeFont,
@@ -454,7 +470,7 @@ private fun DatabaseConnectionDialog(
         Column(modifier = Modifier.padding(Spacing.lg.dp)) {
             Text(
                 text = if (initialProfile.database.isBlank()) "New database connection" else "Edit database connection",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
             )
@@ -546,7 +562,7 @@ private fun DatabaseConnectionDialog(
             Spacer(modifier = Modifier.height(Spacing.xs.dp))
             Text(
                 text = "Passwords are kept in memory for this app session and are never written to project files.",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
             )
             if (profile.dialect == DatabaseDialect.POSTGRESQL) {
@@ -568,7 +584,7 @@ private fun DatabaseConnectionDialog(
             }
             if (errors.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                InlineStatus(errors.first(), IntelliJColors.error)
+                InlineStatus(errors.first(), LocalIntelliJColors.current.error)
             }
             Spacer(modifier = Modifier.height(Spacing.lg.dp))
             Row(
@@ -604,7 +620,7 @@ private fun EmptyNavigatorMessage(
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxWidth().padding(Spacing.md.dp), contentAlignment = Alignment.Center) {
-        Text(text = text, color = IntelliJColors.textMuted, fontSize = 11.sp)
+        Text(text = text, color = LocalIntelliJColors.current.textMuted, fontSize = 11.sp)
     }
 }
 

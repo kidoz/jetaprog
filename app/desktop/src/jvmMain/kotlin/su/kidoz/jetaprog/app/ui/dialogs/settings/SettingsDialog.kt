@@ -45,6 +45,7 @@ import su.kidoz.jetaprog.app.ui.dialogs.settings.panels.ToolsPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.Elevation
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.SettingsCategory
 import su.kidoz.jetaprog.settings.SettingsScope
@@ -72,7 +73,7 @@ public fun SettingsDialog(
                         Elevation.dialog.dp,
                         RoundedCornerShape(Dimensions.cornerRadiusLarge.dp),
                     ).clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .background(IntelliJColors.toolWindowBackground),
+                    .background(LocalIntelliJColors.current.toolWindowBackground),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Header
@@ -84,7 +85,7 @@ public fun SettingsDialog(
                     onScopeChange = { onIntent(SettingsIntent.SetScope(it)) },
                 )
 
-                HorizontalDivider(color = IntelliJColors.border)
+                HorizontalDivider(color = LocalIntelliJColors.current.border)
 
                 // Main content
                 Row(modifier = Modifier.weight(1f)) {
@@ -99,10 +100,10 @@ public fun SettingsDialog(
                             Modifier
                                 .width(Dimensions.dialogSettingsNavWidth.dp)
                                 .fillMaxHeight()
-                                .background(IntelliJColors.backgroundDarker),
+                                .background(LocalIntelliJColors.current.backgroundDarker),
                     )
 
-                    VerticalDivider(color = IntelliJColors.border)
+                    VerticalDivider(color = LocalIntelliJColors.current.border)
 
                     // Right: Settings panel
                     SettingsPanel(
@@ -115,7 +116,7 @@ public fun SettingsDialog(
                     )
                 }
 
-                HorizontalDivider(color = IntelliJColors.border)
+                HorizontalDivider(color = LocalIntelliJColors.current.border)
 
                 // Footer
                 SettingsFooter(
@@ -149,7 +150,7 @@ private fun SettingsHeader(
     ) {
         Text(
             text = "Settings",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 16.sp,
         )
 
@@ -177,7 +178,7 @@ private fun SettingsHeader(
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Clear search",
-                        tint = IntelliJColors.textMuted,
+                        tint = LocalIntelliJColors.current.textMuted,
                         modifier =
                             Modifier
                                 .align(Alignment.CenterEnd)
@@ -202,7 +203,7 @@ private fun ScopeSelector(
         modifier =
             modifier
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .background(IntelliJColors.backgroundDarker),
+                .background(LocalIntelliJColors.current.backgroundDarker),
         horizontalArrangement = Arrangement.Center,
     ) {
         SettingsScope.entries.forEach { scope ->
@@ -211,9 +212,9 @@ private fun ScopeSelector(
             val isHovered by interactionSource.collectIsHoveredAsState()
             val background =
                 when {
-                    isSelected -> IntelliJColors.accent
-                    isHovered -> IntelliJColors.surfaceHover
-                    else -> IntelliJColors.backgroundDarker
+                    isSelected -> LocalIntelliJColors.current.accent
+                    isHovered -> LocalIntelliJColors.current.surfaceHover
+                    else -> LocalIntelliJColors.current.backgroundDarker
                 }
             Box(
                 modifier =
@@ -226,7 +227,12 @@ private fun ScopeSelector(
             ) {
                 Text(
                     text = scope.name.lowercase().replaceFirstChar { it.uppercase() },
-                    color = if (isSelected) IntelliJColors.textInverse else IntelliJColors.textSecondary,
+                    color =
+                        if (isSelected) {
+                            LocalIntelliJColors.current.textInverse
+                        } else {
+                            LocalIntelliJColors.current.textSecondary
+                        },
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = Spacing.xs.dp),
                 )
@@ -244,7 +250,7 @@ private fun SettingsPanel(
     Box(
         modifier =
             modifier
-                .background(IntelliJColors.toolWindowBackground)
+                .background(LocalIntelliJColors.current.toolWindowBackground)
                 .padding(Spacing.lg.dp),
     ) {
         when (state.selectedCategory) {

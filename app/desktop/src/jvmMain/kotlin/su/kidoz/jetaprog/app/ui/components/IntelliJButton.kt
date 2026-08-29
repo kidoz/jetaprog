@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -116,33 +117,33 @@ private fun resolveButtonColors(
         ButtonStyle.PRIMARY -> {
             val bg =
                 when {
-                    !enabled -> IntelliJColors.buttonPrimaryBackground.copy(alpha = 0.5f)
-                    isPressed -> IntelliJColors.accentPressed
-                    isHovered -> IntelliJColors.buttonPrimaryBackgroundHover
-                    else -> IntelliJColors.buttonPrimaryBackground
+                    !enabled -> LocalIntelliJColors.current.buttonPrimaryBackground.copy(alpha = 0.5f)
+                    isPressed -> LocalIntelliJColors.current.accentPressed
+                    isHovered -> LocalIntelliJColors.current.buttonPrimaryBackgroundHover
+                    else -> LocalIntelliJColors.current.buttonPrimaryBackground
                 }
-            bg to IntelliJColors.buttonPrimaryForeground
+            bg to LocalIntelliJColors.current.buttonPrimaryForeground
         }
 
         ButtonStyle.SECONDARY -> {
             val bg =
                 when {
-                    !enabled -> IntelliJColors.buttonBackground.copy(alpha = 0.5f)
-                    isPressed -> IntelliJColors.buttonBackgroundPressed
-                    isHovered -> IntelliJColors.buttonBackgroundHover
-                    else -> IntelliJColors.buttonBackground
+                    !enabled -> LocalIntelliJColors.current.buttonBackground.copy(alpha = 0.5f)
+                    isPressed -> LocalIntelliJColors.current.buttonBackgroundPressed
+                    isHovered -> LocalIntelliJColors.current.buttonBackgroundHover
+                    else -> LocalIntelliJColors.current.buttonBackground
                 }
-            bg to IntelliJColors.buttonForeground
+            bg to LocalIntelliJColors.current.buttonForeground
         }
 
         ButtonStyle.DANGER -> {
             val bg =
                 when {
-                    !enabled -> IntelliJColors.buttonDangerBackground.copy(alpha = 0.5f)
-                    isPressed -> IntelliJColors.buttonDangerBackground.copy(alpha = 0.8f)
-                    isHovered -> IntelliJColors.buttonDangerBackgroundHover
-                    else -> IntelliJColors.buttonDangerBackground
+                    !enabled -> LocalIntelliJColors.current.buttonDangerBackground.copy(alpha = 0.5f)
+                    isPressed -> LocalIntelliJColors.current.buttonDangerBackground.copy(alpha = 0.8f)
+                    isHovered -> LocalIntelliJColors.current.buttonDangerBackgroundHover
+                    else -> LocalIntelliJColors.current.buttonDangerBackground
                 }
-            bg to IntelliJColors.buttonDangerForeground
+            bg to LocalIntelliJColors.current.buttonDangerForeground
         }
     }

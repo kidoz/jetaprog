@@ -38,6 +38,7 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.dialogs.DialogContainer
 import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.viewmodel.NewProjectViewModel
 
 /**
@@ -60,7 +61,7 @@ public fun NewProjectDialog(
             // Title
             Text(
                 text = "New Project",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
             )
@@ -177,16 +178,16 @@ private fun StepIndicator(
                             .clip(RoundedCornerShape(12.dp))
                             .background(
                                 when {
-                                    isActive -> IntelliJColors.accent
-                                    isCompleted -> IntelliJColors.success
-                                    else -> IntelliJColors.buttonBackground
+                                    isActive -> LocalIntelliJColors.current.accent
+                                    isCompleted -> LocalIntelliJColors.current.success
+                                    else -> LocalIntelliJColors.current.buttonBackground
                                 },
                             ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = "${index + 1}",
-                        color = IntelliJColors.textPrimary,
+                        color = LocalIntelliJColors.current.textPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                     )
@@ -198,9 +199,9 @@ private fun StepIndicator(
                     text = label,
                     color =
                         if (isActive) {
-                            IntelliJColors.textPrimary
+                            LocalIntelliJColors.current.textPrimary
                         } else {
-                            IntelliJColors.textSecondary
+                            LocalIntelliJColors.current.textSecondary
                         },
                     fontSize = 13.sp,
                 )
@@ -250,7 +251,7 @@ private fun Step1Content(
                     Modifier
                         .height(28.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(IntelliJColors.buttonBackground)
+                        .background(LocalIntelliJColors.current.buttonBackground)
                         .clickable(onClick = onBrowseLocation)
                         .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center,
@@ -258,7 +259,7 @@ private fun Step1Content(
                 Icon(
                     imageVector = Icons.Default.Folder,
                     contentDescription = "Browse",
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -290,12 +291,12 @@ private fun Step1Content(
         // Show template info
         Text(
             text = "Template: ${state.selectedTemplate.name}",
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 12.sp,
         )
         Text(
             text = state.selectedTemplate.description,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
         )
     }
@@ -337,12 +338,12 @@ private fun Step2Content(
         // Show full project path preview
         Text(
             text = "Project will be created at:",
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 12.sp,
         )
         Text(
             text = "${state.projectLocation}/${state.projectName}",
-            color = IntelliJColors.textLink,
+            color = LocalIntelliJColors.current.textLink,
             fontSize = 12.sp,
         )
     }

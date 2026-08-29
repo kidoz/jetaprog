@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -37,13 +38,13 @@ public fun SettingRow(
         ) {
             Text(
                 text = label,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
             )
             description?.let {
                 Text(
                     text = it,
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 2.dp),
                 )
@@ -65,7 +66,7 @@ public fun SettingSection(
     Column(modifier = modifier.padding(bottom = Spacing.lg.dp)) {
         Text(
             text = title,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
             modifier = Modifier.padding(bottom = Spacing.sm.dp),
         )

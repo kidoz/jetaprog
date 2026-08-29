@@ -29,6 +29,7 @@ import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.common.text.MarkedString
 import su.kidoz.jetaprog.editor.state.HoverState
@@ -74,11 +75,11 @@ public fun HoverPopup(
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp,
-                            color = IntelliJColors.accent,
+                            color = LocalIntelliJColors.current.accent,
                         )
                         Text(
                             text = "Loading...",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 12.sp,
                         )
                     }
@@ -96,7 +97,7 @@ public fun HoverPopup(
                     state.contents.forEachIndexed { index, content ->
                         if (index > 0) {
                             HorizontalDivider(
-                                color = IntelliJColors.border,
+                                color = LocalIntelliJColors.current.border,
                                 modifier = Modifier.padding(vertical = Spacing.xs.dp),
                             )
                         }
@@ -118,7 +119,7 @@ private fun MarkedStringContent(content: MarkedString) {
             // Simple markdown rendering (just plain text for now)
             Text(
                 text = content.value,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
             )
@@ -131,7 +132,7 @@ private fun MarkedStringContent(content: MarkedString) {
                     Modifier
                         .fillMaxWidth()
                         .background(
-                            IntelliJColors.surfaceContainer,
+                            LocalIntelliJColors.current.surfaceContainer,
                             RoundedCornerShape(4.dp),
                         ).padding(Spacing.sm.dp),
             ) {
@@ -139,7 +140,7 @@ private fun MarkedStringContent(content: MarkedString) {
                 if (content.language.isNotBlank()) {
                     Text(
                         text = content.language,
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(bottom = Spacing.xs.dp),
@@ -148,7 +149,7 @@ private fun MarkedStringContent(content: MarkedString) {
                 // Code content
                 Text(
                     text = content.value,
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 12.sp,
                     fontFamily = JetaProgFonts.codeFont,
                     lineHeight = 16.sp,

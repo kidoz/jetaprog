@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -53,7 +54,7 @@ public fun MarkdownPreview(
             modifier =
                 modifier
                     .fillMaxSize()
-                    .background(IntelliJColors.background)
+                    .background(LocalIntelliJColors.current.background)
                     .verticalScroll(scrollState)
                     .padding(Spacing.lg.dp),
         ) {
@@ -90,7 +91,7 @@ private fun MarkdownElement(element: MarkdownNode) {
 
         is MarkdownNode.HorizontalRule -> {
             HorizontalDivider(
-                color = IntelliJColors.border,
+                color = LocalIntelliJColors.current.border,
                 modifier = Modifier.padding(vertical = Spacing.md.dp),
             )
         }
@@ -115,7 +116,7 @@ private fun HeaderElement(header: MarkdownNode.Header) {
         text = annotatedText,
         fontSize = fontSize,
         fontWeight = fontWeight,
-        color = IntelliJColors.textPrimary,
+        color = LocalIntelliJColors.current.textPrimary,
         modifier = Modifier.padding(bottom = Spacing.sm.dp),
     )
 }
@@ -127,7 +128,7 @@ private fun ParagraphElement(paragraph: MarkdownNode.Paragraph) {
     Text(
         text = annotatedText,
         fontSize = 14.sp,
-        color = IntelliJColors.textPrimary,
+        color = LocalIntelliJColors.current.textPrimary,
         lineHeight = 22.sp,
     )
 }
@@ -139,14 +140,14 @@ private fun CodeBlockElement(codeBlock: MarkdownNode.CodeBlock) {
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(6.dp))
-                .background(IntelliJColors.terminalBackground)
+                .background(LocalIntelliJColors.current.terminalBackground)
                 .padding(Spacing.md.dp),
     ) {
         if (codeBlock.language.isNotEmpty()) {
             Text(
                 text = codeBlock.language,
                 fontSize = 11.sp,
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 modifier = Modifier.padding(bottom = Spacing.xs.dp),
             )
         }
@@ -161,7 +162,7 @@ private fun CodeBlockElement(codeBlock: MarkdownNode.CodeBlock) {
                 text = codeBlock.code,
                 fontSize = 13.sp,
                 fontFamily = JetaProgFonts.codeFont,
-                color = IntelliJColors.terminalForeground,
+                color = LocalIntelliJColors.current.terminalForeground,
             )
         }
     }
@@ -180,13 +181,13 @@ private fun BlockQuoteElement(blockQuote: MarkdownNode.BlockQuote) {
                 Modifier
                     .width(4.dp)
                     .height(40.dp)
-                    .background(IntelliJColors.accent, RoundedCornerShape(2.dp)),
+                    .background(LocalIntelliJColors.current.accent, RoundedCornerShape(2.dp)),
         )
         Spacer(modifier = Modifier.width(Spacing.md.dp))
         Text(
             text = blockQuote.content,
             fontSize = 14.sp,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontStyle = FontStyle.Italic,
             modifier = Modifier.weight(1f),
         )
@@ -206,13 +207,13 @@ private fun ListItemElement(listItem: MarkdownNode.ListItem) {
         Text(
             text = if (listItem.ordered) "${listItem.number}." else "\u2022",
             fontSize = 14.sp,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.width(24.dp),
         )
         Text(
             text = annotatedText,
             fontSize = 14.sp,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             modifier = Modifier.weight(1f),
         )
     }
@@ -221,6 +222,7 @@ private fun ListItemElement(listItem: MarkdownNode.ListItem) {
 /**
  * Build annotated string with inline formatting (bold, italic, code, links).
  */
+@Composable
 private fun buildInlineAnnotatedString(text: String): AnnotatedString =
     buildAnnotatedString {
         var pos = 0
@@ -234,8 +236,8 @@ private fun buildInlineAnnotatedString(text: String): AnnotatedString =
                         withStyle(
                             SpanStyle(
                                 fontFamily = FontFamily.Monospace,
-                                background = IntelliJColors.surfaceContainer,
-                                color = IntelliJColors.accent,
+                                background = LocalIntelliJColors.current.surfaceContainer,
+                                color = LocalIntelliJColors.current.accent,
                             ),
                         ) {
                             append(text.substring(pos + 1, endPos))
@@ -296,7 +298,7 @@ private fun buildInlineAnnotatedString(text: String): AnnotatedString =
                             withLink(LinkAnnotation.Url(url)) {
                                 withStyle(
                                     SpanStyle(
-                                        color = IntelliJColors.accent,
+                                        color = LocalIntelliJColors.current.accent,
                                         textDecoration = TextDecoration.Underline,
                                     ),
                                 ) {
@@ -324,7 +326,7 @@ private fun buildInlineAnnotatedString(text: String): AnnotatedString =
                             withStyle(
                                 SpanStyle(
                                     fontStyle = FontStyle.Italic,
-                                    color = IntelliJColors.textSecondary,
+                                    color = LocalIntelliJColors.current.textSecondary,
                                 ),
                             ) {
                                 append("[Image: $altText]")

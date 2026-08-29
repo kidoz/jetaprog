@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -74,17 +75,17 @@ public fun IntelliJTextField(
 
     val backgroundColor =
         when {
-            !enabled -> IntelliJColors.backgroundLighter
-            isHovered && !isFocused -> IntelliJColors.inputBackgroundHover
-            else -> IntelliJColors.inputBackground
+            !enabled -> LocalIntelliJColors.current.backgroundLighter
+            isHovered && !isFocused -> LocalIntelliJColors.current.inputBackgroundHover
+            else -> LocalIntelliJColors.current.inputBackground
         }
 
     val borderColor =
         when {
-            error != null -> IntelliJColors.error
-            isFocused -> IntelliJColors.inputBorderFocused
-            isHovered -> IntelliJColors.inputBorderHover
-            else -> IntelliJColors.inputBorder
+            error != null -> LocalIntelliJColors.current.error
+            isFocused -> LocalIntelliJColors.current.inputBorderFocused
+            isHovered -> LocalIntelliJColors.current.inputBorderHover
+            else -> LocalIntelliJColors.current.inputBorder
         }
 
     Column(modifier = modifier) {
@@ -92,7 +93,14 @@ public fun IntelliJTextField(
         label?.let {
             Text(
                 text = it,
-                color = if (error != null) IntelliJColors.error else IntelliJColors.textSecondary,
+                color =
+                    if (error !=
+                        null
+                    ) {
+                        LocalIntelliJColors.current.error
+                    } else {
+                        LocalIntelliJColors.current.textSecondary
+                    },
                 fontSize = 12.sp,
                 fontFamily = JetaProgFonts.codeFont,
                 modifier = Modifier.padding(bottom = Spacing.xs.dp),
@@ -108,11 +116,16 @@ public fun IntelliJTextField(
             visualTransformation = visualTransformation,
             textStyle =
                 TextStyle(
-                    color = if (enabled) IntelliJColors.textPrimary else IntelliJColors.textDisabled,
+                    color =
+                        if (enabled) {
+                            LocalIntelliJColors.current.textPrimary
+                        } else {
+                            LocalIntelliJColors.current.textDisabled
+                        },
                     fontSize = 13.sp,
                     fontFamily = JetaProgFonts.codeFont,
                 ),
-            cursorBrush = SolidColor(IntelliJColors.accent),
+            cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -133,7 +146,7 @@ public fun IntelliJTextField(
                         if (value.isEmpty()) {
                             Text(
                                 text = placeholder,
-                                color = IntelliJColors.inputPlaceholder,
+                                color = LocalIntelliJColors.current.inputPlaceholder,
                                 fontSize = 13.sp,
                                 fontFamily = JetaProgFonts.codeFont,
                             )
@@ -156,7 +169,7 @@ public fun IntelliJTextField(
         error?.let {
             Text(
                 text = it,
-                color = IntelliJColors.error,
+                color = LocalIntelliJColors.current.error,
                 fontSize = 11.sp,
                 fontFamily = JetaProgFonts.codeFont,
                 modifier = Modifier.padding(top = Spacing.xxs.dp),

@@ -53,6 +53,7 @@ import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -144,7 +145,7 @@ public fun CommandPalette(
                 ) {
                     Text(
                         text = emptyMessage(state.query),
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = FONT_BODY.sp,
                     )
                 }
@@ -214,7 +215,7 @@ private fun PaletteInput(
         Icon(
             imageVector = Icons.Default.Bolt,
             contentDescription = null,
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(Dimensions.iconLg.dp),
         )
 
@@ -223,10 +224,10 @@ private fun PaletteInput(
             onValueChange = onQueryChange,
             textStyle =
                 TextStyle(
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = FONT_INPUT.sp,
                 ),
-            cursorBrush = SolidColor(IntelliJColors.accent),
+            cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
             singleLine = true,
             modifier =
                 Modifier
@@ -238,7 +239,7 @@ private fun PaletteInput(
                     if (query.isEmpty()) {
                         Text(
                             text = "Run a command...",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = FONT_INPUT.sp,
                         )
                     }
@@ -264,7 +265,7 @@ private fun CommandRow(
         command.category?.takeIf { it.isNotBlank() }?.let { category ->
             Text(
                 text = category,
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = FONT_SMALL.sp,
                 maxLines = 1,
             )
@@ -272,7 +273,7 @@ private fun CommandRow(
 
         Text(
             text = command.title,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = FONT_BODY.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -281,7 +282,7 @@ private fun CommandRow(
 
         Text(
             text = command.id,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = FONT_SMALL.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -295,7 +296,7 @@ private fun PaletteFooter(matchCount: Int) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -308,7 +309,7 @@ private fun PaletteFooter(matchCount: Int) {
 
         Text(
             text = if (matchCount == 1) "1 command" else "$matchCount commands",
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = FONT_SMALL.sp,
         )
     }
@@ -325,19 +326,19 @@ private fun FooterHint(
     ) {
         Text(
             text = shortcut,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = FONT_SMALL.sp,
             fontWeight = FontWeight.Medium,
             modifier =
                 Modifier
                     .background(
-                        IntelliJColors.surfaceContainer,
+                        LocalIntelliJColors.current.surfaceContainer,
                         RoundedCornerShape(Spacing.xxs.dp),
                     ).padding(horizontal = Spacing.xs.dp, vertical = 1.dp),
         )
         Text(
             text = description,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = FONT_SMALL.sp,
         )
     }

@@ -63,6 +63,7 @@ import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.navigation.MatchRange
 import su.kidoz.jetaprog.editor.navigation.NavigationSearchResult
@@ -237,7 +238,7 @@ public fun SearchPopup(
                 ) {
                     Text(
                         text = if (query.isEmpty()) getEmptyHint(mode) else "No matches found",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 13.sp,
                     )
                 }
@@ -258,7 +259,7 @@ private fun SearchModeTabs(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
     ) {
@@ -278,8 +279,8 @@ private fun TabButton(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val backgroundColor = if (isSelected) IntelliJColors.accent else Color.Transparent
-    val textColor = if (isSelected) Color.White else IntelliJColors.textSecondary
+    val backgroundColor = if (isSelected) LocalIntelliJColors.current.accent else Color.Transparent
+    val textColor = if (isSelected) Color.White else LocalIntelliJColors.current.textSecondary
 
     Box(
         modifier =
@@ -317,7 +318,7 @@ private fun SearchInput(
         Icon(
             imageVector = Icons.Default.Search,
             contentDescription = null,
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(20.dp),
         )
 
@@ -326,10 +327,10 @@ private fun SearchInput(
             onValueChange = onQueryChange,
             textStyle =
                 TextStyle(
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 14.sp,
                 ),
-            cursorBrush = SolidColor(IntelliJColors.accent),
+            cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
             singleLine = true,
             modifier =
                 Modifier
@@ -341,7 +342,7 @@ private fun SearchInput(
                     if (query.isEmpty()) {
                         Text(
                             text = placeholder,
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 14.sp,
                         )
                     }
@@ -389,7 +390,7 @@ private fun SearchResultItem(
             result.target.containerName?.let { container ->
                 Text(
                     text = container,
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -399,7 +400,7 @@ private fun SearchResultItem(
             // File path
             Text(
                 text = result.target.filePath.substringAfterLast('/'),
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -414,7 +415,7 @@ private fun SearchFooter(mode: SearchMode) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
     ) {
@@ -438,19 +439,19 @@ private fun FooterHint(
     ) {
         Text(
             text = shortcut,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             modifier =
                 Modifier
                     .background(
-                        IntelliJColors.surfaceContainer,
+                        LocalIntelliJColors.current.surfaceContainer,
                         RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 4.dp, vertical = 1.dp),
         )
         Text(
             text = description,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
         )
     }
@@ -459,6 +460,7 @@ private fun FooterHint(
 /**
  * Highlight matching characters in the text.
  */
+@Composable
 private fun highlightMatches(
     text: String,
     matchRanges: List<MatchRange>,
@@ -472,14 +474,14 @@ private fun highlightMatches(
             val end = (range.endInclusive + 1).coerceIn(0, text.length)
 
             if (start > lastEnd) {
-                withStyle(SpanStyle(color = IntelliJColors.textPrimary)) {
+                withStyle(SpanStyle(color = LocalIntelliJColors.current.textPrimary)) {
                     append(text.substring(lastEnd, start))
                 }
             }
             if (start < end) {
                 withStyle(
                     SpanStyle(
-                        color = IntelliJColors.accent,
+                        color = LocalIntelliJColors.current.accent,
                         fontWeight = FontWeight.Bold,
                     ),
                 ) {
@@ -490,7 +492,7 @@ private fun highlightMatches(
         }
 
         if (lastEnd < text.length) {
-            withStyle(SpanStyle(color = IntelliJColors.textPrimary)) {
+            withStyle(SpanStyle(color = LocalIntelliJColors.current.textPrimary)) {
                 append(text.substring(lastEnd))
             }
         }
@@ -546,24 +548,25 @@ private fun NavigationSymbolKind.toIcon(): ImageVector =
         else -> Icons.Default.Code
     }
 
+@Composable
 private fun NavigationSymbolKind.toColor(): Color =
     when (this) {
         NavigationSymbolKind.CLASS,
         NavigationSymbolKind.INTERFACE,
         NavigationSymbolKind.TRAIT,
-        -> IntelliJColors.iconKotlin
+        -> LocalIntelliJColors.current.iconKotlin
 
         NavigationSymbolKind.FUNCTION,
         NavigationSymbolKind.METHOD,
-        -> IntelliJColors.iconJava
+        -> LocalIntelliJColors.current.iconJava
 
-        NavigationSymbolKind.ENUM -> IntelliJColors.iconRust
+        NavigationSymbolKind.ENUM -> LocalIntelliJColors.current.iconRust
 
-        NavigationSymbolKind.FILE -> IntelliJColors.iconFile
+        NavigationSymbolKind.FILE -> LocalIntelliJColors.current.iconFile
 
         NavigationSymbolKind.NAMESPACE,
         NavigationSymbolKind.PACKAGE,
-        -> IntelliJColors.iconFolder
+        -> LocalIntelliJColors.current.iconFolder
 
-        else -> IntelliJColors.textSecondary
+        else -> LocalIntelliJColors.current.textSecondary
     }

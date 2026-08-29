@@ -44,6 +44,7 @@ import su.kidoz.jetaprog.app.ui.panels.FileBadge
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /** A named color for the palette swatch grid. */
@@ -52,25 +53,28 @@ private data class Swatch(
     val color: Color,
 )
 
-private val PALETTE: List<Swatch> =
-    listOf(
-        Swatch("background", IntelliJColors.background),
-        Swatch("backgroundDarker", IntelliJColors.backgroundDarker),
-        Swatch("surface", IntelliJColors.surface),
-        Swatch("surfaceElevated", IntelliJColors.surfaceElevated),
-        Swatch("surfaceHover", IntelliJColors.surfaceHover),
-        Swatch("accent", IntelliJColors.accent),
-        Swatch("accentSubtle", IntelliJColors.accentSubtle),
-        Swatch("treeSelectionBackground", IntelliJColors.treeSelectionBackground),
-        Swatch("success", IntelliJColors.success),
-        Swatch("warning", IntelliJColors.warning),
-        Swatch("error", IntelliJColors.error),
-        Swatch("info", IntelliJColors.info),
-        Swatch("iconKotlin", IntelliJColors.iconKotlin),
-        Swatch("iconFolder", IntelliJColors.iconFolder),
-        Swatch("editorCurrentLine", IntelliJColors.editorCurrentLine),
-        Swatch("editorSelectionActive", IntelliJColors.editorSelectionActive),
+@Composable
+private fun paletteSwatches(): List<Swatch> {
+    val palette = LocalIntelliJColors.current
+    return listOf(
+        Swatch("background", palette.background),
+        Swatch("backgroundDarker", palette.backgroundDarker),
+        Swatch("surface", palette.surface),
+        Swatch("surfaceElevated", palette.surfaceElevated),
+        Swatch("surfaceHover", palette.surfaceHover),
+        Swatch("accent", palette.accent),
+        Swatch("accentSubtle", palette.accentSubtle),
+        Swatch("treeSelectionBackground", palette.treeSelectionBackground),
+        Swatch("success", palette.success),
+        Swatch("warning", palette.warning),
+        Swatch("error", palette.error),
+        Swatch("info", palette.info),
+        Swatch("iconKotlin", palette.iconKotlin),
+        Swatch("iconFolder", palette.iconFolder),
+        Swatch("editorCurrentLine", palette.editorCurrentLine),
+        Swatch("editorSelectionActive", palette.editorSelectionActive),
     )
+}
 
 private val SPACING_STEPS: List<Pair<String, Int>> =
     listOf(
@@ -95,7 +99,7 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .fillMaxSize()
-                .background(IntelliJColors.background)
+                .background(LocalIntelliJColors.current.background)
                 .verticalScroll(rememberScrollState())
                 .padding(Spacing.xl.dp),
         verticalArrangement = Arrangement.spacedBy(Spacing.xl.dp),
@@ -143,7 +147,7 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search files",
-                            tint = IntelliJColors.textSecondary,
+                            tint = LocalIntelliJColors.current.textSecondary,
                             modifier = Modifier.size(Dimensions.iconMd.dp),
                         )
                     },
@@ -159,7 +163,7 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
                         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
                     ) {
                         FileBadge(fileName = name)
-                        Text(text = name, color = IntelliJColors.textSecondary, fontSize = 12.sp)
+                        Text(text = name, color = LocalIntelliJColors.current.textSecondary, fontSize = 12.sp)
                     }
                 }
             }
@@ -172,7 +176,7 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
             ) {
                 listOf("Open recent project", "Reload from disk", "Reveal in Finder").forEachIndexed { index, label ->
                     PopupListRow(selected = index == selected, onClick = { selected = index }) {
-                        Text(text = label, color = IntelliJColors.textPrimary, fontSize = 13.sp)
+                        Text(text = label, color = LocalIntelliJColors.current.textPrimary, fontSize = 13.sp)
                     }
                 }
             }
@@ -189,7 +193,7 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp),
                 verticalArrangement = Arrangement.spacedBy(Spacing.md.dp),
             ) {
-                PALETTE.forEach { SwatchCard(it) }
+                paletteSwatches().forEach { SwatchCard(it) }
             }
         }
 
@@ -202,7 +206,7 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
                     ) {
                         Text(
                             text = "$name ($value)",
-                            color = IntelliJColors.textSecondary,
+                            color = LocalIntelliJColors.current.textSecondary,
                             fontSize = 12.sp,
                             modifier = Modifier.width(80.dp),
                         )
@@ -212,7 +216,7 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
                                     .size(
                                         width = (value * 6).dp,
                                         height = 12.dp,
-                                    ).background(IntelliJColors.accent),
+                                    ).background(LocalIntelliJColors.current.accent),
                         )
                     }
                 }
@@ -245,7 +249,7 @@ private fun GallerySection(
     ) {
         Text(
             text = title.uppercase(),
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
             letterSpacing = 2.sp,
             fontFamily = JetaProgFonts.codeFont,
@@ -261,12 +265,12 @@ private fun SwatchCard(swatch: Swatch) {
             Modifier
                 .width(150.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(IntelliJColors.surface),
+                .background(LocalIntelliJColors.current.surface),
     ) {
         Box(modifier = Modifier.fillMaxWidth().size(height = 48.dp, width = 150.dp).background(swatch.color))
         Text(
             text = swatch.name,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 11.sp,
             fontFamily = JetaProgFonts.codeFont,
             modifier = Modifier.padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),

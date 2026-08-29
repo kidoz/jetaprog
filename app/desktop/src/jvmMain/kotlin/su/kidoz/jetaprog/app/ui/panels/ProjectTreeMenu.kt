@@ -27,6 +27,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /** An entry in the project tree context menu. */
@@ -62,7 +63,7 @@ public fun ProjectTreeContextMenu(
                     .width(180.dp)
                     .shadow(8.dp, RoundedCornerShape(Dimensions.cornerRadius.dp))
                     .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .background(IntelliJColors.popupBackground)
+                    .background(LocalIntelliJColors.current.popupBackground)
                     .padding(vertical = Spacing.xs.dp),
         ) {
             items.forEachIndexed { index, item ->
@@ -85,12 +86,12 @@ private fun ProjectTreeMenuRow(
 
     Text(
         text = item.label,
-        color = if (item.isDestructive) IntelliJColors.error else IntelliJColors.textPrimary,
+        color = if (item.isDestructive) LocalIntelliJColors.current.error else LocalIntelliJColors.current.textPrimary,
         fontSize = 13.sp,
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(if (isHovered) IntelliJColors.surfaceHover else Color.Transparent)
+                .background(if (isHovered) LocalIntelliJColors.current.surfaceHover else Color.Transparent)
                 .hoverable(interactionSource)
                 .clickable {
                     onDismiss()
@@ -107,6 +108,6 @@ private fun MenuSeparator() {
                 .fillMaxWidth()
                 .padding(vertical = Spacing.xs.dp)
                 .height(Dimensions.splitterThickness.dp)
-                .background(IntelliJColors.divider),
+                .background(LocalIntelliJColors.current.divider),
     )
 }

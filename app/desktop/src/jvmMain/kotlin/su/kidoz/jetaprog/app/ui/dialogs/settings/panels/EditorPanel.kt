@@ -21,6 +21,7 @@ import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingRow
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingSection
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.model.EditorSettings
 
@@ -66,13 +67,13 @@ public fun EditorPanel(
                         onClick = { onIntent(SettingsIntent.SetUseTabs(false)) },
                         colors =
                             RadioButtonDefaults.colors(
-                                selectedColor = IntelliJColors.accent,
-                                unselectedColor = IntelliJColors.textSecondary,
+                                selectedColor = LocalIntelliJColors.current.accent,
+                                unselectedColor = LocalIntelliJColors.current.textSecondary,
                             ),
                     )
                     Text(
                         text = "Spaces",
-                        color = IntelliJColors.textPrimary,
+                        color = LocalIntelliJColors.current.textPrimary,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(end = Spacing.md.dp),
                     )
@@ -82,13 +83,13 @@ public fun EditorPanel(
                         onClick = { onIntent(SettingsIntent.SetUseTabs(true)) },
                         colors =
                             RadioButtonDefaults.colors(
-                                selectedColor = IntelliJColors.accent,
-                                unselectedColor = IntelliJColors.textSecondary,
+                                selectedColor = LocalIntelliJColors.current.accent,
+                                unselectedColor = LocalIntelliJColors.current.textSecondary,
                             ),
                     )
                     Text(
                         text = "Tabs",
-                        color = IntelliJColors.textPrimary,
+                        color = LocalIntelliJColors.current.textPrimary,
                         fontSize = 13.sp,
                     )
                 }

@@ -73,6 +73,7 @@ import su.kidoz.jetaprog.app.ui.dialogs.projectfile.ProjectFileDeleteDialog
 import su.kidoz.jetaprog.app.ui.dialogs.projectfile.ProjectFileNameDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.search.ProjectTextSearcher
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -179,7 +180,7 @@ public fun ProjectPanel(
         modifier =
             modifier
                 .fillMaxHeight()
-                .background(IntelliJColors.treeBackground),
+                .background(LocalIntelliJColors.current.treeBackground),
     ) {
         // Header
         Row(
@@ -187,13 +188,13 @@ public fun ProjectPanel(
                 Modifier
                     .fillMaxWidth()
                     .height(Dimensions.panelHeaderHeight.dp)
-                    .background(IntelliJColors.toolWindowHeader)
+                    .background(LocalIntelliJColors.current.toolWindowHeader)
                     .padding(horizontal = Spacing.md.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = "Project",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
             )
@@ -537,8 +538,8 @@ private fun ProjectTreeNode(
 
     val backgroundColor =
         when {
-            isSelected -> IntelliJColors.treeSelectionBackground
-            isHovered -> IntelliJColors.treeHoverBackground
+            isSelected -> LocalIntelliJColors.current.treeSelectionBackground
+            isHovered -> LocalIntelliJColors.current.treeHoverBackground
             else -> Color.Transparent
         }
 
@@ -576,7 +577,7 @@ private fun ProjectTreeNode(
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
                     contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                     modifier =
                         Modifier
                             .size(18.dp)
@@ -591,7 +592,12 @@ private fun ProjectTreeNode(
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
                     contentDescription = null,
-                    tint = if (isIgnored) IntelliJColors.treeForegroundIgnored else IntelliJColors.iconFolder,
+                    tint =
+                        if (isIgnored) {
+                            LocalIntelliJColors.current.treeForegroundIgnored
+                        } else {
+                            LocalIntelliJColors.current.iconFolder
+                        },
                     modifier = Modifier.size(18.dp).padding(end = Spacing.xs.dp),
                 )
             } else {
@@ -617,11 +623,11 @@ private fun ProjectTreeNode(
                             isSelected -> Color.White
 
                             // Excluded by .gitignore — dimmed, the way IntelliJ and VS Code show it.
-                            isIgnored -> IntelliJColors.treeForegroundIgnored
+                            isIgnored -> LocalIntelliJColors.current.treeForegroundIgnored
 
-                            isRoot -> IntelliJColors.textPrimary
+                            isRoot -> LocalIntelliJColors.current.textPrimary
 
-                            else -> IntelliJColors.treeForeground
+                            else -> LocalIntelliJColors.current.treeForeground
                         },
                     fontSize = 13.sp,
                     fontWeight = if (isRoot) FontWeight.Bold else FontWeight.Normal,
@@ -652,7 +658,7 @@ private fun ProjectTreeNode(
                         .align(Alignment.CenterStart)
                         .width(2.dp)
                         .height(Dimensions.treeNodeHeight.dp)
-                        .background(IntelliJColors.treeSelectionAccent),
+                        .background(LocalIntelliJColors.current.treeSelectionAccent),
             )
         }
     }
@@ -685,15 +691,15 @@ private fun InlineNameEditor(
         singleLine = true,
         textStyle =
             TextStyle(
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
             ),
-        cursorBrush = SolidColor(IntelliJColors.accent),
+        cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
         modifier =
             Modifier
                 .widthIn(min = 120.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .background(IntelliJColors.inputBackground)
+                .background(LocalIntelliJColors.current.inputBackground)
                 .padding(horizontal = Spacing.xs.dp)
                 .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
@@ -742,7 +748,7 @@ private fun IndentGuide() {
                     .align(Alignment.CenterStart)
                     .width(1.dp)
                     .fillMaxHeight()
-                    .background(IntelliJColors.treeIndentGuide),
+                    .background(LocalIntelliJColors.current.treeIndentGuide),
         )
     }
 }
@@ -757,28 +763,28 @@ private fun FileTypeIcon(
 
     val (typeColor, label) =
         when (extension) {
-            "kt" -> IntelliJColors.iconKotlin to "K"
-            "kts" -> IntelliJColors.iconKotlin to "K"
-            "java" -> IntelliJColors.iconJava to "J"
-            "rs" -> IntelliJColors.iconRust to "R"
-            "cpp", "cc", "cxx", "c", "h", "hpp" -> IntelliJColors.iconCpp to "C"
-            "vala", "vapi" -> IntelliJColors.iconVala to "V"
-            "xml" -> Color(0xFFCC7832) to "X"
-            "json" -> Color(0xFF6A8759) to "{"
-            "md" -> Color(0xFF6897BB) to "M"
-            "gradle" -> Color(0xFF499C54) to "G"
-            "yaml", "yml" -> Color(0xFFCC7832) to "Y"
-            "toml" -> Color(0xFFE76D50) to "T"
-            "properties" -> Color(0xFF6897BB) to "P"
-            "txt" -> IntelliJColors.textSecondary to "T"
-            "py" -> Color(0xFF3776AB) to "P"
-            "js", "jsx" -> Color(0xFFF7DF1E) to "J"
-            "ts", "tsx" -> Color(0xFF3178C6) to "T"
-            "gitignore" -> IntelliJColors.iconGit to "G"
-            else -> IntelliJColors.iconFile to ""
+            "kt" -> LocalIntelliJColors.current.iconKotlin to "K"
+            "kts" -> LocalIntelliJColors.current.iconKotlin to "K"
+            "java" -> LocalIntelliJColors.current.iconJava to "J"
+            "rs" -> LocalIntelliJColors.current.iconRust to "R"
+            "cpp", "cc", "cxx", "c", "h", "hpp" -> LocalIntelliJColors.current.iconCpp to "C"
+            "vala", "vapi" -> LocalIntelliJColors.current.iconVala to "V"
+            "xml" -> LocalIntelliJColors.current.fileIconMarkup to "X"
+            "json" -> LocalIntelliJColors.current.fileIconData to "{"
+            "md" -> LocalIntelliJColors.current.fileIconMarkdown to "M"
+            "gradle" -> LocalIntelliJColors.current.fileIconGradle to "G"
+            "yaml", "yml" -> LocalIntelliJColors.current.fileIconMarkup to "Y"
+            "toml" -> LocalIntelliJColors.current.fileIconToml to "T"
+            "properties" -> LocalIntelliJColors.current.fileIconData to "P"
+            "txt" -> LocalIntelliJColors.current.textSecondary to "T"
+            "py" -> LocalIntelliJColors.current.iconPython to "P"
+            "js", "jsx" -> LocalIntelliJColors.current.fileIconJavascript to "J"
+            "ts", "tsx" -> LocalIntelliJColors.current.fileIconTypescript to "T"
+            "gitignore" -> LocalIntelliJColors.current.iconGit to "G"
+            else -> LocalIntelliJColors.current.iconFile to ""
         }
 
-    val color = if (isIgnored) IntelliJColors.treeForegroundIgnored else typeColor
+    val color = if (isIgnored) LocalIntelliJColors.current.treeForegroundIgnored else typeColor
 
     Box(
         modifier =

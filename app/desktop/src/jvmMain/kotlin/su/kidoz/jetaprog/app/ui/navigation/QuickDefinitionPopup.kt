@@ -49,6 +49,7 @@ import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.navigation.NavigationSymbolKind
 import su.kidoz.jetaprog.editor.navigation.QuickInfo
@@ -109,7 +110,7 @@ public fun QuickDefinitionPopup(
             )
 
             HorizontalDivider(
-                color = IntelliJColors.border,
+                color = LocalIntelliJColors.current.border,
                 thickness = 1.dp,
             )
 
@@ -117,7 +118,7 @@ public fun QuickDefinitionPopup(
             quickInfo.signature?.let { signature ->
                 SignatureSection(signature = signature)
                 HorizontalDivider(
-                    color = IntelliJColors.border,
+                    color = LocalIntelliJColors.current.border,
                     thickness = 1.dp,
                 )
             }
@@ -131,7 +132,7 @@ public fun QuickDefinitionPopup(
             quickInfo.documentation?.let { documentation ->
                 if (quickInfo.definitionPreview != null) {
                     HorizontalDivider(
-                        color = IntelliJColors.border,
+                        color = LocalIntelliJColors.current.border,
                         thickness = 1.dp,
                     )
                 }
@@ -153,7 +154,7 @@ private fun QuickDefinitionHeader(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
@@ -172,7 +173,7 @@ private fun QuickDefinitionHeader(
         ) {
             Text(
                 text = quickInfo.symbol.name,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -181,7 +182,7 @@ private fun QuickDefinitionHeader(
             quickInfo.symbol.containerName?.let { container ->
                 Text(
                     text = container,
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -192,7 +193,7 @@ private fun QuickDefinitionHeader(
         // File location
         Text(
             text = quickInfo.symbol.filePath.substringAfterLast('/'),
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
         )
 
@@ -204,7 +205,7 @@ private fun QuickDefinitionHeader(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                 contentDescription = "Go to definition",
-                tint = IntelliJColors.textSecondary,
+                tint = LocalIntelliJColors.current.textSecondary,
                 modifier = Modifier.size(16.dp),
             )
         }
@@ -217,12 +218,12 @@ private fun SignatureSection(signature: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceContainer)
+                .background(LocalIntelliJColors.current.surfaceContainer)
                 .padding(Spacing.md.dp),
     ) {
         Text(
             text = signature,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
             fontFamily = JetaProgFonts.codeFont,
             maxLines = 3,
@@ -241,7 +242,7 @@ private fun DefinitionPreviewSection(preview: String) {
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 100.dp, max = 300.dp)
-                .background(IntelliJColors.editorBackground),
+                .background(LocalIntelliJColors.current.editorBackground),
     ) {
         Box(
             modifier =
@@ -261,7 +262,7 @@ private fun DefinitionPreviewSection(preview: String) {
                     lines.forEachIndexed { index, _ ->
                         Text(
                             text = "${index + 1}",
-                            color = IntelliJColors.lineNumberText,
+                            color = LocalIntelliJColors.current.lineNumberText,
                             fontSize = 12.sp,
                             fontFamily = JetaProgFonts.codeFont,
                         )
@@ -273,7 +274,7 @@ private fun DefinitionPreviewSection(preview: String) {
                     lines.forEach { line ->
                         Text(
                             text = line.ifEmpty { " " },
-                            color = IntelliJColors.textPrimary,
+                            color = LocalIntelliJColors.current.textPrimary,
                             fontSize = 12.sp,
                             fontFamily = JetaProgFonts.codeFont,
                         )
@@ -307,7 +308,7 @@ private fun DocumentationSection(documentation: String) {
         ) {
             Text(
                 text = documentation,
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 12.sp,
                 lineHeight = 18.sp,
             )
@@ -325,7 +326,7 @@ private fun QuickDefinitionFooter() {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
     ) {
@@ -345,19 +346,19 @@ private fun QuickDefFooterHint(
     ) {
         Text(
             text = shortcut,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             modifier =
                 Modifier
                     .background(
-                        IntelliJColors.surfaceContainer,
+                        LocalIntelliJColors.current.surfaceContainer,
                         RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 4.dp, vertical = 1.dp),
         )
         Text(
             text = description,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
         )
     }
@@ -383,18 +384,19 @@ private fun NavigationSymbolKind.toQuickDefIcon(): ImageVector =
         else -> Icons.Default.Code
     }
 
+@Composable
 private fun NavigationSymbolKind.toQuickDefColor(): Color =
     when (this) {
         NavigationSymbolKind.CLASS,
         NavigationSymbolKind.INTERFACE,
         NavigationSymbolKind.TRAIT,
-        -> IntelliJColors.iconKotlin
+        -> LocalIntelliJColors.current.iconKotlin
 
         NavigationSymbolKind.FUNCTION,
         NavigationSymbolKind.METHOD,
-        -> IntelliJColors.iconJava
+        -> LocalIntelliJColors.current.iconJava
 
-        NavigationSymbolKind.ENUM -> IntelliJColors.iconRust
+        NavigationSymbolKind.ENUM -> LocalIntelliJColors.current.iconRust
 
-        else -> IntelliJColors.textSecondary
+        else -> LocalIntelliJColors.current.textSecondary
     }

@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -52,18 +53,18 @@ public fun IntelliJCheckbox(
 
     val backgroundColor =
         when {
-            !enabled && checked -> IntelliJColors.accent.copy(alpha = 0.5f)
-            checked -> IntelliJColors.accent
-            isHovered -> IntelliJColors.inputBackgroundHover
-            else -> IntelliJColors.inputBackground
+            !enabled && checked -> LocalIntelliJColors.current.accent.copy(alpha = 0.5f)
+            checked -> LocalIntelliJColors.current.accent
+            isHovered -> LocalIntelliJColors.current.inputBackgroundHover
+            else -> LocalIntelliJColors.current.inputBackground
         }
 
     val borderColor =
         when {
-            !enabled -> IntelliJColors.inputBorder.copy(alpha = 0.5f)
-            checked -> IntelliJColors.accent
-            isHovered -> IntelliJColors.inputBorderHover
-            else -> IntelliJColors.inputBorder
+            !enabled -> LocalIntelliJColors.current.inputBorder.copy(alpha = 0.5f)
+            checked -> LocalIntelliJColors.current.accent
+            isHovered -> LocalIntelliJColors.current.inputBorderHover
+            else -> LocalIntelliJColors.current.inputBorder
         }
 
     Row(
@@ -102,7 +103,12 @@ public fun IntelliJCheckbox(
         label?.let {
             Text(
                 text = it,
-                color = if (enabled) IntelliJColors.textPrimary else IntelliJColors.textDisabled,
+                color =
+                    if (enabled) {
+                        LocalIntelliJColors.current.textPrimary
+                    } else {
+                        LocalIntelliJColors.current.textDisabled
+                    },
                 fontSize = 13.sp,
                 modifier = Modifier.padding(start = Spacing.sm.dp),
             )

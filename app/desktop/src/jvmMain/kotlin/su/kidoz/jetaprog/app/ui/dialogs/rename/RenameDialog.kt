@@ -32,6 +32,7 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.dialogs.DialogContainer
 import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -85,7 +86,7 @@ public fun RenameDialog(
         ) {
             Text(
                 text = "Rename ${plan.symbolName}",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
             )
@@ -101,7 +102,7 @@ public fun RenameDialog(
 
             Text(
                 text = renameSummary(plan),
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
             )
             Spacer(modifier = Modifier.height(Spacing.lg.dp))

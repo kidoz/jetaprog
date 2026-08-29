@@ -16,22 +16,27 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.vcs.GitChange
 import su.kidoz.jetaprog.vcs.GitChangeType
 import kotlin.math.abs
 
-/** Deterministic avatar/graph palette for commit authors. */
-internal val GIT_AVATAR_PALETTE: List<Color> =
+/** Deterministic avatar/graph palette for commit authors, from the active theme. */
+@Composable
+internal fun gitAvatarPalette(): List<Color> =
     listOf(
-        Color(0xFF5B9BD5),
-        Color(0xFF7F52FF),
-        Color(0xFF59A869),
-        Color(0xFFE0883C),
-        Color(0xFF9876AA),
+        LocalIntelliJColors.current.accent,
+        LocalIntelliJColors.current.brandGradientEnd,
+        LocalIntelliJColors.current.success,
+        LocalIntelliJColors.current.iconJava,
+        LocalIntelliJColors.current.debugVarName,
     )
 
-/** Picks a stable color for [seed] (e.g. an author name or branch ref). */
-internal fun gitColorFor(seed: String): Color = GIT_AVATAR_PALETTE[abs(seed.hashCode()) % GIT_AVATAR_PALETTE.size]
+/** Picks a stable color for [seed] (e.g. an author name or branch ref) from [palette]. */
+internal fun gitColorFor(
+    seed: String,
+    palette: List<Color>,
+): Color = palette[abs(seed.hashCode()) % palette.size]
 
 /** Up to two uppercase initials for an author display name. */
 internal fun authorInitials(author: String): String =
@@ -50,7 +55,7 @@ internal fun Avatar(
     size: Dp = 18.dp,
 ) {
     Box(
-        modifier = Modifier.size(size).clip(CircleShape).background(gitColorFor(author)),
+        modifier = Modifier.size(size).clip(CircleShape).background(gitColorFor(author, gitAvatarPalette())),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = authorInitials(author), color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -69,14 +74,15 @@ internal fun FileBadge(fileName: String) {
     }
 }
 
+@Composable
 internal fun badgeFor(fileName: String): Pair<Color, String> =
     when (fileName.substringAfterLast('.', "").lowercase()) {
-        "kt", "kts" -> IntelliJColors.iconKotlin to "K"
-        "java" -> IntelliJColors.iconJava to "J"
-        "rs" -> IntelliJColors.iconRust to "R"
-        "py" -> IntelliJColors.iconPython to "P"
-        "" -> IntelliJColors.iconFile to "•"
-        else -> IntelliJColors.iconFile to fileName.first().uppercase()
+        "kt", "kts" -> LocalIntelliJColors.current.iconKotlin to "K"
+        "java" -> LocalIntelliJColors.current.iconJava to "J"
+        "rs" -> LocalIntelliJColors.current.iconRust to "R"
+        "py" -> LocalIntelliJColors.current.iconPython to "P"
+        "" -> LocalIntelliJColors.current.iconFile to "•"
+        else -> LocalIntelliJColors.current.iconFile to fileName.first().uppercase()
     }
 
 internal fun GitChangeType.statusLabel(): String =
@@ -94,14 +100,14 @@ internal fun GitChangeType.statusLabel(): String =
 @Composable
 internal fun GitChangeType.statusColor(): Color =
     when (this) {
-        GitChangeType.ADDED -> IntelliJColors.success
-        GitChangeType.MODIFIED -> IntelliJColors.info
-        GitChangeType.DELETED -> IntelliJColors.error
-        GitChangeType.RENAMED -> IntelliJColors.warning
-        GitChangeType.COPIED -> IntelliJColors.warning
-        GitChangeType.UNTRACKED -> IntelliJColors.textSecondary
-        GitChangeType.CONFLICTED -> IntelliJColors.error
-        GitChangeType.UNKNOWN -> IntelliJColors.textMuted
+        GitChangeType.ADDED -> LocalIntelliJColors.current.success
+        GitChangeType.MODIFIED -> LocalIntelliJColors.current.info
+        GitChangeType.DELETED -> LocalIntelliJColors.current.error
+        GitChangeType.RENAMED -> LocalIntelliJColors.current.warning
+        GitChangeType.COPIED -> LocalIntelliJColors.current.warning
+        GitChangeType.UNTRACKED -> LocalIntelliJColors.current.textSecondary
+        GitChangeType.CONFLICTED -> LocalIntelliJColors.current.error
+        GitChangeType.UNKNOWN -> LocalIntelliJColors.current.textMuted
     }
 
 internal fun GitChange.fileName(): String = path.substringAfterLast('/')

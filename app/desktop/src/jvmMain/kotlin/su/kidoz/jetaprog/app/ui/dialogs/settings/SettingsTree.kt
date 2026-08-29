@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.SettingsCategory
 
@@ -68,7 +69,7 @@ public fun SettingsTree(
         if (visibleCategories.isEmpty()) {
             Text(
                 text = "Nothing matches \"$query\"",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(Spacing.sm.dp),
             )
@@ -121,9 +122,9 @@ private fun CategoryTreeItem(
                     .clip(RoundedCornerShape(6.dp))
                     .background(
                         when {
-                            isSelected && selectedSubItem == null -> IntelliJColors.treeSelectionBackground
-                            isHovered -> IntelliJColors.surfaceHover
-                            else -> IntelliJColors.backgroundDarker
+                            isSelected && selectedSubItem == null -> LocalIntelliJColors.current.treeSelectionBackground
+                            isHovered -> LocalIntelliJColors.current.surfaceHover
+                            else -> LocalIntelliJColors.current.backgroundDarker
                         },
                     ).hoverable(interactionSource)
                     .clickable {
@@ -137,7 +138,7 @@ private fun CategoryTreeItem(
                 Icon(
                     imageVector = if (isExpanded) Icons.Outlined.ExpandMore else Icons.Outlined.ChevronRight,
                     contentDescription = null,
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.size(16.dp),
                 )
             } else {
@@ -148,7 +149,12 @@ private fun CategoryTreeItem(
             Icon(
                 imageVector = getCategoryIcon(category),
                 contentDescription = null,
-                tint = if (isSelected) IntelliJColors.accent else IntelliJColors.textSecondary,
+                tint =
+                    if (isSelected) {
+                        LocalIntelliJColors.current.accent
+                    } else {
+                        LocalIntelliJColors.current.textSecondary
+                    },
                 modifier =
                     Modifier
                         .padding(start = Spacing.xs.dp)
@@ -158,7 +164,12 @@ private fun CategoryTreeItem(
             // Category name
             Text(
                 text = category.displayName,
-                color = if (isSelected) IntelliJColors.textPrimary else IntelliJColors.textSecondary,
+                color =
+                    if (isSelected) {
+                        LocalIntelliJColors.current.textPrimary
+                    } else {
+                        LocalIntelliJColors.current.textSecondary
+                    },
                 fontSize = 13.sp,
                 modifier = Modifier.padding(start = Spacing.sm.dp),
             )
@@ -195,9 +206,9 @@ private fun SubItemTreeItem(
                 .clip(RoundedCornerShape(6.dp))
                 .background(
                     when {
-                        isSelected -> IntelliJColors.treeSelectionBackground
-                        isHovered -> IntelliJColors.surfaceHover
-                        else -> IntelliJColors.backgroundDarker
+                        isSelected -> LocalIntelliJColors.current.treeSelectionBackground
+                        isHovered -> LocalIntelliJColors.current.surfaceHover
+                        else -> LocalIntelliJColors.current.backgroundDarker
                     },
                 ).hoverable(interactionSource)
                 .clickable(onClick = onSelect)
@@ -206,7 +217,12 @@ private fun SubItemTreeItem(
     ) {
         Text(
             text = name,
-            color = if (isSelected) IntelliJColors.textPrimary else IntelliJColors.textSecondary,
+            color =
+                if (isSelected) {
+                    LocalIntelliJColors.current.textPrimary
+                } else {
+                    LocalIntelliJColors.current.textSecondary
+                },
             fontSize = 12.sp,
         )
     }

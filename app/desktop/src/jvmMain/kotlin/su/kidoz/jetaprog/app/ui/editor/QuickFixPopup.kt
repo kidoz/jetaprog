@@ -29,6 +29,7 @@ import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.state.QuickFixState
 
@@ -88,13 +89,13 @@ private fun QuickFixRow(
         Icon(
             imageVector = Icons.Default.AutoFixHigh,
             contentDescription = null,
-            tint = IntelliJColors.warning,
+            tint = LocalIntelliJColors.current.warning,
             modifier = Modifier.size(14.dp),
         )
         Spacer(modifier = Modifier.width(Spacing.sm.dp))
         Text(
             text = title,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -108,12 +109,12 @@ private fun QuickFixFooter() {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp),
     ) {
-        Text(text = "↑↓ Navigate", color = IntelliJColors.textMuted, fontSize = 10.sp)
-        Text(text = "Enter Apply", color = IntelliJColors.textMuted, fontSize = 10.sp)
-        Text(text = "Esc Close", color = IntelliJColors.textMuted, fontSize = 10.sp)
+        Text(text = "↑↓ Navigate", color = LocalIntelliJColors.current.textMuted, fontSize = 10.sp)
+        Text(text = "Enter Apply", color = LocalIntelliJColors.current.textMuted, fontSize = 10.sp)
+        Text(text = "Esc Close", color = LocalIntelliJColors.current.textMuted, fontSize = 10.sp)
     }
 }

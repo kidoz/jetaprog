@@ -46,6 +46,7 @@ import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.common.completion.CompletionItem
 import su.kidoz.jetaprog.common.completion.CompletionItemKind
@@ -92,12 +93,12 @@ public fun CompletionPopup(
             state.smartTypeName?.let { typeName ->
                 Text(
                     text = "Expected type: $typeName",
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 11.sp,
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(IntelliJColors.surfaceElevated)
+                            .background(LocalIntelliJColors.current.surfaceElevated)
                             .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xxs.dp),
                 )
             }
@@ -118,11 +119,11 @@ public fun CompletionPopup(
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp,
-                            color = IntelliJColors.accent,
+                            color = LocalIntelliJColors.current.accent,
                         )
                         Text(
                             text = "Loading...",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 12.sp,
                         )
                     }
@@ -160,7 +161,7 @@ public fun CompletionPopup(
                 ) {
                     Text(
                         text = "No completions",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 12.sp,
                     )
                 }
@@ -196,7 +197,7 @@ private fun CompletionItemRow(
         // Label
         Text(
             text = item.label,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -207,7 +208,7 @@ private fun CompletionItemRow(
         item.detail?.let { detail ->
             Text(
                 text = detail,
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -219,13 +220,13 @@ private fun CompletionItemRow(
         if (item.insertTextIsSnippet) {
             Text(
                 text = "snippet",
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 9.sp,
                 modifier =
                     Modifier
                         .padding(start = Spacing.sm.dp)
                         .background(
-                            IntelliJColors.surfaceContainer,
+                            LocalIntelliJColors.current.surfaceContainer,
                             RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                         ).padding(horizontal = 3.dp, vertical = 1.dp),
             )
@@ -242,7 +243,7 @@ private fun CompletionFooter() {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp),
     ) {
@@ -266,19 +267,19 @@ private fun FooterHint(
     ) {
         Text(
             text = shortcut,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
             modifier =
                 Modifier
                     .background(
-                        IntelliJColors.surfaceContainer,
+                        LocalIntelliJColors.current.surfaceContainer,
                         RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 3.dp, vertical = 1.dp),
         )
         Text(
             text = description,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 10.sp,
         )
     }
@@ -324,33 +325,34 @@ private fun CompletionItemKind.toIcon(): ImageVector =
 /**
  * Convert CompletionItemKind to a color.
  */
+@Composable
 private fun CompletionItemKind.toColor(): Color =
     when (this) {
         CompletionItemKind.Method,
         CompletionItemKind.Function,
         CompletionItemKind.Constructor,
-        -> IntelliJColors.iconJava
+        -> LocalIntelliJColors.current.iconJava
 
         CompletionItemKind.Class,
         CompletionItemKind.Interface,
         CompletionItemKind.Struct,
-        -> IntelliJColors.iconKotlin
+        -> LocalIntelliJColors.current.iconKotlin
 
         CompletionItemKind.Variable,
         CompletionItemKind.Field,
-        -> IntelliJColors.iconRust
+        -> LocalIntelliJColors.current.iconRust
 
-        CompletionItemKind.Property -> IntelliJColors.iconPython
+        CompletionItemKind.Property -> LocalIntelliJColors.current.iconPython
 
-        CompletionItemKind.Keyword -> IntelliJColors.accent
+        CompletionItemKind.Keyword -> LocalIntelliJColors.current.accent
 
-        CompletionItemKind.Snippet -> IntelliJColors.warning
+        CompletionItemKind.Snippet -> LocalIntelliJColors.current.warning
 
         CompletionItemKind.Enum,
         CompletionItemKind.EnumMember,
-        -> IntelliJColors.info
+        -> LocalIntelliJColors.current.info
 
-        CompletionItemKind.Constant -> IntelliJColors.success
+        CompletionItemKind.Constant -> LocalIntelliJColors.current.success
 
-        else -> IntelliJColors.textSecondary
+        else -> LocalIntelliJColors.current.textSecondary
     }

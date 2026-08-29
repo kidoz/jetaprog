@@ -40,13 +40,15 @@ import su.kidoz.jetaprog.app.ui.theme.Spacing
  * (search, usages, structure, command palette) use the default
  * [Dimensions.cornerRadiusLarge] (8).
  */
+@Composable
 public fun Modifier.popupChrome(cornerRadius: Dp = Dimensions.cornerRadiusLarge.dp): Modifier {
+    val palette = LocalIntelliJColors.current
     val shape = RoundedCornerShape(cornerRadius)
     return this
         .shadow(Elevation.popup.dp, shape)
         .clip(shape)
-        .background(IntelliJColors.popupBackground)
-        .border(Dimensions.splitterThickness.dp, IntelliJColors.popupBorder, shape)
+        .background(palette.popupBackground)
+        .border(Dimensions.splitterThickness.dp, palette.popupBorder, shape)
 }
 
 /**
@@ -77,8 +79,8 @@ public fun PopupListRow(
     val isHovered by interactionSource.collectIsHoveredAsState()
     val background =
         when {
-            selected -> IntelliJColors.treeSelectionBackground
-            isHovered -> IntelliJColors.treeHoverBackground
+            selected -> LocalIntelliJColors.current.treeSelectionBackground
+            isHovered -> LocalIntelliJColors.current.treeHoverBackground
             else -> Color.Transparent
         }
     Box(
@@ -97,7 +99,7 @@ public fun PopupListRow(
                         .align(Alignment.CenterStart)
                         .width(Dimensions.selectionAccentWidth.dp)
                         .fillMaxHeight()
-                        .background(IntelliJColors.treeSelectionAccent),
+                        .background(LocalIntelliJColors.current.treeSelectionAccent),
             )
         }
         Row(

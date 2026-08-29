@@ -85,6 +85,7 @@ import su.kidoz.jetaprog.app.terminal.terminalCellWidth
 import su.kidoz.jetaprog.app.terminal.toTerminalInput
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.TerminalIntent
 import su.kidoz.jetaprog.app.viewmodel.TerminalState
@@ -111,7 +112,7 @@ public fun TerminalPanel(
             modifier
                 .fillMaxWidth()
                 .then(if (embedded) Modifier.fillMaxSize() else Modifier.height(state.panelHeight.dp))
-                .background(IntelliJColors.terminalBackground),
+                .background(LocalIntelliJColors.current.terminalBackground),
     ) {
         // Resize handle at top (the unified bottom panel supplies its own when embedded)
         if (!embedded) {
@@ -165,17 +166,17 @@ public fun TerminalPanel(
                     Icon(
                         imageVector = Icons.Default.Terminal,
                         contentDescription = null,
-                        tint = IntelliJColors.textMuted,
+                        tint = LocalIntelliJColors.current.textMuted,
                         modifier = Modifier.size(48.dp).padding(bottom = Spacing.md.dp),
                     )
                     Text(
                         "No terminal open",
-                        color = IntelliJColors.textSecondary,
+                        color = LocalIntelliJColors.current.textSecondary,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
                         "Click + to create a new terminal",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = Spacing.xs.dp),
                     )
@@ -192,7 +193,7 @@ private fun ResizeHandle(onResize: (Float) -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .height(4.dp)
-                .background(IntelliJColors.borderSubtle)
+                .background(LocalIntelliJColors.current.borderSubtle)
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
@@ -220,7 +221,7 @@ private fun TerminalTabBar(
             Modifier
                 .fillMaxWidth()
                 .height(32.dp)
-                .background(IntelliJColors.terminalHeader),
+                .background(LocalIntelliJColors.current.terminalHeader),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Tabs
@@ -253,7 +254,7 @@ private fun TerminalTabBar(
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "New terminal",
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.size(16.dp),
                 )
             }
@@ -266,7 +267,12 @@ private fun TerminalTabBar(
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = "Search",
-                    tint = if (isSearchVisible) IntelliJColors.accent else IntelliJColors.textSecondary,
+                    tint =
+                        if (isSearchVisible) {
+                            LocalIntelliJColors.current.accent
+                        } else {
+                            LocalIntelliJColors.current.textSecondary
+                        },
                     modifier = Modifier.size(16.dp),
                 )
             }
@@ -279,7 +285,7 @@ private fun TerminalTabBar(
                 Icon(
                     imageVector = Icons.Default.Clear,
                     contentDescription = "Clear",
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.size(16.dp),
                 )
             }
@@ -293,7 +299,7 @@ private fun TerminalTabBar(
                     Icon(
                         imageVector = Icons.Default.Stop,
                         contentDescription = "Kill process",
-                        tint = IntelliJColors.error,
+                        tint = LocalIntelliJColors.current.error,
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -314,11 +320,11 @@ private fun TerminalTabItem(
 
     val backgroundColor =
         when {
-            isActive -> IntelliJColors.terminalBackground
-            isHovered -> IntelliJColors.surfaceHover
+            isActive -> LocalIntelliJColors.current.terminalBackground
+            isHovered -> LocalIntelliJColors.current.surfaceHover
             else -> Color.Transparent
         }
-    val textColor = if (isActive) IntelliJColors.textPrimary else IntelliJColors.textSecondary
+    val textColor = if (isActive) LocalIntelliJColors.current.textPrimary else LocalIntelliJColors.current.textSecondary
 
     Row(
         modifier =
@@ -335,7 +341,7 @@ private fun TerminalTabItem(
         Icon(
             imageVector = Icons.Default.Terminal,
             contentDescription = null,
-            tint = IntelliJColors.terminalGreen,
+            tint = LocalIntelliJColors.current.terminalGreen,
             modifier = Modifier.size(14.dp),
         )
 
@@ -347,7 +353,7 @@ private fun TerminalTabItem(
                 modifier =
                     Modifier
                         .size(6.dp)
-                        .background(IntelliJColors.terminalGreen, RoundedCornerShape(3.dp)),
+                        .background(LocalIntelliJColors.current.terminalGreen, RoundedCornerShape(3.dp)),
             )
             Box(modifier = Modifier.width(4.dp))
         }
@@ -360,7 +366,14 @@ private fun TerminalTabItem(
 
         // Exit code badge
         tab.exitCode?.let { exitCode ->
-            val badgeColor = if (exitCode == 0) IntelliJColors.terminalGreen else IntelliJColors.terminalRed
+            val badgeColor =
+                if (exitCode ==
+                    0
+                ) {
+                    LocalIntelliJColors.current.terminalGreen
+                } else {
+                    LocalIntelliJColors.current.terminalRed
+                }
             Text(
                 text = "[$exitCode]",
                 color = badgeColor,
@@ -404,7 +417,7 @@ private fun SearchBar(
             Modifier
                 .fillMaxWidth()
                 .height(32.dp)
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
@@ -412,7 +425,7 @@ private fun SearchBar(
         Icon(
             imageVector = Icons.Default.Search,
             contentDescription = null,
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(16.dp),
         )
 
@@ -423,9 +436,9 @@ private fun SearchBar(
                 TextStyle(
                     fontFamily = JetaProgFonts.codeFont,
                     fontSize = 13.sp,
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                 ),
-            cursorBrush = SolidColor(IntelliJColors.accent),
+            cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
             singleLine = true,
             modifier =
                 Modifier
@@ -444,7 +457,7 @@ private fun SearchBar(
                     if (query.isEmpty()) {
                         Text(
                             text = "Search terminal output...",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 13.sp,
                         )
                     }
@@ -460,7 +473,7 @@ private fun SearchBar(
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "Close search",
-                tint = IntelliJColors.textSecondary,
+                tint = LocalIntelliJColors.current.textSecondary,
                 modifier = Modifier.size(14.dp),
             )
         }
@@ -636,7 +649,7 @@ private fun TerminalOutputLine(
     val lineModifier = Modifier.horizontalScroll(horizontalScrollState).padding(vertical = 1.dp)
     Text(
         text = line.toAnnotatedString(cursorColumn),
-        color = IntelliJColors.terminalForeground,
+        color = LocalIntelliJColors.current.terminalForeground,
         fontFamily = JetaProgFonts.codeFont,
         fontSize = TERMINAL_FONT_SIZE.sp,
         lineHeight = TERMINAL_LINE_HEIGHT.em,
@@ -654,7 +667,7 @@ private fun TerminalErrorLine(
 ) {
     Text(
         text = text.ifEmpty { " " },
-        color = IntelliJColors.terminalRed,
+        color = LocalIntelliJColors.current.terminalRed,
         fontFamily = JetaProgFonts.codeFont,
         fontSize = TERMINAL_FONT_SIZE.sp,
         lineHeight = TERMINAL_LINE_HEIGHT.em,
@@ -665,16 +678,18 @@ private fun TerminalErrorLine(
     )
 }
 
+@Composable
 private fun TerminalStyledLine.toAnnotatedString(cursorColumn: Int): AnnotatedString =
     buildAnnotatedString {
         segments.forEach { segment ->
             val start = length
             append(segment.text)
-            val foreground = segment.style.foreground?.toComposeColor() ?: IntelliJColors.terminalForeground
+            val foreground =
+                segment.style.foreground?.toComposeColor() ?: LocalIntelliJColors.current.terminalForeground
             val background = segment.style.background?.toComposeColor()
             val effectiveForeground =
                 if (segment.style.isInverse) {
-                    background ?: IntelliJColors.terminalBackground
+                    background ?: LocalIntelliJColors.current.terminalBackground
                 } else {
                     foreground
                 }
@@ -716,7 +731,10 @@ private fun TerminalStyledLine.toAnnotatedString(cursorColumn: Int): AnnotatedSt
             val cursorOffset = cursorTextOffset(toString(), cursorColumn)
             while (length <= cursorOffset) append(" ")
             addStyle(
-                SpanStyle(color = IntelliJColors.terminalBackground, background = IntelliJColors.terminalForeground),
+                SpanStyle(
+                    color = LocalIntelliJColors.current.terminalBackground,
+                    background = LocalIntelliJColors.current.terminalForeground,
+                ),
                 cursorOffset,
                 cursorOffset + 1,
             )

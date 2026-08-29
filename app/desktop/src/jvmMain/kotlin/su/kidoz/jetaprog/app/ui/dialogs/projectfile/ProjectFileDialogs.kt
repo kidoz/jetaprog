@@ -31,6 +31,7 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.dialogs.DialogContainer
 import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -83,7 +84,7 @@ public fun ProjectFileNameDialog(
         ) {
             Text(
                 text = title,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
             )
@@ -134,7 +135,7 @@ public fun ProjectFileDeleteDialog(
         ) {
             Text(
                 text = if (isDirectory) "Delete folder" else "Delete file",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
             )
@@ -147,7 +148,7 @@ public fun ProjectFileDeleteDialog(
                     } else {
                         "Delete \"$name\"? This cannot be undone."
                     },
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 13.sp,
             )
             Spacer(modifier = Modifier.height(Spacing.lg.dp))

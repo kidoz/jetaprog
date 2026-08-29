@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -77,7 +78,7 @@ public fun IntelliJStatusBar(
             modifier
                 .fillMaxWidth()
                 .height(Dimensions.statusBarHeight.dp)
-                .background(IntelliJColors.statusBarBackground),
+                .background(LocalIntelliJColors.current.statusBarBackground),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // ---- Left group: build status · branch · dirty dot ----
@@ -90,14 +91,19 @@ public fun IntelliJStatusBar(
                 StatusBarItem(
                     icon = Icons.Default.Sync,
                     text = "Building...",
-                    iconColor = IntelliJColors.info,
+                    iconColor = LocalIntelliJColors.current.info,
                 )
             } else {
                 buildStatus?.let { status ->
                     StatusBarItem(
                         icon = if (status.success) Icons.Default.CheckCircle else Icons.Default.Error,
                         text = if (status.success) "Build successful" else "Build failed",
-                        iconColor = if (status.success) IntelliJColors.success else IntelliJColors.error,
+                        iconColor =
+                            if (status.success) {
+                                LocalIntelliJColors.current.success
+                            } else {
+                                LocalIntelliJColors.current.error
+                            },
                     )
                 }
             }
@@ -113,9 +119,9 @@ public fun IntelliJStatusBar(
                     text = status,
                     iconColor =
                         when {
-                            hasGradleSyncError -> IntelliJColors.error
-                            isGradleSyncing -> IntelliJColors.info
-                            else -> IntelliJColors.success
+                            hasGradleSyncError -> LocalIntelliJColors.current.error
+                            isGradleSyncing -> LocalIntelliJColors.current.info
+                            else -> LocalIntelliJColors.current.success
                         },
                 )
             }
@@ -124,12 +130,12 @@ public fun IntelliJStatusBar(
                 StatusBarItem(
                     icon = Icons.Default.AccountTree,
                     text = branch,
-                    iconColor = IntelliJColors.success,
+                    iconColor = LocalIntelliJColors.current.success,
                     onClick = onBranchClick,
                 )
             }
             if (isDirty) {
-                Dot(color = IntelliJColors.warning)
+                Dot(color = LocalIntelliJColors.current.warning)
             }
         }
 
@@ -142,12 +148,12 @@ public fun IntelliJStatusBar(
                 StatusBarItem(
                     icon = Icons.Default.Warning,
                     text = warningCount.toString(),
-                    iconColor = IntelliJColors.warning,
+                    iconColor = LocalIntelliJColors.current.warning,
                 )
                 StatusBarItem(
                     icon = Icons.Default.Error,
                     text = errorCount.toString(),
-                    iconColor = IntelliJColors.error,
+                    iconColor = LocalIntelliJColors.current.error,
                 )
             }
         }
@@ -213,8 +219,13 @@ private fun MemoryChip() {
         modifier =
             Modifier
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .background(if (isHovered) IntelliJColors.statusBarHover else IntelliJColors.inputBackground)
-                .hoverable(interactionSource)
+                .background(
+                    if (isHovered) {
+                        LocalIntelliJColors.current.statusBarHover
+                    } else {
+                        LocalIntelliJColors.current.inputBackground
+                    },
+                ).hoverable(interactionSource)
                 .clickable {
                     System.gc()
                     label = memoryLabel()
@@ -225,10 +236,10 @@ private fun MemoryChip() {
         Icon(
             imageVector = Icons.Default.Memory,
             contentDescription = "Memory usage (click to run garbage collection)",
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(13.dp),
         )
-        Text(text = label, color = IntelliJColors.statusBarForeground, fontSize = 11.sp)
+        Text(text = label, color = LocalIntelliJColors.current.statusBarForeground, fontSize = 11.sp)
     }
 }
 
@@ -248,7 +259,7 @@ private fun StatusBarItem(
     text: String,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
-    iconColor: Color = IntelliJColors.textSecondary,
+    iconColor: Color = LocalIntelliJColors.current.textSecondary,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
@@ -270,7 +281,7 @@ private fun StatusBarItem(
         }
         Text(
             text = text,
-            color = IntelliJColors.statusBarForeground,
+            color = LocalIntelliJColors.current.statusBarForeground,
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -291,14 +302,19 @@ private fun StatusBarClickableItem(
         modifier =
             modifier
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .background(if (isHovered) IntelliJColors.statusBarHover else Color.Transparent)
+                .background(if (isHovered) LocalIntelliJColors.current.statusBarHover else Color.Transparent)
                 .hoverable(interactionSource)
                 .clickable(onClick = onClick)
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xxs.dp),
     ) {
         Text(
             text = text,
-            color = if (isHovered) IntelliJColors.textPrimary else IntelliJColors.statusBarForeground,
+            color =
+                if (isHovered) {
+                    LocalIntelliJColors.current.textPrimary
+                } else {
+                    LocalIntelliJColors.current.statusBarForeground
+                },
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -313,7 +329,7 @@ private fun StatusBarDivider() {
             Modifier
                 .width(1.dp)
                 .height(12.dp)
-                .background(IntelliJColors.statusBarDivider),
+                .background(LocalIntelliJColors.current.statusBarDivider),
     )
 }
 

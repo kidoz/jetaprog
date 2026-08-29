@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.navigation.BreadcrumbItem
 import su.kidoz.jetaprog.editor.navigation.NavigationSymbolKind
@@ -62,7 +63,7 @@ public fun Breadcrumbs(
             modifier
                 .fillMaxWidth()
                 .height(24.dp)
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .horizontalScroll(scrollState)
                 .padding(horizontal = Spacing.sm.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -92,14 +93,14 @@ private fun BreadcrumbItemView(
 
     val textColor =
         when {
-            isLast -> IntelliJColors.textPrimary
-            isHovered -> IntelliJColors.accent
-            else -> IntelliJColors.textSecondary
+            isLast -> LocalIntelliJColors.current.textPrimary
+            isHovered -> LocalIntelliJColors.current.accent
+            else -> LocalIntelliJColors.current.textSecondary
         }
 
     val backgroundColor =
         if (isHovered) {
-            IntelliJColors.surfaceHover
+            LocalIntelliJColors.current.surfaceHover
         } else {
             Color.Transparent
         }
@@ -139,7 +140,7 @@ private fun BreadcrumbSeparator() {
     Icon(
         imageVector = Icons.Default.ChevronRight,
         contentDescription = null,
-        tint = IntelliJColors.textMuted,
+        tint = LocalIntelliJColors.current.textMuted,
         modifier = Modifier.size(14.dp),
     )
 }
@@ -166,7 +167,7 @@ public fun CompactBreadcrumbs(
         // File
         CompactBreadcrumbItem(
             icon = Icons.Default.Description,
-            iconColor = IntelliJColors.iconFile,
+            iconColor = LocalIntelliJColors.current.iconFile,
             text = fileName,
             onClick = onFileClick,
         )
@@ -176,13 +177,13 @@ public fun CompactBreadcrumbs(
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = IntelliJColors.textMuted,
+                tint = LocalIntelliJColors.current.textMuted,
                 modifier = Modifier.size(12.dp),
             )
 
             CompactBreadcrumbItem(
                 icon = Icons.Default.Code,
-                iconColor = IntelliJColors.iconJava,
+                iconColor = LocalIntelliJColors.current.iconJava,
                 text = currentSymbol,
                 onClick = onSymbolClick,
             )
@@ -204,7 +205,7 @@ private fun CompactBreadcrumbItem(
         modifier =
             Modifier
                 .clip(RoundedCornerShape(2.dp))
-                .background(if (isHovered) IntelliJColors.surfaceHover else Color.Transparent)
+                .background(if (isHovered) LocalIntelliJColors.current.surfaceHover else Color.Transparent)
                 .hoverable(interactionSource)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 4.dp, vertical = 1.dp),
@@ -220,7 +221,7 @@ private fun CompactBreadcrumbItem(
 
         Text(
             text = text,
-            color = if (isHovered) IntelliJColors.accent else IntelliJColors.textSecondary,
+            color = if (isHovered) LocalIntelliJColors.current.accent else LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -249,7 +250,7 @@ public fun InteractiveBreadcrumbs(
             modifier
                 .fillMaxWidth()
                 .height(26.dp)
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .horizontalScroll(scrollState)
                 .padding(horizontal = Spacing.sm.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -284,7 +285,7 @@ private fun InteractiveBreadcrumbItem(
             modifier =
                 Modifier
                     .clip(RoundedCornerShape(4.dp))
-                    .background(if (isHovered) IntelliJColors.surfaceHover else Color.Transparent)
+                    .background(if (isHovered) LocalIntelliJColors.current.surfaceHover else Color.Transparent)
                     .hoverable(interactionSource)
                     .clickable(onClick = onClick)
                     .padding(horizontal = Spacing.xs.dp, vertical = 3.dp),
@@ -304,9 +305,9 @@ private fun InteractiveBreadcrumbItem(
                 text = item.name,
                 color =
                     when {
-                        isLast -> IntelliJColors.textPrimary
-                        isHovered -> IntelliJColors.accent
-                        else -> IntelliJColors.textSecondary
+                        isLast -> LocalIntelliJColors.current.textPrimary
+                        isHovered -> LocalIntelliJColors.current.accent
+                        else -> LocalIntelliJColors.current.textSecondary
                     },
                 fontSize = 12.sp,
                 maxLines = 1,
@@ -318,7 +319,7 @@ private fun InteractiveBreadcrumbItem(
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = "Show siblings",
-                    tint = IntelliJColors.textMuted,
+                    tint = LocalIntelliJColors.current.textMuted,
                     modifier =
                         Modifier
                             .size(12.dp)
@@ -354,25 +355,26 @@ private fun NavigationSymbolKind.toBreadcrumbIcon(): ImageVector =
         else -> Icons.Default.Code
     }
 
+@Composable
 private fun NavigationSymbolKind.toBreadcrumbColor(): Color =
     when (this) {
-        NavigationSymbolKind.FILE -> IntelliJColors.iconFile
+        NavigationSymbolKind.FILE -> LocalIntelliJColors.current.iconFile
 
         NavigationSymbolKind.NAMESPACE,
         NavigationSymbolKind.PACKAGE,
         NavigationSymbolKind.MODULE,
-        -> IntelliJColors.iconFolder
+        -> LocalIntelliJColors.current.iconFolder
 
         NavigationSymbolKind.CLASS,
         NavigationSymbolKind.INTERFACE,
         NavigationSymbolKind.TRAIT,
-        -> IntelliJColors.iconKotlin
+        -> LocalIntelliJColors.current.iconKotlin
 
         NavigationSymbolKind.FUNCTION,
         NavigationSymbolKind.METHOD,
-        -> IntelliJColors.iconJava
+        -> LocalIntelliJColors.current.iconJava
 
-        NavigationSymbolKind.ENUM -> IntelliJColors.iconRust
+        NavigationSymbolKind.ENUM -> LocalIntelliJColors.current.iconRust
 
-        else -> IntelliJColors.textSecondary
+        else -> LocalIntelliJColors.current.textSecondary
     }

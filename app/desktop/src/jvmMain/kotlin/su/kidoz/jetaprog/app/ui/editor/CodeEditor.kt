@@ -67,7 +67,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.IntelliJPalette
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.common.completion.CompletionItem
 import su.kidoz.jetaprog.common.completion.CompletionTriggerKind
 import su.kidoz.jetaprog.common.text.TextPosition
@@ -80,6 +82,7 @@ import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.editor.state.EditorState
 import su.kidoz.jetaprog.editor.syntax.TokenList
 import su.kidoz.jetaprog.editor.syntax.highlighting.DarkSyntaxTheme
+import su.kidoz.jetaprog.editor.syntax.highlighting.LightSyntaxTheme
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxColor
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
 import su.kidoz.jetaprog.editor.syntax.highlighting.TokenStyle
@@ -111,9 +114,11 @@ public fun CodeEditor(
     indentUnit: String = TextEditingOps.DEFAULT_INDENT_UNIT,
     settings: EditorSettings = EditorSettings.DEFAULT,
     modifier: Modifier = Modifier,
-    syntaxTheme: SyntaxTheme = DarkSyntaxTheme,
+    syntaxTheme: SyntaxTheme? = null,
     debug: EditorDebugInfo? = null,
 ) {
+    val palette = LocalIntelliJColors.current
+    val effectiveSyntaxTheme = syntaxTheme ?: if (palette.isDark) DarkSyntaxTheme else LightSyntaxTheme
     val verticalScrollState = remember(state.activeDocumentUri) { androidx.compose.foundation.ScrollState(0) }
     val horizontalScrollState = remember(state.activeDocumentUri) { androidx.compose.foundation.ScrollState(0) }
     val textStyle =
@@ -135,10 +140,10 @@ public fun CodeEditor(
             )
         }
     val editorSelectionColors =
-        remember {
+        remember(palette) {
             TextSelectionColors(
-                handleColor = IntelliJColors.accent,
-                backgroundColor = IntelliJColors.editorSelectionActive.copy(alpha = SELECTION_OVERLAY_ALPHA),
+                handleColor = palette.accent,
+                backgroundColor = palette.editorSelectionActive.copy(alpha = SELECTION_OVERLAY_ALPHA),
             )
         }
     val density = LocalDensity.current
@@ -248,7 +253,8 @@ public fun CodeEditor(
         remember(
             textFieldValue.text,
             state.tokens,
-            syntaxTheme,
+            effectiveSyntaxTheme,
+            palette,
             state.findReplaceState.matches,
             state.findReplaceState.currentMatchIndex,
             diagnosticSpans,
@@ -257,7 +263,8 @@ public fun CodeEditor(
             buildHighlightedText(
                 textFieldValue.text,
                 state.tokens,
-                syntaxTheme,
+                effectiveSyntaxTheme,
+                palette,
                 state.findReplaceState.matches,
                 state.findReplaceState.currentMatchIndex,
                 diagnosticSpans,
@@ -305,7 +312,7 @@ public fun CodeEditor(
     val hoverOffset = anchorPopup(state.hoverState.position, true)
     val signatureHelpOffset = anchorPopup(state.signatureHelpState.position, false)
 
-    Column(modifier = modifier.background(syntaxTheme.background.toComposeColor())) {
+    Column(modifier = modifier.background(effectiveSyntaxTheme.background.toComposeColor())) {
         if (state.findReplaceState.isVisible) {
             FindReplaceBar(
                 state = state.findReplaceState,
@@ -320,7 +327,7 @@ public fun CodeEditor(
                         lineCount = state.lineCount,
                         currentLine = state.currentLine,
                         scrollState = verticalScrollState,
-                        theme = syntaxTheme,
+                        theme = effectiveSyntaxTheme,
                         modifier = Modifier.fillMaxHeight(),
                         breakpointLines = debug?.breakpointLines ?: emptySet(),
                         executionLine = debug?.executionLine,
@@ -394,7 +401,7 @@ public fun CodeEditor(
                                         )
                                     }.fillMaxHeight()
                                     .width(Dimensions.editorGuideWidth.dp)
-                                    .background(IntelliJColors.divider),
+                                    .background(LocalIntelliJColors.current.divider),
                         )
                     }
 
@@ -413,7 +420,7 @@ public fun CodeEditor(
                                         )
                                     }.fillMaxWidth()
                                     .height(lineHeightDp)
-                                    .background(IntelliJColors.editorCurrentLine),
+                                    .background(LocalIntelliJColors.current.editorCurrentLine),
                         )
                     }
 
@@ -430,7 +437,7 @@ public fun CodeEditor(
                                         )
                                     }.fillMaxWidth()
                                     .height(lineHeightDp)
-                                    .background(IntelliJColors.executionLineBackground),
+                                    .background(LocalIntelliJColors.current.executionLineBackground),
                         )
                     }
 
@@ -456,7 +463,7 @@ public fun CodeEditor(
                             ) {
                                 Text(
                                     text = hint,
-                                    color = IntelliJColors.inlineValueText,
+                                    color = LocalIntelliJColors.current.inlineValueText,
                                     fontStyle = FontStyle.Italic,
                                     fontFamily = JetaProgFonts.codeFont,
                                     fontSize = 13.sp,
@@ -481,7 +488,7 @@ public fun CodeEditor(
                                                     verticalScrollState.value,
                                             )
                                         }.size(width = charWidthDp, height = lineHeightDp)
-                                        .background(IntelliJColors.accentSubtle),
+                                        .background(LocalIntelliJColors.current.accentSubtle),
                             )
                         }
                     }
@@ -578,7 +585,7 @@ public fun CodeEditor(
                                 // Keep the input layer invisible so the highlighted layer shows through.
                                 color = Color.Transparent,
                             ),
-                        cursorBrush = SolidColor(syntaxTheme.cursor.toComposeColor()),
+                        cursorBrush = SolidColor(effectiveSyntaxTheme.cursor.toComposeColor()),
                         modifier =
                             Modifier
                                 .fillMaxSize()
@@ -841,7 +848,7 @@ public fun CodeEditor(
                                     // declared styles can silently drift out of alignment.
                                     style =
                                         textStyle.copy(
-                                            color = syntaxTheme.defaultForeground.toComposeColor(),
+                                            color = effectiveSyntaxTheme.defaultForeground.toComposeColor(),
                                         ),
                                 )
                                 // Invisible input field on top (handles cursor and input). The
@@ -919,14 +926,14 @@ private fun EditorMinimap(
     scrollState: ScrollState,
 ) {
     val lines = remember(text) { text.lineSequence().take(MAX_MINIMAP_LINES).toList() }
-    val textColor = IntelliJColors.textMuted.copy(alpha = MINIMAP_TEXT_ALPHA)
-    val viewportColor = IntelliJColors.accentMuted.copy(alpha = MINIMAP_VIEWPORT_ALPHA)
+    val textColor = LocalIntelliJColors.current.textMuted.copy(alpha = MINIMAP_TEXT_ALPHA)
+    val viewportColor = LocalIntelliJColors.current.accentMuted.copy(alpha = MINIMAP_VIEWPORT_ALPHA)
     Canvas(
         modifier =
             Modifier
                 .width(Dimensions.editorMinimapWidth.dp)
                 .fillMaxHeight()
-                .background(IntelliJColors.gutterBackground),
+                .background(LocalIntelliJColors.current.gutterBackground),
     ) {
         if (lines.isEmpty()) return@Canvas
         val lineStep = size.height / lines.size
@@ -1136,6 +1143,7 @@ private fun buildHighlightedText(
     text: String,
     tokens: TokenList,
     theme: SyntaxTheme,
+    palette: IntelliJPalette,
     findMatches: List<FindMatch> = emptyList(),
     currentMatchIndex: Int = -1,
     diagnostics: List<DiagnosticSpan> = emptyList(),
@@ -1177,9 +1185,9 @@ private fun buildHighlightedText(
             if (diagnostic.start < text.length) {
                 val background =
                     when (diagnostic.severity) {
-                        DiagnosticSeverity.ERROR -> IntelliJColors.errorMuted
-                        DiagnosticSeverity.WARNING -> IntelliJColors.warningMuted
-                        DiagnosticSeverity.INFORMATION, DiagnosticSeverity.HINT -> IntelliJColors.infoMuted
+                        DiagnosticSeverity.ERROR -> palette.errorMuted
+                        DiagnosticSeverity.WARNING -> palette.warningMuted
+                        DiagnosticSeverity.INFORMATION, DiagnosticSeverity.HINT -> palette.infoMuted
                     }
                 addStyle(
                     SpanStyle(background = background, textDecoration = TextDecoration.Underline),
@@ -1194,9 +1202,9 @@ private fun buildHighlightedText(
             if (match.start < text.length) {
                 val background =
                     if (index == currentMatchIndex) {
-                        IntelliJColors.accentMuted
+                        palette.accentMuted
                     } else {
-                        IntelliJColors.editorSelection
+                        palette.editorSelection
                     }
                 addStyle(
                     SpanStyle(background = background),
@@ -1251,25 +1259,25 @@ public fun EmptyEditorPlaceholder(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .fillMaxSize()
-                .background(IntelliJColors.editorBackground),
+                .background(LocalIntelliJColors.current.editorBackground),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             androidx.compose.material3.Text(
                 "JetaProg",
                 fontSize = 36.sp,
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
             )
             androidx.compose.material3.Text(
                 "Welcome to JetaProg IDE",
                 fontSize = 16.sp,
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 modifier = Modifier.padding(top = 8.dp),
             )
             androidx.compose.material3.Text(
                 "Open a file from the Project panel to get started",
                 fontSize = 14.sp,
-                color = IntelliJColors.textDisabled,
+                color = LocalIntelliJColors.current.textDisabled,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }

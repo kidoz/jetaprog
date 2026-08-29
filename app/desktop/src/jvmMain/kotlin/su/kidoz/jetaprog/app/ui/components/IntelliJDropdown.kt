@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -64,16 +65,16 @@ public fun <T> IntelliJDropdown(
 
     val backgroundColor =
         when {
-            !enabled -> IntelliJColors.backgroundLighter
-            isHovered -> IntelliJColors.inputBackgroundHover
-            else -> IntelliJColors.inputBackground
+            !enabled -> LocalIntelliJColors.current.backgroundLighter
+            isHovered -> LocalIntelliJColors.current.inputBackgroundHover
+            else -> LocalIntelliJColors.current.inputBackground
         }
 
     val borderColor =
         when {
-            expanded -> IntelliJColors.inputBorderFocused
-            isHovered -> IntelliJColors.inputBorderHover
-            else -> IntelliJColors.inputBorder
+            expanded -> LocalIntelliJColors.current.inputBorderFocused
+            isHovered -> LocalIntelliJColors.current.inputBorderHover
+            else -> LocalIntelliJColors.current.inputBorder
         }
 
     Column(modifier = modifier) {
@@ -81,7 +82,7 @@ public fun <T> IntelliJDropdown(
         label?.let {
             Text(
                 text = it,
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(bottom = Spacing.xs.dp),
             )
@@ -104,14 +105,19 @@ public fun <T> IntelliJDropdown(
             ) {
                 Text(
                     text = itemToString(selectedItem),
-                    color = if (enabled) IntelliJColors.textPrimary else IntelliJColors.textDisabled,
+                    color =
+                        if (enabled) {
+                            LocalIntelliJColors.current.textPrimary
+                        } else {
+                            LocalIntelliJColors.current.textDisabled
+                        },
                     fontSize = 13.sp,
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowDown,
                     contentDescription = "Expand",
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -124,11 +130,11 @@ public fun <T> IntelliJDropdown(
                     Modifier
                         .shadow(4.dp, RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
                         .background(
-                            IntelliJColors.popupBackground,
+                            LocalIntelliJColors.current.popupBackground,
                             RoundedCornerShape(Dimensions.cornerRadiusLarge.dp),
                         ).border(
                             1.dp,
-                            IntelliJColors.popupBorder,
+                            LocalIntelliJColors.current.popupBorder,
                             RoundedCornerShape(Dimensions.cornerRadiusLarge.dp),
                         ).widthIn(min = 200.dp),
             ) {
@@ -158,9 +164,9 @@ private fun DropdownMenuItem(
 
     val backgroundColor =
         when {
-            isSelected -> IntelliJColors.treeSelectionBackground
-            isHovered -> IntelliJColors.menuItemHover
-            else -> IntelliJColors.popupBackground
+            isSelected -> LocalIntelliJColors.current.treeSelectionBackground
+            isHovered -> LocalIntelliJColors.current.menuItemHover
+            else -> LocalIntelliJColors.current.popupBackground
         }
 
     Row(
@@ -180,14 +186,14 @@ private fun DropdownMenuItem(
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
-                    tint = IntelliJColors.accent,
+                    tint = LocalIntelliJColors.current.accent,
                     modifier = Modifier.size(16.dp),
                 )
             }
         }
         Text(
             text = text,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 13.sp,
             modifier = Modifier.padding(start = Spacing.sm.dp),
         )

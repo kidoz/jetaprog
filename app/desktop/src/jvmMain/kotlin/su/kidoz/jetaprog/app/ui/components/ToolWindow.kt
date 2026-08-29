@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 
 /**
  * IntelliJ-style tool window container.
@@ -51,7 +52,7 @@ public fun ToolWindow(
     if (!isVisible) return
 
     Column(
-        modifier = modifier.background(IntelliJColors.toolWindowBackground),
+        modifier = modifier.background(LocalIntelliJColors.current.toolWindowBackground),
     ) {
         // Header
         Row(
@@ -59,7 +60,7 @@ public fun ToolWindow(
                 Modifier
                     .fillMaxWidth()
                     .height(24.dp)
-                    .background(IntelliJColors.toolWindowHeader)
+                    .background(LocalIntelliJColors.current.toolWindowHeader)
                     .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -68,7 +69,7 @@ public fun ToolWindow(
                 Icon(
                     imageVector = it,
                     contentDescription = null,
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.size(14.dp),
                 )
                 Box(modifier = Modifier.width(6.dp))
@@ -77,7 +78,7 @@ public fun ToolWindow(
             // Title
             Text(
                 text = title,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
             )
@@ -106,11 +107,11 @@ public fun ToolWindow(
                 Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(IntelliJColors.toolWindowBorder),
+                    .background(LocalIntelliJColors.current.toolWindowBorder),
         )
 
         // Content
-        Box(modifier = Modifier.background(IntelliJColors.toolWindowBackground)) {
+        Box(modifier = Modifier.background(LocalIntelliJColors.current.toolWindowBackground)) {
             content()
         }
     }
@@ -136,7 +137,7 @@ public fun ToolWindowButton(
                 .size(18.dp)
                 .clip(RoundedCornerShape(2.dp))
                 .background(
-                    if (isHovered && enabled) IntelliJColors.buttonBackgroundHover else Color.Transparent,
+                    if (isHovered && enabled) LocalIntelliJColors.current.buttonBackgroundHover else Color.Transparent,
                 ).hoverable(interactionSource)
                 .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -144,7 +145,7 @@ public fun ToolWindowButton(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = if (enabled) IntelliJColors.textSecondary else IntelliJColors.textDisabled,
+            tint = if (enabled) LocalIntelliJColors.current.textSecondary else LocalIntelliJColors.current.textDisabled,
             modifier = Modifier.size(14.dp),
         )
     }
@@ -169,8 +170,8 @@ public fun TreeNode(
 
     val backgroundColor =
         when {
-            isSelected -> IntelliJColors.treeSelectionBackground
-            isHovered -> IntelliJColors.treeSelectionBackground.copy(alpha = 0.5f)
+            isSelected -> LocalIntelliJColors.current.treeSelectionBackground
+            isHovered -> LocalIntelliJColors.current.treeSelectionBackground.copy(alpha = 0.5f)
             else -> Color.Transparent
         }
 
@@ -195,7 +196,7 @@ public fun TreeNode(
                         Icons.Default.ChevronRight
                     },
                 contentDescription = if (isExpanded) "Collapse" else "Expand",
-                tint = IntelliJColors.textSecondary,
+                tint = LocalIntelliJColors.current.textSecondary,
                 modifier =
                     Modifier
                         .size(16.dp)
@@ -215,7 +216,7 @@ public fun TreeNode(
         // Text
         Text(
             text = text,
-            color = IntelliJColors.treeForeground,
+            color = LocalIntelliJColors.current.treeForeground,
             fontSize = 12.sp,
             maxLines = 1,
         )
@@ -235,7 +236,7 @@ public fun HorizontalSplitter(
             modifier
                 .fillMaxWidth()
                 .height(thickness)
-                .background(IntelliJColors.divider),
+                .background(LocalIntelliJColors.current.divider),
     )
 }
 
@@ -251,6 +252,6 @@ public fun VerticalSplitter(
         modifier =
             modifier
                 .width(thickness)
-                .background(IntelliJColors.divider),
+                .background(LocalIntelliJColors.current.divider),
     )
 }

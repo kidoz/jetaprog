@@ -51,6 +51,7 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.TextSearchState
 import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
@@ -72,14 +73,14 @@ public fun FindInFilesPanel(
 ) {
     val state by viewModel.state.collectAsState()
 
-    Column(modifier = modifier.fillMaxSize().background(IntelliJColors.background)) {
+    Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
         FindInFilesHeader()
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(Dimensions.splitterThickness.dp)
-                    .background(IntelliJColors.divider),
+                    .background(LocalIntelliJColors.current.divider),
         )
         Column(
             modifier = Modifier.fillMaxSize().padding(Spacing.sm.dp),
@@ -140,7 +141,7 @@ public fun FindInFilesPanel(
             statusText?.let {
                 Text(
                     text = it,
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 11.sp,
                     fontFamily = JetaProgFonts.codeFont,
                     maxLines = 1,
@@ -169,7 +170,7 @@ private fun FindInFilesHeader() {
     ) {
         Text(
             text = "Find in Files",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             fontFamily = JetaProgFonts.codeFont,
@@ -197,7 +198,7 @@ private fun SearchFieldAction(
         Icon(
             imageVector = Icons.Default.Search,
             contentDescription = null,
-            tint = if (enabled) IntelliJColors.textSecondary else IntelliJColors.textDisabled,
+            tint = if (enabled) LocalIntelliJColors.current.textSecondary else LocalIntelliJColors.current.textDisabled,
             modifier = Modifier.size(Dimensions.iconMd.dp),
         )
     }
@@ -216,15 +217,15 @@ private fun SearchOptionToggle(
     val shape = RoundedCornerShape(Dimensions.cornerRadius.dp)
     val backgroundColor =
         when {
-            selected -> IntelliJColors.accentSubtle
-            isHovered -> IntelliJColors.surfaceHover
-            else -> IntelliJColors.inputBackground
+            selected -> LocalIntelliJColors.current.accentSubtle
+            isHovered -> LocalIntelliJColors.current.surfaceHover
+            else -> LocalIntelliJColors.current.inputBackground
         }
     val borderColor =
         if (selected || isFocused) {
-            IntelliJColors.accent
+            LocalIntelliJColors.current.accent
         } else {
-            IntelliJColors.inputBorder
+            LocalIntelliJColors.current.inputBorder
         }
 
     Box(
@@ -246,7 +247,12 @@ private fun SearchOptionToggle(
     ) {
         Text(
             text = label,
-            color = if (selected) IntelliJColors.textPrimary else IntelliJColors.textSecondary,
+            color =
+                if (selected) {
+                    LocalIntelliJColors.current.textPrimary
+                } else {
+                    LocalIntelliJColors.current.textSecondary
+                },
             fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
             fontFamily = JetaProgFonts.codeFont,
@@ -274,7 +280,7 @@ private fun SearchPanelContent(
 private fun SearchPanelMessage(text: String) {
     Text(
         text = text,
-        color = IntelliJColors.textMuted,
+        color = LocalIntelliJColors.current.textMuted,
         fontSize = 11.sp,
         fontFamily = JetaProgFonts.codeFont,
     )
@@ -290,7 +296,7 @@ private fun SearchResults(
             item(key = file.filePath) {
                 Text(
                     text = file.filePath.substringAfterLast('/'),
-                    color = IntelliJColors.accent,
+                    color = LocalIntelliJColors.current.accent,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = JetaProgFonts.codeFont,
@@ -322,7 +328,7 @@ private fun SearchMatchRow(
 
     Text(
         text = "${match.line + 1}: ${match.lineText.trim()}",
-        color = IntelliJColors.textSecondary,
+        color = LocalIntelliJColors.current.textSecondary,
         fontSize = 12.sp,
         fontFamily = JetaProgFonts.codeFont,
         maxLines = 1,
@@ -330,7 +336,7 @@ private fun SearchMatchRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(if (isHovered) IntelliJColors.surfaceHover else Color.Transparent)
+                .background(if (isHovered) LocalIntelliJColors.current.surfaceHover else Color.Transparent)
                 .hoverable(interactionSource)
                 .clickable(onClick = onClick)
                 .padding(vertical = Spacing.xxs.dp, horizontal = Spacing.xs.dp),

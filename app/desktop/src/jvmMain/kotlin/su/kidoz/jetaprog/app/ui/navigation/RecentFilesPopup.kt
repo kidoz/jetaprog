@@ -51,6 +51,7 @@ import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.navigation.NavigationHistoryEntry
 
@@ -117,13 +118,13 @@ public fun RecentFilesPopup(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .background(IntelliJColors.surfaceElevated)
+                        .background(LocalIntelliJColors.current.surfaceElevated)
                         .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = title,
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                 )
@@ -217,7 +218,7 @@ public fun RecentFilesPopup(
                 ) {
                     Text(
                         text = if (query.isEmpty()) "No recent files" else "No matches found",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 13.sp,
                     )
                 }
@@ -228,7 +229,7 @@ public fun RecentFilesPopup(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .background(IntelliJColors.surfaceElevated)
+                        .background(LocalIntelliJColors.current.surfaceElevated)
                         .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
             ) {
@@ -258,7 +259,7 @@ private fun RecentFilesFilterInput(
         Icon(
             imageVector = Icons.Default.Search,
             contentDescription = null,
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(18.dp),
         )
 
@@ -267,10 +268,10 @@ private fun RecentFilesFilterInput(
             onValueChange = onQueryChange,
             textStyle =
                 TextStyle(
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 13.sp,
                 ),
-            cursorBrush = SolidColor(IntelliJColors.accent),
+            cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
             singleLine = true,
             modifier =
                 Modifier
@@ -282,7 +283,7 @@ private fun RecentFilesFilterInput(
                     if (query.isEmpty()) {
                         Text(
                             text = "Filter by name...",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 13.sp,
                         )
                     }
@@ -320,13 +321,13 @@ private fun RecentFileRow(
             Icon(
                 imageVector = Icons.Default.Description,
                 contentDescription = null,
-                tint = IntelliJColors.iconDefault,
+                tint = LocalIntelliJColors.current.iconDefault,
                 modifier = Modifier.size(16.dp),
             )
 
             Text(
                 text = fileName,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -335,7 +336,7 @@ private fun RecentFileRow(
             if (directory.isNotEmpty()) {
                 Text(
                     text = directory,
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -357,19 +358,19 @@ private fun RecentFilesFooterHint(
     ) {
         Text(
             text = shortcut,
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             modifier =
                 Modifier
                     .background(
-                        IntelliJColors.surfaceContainer,
+                        LocalIntelliJColors.current.surfaceContainer,
                         RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
                     ).padding(horizontal = 4.dp, vertical = 1.dp),
         )
         Text(
             text = description,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
         )
     }

@@ -45,6 +45,7 @@ import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.editor.state.FindReplaceState
@@ -69,7 +70,7 @@ public fun FindReplaceBar(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.toolWindowHeader)
+                .background(LocalIntelliJColors.current.toolWindowHeader)
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
     ) {
         Row(
@@ -177,7 +178,7 @@ private fun FindBarField(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val borderColor =
-        if (isFocused) IntelliJColors.inputBorderFocused else IntelliJColors.inputBorder
+        if (isFocused) LocalIntelliJColors.current.inputBorderFocused else LocalIntelliJColors.current.inputBorder
 
     BasicTextField(
         value = value,
@@ -187,13 +188,13 @@ private fun FindBarField(
             TextStyle(
                 fontFamily = JetaProgFonts.codeFont,
                 fontSize = 13.sp,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
             ),
-        cursorBrush = SolidColor(IntelliJColors.accent),
+        cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
         modifier =
             modifier
                 .clip(RoundedCornerShape(3.dp))
-                .background(IntelliJColors.inputBackground)
+                .background(LocalIntelliJColors.current.inputBackground)
                 .border(1.dp, borderColor, RoundedCornerShape(3.dp))
                 .onFocusChanged { isFocused = it.isFocused }
                 .onPreviewKeyEvent { keyEvent ->
@@ -228,7 +229,7 @@ private fun FindBarField(
                     Text(
                         text = placeholder,
                         fontSize = 13.sp,
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                     )
                 }
                 innerTextField()
@@ -250,8 +251,13 @@ private fun FindToggleButton(
         modifier =
             Modifier
                 .clip(RoundedCornerShape(3.dp))
-                .background(if (active) IntelliJColors.accentSubtle else IntelliJColors.toolWindowHeader)
-                .clickable(onClick = onClick)
+                .background(
+                    if (active) {
+                        LocalIntelliJColors.current.accentSubtle
+                    } else {
+                        LocalIntelliJColors.current.toolWindowHeader
+                    },
+                ).clickable(onClick = onClick)
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -259,7 +265,7 @@ private fun FindToggleButton(
             text = label,
             fontSize = 12.sp,
             fontFamily = JetaProgFonts.codeFont,
-            color = if (active) IntelliJColors.accent else IntelliJColors.textSecondary,
+            color = if (active) LocalIntelliJColors.current.accent else LocalIntelliJColors.current.textSecondary,
         )
     }
 }
@@ -281,9 +287,9 @@ private fun MatchCounter(state: FindReplaceState) {
             fontSize = 12.sp,
             color =
                 if (state.matches.isEmpty()) {
-                    IntelliJColors.error
+                    LocalIntelliJColors.current.error
                 } else {
-                    IntelliJColors.textSecondary
+                    LocalIntelliJColors.current.textSecondary
                 },
         )
     }
@@ -310,7 +316,7 @@ private fun FindBarIconButton(
         Icon(
             imageVector = icon,
             contentDescription = description,
-            tint = if (enabled) IntelliJColors.textSecondary else IntelliJColors.textDisabled,
+            tint = if (enabled) LocalIntelliJColors.current.textSecondary else LocalIntelliJColors.current.textDisabled,
             modifier = Modifier.size(16.dp),
         )
     }

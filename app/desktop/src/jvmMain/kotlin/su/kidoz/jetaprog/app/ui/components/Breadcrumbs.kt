@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.common.text.TextPosition
 
 /**
@@ -100,7 +101,7 @@ public fun Breadcrumbs(
             modifier
                 .fillMaxWidth()
                 .height(Dimensions.breadcrumbsHeight.dp)
-                .background(IntelliJColors.breadcrumbsBackground)
+                .background(LocalIntelliJColors.current.breadcrumbsBackground)
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -133,14 +134,14 @@ private fun BreadcrumbItem(
 
     val textColor =
         when {
-            isHovered -> IntelliJColors.breadcrumbsForegroundHover
-            segment.type == BreadcrumbType.FILE -> IntelliJColors.breadcrumbsFileForeground
-            else -> IntelliJColors.breadcrumbsForeground
+            isHovered -> LocalIntelliJColors.current.breadcrumbsForegroundHover
+            segment.type == BreadcrumbType.FILE -> LocalIntelliJColors.current.breadcrumbsFileForeground
+            else -> LocalIntelliJColors.current.breadcrumbsForeground
         }
 
     val backgroundColor =
         when {
-            isHovered -> IntelliJColors.breadcrumbsBackgroundHover
+            isHovered -> LocalIntelliJColors.current.breadcrumbsBackgroundHover
             else -> Color.Transparent
         }
 
@@ -177,7 +178,7 @@ private fun BreadcrumbSeparator(modifier: Modifier = Modifier) {
     Icon(
         imageVector = Icons.Default.ChevronRight,
         contentDescription = null,
-        tint = IntelliJColors.breadcrumbsSeparator,
+        tint = LocalIntelliJColors.current.breadcrumbsSeparator,
         modifier = modifier.size(12.dp),
     )
 }

@@ -101,20 +101,25 @@ import su.kidoz.jetaprog.app.ui.panels.TestResultsPanel
 import su.kidoz.jetaprog.app.ui.panels.VcsMainArea
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.ui.toolbar.BranchSelector
 import su.kidoz.jetaprog.app.ui.toolbar.RunConfigurationSelector
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeEffect
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeScreen
+import su.kidoz.jetaprog.app.viewmodel.GitState
 import su.kidoz.jetaprog.app.viewmodel.TerminalIntent
+import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.configuration.ConfigurationEffect
 import su.kidoz.jetaprog.configuration.ConfigurationIntent
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
+import su.kidoz.jetaprog.configuration.ConfigurationState
 import su.kidoz.jetaprog.editor.navigation.NavigationSymbolKind
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.editor.state.EditorEffect
 import su.kidoz.jetaprog.editor.state.EditorIntent
+import su.kidoz.jetaprog.editor.state.EditorState
 import su.kidoz.jetaprog.editor.state.NotificationType
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -1332,7 +1337,7 @@ private fun MainToolbar(
                 Modifier
                     .fillMaxWidth()
                     .height(Dimensions.mainToolbarHeightFilled.dp)
-                    .background(IntelliJColors.background)
+                    .background(LocalIntelliJColors.current.background)
                     .padding(horizontal = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
@@ -1340,7 +1345,7 @@ private fun MainToolbar(
             Icon(
                 imageVector = Icons.Filled.ChevronLeft,
                 contentDescription = "Navigate back",
-                tint = IntelliJColors.iconDefault,
+                tint = LocalIntelliJColors.current.iconDefault,
                 modifier =
                     Modifier
                         .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
@@ -1350,7 +1355,7 @@ private fun MainToolbar(
             Icon(
                 imageVector = Icons.Filled.ChevronRight,
                 contentDescription = "Navigate forward",
-                tint = IntelliJColors.iconDefault,
+                tint = LocalIntelliJColors.current.iconDefault,
                 modifier =
                     Modifier
                         .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
@@ -1390,7 +1395,7 @@ private fun MainToolbar(
                 Modifier
                     .fillMaxWidth()
                     .height(Dimensions.splitterThickness.dp)
-                    .background(IntelliJColors.divider),
+                    .background(LocalIntelliJColors.current.divider),
         )
     }
 }
@@ -1403,8 +1408,8 @@ private fun ToolbarDivider() {
             Modifier
                 .padding(horizontal = Spacing.xs.dp)
                 .width(Dimensions.splitterThickness.dp)
-                .height(16.dp)
-                .background(IntelliJColors.divider),
+                .height(Dimensions.toolbarIcon.dp)
+                .background(LocalIntelliJColors.current.divider),
     )
 }
 
@@ -1419,20 +1424,25 @@ private fun ToolbarChip(
     Row(
         modifier =
             Modifier
-                .height(26.dp)
+                .height(Dimensions.chipHeight.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .background(IntelliJColors.surfaceElevated)
+                .background(LocalIntelliJColors.current.surfaceElevated)
                 .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 3.dp),
     ) {
-        Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(15.dp))
-        Text(text = label, color = IntelliJColors.textPrimary, fontSize = 12.sp, maxLines = 1)
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(Dimensions.iconMd.dp),
+        )
+        Text(text = label, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp, maxLines = 1)
         trailingIcon?.let {
             Icon(
                 imageVector = it,
                 contentDescription = null,
-                tint = IntelliJColors.textMuted,
+                tint = LocalIntelliJColors.current.textMuted,
                 modifier = Modifier.size(16.dp),
             )
         }
@@ -1450,7 +1460,7 @@ private fun ToolbarAction(
     Row(
         modifier =
             Modifier
-                .height(26.dp)
+                .height(Dimensions.chipHeight.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
                 .clickable(onClick = onClick)
                 .padding(horizontal = 9.dp),
@@ -1460,22 +1470,22 @@ private fun ToolbarAction(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(16.dp),
         )
-        Text(text = label, color = IntelliJColors.textPrimary, fontSize = 12.sp)
+        Text(text = label, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
         if (badge > 0) {
             Box(
                 modifier =
                     Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(IntelliJColors.accent)
+                        .background(LocalIntelliJColors.current.accent)
                         .padding(horizontal = 5.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = badge.toString(),
-                    color = IntelliJColors.background,
+                    color = LocalIntelliJColors.current.background,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -1490,14 +1500,14 @@ private fun SearchEverywhereField(onClick: () -> Unit) {
     Row(
         modifier =
             Modifier
-                .height(26.dp)
-                .widthIn(min = 190.dp)
+                .height(Dimensions.chipHeight.dp)
+                .widthIn(min = Dimensions.searchEverywhereWidth.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
                 .clickable(onClick = onClick)
-                .background(IntelliJColors.inputBackground)
+                .background(LocalIntelliJColors.current.inputBackground)
                 .border(
                     width = 1.dp,
-                    color = IntelliJColors.divider,
+                    color = LocalIntelliJColors.current.divider,
                     shape = RoundedCornerShape(Dimensions.cornerRadius.dp),
                 ).padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

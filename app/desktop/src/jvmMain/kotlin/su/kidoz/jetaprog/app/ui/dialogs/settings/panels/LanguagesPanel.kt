@@ -14,6 +14,7 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJDropdown
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingSection
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.model.CompletionProviderPreference
 import su.kidoz.jetaprog.settings.model.LanguagesSettings
@@ -52,19 +53,19 @@ private fun DefaultLanguagesOverview(
         SettingSection(title = "LANGUAGE DEFAULTS") {
             Text(
                 text = "Default Encoding: ${settings.defaults.encoding}",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(bottom = Spacing.xs.dp),
             )
             Text(
                 text = "Line Endings: ${settings.defaults.lineEndings.name}",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(bottom = Spacing.xs.dp),
             )
             Text(
                 text = "Default Tab Size: ${settings.defaults.tabSize}",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
             )
         }
@@ -73,14 +74,14 @@ private fun DefaultLanguagesOverview(
             if (settings.languages.isEmpty()) {
                 Text(
                     text = "No language-specific configurations. Select a language from the tree to configure.",
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 12.sp,
                 )
             } else {
                 settings.languages.forEach { (langId, _) ->
                     Text(
                         text = "• $langId",
-                        color = IntelliJColors.textPrimary,
+                        color = LocalIntelliJColors.current.textPrimary,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = Spacing.xxs.dp),
                     )
@@ -92,7 +93,7 @@ private fun DefaultLanguagesOverview(
             if (settings.languageServers.isEmpty()) {
                 Text(
                     text = "No language servers configured. Select 'LSP Servers' to add one.",
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 12.sp,
                 )
             } else {
@@ -100,7 +101,7 @@ private fun DefaultLanguagesOverview(
                     val status = if (server.enabled) "enabled" else "disabled"
                     Text(
                         text = "• $serverId ($status)",
-                        color = IntelliJColors.textPrimary,
+                        color = LocalIntelliJColors.current.textPrimary,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = Spacing.xxs.dp),
                     )
@@ -135,13 +136,13 @@ private fun KotlinLanguageSettings(
 
             Text(
                 text = "Tab Size: ${kotlinConfig.tabSize ?: "default"}",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(top = Spacing.sm.dp),
             )
             Text(
                 text = "Format on Save: ${if (kotlinConfig.formatOnSave) "Yes" else "No"}",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
             )
         }
@@ -159,14 +160,14 @@ private fun ValaLanguageSettings(
         SettingSection(title = "VALA SETTINGS") {
             Text(
                 text = "Vala language-specific settings will be available here.",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
             )
 
             if (valaConfig != null) {
                 Text(
                     text = "Language Server: ${valaConfig.languageServerId ?: "none"}",
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(top = Spacing.sm.dp),
                 )
@@ -184,7 +185,7 @@ private fun LspServersSettings(
         SettingSection(title = "LANGUAGE SERVER PROTOCOL") {
             Text(
                 text = "Configure Language Server Protocol (LSP) servers for enhanced language support.",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(bottom = Spacing.md.dp),
             )
@@ -192,7 +193,7 @@ private fun LspServersSettings(
             if (settings.languageServers.isEmpty()) {
                 Text(
                     text = "No language servers configured.",
-                    color = IntelliJColors.textSecondary,
+                    color = LocalIntelliJColors.current.textSecondary,
                     fontSize = 13.sp,
                 )
             } else {
@@ -200,22 +201,27 @@ private fun LspServersSettings(
                     Column(modifier = Modifier.padding(bottom = Spacing.md.dp)) {
                         Text(
                             text = serverId,
-                            color = IntelliJColors.textPrimary,
+                            color = LocalIntelliJColors.current.textPrimary,
                             fontSize = 13.sp,
                         )
                         Text(
                             text = "Command: ${server.command} ${server.args.joinToString(" ")}",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 11.sp,
                         )
                         Text(
                             text = "Languages: ${server.languages.joinToString(", ")}",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 11.sp,
                         )
                         Text(
                             text = "Status: ${if (server.enabled) "Enabled" else "Disabled"}",
-                            color = if (server.enabled) IntelliJColors.success else IntelliJColors.textMuted,
+                            color =
+                                if (server.enabled) {
+                                    LocalIntelliJColors.current.success
+                                } else {
+                                    LocalIntelliJColors.current.textMuted
+                                },
                             fontSize = 11.sp,
                         )
                     }

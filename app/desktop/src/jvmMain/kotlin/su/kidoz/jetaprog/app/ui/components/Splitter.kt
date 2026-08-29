@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import java.awt.Cursor
 
 /**
@@ -56,7 +57,7 @@ public fun VerticalDragHandle(
                 Modifier
                     .fillMaxHeight()
                     .width(Dimensions.splitterThickness.dp)
-                    .background(IntelliJColors.divider),
+                    .background(LocalIntelliJColors.current.divider),
         )
     }
 }
@@ -91,7 +92,7 @@ public fun HorizontalDragHandle(
                 Modifier
                     .fillMaxWidth()
                     .height(Dimensions.splitterThickness.dp)
-                    .background(IntelliJColors.divider),
+                    .background(LocalIntelliJColors.current.divider),
         )
     }
 }

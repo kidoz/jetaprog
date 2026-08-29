@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.configuration.RunOutputLine
 import su.kidoz.jetaprog.configuration.RunOutputType
@@ -66,7 +67,7 @@ public fun RunOutputPanel(
     }
 
     Column(
-        modifier = modifier.fillMaxSize().background(IntelliJColors.background),
+        modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background),
     ) {
         RunOutputToolbar(
             configurationName = configurationName,
@@ -75,13 +76,13 @@ public fun RunOutputPanel(
             onStop = onStop,
             onClear = onClear,
         )
-        HorizontalDivider(color = IntelliJColors.divider)
+        HorizontalDivider(color = LocalIntelliJColors.current.divider)
 
         Box(modifier = Modifier.fillMaxSize()) {
             if (output.isEmpty()) {
                 Text(
                     text = "No run output.",
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -132,7 +133,7 @@ private fun RunOutputToolbar(
             Modifier
                 .fillMaxWidth()
                 .height(Dimensions.panelHeaderHeight.dp)
-                .background(IntelliJColors.toolWindowHeader)
+                .background(LocalIntelliJColors.current.toolWindowHeader)
                 .padding(horizontal = Spacing.sm.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
@@ -158,7 +159,7 @@ private fun RunOutputToolbar(
             Icon(
                 imageVector = Icons.Default.Clear,
                 contentDescription = "Clear run output",
-                tint = IntelliJColors.textSecondary,
+                tint = LocalIntelliJColors.current.textSecondary,
                 modifier = Modifier.size(Dimensions.iconMd.dp),
             )
         }
@@ -170,7 +171,7 @@ private fun RunOutputToolbar(
                 Icon(
                     imageVector = Icons.Default.Stop,
                     contentDescription = "Stop run configuration",
-                    tint = IntelliJColors.error,
+                    tint = LocalIntelliJColors.current.error,
                     modifier = Modifier.size(Dimensions.iconMd.dp),
                 )
             }
@@ -178,24 +179,26 @@ private fun RunOutputToolbar(
     }
 }
 
+@Composable
 private fun runOutputStatus(
     isRunning: Boolean,
     exitCode: Int?,
 ): RunOutputStatus =
     when {
-        isRunning -> RunOutputStatus("RUNNING", Icons.Default.PlayArrow, IntelliJColors.accent)
-        exitCode == 0 -> RunOutputStatus("SUCCESS", Icons.Default.CheckCircle, IntelliJColors.success)
-        exitCode != null -> RunOutputStatus("FAILED", Icons.Default.Error, IntelliJColors.error)
-        else -> RunOutputStatus("READY", Icons.Default.PlayArrow, IntelliJColors.textSecondary)
+        isRunning -> RunOutputStatus("RUNNING", Icons.Default.PlayArrow, LocalIntelliJColors.current.accent)
+        exitCode == 0 -> RunOutputStatus("SUCCESS", Icons.Default.CheckCircle, LocalIntelliJColors.current.success)
+        exitCode != null -> RunOutputStatus("FAILED", Icons.Default.Error, LocalIntelliJColors.current.error)
+        else -> RunOutputStatus("READY", Icons.Default.PlayArrow, LocalIntelliJColors.current.textSecondary)
     }
 
+@Composable
 private fun RunOutputType.outputColor(): Color =
     when (this) {
-        RunOutputType.INFO -> IntelliJColors.textSecondary
-        RunOutputType.STDOUT -> IntelliJColors.textPrimary
-        RunOutputType.STDERR -> IntelliJColors.error
-        RunOutputType.SUCCESS -> IntelliJColors.success
-        RunOutputType.ERROR -> IntelliJColors.error
+        RunOutputType.INFO -> LocalIntelliJColors.current.textSecondary
+        RunOutputType.STDOUT -> LocalIntelliJColors.current.textPrimary
+        RunOutputType.STDERR -> LocalIntelliJColors.current.error
+        RunOutputType.SUCCESS -> LocalIntelliJColors.current.success
+        RunOutputType.ERROR -> LocalIntelliJColors.current.error
     }
 
 private data class RunOutputStatus(

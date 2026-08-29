@@ -75,6 +75,7 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.build.gradle.GradleDiagnostic
 import su.kidoz.jetaprog.build.gradle.GradleDiagnosticSeverity
@@ -883,27 +884,28 @@ private fun GradleDiagnosticSeverity.color(colors: BuildPanelColors): Color =
         GradleDiagnosticSeverity.INFO -> colors.info
     }
 
+@Composable
 private fun buildPanelColors(): BuildPanelColors =
     BuildPanelColors(
-        background = IntelliJColors.background,
-        header = IntelliJColors.surfaceElevated,
-        elevated = IntelliJColors.surface,
-        hover = IntelliJColors.surfaceHover,
-        divider = IntelliJColors.divider,
-        popupBackground = IntelliJColors.popupBackground,
-        popupBorder = IntelliJColors.popupBorder,
-        button = IntelliJColors.buttonBackground,
-        buttonHover = IntelliJColors.buttonBackgroundHover,
-        textPrimary = IntelliJColors.textPrimary,
-        textSecondary = IntelliJColors.textSecondary,
-        textMuted = IntelliJColors.textMuted,
-        textDisabled = IntelliJColors.textDisabled,
-        accent = IntelliJColors.accent,
-        success = IntelliJColors.success,
-        successMuted = IntelliJColors.successMuted,
-        warning = IntelliJColors.warning,
-        error = IntelliJColors.error,
-        info = IntelliJColors.info,
+        background = LocalIntelliJColors.current.background,
+        header = LocalIntelliJColors.current.surfaceElevated,
+        elevated = LocalIntelliJColors.current.surface,
+        hover = LocalIntelliJColors.current.surfaceHover,
+        divider = LocalIntelliJColors.current.divider,
+        popupBackground = LocalIntelliJColors.current.popupBackground,
+        popupBorder = LocalIntelliJColors.current.popupBorder,
+        button = LocalIntelliJColors.current.buttonBackground,
+        buttonHover = LocalIntelliJColors.current.buttonBackgroundHover,
+        textPrimary = LocalIntelliJColors.current.textPrimary,
+        textSecondary = LocalIntelliJColors.current.textSecondary,
+        textMuted = LocalIntelliJColors.current.textMuted,
+        textDisabled = LocalIntelliJColors.current.textDisabled,
+        accent = LocalIntelliJColors.current.accent,
+        success = LocalIntelliJColors.current.success,
+        successMuted = LocalIntelliJColors.current.successMuted,
+        warning = LocalIntelliJColors.current.warning,
+        error = LocalIntelliJColors.current.error,
+        info = LocalIntelliJColors.current.info,
     )
 
 @Immutable
