@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,12 +59,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.components.IntelliJCheckbox
+import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
+import su.kidoz.jetaprog.app.ui.dialogs.IntelliJDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /** The left debug tool window: Frames (thread + call stack) over Breakpoints. */
@@ -72,12 +81,12 @@ public fun DebugSidePanel(
     dispatch: (DebugIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxHeight().background(IntelliJColors.surface)) {
+    Column(modifier = modifier.fillMaxHeight().background(LocalIntelliJColors.current.surface)) {
         Row(
             modifier = Modifier.fillMaxWidth().height(32.dp).padding(horizontal = Spacing.md.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Frames", color = IntelliJColors.textPrimary, fontSize = 12.sp)
+            Text("Frames", color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
             Spacer(Modifier.weight(1f))
             DebugStateChip(state.status)
         }
@@ -94,27 +103,27 @@ private fun DebugStateChip(status: DebugStatus) {
             DebugStatus.PAUSED -> {
                 StateChipColors(
                     "PAUSED",
-                    IntelliJColors.warning,
-                    IntelliJColors.debugPausedText,
-                    IntelliJColors.warning.copy(alpha = 0.16f),
+                    LocalIntelliJColors.current.warning,
+                    LocalIntelliJColors.current.debugPausedText,
+                    LocalIntelliJColors.current.warning.copy(alpha = 0.16f),
                 )
             }
 
             DebugStatus.RUNNING -> {
                 StateChipColors(
                     "RUNNING",
-                    IntelliJColors.success,
-                    IntelliJColors.debugRunningText,
-                    IntelliJColors.success.copy(alpha = 0.16f),
+                    LocalIntelliJColors.current.success,
+                    LocalIntelliJColors.current.debugRunningText,
+                    LocalIntelliJColors.current.success.copy(alpha = 0.16f),
                 )
             }
 
             DebugStatus.TERMINATED -> {
                 StateChipColors(
                     "IDLE",
-                    IntelliJColors.textMuted,
-                    IntelliJColors.textMuted,
-                    IntelliJColors.surfaceElevated,
+                    LocalIntelliJColors.current.textMuted,
+                    LocalIntelliJColors.current.textMuted,
+                    LocalIntelliJColors.current.surfaceElevated,
                 )
             }
         }
@@ -145,35 +154,72 @@ private fun ThreadSelector(
     state: DebugUiState,
     dispatch: (DebugIntent) -> Unit,
 ) {
-    val selected = state.threads.firstOrNull { it.id == state.selectedThreadId } ?: state.threads.first()
-    Row(
-        modifier =
-            Modifier
-                .padding(horizontal = 10.dp, vertical = Spacing.xs.dp)
-                .fillMaxWidth()
-                .height(28.dp)
-                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .background(IntelliJColors.background)
-                .border(1.dp, IntelliJColors.divider, RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .clickable { state.threads.getOrNull(0)?.let { dispatch(DebugIntent.SelectThread(it.id)) } }
-                .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    var expanded by remember { mutableStateOf(false) }
+    var anchorHeightPx by remember { mutableStateOf(0) }
+    val selected =
+        state.threads.firstOrNull { it.id == state.selectedThreadId } ?: state.threads.firstOrNull()
+    Box(
+        modifier = Modifier.onSizeChanged { anchorHeightPx = it.height },
     ) {
-        Icon(
-            Icons.Default.Lan,
-            contentDescription = null,
-            tint = IntelliJColors.iconFile,
-            modifier = Modifier.size(15.dp),
-        )
-        Text(selected.name, color = IntelliJColors.textPrimary, fontSize = 12.sp)
-        Spacer(Modifier.weight(1f))
-        Icon(
-            Icons.Default.ExpandMore,
-            contentDescription = null,
-            tint = IntelliJColors.textMuted,
-            modifier = Modifier.size(Dimensions.iconMd.dp),
-        )
+        Row(
+            modifier =
+                Modifier
+                    .padding(horizontal = 10.dp, vertical = Spacing.xs.dp)
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                    .background(LocalIntelliJColors.current.background)
+                    .border(
+                        1.dp,
+                        LocalIntelliJColors.current.divider,
+                        RoundedCornerShape(Dimensions.cornerRadius.dp),
+                    ).clickable(enabled = state.threads.size > 1) { expanded = true }
+                    .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+        ) {
+            Icon(
+                Icons.Default.Lan,
+                contentDescription = null,
+                tint = LocalIntelliJColors.current.iconFile,
+                modifier = Modifier.size(15.dp),
+            )
+            Text(
+                selected?.name ?: "No threads",
+                color = LocalIntelliJColors.current.textPrimary,
+                fontSize = 12.sp,
+                maxLines = 1,
+            )
+            Spacer(Modifier.weight(1f))
+            Icon(
+                Icons.Default.ExpandMore,
+                contentDescription = null,
+                tint = LocalIntelliJColors.current.textMuted,
+                modifier = Modifier.size(Dimensions.iconMd.dp),
+            )
+        }
+        PopupChromeMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            offsetY = anchorHeightPx,
+        ) {
+            state.threads.forEach { thread ->
+                PopupListRow(
+                    selected = thread.id == selected?.id,
+                    onClick = {
+                        dispatch(DebugIntent.SelectThread(thread.id))
+                        expanded = false
+                    },
+                ) {
+                    Text(
+                        thread.name,
+                        color = LocalIntelliJColors.current.textPrimary,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -186,7 +232,7 @@ private fun CallStack(
         Box(modifier = Modifier.fillMaxSize().padding(Spacing.md.dp)) {
             Text(
                 if (state.status == DebugStatus.RUNNING) "Running…" else "Not paused",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
             )
         }
@@ -196,7 +242,7 @@ private fun CallStack(
         items(state.frames, key = { it.id }) { frame ->
             Box {
                 if (frame.isCurrent) {
-                    Box(modifier = Modifier.width(2.dp).fillMaxHeight().background(IntelliJColors.warning))
+                    Box(modifier = Modifier.width(2.dp).fillMaxHeight().background(LocalIntelliJColors.current.warning))
                 }
                 Row(
                     modifier =
@@ -204,7 +250,13 @@ private fun CallStack(
                             .fillMaxWidth()
                             .height(26.dp)
                             .background(
-                                if (frame.isCurrent) IntelliJColors.warning.copy(alpha = 0.10f) else Color.Transparent,
+                                if (frame.isCurrent) {
+                                    LocalIntelliJColors.current.warning.copy(
+                                        alpha = 0.10f,
+                                    )
+                                } else {
+                                    Color.Transparent
+                                },
                             ).clickable { dispatch(DebugIntent.SelectFrame(frame.id)) }
                             .padding(horizontal = Spacing.md.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -218,17 +270,22 @@ private fun CallStack(
                                 Icons.Default.SubdirectoryArrowRight
                             },
                         contentDescription = null,
-                        tint = if (frame.isCurrent) IntelliJColors.warning else IntelliJColors.textMuted,
+                        tint =
+                            if (frame.isCurrent) {
+                                LocalIntelliJColors.current.warning
+                            } else {
+                                LocalIntelliJColors.current.textMuted
+                            },
                         modifier = Modifier.size(15.dp),
                     )
                     Text(
                         frame.method,
-                        color = if (frame.isCurrent) Color.White else IntelliJColors.textPrimary,
+                        color = if (frame.isCurrent) Color.White else LocalIntelliJColors.current.textPrimary,
                         fontSize = 12.5.sp,
                     )
                     Text(
                         frame.location,
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 12.sp,
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
@@ -245,31 +302,31 @@ private fun BreakpointsSection(
     dispatch: (DebugIntent) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().height(172.dp)) {
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(IntelliJColors.divider))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
         Row(
             modifier = Modifier.fillMaxWidth().height(30.dp).padding(horizontal = Spacing.md.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Breakpoints", color = IntelliJColors.textPrimary, fontSize = 12.sp)
+            Text("Breakpoints", color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
             Spacer(Modifier.weight(1f))
             Icon(
                 Icons.Default.DoNotDisturbOn,
                 contentDescription = null,
-                tint = IntelliJColors.activityBarForeground,
+                tint = LocalIntelliJColors.current.activityBarForeground,
                 modifier = Modifier.size(Dimensions.iconMd.dp),
             )
             Spacer(Modifier.width(Spacing.sm.dp))
             Icon(
                 Icons.Default.Tune,
                 contentDescription = null,
-                tint = IntelliJColors.activityBarForeground,
+                tint = LocalIntelliJColors.current.activityBarForeground,
                 modifier = Modifier.size(Dimensions.iconMd.dp),
             )
         }
         if (state.breakpoints.isEmpty()) {
             Text(
                 "No breakpoints. Click the gutter to add one.",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
             )
@@ -296,21 +353,30 @@ private fun BreakpointRow(
                 Modifier
                     .size(11.dp)
                     .clip(CircleShape)
-                    .background(if (bp.enabled) IntelliJColors.breakpointRed else Color.Transparent)
+                    .background(if (bp.enabled) LocalIntelliJColors.current.breakpointRed else Color.Transparent)
                     .border(
                         1.5.dp,
-                        if (bp.enabled) IntelliJColors.breakpointRed else IntelliJColors.textMuted,
+                        if (bp.enabled) {
+                            LocalIntelliJColors.current.breakpointRed
+                        } else {
+                            LocalIntelliJColors.current.textMuted
+                        },
                         CircleShape,
                     ).clickable { dispatch(DebugIntent.SetBreakpointEnabled(bp.id, !bp.enabled)) },
         )
         Column {
             Text(
                 bp.where,
-                color = if (bp.enabled) IntelliJColors.textPrimary else IntelliJColors.activityBarForeground,
+                color =
+                    if (bp.enabled) {
+                        LocalIntelliJColors.current.textPrimary
+                    } else {
+                        LocalIntelliJColors.current.activityBarForeground
+                    },
                 fontSize = 12.sp,
                 maxLines = 1,
             )
-            bp.condition?.let { Text("if $it", color = IntelliJColors.debugVarName, fontSize = 11.sp) }
+            bp.condition?.let { Text("if $it", color = LocalIntelliJColors.current.debugVarName, fontSize = 11.sp) }
         }
     }
 }
@@ -320,13 +386,15 @@ private fun BreakpointRow(
 public fun DebugBottomContent(
     state: DebugUiState,
     dispatch: (DebugIntent) -> Unit,
+    onRestart: () -> Unit,
+    onShowBreakpoints: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        DebugToolbar(state, dispatch)
+        DebugToolbar(state, dispatch, onRestart, onShowBreakpoints)
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) { VariablesTree(state, dispatch) }
-            Box(modifier = Modifier.width(1.dp).fillMaxHeight().background(IntelliJColors.divider))
+            Box(modifier = Modifier.width(1.dp).fillMaxHeight().background(LocalIntelliJColors.current.divider))
             Box(modifier = Modifier.width(300.dp).fillMaxHeight()) { WatchesPanel(state, dispatch) }
         }
     }
@@ -336,6 +404,8 @@ public fun DebugBottomContent(
 private fun DebugToolbar(
     state: DebugUiState,
     dispatch: (DebugIntent) -> Unit,
+    onRestart: () -> Unit,
+    onShowBreakpoints: () -> Unit,
 ) {
     val paused = state.status == DebugStatus.PAUSED
     val running = state.status == DebugStatus.RUNNING
@@ -344,21 +414,36 @@ private fun DebugToolbar(
             Modifier
                 .fillMaxWidth()
                 .height(34.dp)
-                .background(IntelliJColors.background)
+                .background(LocalIntelliJColors.current.background)
                 .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        ToolbarButton(Icons.Default.PlayArrow, "Resume", enabled = paused, tint = IntelliJColors.success) {
+        ToolbarButton(Icons.Default.PlayArrow, "Resume", enabled = paused, tint = LocalIntelliJColors.current.success) {
             dispatch(DebugIntent.Resume)
         }
-        ToolbarButton(Icons.Default.Pause, "Pause", enabled = running, tint = IntelliJColors.textSecondary) {
+        ToolbarButton(
+            Icons.Default.Pause,
+            "Pause",
+            enabled = running,
+            tint = LocalIntelliJColors.current.textSecondary,
+        ) {
             dispatch(DebugIntent.Pause)
         }
-        ToolbarButton(Icons.Default.Stop, "Stop", enabled = state.hasSession, tint = IntelliJColors.error) {
+        ToolbarButton(
+            Icons.Default.Stop,
+            "Stop",
+            enabled = state.hasSession,
+            tint = LocalIntelliJColors.current.error,
+        ) {
             dispatch(DebugIntent.Stop)
         }
-        ToolbarButton(Icons.Default.RestartAlt, "Restart", enabled = false, tint = IntelliJColors.textSecondary) {}
+        ToolbarButton(
+            Icons.Default.RestartAlt,
+            "Restart",
+            enabled = state.hasSession,
+            tint = LocalIntelliJColors.current.textSecondary,
+        ) { onRestart() }
         ToolbarDivider()
         ToolbarButton(
             Icons.AutoMirrored.Filled.ArrowForward,
@@ -368,8 +453,22 @@ private fun DebugToolbar(
         ToolbarButton(Icons.Default.ArrowDownward, "Step into", enabled = paused) { dispatch(DebugIntent.StepInto) }
         ToolbarButton(Icons.Default.ArrowUpward, "Step out", enabled = paused) { dispatch(DebugIntent.StepOut) }
         ToolbarDivider()
-        ToolbarButton(Icons.Default.DoNotDisturbOn, "Mute breakpoints", enabled = false) {}
-        ToolbarButton(Icons.AutoMirrored.Filled.FormatListBulleted, "View breakpoints", enabled = false) {}
+        ToolbarButton(
+            Icons.Default.DoNotDisturbOn,
+            if (state.breakpointsMuted) "Unmute breakpoints" else "Mute breakpoints",
+            enabled = state.breakpoints.isNotEmpty(),
+            tint =
+                if (state.breakpointsMuted) {
+                    LocalIntelliJColors.current.warning
+                } else {
+                    LocalIntelliJColors.current.textPrimary
+                },
+        ) { dispatch(DebugIntent.SetBreakpointsMuted(!state.breakpointsMuted)) }
+        ToolbarButton(
+            Icons.AutoMirrored.Filled.FormatListBulleted,
+            "View breakpoints",
+            enabled = state.breakpoints.isNotEmpty(),
+        ) { onShowBreakpoints() }
         Spacer(Modifier.weight(1f))
         val statusText =
             when {
@@ -377,9 +476,9 @@ private fun DebugToolbar(
                 running -> "Running"
                 else -> ""
             }
-        Text(statusText, color = IntelliJColors.debugPausedText, fontSize = 11.sp)
+        Text(statusText, color = LocalIntelliJColors.current.debugPausedText, fontSize = 11.sp)
     }
-    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(IntelliJColors.divider))
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
 }
 
 @Composable
@@ -387,13 +486,13 @@ private fun ToolbarButton(
     icon: ImageVector,
     label: String,
     enabled: Boolean,
-    tint: Color = IntelliJColors.textPrimary,
+    tint: Color = LocalIntelliJColors.current.textPrimary,
     onClick: () -> Unit,
 ) {
     Icon(
         imageVector = icon,
         contentDescription = label,
-        tint = if (enabled) tint else IntelliJColors.scrollbarThumb,
+        tint = if (enabled) tint else LocalIntelliJColors.current.scrollbarThumb,
         modifier =
             Modifier
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
@@ -411,7 +510,7 @@ private fun ToolbarDivider() {
                 .padding(horizontal = 6.dp)
                 .width(1.dp)
                 .height(16.dp)
-                .background(IntelliJColors.divider),
+                .background(LocalIntelliJColors.current.divider),
     )
 }
 
@@ -431,12 +530,12 @@ private fun VariablesTree(
                 Icon(
                     Icons.Default.HourglassEmpty,
                     contentDescription = null,
-                    tint = IntelliJColors.textMuted,
+                    tint = LocalIntelliJColors.current.textMuted,
                     modifier = Modifier.size(Dimensions.iconMd.dp),
                 )
                 Text(
                     "Variables are unavailable while the program is running.",
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 12.5.sp,
                 )
             }
@@ -472,7 +571,7 @@ private fun VariableRow(
                             Icons.AutoMirrored.Filled.KeyboardArrowRight
                         },
                     contentDescription = null,
-                    tint = IntelliJColors.textSecondary,
+                    tint = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.size(Dimensions.iconMd.dp),
                 )
             }
@@ -483,8 +582,18 @@ private fun VariableRow(
             tint = varIconTint(v.kind),
             modifier = Modifier.padding(end = 6.dp).size(14.dp),
         )
-        Text(v.name, color = IntelliJColors.debugVarName, fontSize = 12.5.sp, fontFamily = JetaProgFonts.codeFont)
-        Text(" = ", color = IntelliJColors.textMuted, fontSize = 12.5.sp, fontFamily = JetaProgFonts.codeFont)
+        Text(
+            v.name,
+            color = LocalIntelliJColors.current.debugVarName,
+            fontSize = 12.5.sp,
+            fontFamily = JetaProgFonts.codeFont,
+        )
+        Text(
+            " = ",
+            color = LocalIntelliJColors.current.textMuted,
+            fontSize = 12.5.sp,
+            fontFamily = JetaProgFonts.codeFont,
+        )
         Text(
             v.value,
             color = varValueColor(v.kind),
@@ -514,14 +623,14 @@ private fun WatchesPanel(
             Icon(
                 Icons.Default.Add,
                 contentDescription = "Add watch",
-                tint = IntelliJColors.activityBarForeground,
+                tint = LocalIntelliJColors.current.activityBarForeground,
                 modifier = Modifier.size(Dimensions.iconMd.dp),
             )
             Box(modifier = Modifier.weight(1f)) {
                 if (input.isEmpty()) {
                     Text(
                         "Add expression…",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 12.sp,
                         fontFamily = JetaProgFonts.codeFont,
                     )
@@ -532,11 +641,11 @@ private fun WatchesPanel(
                     singleLine = true,
                     textStyle =
                         TextStyle(
-                            color = IntelliJColors.textPrimary,
+                            color = LocalIntelliJColors.current.textPrimary,
                             fontSize = 12.sp,
                             fontFamily = JetaProgFonts.codeFont,
                         ),
-                    cursorBrush = SolidColor(IntelliJColors.accent),
+                    cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -544,7 +653,7 @@ private fun WatchesPanel(
                 Icon(
                     Icons.Default.Add,
                     contentDescription = "Confirm",
-                    tint = IntelliJColors.accent,
+                    tint = LocalIntelliJColors.current.accent,
                     modifier =
                         Modifier
                             .clickable {
@@ -569,14 +678,19 @@ private fun WatchRow(
         Icon(
             Icons.Default.Visibility,
             contentDescription = null,
-            tint = IntelliJColors.iconFile,
+            tint = LocalIntelliJColors.current.iconFile,
             modifier = Modifier.padding(end = 6.dp).size(14.dp),
         )
-        Text(w.expr, color = IntelliJColors.info, fontSize = 12.5.sp, fontFamily = JetaProgFonts.codeFont)
-        Text(" = ", color = IntelliJColors.textMuted, fontSize = 12.5.sp, fontFamily = JetaProgFonts.codeFont)
+        Text(w.expr, color = LocalIntelliJColors.current.info, fontSize = 12.5.sp, fontFamily = JetaProgFonts.codeFont)
+        Text(
+            " = ",
+            color = LocalIntelliJColors.current.textMuted,
+            fontSize = 12.5.sp,
+            fontFamily = JetaProgFonts.codeFont,
+        )
         Text(
             w.value,
-            color = if (w.error) IntelliJColors.error else IntelliJColors.debugVarNumber,
+            color = if (w.error) LocalIntelliJColors.current.error else LocalIntelliJColors.current.debugVarNumber,
             fontSize = 12.5.sp,
             fontFamily = JetaProgFonts.codeFont,
             maxLines = 1,
@@ -585,7 +699,7 @@ private fun WatchRow(
         Icon(
             Icons.Default.Close,
             contentDescription = "Remove watch",
-            tint = IntelliJColors.textMuted,
+            tint = LocalIntelliJColors.current.textMuted,
             modifier = Modifier.clickable { dispatch(DebugIntent.RemoveWatch(w.id)) }.size(Dimensions.iconSm.dp),
         )
     }
@@ -597,7 +711,7 @@ private fun SectionLabel(text: String) {
         modifier = Modifier.fillMaxWidth().height(26.dp).padding(horizontal = Spacing.md.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Text(text, color = IntelliJColors.textMuted, fontSize = 11.sp)
+        Text(text, color = LocalIntelliJColors.current.textMuted, fontSize = 11.sp)
     }
 }
 
@@ -608,17 +722,99 @@ private fun varIcon(kind: VarKind): ImageVector =
         VarKind.STRING, VarKind.NUMBER, VarKind.PRIMITIVE -> Icons.Default.Tag
     }
 
+@Composable
 private fun varIconTint(kind: VarKind): Color =
     when (kind) {
-        VarKind.OBJECT -> IntelliJColors.iconFolder
-        VarKind.ARRAY -> IntelliJColors.iconFile
-        else -> IntelliJColors.iconFile
+        VarKind.OBJECT -> LocalIntelliJColors.current.iconFolder
+        VarKind.ARRAY -> LocalIntelliJColors.current.iconFile
+        else -> LocalIntelliJColors.current.iconFile
     }
 
+@Composable
 private fun varValueColor(kind: VarKind): Color =
     when (kind) {
-        VarKind.STRING -> IntelliJColors.debugVarString
-        VarKind.NUMBER -> IntelliJColors.debugVarNumber
-        VarKind.OBJECT, VarKind.ARRAY -> IntelliJColors.textSecondary
-        VarKind.PRIMITIVE -> IntelliJColors.debugVarType
+        VarKind.STRING -> LocalIntelliJColors.current.debugVarString
+        VarKind.NUMBER -> LocalIntelliJColors.current.debugVarNumber
+        VarKind.OBJECT, VarKind.ARRAY -> LocalIntelliJColors.current.textSecondary
+        VarKind.PRIMITIVE -> LocalIntelliJColors.current.debugVarType
     }
+
+/**
+ * Dialog listing every project-level breakpoint with its verified state and an
+ * enable checkbox, mirroring IntelliJ's breakpoints view.
+ */
+@Composable
+public fun BreakpointsDialog(
+    state: DebugUiState,
+    dispatch: (DebugIntent) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    IntelliJDialog(
+        onDismissRequest = onDismiss,
+        modifier = modifier,
+        minWidth = 420.dp,
+    ) {
+        Column {
+            Text(
+                text = "Breakpoints",
+                color = LocalIntelliJColors.current.textPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.lg.dp, vertical = Spacing.md.dp),
+            )
+            HorizontalDivider(color = LocalIntelliJColors.current.border)
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .padding(horizontal = Spacing.lg.dp, vertical = Spacing.md.dp),
+            ) {
+                items(state.breakpoints, key = { it.id }) { bp ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+                    ) {
+                        IntelliJCheckbox(
+                            checked = bp.enabled,
+                            onCheckedChange = { enabled ->
+                                dispatch(DebugIntent.SetBreakpointEnabled(bp.id, enabled))
+                            },
+                        )
+                        Column {
+                            Text(
+                                text = "${bp.file.substringAfterLast('/')}:${bp.line}",
+                                color = LocalIntelliJColors.current.textPrimary,
+                                fontSize = 12.sp,
+                            )
+                            if (bp.condition != null) {
+                                Text(
+                                    text = "if ${bp.condition}",
+                                    color = LocalIntelliJColors.current.debugVarName,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = if (bp.verified) "verified" else "not verified",
+                            color =
+                                if (bp.verified) {
+                                    LocalIntelliJColors.current.success
+                                } else {
+                                    LocalIntelliJColors.current.textMuted
+                                },
+                            fontSize = 11.sp,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

@@ -65,27 +65,94 @@ public class ConfigurationViewModel(
 
     override suspend fun handleIntent(intent: ConfigurationIntent) {
         when (intent) {
-            is ConfigurationIntent.Initialize -> initialize(intent.projectPath)
-            is ConfigurationIntent.SelectConfiguration -> selectConfiguration(intent.id)
-            is ConfigurationIntent.RunActive -> startActiveConfiguration()
-            is ConfigurationIntent.DebugActive -> debugActiveConfiguration()
-            is ConfigurationIntent.Run -> startConfiguration(intent.id)
-            is ConfigurationIntent.Stop -> stopConfiguration()
-            is ConfigurationIntent.Create -> createConfiguration(intent.configuration)
-            is ConfigurationIntent.Update -> updateConfiguration(intent.configuration)
-            is ConfigurationIntent.Delete -> deleteConfiguration(intent.id)
-            is ConfigurationIntent.Duplicate -> duplicateConfiguration(intent.id)
-            is ConfigurationIntent.MakePermanent -> makePermanent(intent.id)
-            is ConfigurationIntent.MoveToFolder -> moveToFolder(intent.id, intent.folderName)
-            is ConfigurationIntent.OpenDialog -> openDialog()
-            is ConfigurationIntent.EditConfiguration -> editConfiguration(intent.id)
-            is ConfigurationIntent.CreateNew -> createNewConfiguration(intent.type)
-            is ConfigurationIntent.CreateRecommended -> createRecommendedConfiguration()
-            is ConfigurationIntent.CloseDialog -> closeDialog()
-            is ConfigurationIntent.SaveFromDialog -> saveFromDialog(intent.configuration)
-            is ConfigurationIntent.ClearError -> clearError()
-            is ConfigurationIntent.ClearExecutionOutput -> clearExecutionOutput()
-            is ConfigurationIntent.DiscoverConfigurations -> discoverConfigurations(intent.projectPath)
+            is ConfigurationIntent.Initialize -> {
+                initialize(intent.projectPath)
+            }
+
+            is ConfigurationIntent.SelectConfiguration -> {
+                selectConfiguration(intent.id)
+            }
+
+            is ConfigurationIntent.RunActive -> {
+                startActiveConfiguration()
+            }
+
+            is ConfigurationIntent.DebugActive -> {
+                debugActiveConfiguration()
+            }
+
+            is ConfigurationIntent.Run -> {
+                startConfiguration(intent.id)
+            }
+
+            is ConfigurationIntent.Stop -> {
+                stopConfiguration()
+            }
+
+            is ConfigurationIntent.Restart -> {
+                stopConfiguration()
+                debugActiveConfiguration()
+            }
+
+            is ConfigurationIntent.Create -> {
+                createConfiguration(intent.configuration)
+            }
+
+            is ConfigurationIntent.Update -> {
+                updateConfiguration(intent.configuration)
+            }
+
+            is ConfigurationIntent.Delete -> {
+                deleteConfiguration(intent.id)
+            }
+
+            is ConfigurationIntent.Duplicate -> {
+                duplicateConfiguration(intent.id)
+            }
+
+            is ConfigurationIntent.MakePermanent -> {
+                makePermanent(intent.id)
+            }
+
+            is ConfigurationIntent.MoveToFolder -> {
+                moveToFolder(intent.id, intent.folderName)
+            }
+
+            is ConfigurationIntent.OpenDialog -> {
+                openDialog()
+            }
+
+            is ConfigurationIntent.EditConfiguration -> {
+                editConfiguration(intent.id)
+            }
+
+            is ConfigurationIntent.CreateNew -> {
+                createNewConfiguration(intent.type)
+            }
+
+            is ConfigurationIntent.CreateRecommended -> {
+                createRecommendedConfiguration()
+            }
+
+            is ConfigurationIntent.CloseDialog -> {
+                closeDialog()
+            }
+
+            is ConfigurationIntent.SaveFromDialog -> {
+                saveFromDialog(intent.configuration)
+            }
+
+            is ConfigurationIntent.ClearError -> {
+                clearError()
+            }
+
+            is ConfigurationIntent.ClearExecutionOutput -> {
+                clearExecutionOutput()
+            }
+
+            is ConfigurationIntent.DiscoverConfigurations -> {
+                discoverConfigurations(intent.projectPath)
+            }
         }
     }
 

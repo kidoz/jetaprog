@@ -63,12 +63,15 @@ import su.kidoz.jetaprog.app.ui.components.FileMenu
 import su.kidoz.jetaprog.app.ui.components.IntelliJEditorTabs
 import su.kidoz.jetaprog.app.ui.components.IntelliJStatusBar
 import su.kidoz.jetaprog.app.ui.components.NotificationOverlay
+import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.VerticalDragHandle
 import su.kidoz.jetaprog.app.ui.components.VerticalSplitter
 import su.kidoz.jetaprog.app.ui.components.coerceInDp
 import su.kidoz.jetaprog.app.ui.components.createBreadcrumbsFromPath
 import su.kidoz.jetaprog.app.ui.database.DatabaseQueryResultsPanel
 import su.kidoz.jetaprog.app.ui.database.DatabaseToolWindow
+import su.kidoz.jetaprog.app.ui.debug.BreakpointsDialog
 import su.kidoz.jetaprog.app.ui.debug.DebugBottomContent
 import su.kidoz.jetaprog.app.ui.debug.DebugIntent
 import su.kidoz.jetaprog.app.ui.debug.DebugSidePanel
@@ -298,6 +301,7 @@ private fun MainScreenContent(
     val configurationState by session.configurationViewModel.state.collectAsState()
     val gitState by session.gitViewModel.state.collectAsState()
     val debugState by session.debugViewModel.state.collectAsState()
+    var showBreakpointsDialog by remember { mutableStateOf(false) }
     val databaseState by session.databaseViewModel.state.collectAsState()
 
     val currentProjectPath = session.projectPath
@@ -1070,6 +1074,10 @@ private fun MainScreenContent(
                             DebugBottomContent(
                                 state = debugState,
                                 dispatch = { intent -> session.debugViewModel.dispatch(intent) },
+                                onRestart = {
+                                    session.configurationViewModel.dispatch(ConfigurationIntent.Restart)
+                                },
+                                onShowBreakpoints = { showBreakpointsDialog = true },
                             )
                         }
 
@@ -1174,6 +1182,14 @@ private fun MainScreenContent(
             state = settingsState,
             onIntent = { intent -> app.settingsViewModel.dispatch(intent) },
         )
+
+        if (showBreakpointsDialog) {
+            BreakpointsDialog(
+                state = debugState,
+                dispatch = { intent -> session.debugViewModel.dispatch(intent) },
+                onDismiss = { showBreakpointsDialog = false },
+            )
+        }
 
         editorConfirmation?.let { confirmation ->
             ConfirmationDialog(

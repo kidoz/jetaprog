@@ -98,6 +98,9 @@ public sealed interface ConfigurationIntent : Intent {
     /** Stop the running configuration. */
     public data object Stop : ConfigurationIntent
 
+    /** Stop the running configuration (if any), then debug the active one. */
+    public data object Restart : ConfigurationIntent
+
     /** Create a new configuration. */
     public data class Create(
         val configuration: RunConfiguration,

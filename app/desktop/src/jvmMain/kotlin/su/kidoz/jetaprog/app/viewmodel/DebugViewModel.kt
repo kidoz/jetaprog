@@ -148,6 +148,10 @@ public class DebugViewModel(
                 _state.update { it.copy(showInlineValues = !it.showInlineValues) }
                 persist()
             }
+
+            is DebugIntent.SetBreakpointsMuted -> {
+                setBreakpointsMuted(intent.muted)
+            }
         }
     }
 
@@ -185,7 +189,9 @@ public class DebugViewModel(
         scope.launch {
             _state.value.breakpoints.forEach { bp ->
                 session.breakpointManager.addBreakpoint(bp.file, bp.line, bp.condition)
-                if (!bp.enabled) session.breakpointManager.setBreakpointEnabled(bp.file, bp.line, false)
+                if (!bp.enabled || _state.value.breakpointsMuted) {
+                    session.breakpointManager.setBreakpointEnabled(bp.file, bp.line, false)
+                }
             }
         }
 
@@ -388,6 +394,18 @@ public class DebugViewModel(
             active?.breakpointManager?.addBreakpoint(file, line)
         }
         persist()
+    }
+
+    /**
+     * Mutes or unmutes every breakpoint. Muting disables all breakpoints in the
+     * active session; unmuting re-enables exactly the user-enabled ones.
+     */
+    private suspend fun setBreakpointsMuted(muted: Boolean) {
+        _state.update { it.copy(breakpointsMuted = muted) }
+        val active = this.active ?: return
+        _state.value.breakpoints.forEach { bp ->
+            active.breakpointManager.setBreakpointEnabled(bp.file, bp.line, enabled = !muted && bp.enabled)
+        }
     }
 
     private suspend fun setBreakpointEnabled(

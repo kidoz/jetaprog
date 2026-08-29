@@ -146,6 +146,7 @@ public data class DebugUiState(
     val variableValues: Map<String, String> = emptyMap(),
     val showInlineValues: Boolean = true,
     val hasSession: Boolean = false,
+    val breakpointsMuted: Boolean = false,
 )
 
 /** User intents for the debugger. */
@@ -207,4 +208,12 @@ public sealed interface DebugIntent {
 
     /** Toggle the inline-values editor decoration. */
     public data object ToggleInlineValues : DebugIntent
+
+    /**
+     * Mute or unmute all breakpoints. While muted, every breakpoint is
+     * disabled in the debug session and new sessions skip enabled ones.
+     */
+    public data class SetBreakpointsMuted(
+        val muted: Boolean,
+    ) : DebugIntent
 }
