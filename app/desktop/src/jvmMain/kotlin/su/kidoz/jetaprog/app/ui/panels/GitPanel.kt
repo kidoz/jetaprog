@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Check
@@ -52,9 +53,11 @@ import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.ToolWindowButton
+import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.GitChangesViewMode
 import su.kidoz.jetaprog.app.viewmodel.GitViewModel
@@ -80,12 +83,12 @@ public fun GitPanel(
             modifier =
                 modifier
                     .fillMaxSize()
-                    .background(IntelliJColors.toolWindowBackground)
+                    .background(LocalIntelliJColors.current.toolWindowBackground)
                     .padding(Spacing.md.dp),
         ) {
             Text(
                 text = "Not a Git repository",
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -95,19 +98,20 @@ public fun GitPanel(
     val changes = state.staged + state.unstaged
     val stageSelection = changes.stageSelection()
     var collapsedDirectories by remember { mutableStateOf(emptySet<String>()) }
+    var pendingRollback by remember { mutableStateOf<List<GitChange>?>(null) }
 
     Column(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(IntelliJColors.toolWindowBackground),
+                .background(LocalIntelliJColors.current.toolWindowBackground),
     ) {
         CommitHeader(isBusy = state.isBusy, onRefresh = viewModel::refresh)
 
         state.error?.let { error ->
             Text(
                 text = error,
-                color = IntelliJColors.error,
+                color = LocalIntelliJColors.current.error,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
             )
@@ -141,6 +145,7 @@ public fun GitPanel(
                         showParentPath = true,
                         onToggle = { viewModel.toggleStage(change) },
                         onClick = { viewModel.select(change) },
+                        onRollback = { pendingRollback = listOf(change) },
                     )
                 }
             } else {
@@ -174,6 +179,7 @@ public fun GitPanel(
                                 showParentPath = false,
                                 onToggle = { viewModel.toggleStage(item.change) },
                                 onClick = { viewModel.select(item.change) },
+                                onRollback = { pendingRollback = listOf(item.change) },
                             )
                         }
                     }
@@ -189,6 +195,21 @@ public fun GitPanel(
             onCommitAndPush = viewModel::commitAndPush,
         )
     }
+
+    pendingRollback?.let { rollbackTargets ->
+        ConfirmationDialog(
+            title = "Rollback changes?",
+            message =
+                "Revert ${rollbackTargets.distinctBy { it.path }.size} file(s) to HEAD. " +
+                    "Untracked files will be deleted. This cannot be undone.",
+            confirmLabel = "Rollback",
+            onConfirm = {
+                viewModel.discardChanges(rollbackTargets.distinctBy { it.path })
+                pendingRollback = null
+            },
+            onDismiss = { pendingRollback = null },
+        )
+    }
 }
 
 @Composable
@@ -201,13 +222,13 @@ private fun CommitHeader(
             Modifier
                 .fillMaxWidth()
                 .height(Dimensions.panelHeaderHeight.dp)
-                .background(IntelliJColors.toolWindowHeader)
+                .background(LocalIntelliJColors.current.toolWindowHeader)
                 .padding(start = Spacing.md.dp, end = Spacing.xs.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "Commit",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
@@ -216,7 +237,12 @@ private fun CommitHeader(
             Icon(
                 imageVector = Icons.Default.Refresh,
                 contentDescription = "Refresh Git status",
-                tint = if (isBusy) IntelliJColors.textDisabled else IntelliJColors.iconDefault,
+                tint =
+                    if (isBusy) {
+                        LocalIntelliJColors.current.textDisabled
+                    } else {
+                        LocalIntelliJColors.current.iconDefault
+                    },
                 modifier = Modifier.size(Dimensions.iconMd.dp),
             )
         }
@@ -241,10 +267,15 @@ private fun ChangesHeader(
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
         StageCheckbox(selection = stageSelection, enabled = fileCount > 0, onToggle = onToggleAll)
-        Text(text = "Changes", color = IntelliJColors.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text(
+            text = "Changes",
+            color = LocalIntelliJColors.current.textPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
         Text(
             text = "$fileCount ${if (fileCount == 1) "file" else "files"}",
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 12.sp,
             modifier = Modifier.weight(1f),
         )
@@ -291,9 +322,12 @@ private fun StageCheckbox(
             Modifier
                 .size(14.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(if (isSelected) IntelliJColors.accent else Color.Transparent)
-                .border(1.5.dp, if (enabled) IntelliJColors.accent else IntelliJColors.border, RoundedCornerShape(3.dp))
-                .clickable(enabled = enabled, onClick = onToggle),
+                .background(if (isSelected) LocalIntelliJColors.current.accent else Color.Transparent)
+                .border(
+                    1.5.dp,
+                    if (enabled) LocalIntelliJColors.current.accent else LocalIntelliJColors.current.border,
+                    RoundedCornerShape(3.dp),
+                ).clickable(enabled = enabled, onClick = onToggle),
         contentAlignment = Alignment.Center,
     ) {
         if (isSelected) {
@@ -316,7 +350,7 @@ private fun StageCheckbox(
 private fun EmptyChanges() {
     Text(
         text = "No changes",
-        color = IntelliJColors.textMuted,
+        color = LocalIntelliJColors.current.textMuted,
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.fillMaxWidth().padding(Spacing.md.dp),
     )
@@ -330,13 +364,14 @@ private fun ChangeRow(
     showParentPath: Boolean,
     onToggle: () -> Unit,
     onClick: () -> Unit,
+    onRollback: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     val backgroundColor =
         when {
-            isSelected -> IntelliJColors.treeSelectionBackground
-            isHovered -> IntelliJColors.treeHoverBackground
+            isSelected -> LocalIntelliJColors.current.treeSelectionBackground
+            isHovered -> LocalIntelliJColors.current.treeHoverBackground
             else -> Color.Transparent
         }
 
@@ -361,7 +396,7 @@ private fun ChangeRow(
             FileBadge(fileName = change.fileName())
             Text(
                 text = change.fileName(),
-                color = if (isSelected) Color.White else IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -369,7 +404,7 @@ private fun ChangeRow(
             if (showParentPath) {
                 Text(
                     text = change.parentPath(),
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -377,6 +412,16 @@ private fun ChangeRow(
                 )
             } else {
                 Box(modifier = Modifier.weight(1f))
+            }
+            if (isHovered) {
+                IconButton(onClick = onRollback, modifier = Modifier.size(20.dp)) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = "Rollback changes to HEAD",
+                        tint = LocalIntelliJColors.current.textSecondary,
+                        modifier = Modifier.size(Dimensions.iconSm.dp),
+                    )
+                }
             }
             Text(
                 text = change.type.statusLabel(),
@@ -393,7 +438,7 @@ private fun ChangeRow(
                         .align(Alignment.CenterStart)
                         .width(2.dp)
                         .height(Dimensions.gitChangeRowHeight.dp)
-                        .background(IntelliJColors.accent),
+                        .background(LocalIntelliJColors.current.accent),
             )
         }
     }
@@ -415,7 +460,7 @@ private fun DirectoryRow(
             Modifier
                 .fillMaxWidth()
                 .height(Dimensions.gitChangeRowHeight.dp)
-                .background(if (isHovered) IntelliJColors.treeHoverBackground else Color.Transparent)
+                .background(if (isHovered) LocalIntelliJColors.current.treeHoverBackground else Color.Transparent)
                 .hoverable(interactionSource)
                 .clickable(onClick = onToggleExpanded)
                 .padding(start = (Spacing.xs + directory.depth * Spacing.lg).dp, end = Spacing.sm.dp),
@@ -425,7 +470,7 @@ private fun DirectoryRow(
         Icon(
             imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
             contentDescription = if (isExpanded) "Collapse ${directory.name}" else "Expand ${directory.name}",
-            tint = IntelliJColors.iconDefault,
+            tint = LocalIntelliJColors.current.iconDefault,
             modifier = Modifier.size(Dimensions.iconSm.dp),
         )
         StageCheckbox(
@@ -436,12 +481,12 @@ private fun DirectoryRow(
         Icon(
             imageVector = if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
             contentDescription = null,
-            tint = IntelliJColors.iconDefault,
+            tint = LocalIntelliJColors.current.iconDefault,
             modifier = Modifier.size(Dimensions.iconMd.dp),
         )
         Text(
             text = directory.name,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -449,7 +494,7 @@ private fun DirectoryRow(
         )
         Text(
             text = fileCount.toString(),
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 12.sp,
         )
     }
@@ -467,7 +512,7 @@ private fun CommitArea(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(IntelliJColors.toolWindowHeader)
+                .background(LocalIntelliJColors.current.toolWindowHeader)
                 .padding(Spacing.sm.dp),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
@@ -477,18 +522,18 @@ private fun CommitArea(
             placeholder = { Text("Commit message") },
             colors =
                 OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = IntelliJColors.textPrimary,
-                    unfocusedTextColor = IntelliJColors.textPrimary,
-                    focusedContainerColor = IntelliJColors.inputBackground,
-                    unfocusedContainerColor = IntelliJColors.inputBackground,
-                    focusedBorderColor = IntelliJColors.inputBorderFocused,
-                    unfocusedBorderColor = IntelliJColors.inputBorder,
-                    focusedPlaceholderColor = IntelliJColors.inputPlaceholder,
-                    unfocusedPlaceholderColor = IntelliJColors.inputPlaceholder,
+                    focusedTextColor = LocalIntelliJColors.current.textPrimary,
+                    unfocusedTextColor = LocalIntelliJColors.current.textPrimary,
+                    focusedContainerColor = LocalIntelliJColors.current.inputBackground,
+                    unfocusedContainerColor = LocalIntelliJColors.current.inputBackground,
+                    focusedBorderColor = LocalIntelliJColors.current.inputBorderFocused,
+                    unfocusedBorderColor = LocalIntelliJColors.current.inputBorder,
+                    focusedPlaceholderColor = LocalIntelliJColors.current.inputPlaceholder,
+                    unfocusedPlaceholderColor = LocalIntelliJColors.current.inputPlaceholder,
                 ),
             textStyle =
                 MaterialTheme.typography.bodySmall.copy(
-                    color = IntelliJColors.textPrimary,
+                    color = LocalIntelliJColors.current.textPrimary,
                     fontFamily = JetaProgFonts.codeFont,
                 ),
             minLines = 2,

@@ -277,6 +277,22 @@ public class GitViewModel(
     }
 
     /**
+     * Reverts the working tree of [changes] to HEAD: tracked modifications are
+     * checked out and untracked files are deleted. Intended for user-confirmed
+     * rollback actions; the changes are lost.
+     */
+    public fun discardChanges(changes: List<GitChange>) {
+        if (changes.isEmpty()) return
+        scope.launch {
+            _state.update { it.copy(isBusy = true, error = null) }
+            service
+                .discard(changes.map { it.path })
+                .onSuccess { refresh() }
+                .onFailure { error -> fail(error) }
+        }
+    }
+
+    /**
      * Returns the per-line working-tree changes of [path] relative to HEAD,
      * or an empty list when unavailable (e.g. untracked file, not a repository).
      */

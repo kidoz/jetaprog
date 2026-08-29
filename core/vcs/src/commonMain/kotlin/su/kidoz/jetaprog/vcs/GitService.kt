@@ -48,6 +48,12 @@ public interface GitService {
     /** Creates the branch [name] and checks it out; returns git's output. */
     public suspend fun createBranch(name: String): Result<String>
 
+    /**
+     * Reverts the working tree of [paths] to HEAD: tracked modifications are
+     * checked out (also unstaging them) and untracked files are removed.
+     */
+    public suspend fun discard(paths: List<String>): Result<Unit>
+
     /** Deletes the local branch [name]; fails if it is not fully merged. */
     public suspend fun deleteBranch(name: String): Result<String>
 
@@ -153,6 +159,14 @@ public class DefaultGitService(
             if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git checkout -b failed" } })
             result.stderr.ifBlank { result.stdout }
         }
+
+    override suspend fun discard(paths: List<String>): Result<Unit> {
+        if (paths.isEmpty()) return Result.success(Unit)
+        // Tracked paths: restore working tree (and index) to HEAD. Untracked
+        // paths fail `checkout HEAD --`, so clean them afterwards instead.
+        run("checkout", "HEAD", "--", *paths.toTypedArray())
+        return mutate("clean", paths, "-f", "-q")
+    }
 
     override suspend fun deleteBranch(name: String): Result<String> =
         run("branch", "-d", name).mapCatching { result ->
