@@ -32,6 +32,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 
 /**
@@ -61,14 +62,20 @@ public fun FileMenu(
                     .onSizeChanged { triggerHeightPx = it.height }
                     .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
                     .background(
-                        if (isHovered || expanded) IntelliJColors.buttonBackgroundHover else Color.Transparent,
+                        if (isHovered ||
+                            expanded
+                        ) {
+                            LocalIntelliJColors.current.buttonBackgroundHover
+                        } else {
+                            Color.Transparent
+                        },
                     ).hoverable(interactionSource)
                     .clickable { expanded = !expanded }
                     .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
         ) {
             Text(
                 text = "File",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
             )
         }
@@ -84,7 +91,7 @@ public fun FileMenu(
                 Column(
                     modifier =
                         Modifier
-                            .width(200.dp)
+                            .width(Dimensions.menuWidth.dp)
                             .popupChrome(Dimensions.cornerRadius.dp)
                             .padding(vertical = Spacing.xs.dp),
                 ) {
@@ -170,7 +177,7 @@ private fun FileMenuItem(
             Modifier
                 .fillMaxWidth()
                 .background(
-                    if (isHovered) IntelliJColors.menuItemHover else Color.Transparent,
+                    if (isHovered) LocalIntelliJColors.current.menuItemHover else Color.Transparent,
                 ).hoverable(interactionSource)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 6.dp),
@@ -178,14 +185,14 @@ private fun FileMenuItem(
     ) {
         Text(
             text = text,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
         )
         if (shortcut != null) {
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 text = shortcut,
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 11.sp,
             )
         }
@@ -203,6 +210,6 @@ private fun MenuDivider() {
                 .fillMaxWidth()
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp)
                 .height(Dimensions.splitterThickness.dp)
-                .background(IntelliJColors.border),
+                .background(LocalIntelliJColors.current.border),
     )
 }

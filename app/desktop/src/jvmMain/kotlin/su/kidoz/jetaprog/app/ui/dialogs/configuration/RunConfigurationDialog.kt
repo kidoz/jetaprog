@@ -31,8 +31,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,9 +52,15 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
+import su.kidoz.jetaprog.app.ui.components.IntelliJCheckbox
+import su.kidoz.jetaprog.app.ui.components.IntelliJDropdown
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
+import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
+import su.kidoz.jetaprog.configuration.CargoProfileType
 import su.kidoz.jetaprog.configuration.ConfigurationId
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationState
@@ -97,13 +102,13 @@ public fun RunConfigurationDialog(
                 Modifier
                     .size(800.dp, 600.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(IntelliJColors.background),
+                    .background(LocalIntelliJColors.current.background),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Dialog header
                 DialogHeader(onClose = onClose)
 
-                HorizontalDivider(color = IntelliJColors.border)
+                HorizontalDivider(color = LocalIntelliJColors.current.border)
 
                 // Main content
                 Row(modifier = Modifier.weight(1f)) {
@@ -128,7 +133,7 @@ public fun RunConfigurationDialog(
                             Modifier
                                 .width(1.dp)
                                 .fillMaxHeight()
-                                .background(IntelliJColors.border),
+                                .background(LocalIntelliJColors.current.border),
                     )
 
                     // Right panel - configuration editor
@@ -139,7 +144,7 @@ public fun RunConfigurationDialog(
                     )
                 }
 
-                HorizontalDivider(color = IntelliJColors.border)
+                HorizontalDivider(color = LocalIntelliJColors.current.border)
 
                 // Dialog footer
                 DialogFooter(
@@ -165,13 +170,13 @@ private fun DialogHeader(onClose: () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .height(40.dp)
-                .background(IntelliJColors.toolWindowHeader)
+                .background(LocalIntelliJColors.current.toolWindowHeader)
                 .padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "Run/Debug Configurations",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
         )
@@ -181,7 +186,7 @@ private fun DialogHeader(onClose: () -> Unit) {
         Icon(
             imageVector = Icons.Default.Close,
             contentDescription = "Close",
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier =
                 Modifier
                     .size(20.dp)
@@ -203,8 +208,9 @@ private fun ConfigurationListPanel(
     onCreateRecommended: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.background(IntelliJColors.toolWindowBackground)) {
+    Column(modifier = modifier.background(LocalIntelliJColors.current.toolWindowBackground)) {
         var addMenuExpanded by remember { mutableStateOf(false) }
+        var addMenuAnchorPx by remember { mutableStateOf(0) }
 
         // Toolbar
         Box {
@@ -217,11 +223,62 @@ private fun ConfigurationListPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.xxs.dp),
             ) {
-                ListToolbarButton(
-                    icon = Icons.Default.Add,
-                    tooltip = "Add",
-                    onClick = { addMenuExpanded = true },
-                )
+                Box(
+                    modifier = Modifier.onSizeChanged { addMenuAnchorPx = it.height },
+                ) {
+                    ListToolbarButton(
+                        icon = Icons.Default.Add,
+                        tooltip = "Add",
+                        onClick = { addMenuExpanded = true },
+                    )
+                    PopupChromeMenu(
+                        expanded = addMenuExpanded,
+                        onDismissRequest = { addMenuExpanded = false },
+                        modifier = Modifier.width(190.dp),
+                        offsetY = addMenuAnchorPx,
+                    ) {
+                        PopupListRow(selected = false, onClick = {
+                            addMenuExpanded = false
+                            onCreateRecommended()
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = LocalIntelliJColors.current.textSecondary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(modifier = Modifier.width(Spacing.sm.dp))
+                            Text(
+                                text = "Add Recommended",
+                                color = LocalIntelliJColors.current.textPrimary,
+                                fontSize = 12.sp,
+                            )
+                        }
+
+                        HorizontalDivider(color = LocalIntelliJColors.current.border)
+
+                        configurationCreationTypes.forEach { type ->
+                            PopupListRow(selected = false, onClick = {
+                                addMenuExpanded = false
+                                onCreateNew(type)
+                            }) {
+                                Icon(
+                                    imageVector = type.toIcon(),
+                                    contentDescription = null,
+                                    tint = LocalIntelliJColors.current.textSecondary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(modifier = Modifier.width(Spacing.sm.dp))
+                                Text(
+                                    text = "Add ${type.displayName}",
+                                    color = LocalIntelliJColors.current.textPrimary,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
+                    }
+                }
+
                 ListToolbarButton(
                     icon = Icons.Default.Delete,
                     tooltip = "Delete",
@@ -235,65 +292,9 @@ private fun ConfigurationListPanel(
                     onClick = { selectedId?.let { onDuplicate(it) } },
                 )
             }
-
-            DropdownMenu(
-                expanded = addMenuExpanded,
-                onDismissRequest = { addMenuExpanded = false },
-                modifier = Modifier.background(IntelliJColors.surface),
-            ) {
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                                tint = IntelliJColors.textSecondary,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(modifier = Modifier.width(Spacing.sm.dp))
-                            Text(
-                                text = "Add Recommended",
-                                color = IntelliJColors.textPrimary,
-                                fontSize = 12.sp,
-                            )
-                        }
-                    },
-                    onClick = {
-                        addMenuExpanded = false
-                        onCreateRecommended()
-                    },
-                )
-
-                HorizontalDivider(color = IntelliJColors.border)
-
-                configurationCreationTypes.forEach { type ->
-                    DropdownMenuItem(
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = type.toIcon(),
-                                    contentDescription = null,
-                                    tint = IntelliJColors.textSecondary,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Spacer(modifier = Modifier.width(Spacing.sm.dp))
-                                Text(
-                                    text = "Add ${type.displayName}",
-                                    color = IntelliJColors.textPrimary,
-                                    fontSize = 12.sp,
-                                )
-                            }
-                        },
-                        onClick = {
-                            addMenuExpanded = false
-                            onCreateNew(type)
-                        },
-                    )
-                }
-            }
         }
 
-        HorizontalDivider(color = IntelliJColors.border)
+        HorizontalDivider(color = LocalIntelliJColors.current.border)
 
         // Configuration list
         LazyColumn(modifier = Modifier.weight(1f)) {
@@ -334,9 +335,9 @@ private fun ListToolbarButton(
                 .clip(RoundedCornerShape(4.dp))
                 .background(
                     if (isHovered && enabled) {
-                        IntelliJColors.buttonBackgroundHover
+                        LocalIntelliJColors.current.buttonBackgroundHover
                     } else {
-                        IntelliJColors.toolWindowBackground
+                        LocalIntelliJColors.current.toolWindowBackground
                     },
                 ).hoverable(interactionSource)
                 .clickable(enabled = enabled, onClick = onClick),
@@ -345,7 +346,7 @@ private fun ListToolbarButton(
         Icon(
             imageVector = icon,
             contentDescription = tooltip,
-            tint = if (enabled) IntelliJColors.textSecondary else IntelliJColors.textMuted,
+            tint = if (enabled) LocalIntelliJColors.current.textSecondary else LocalIntelliJColors.current.textMuted,
             modifier = Modifier.size(16.dp),
         )
     }
@@ -363,13 +364,13 @@ private fun ConfigurationTypeHeader(type: ConfigurationType) {
         Icon(
             imageVector = type.toIcon(),
             contentDescription = null,
-            tint = IntelliJColors.textMuted,
+            tint = LocalIntelliJColors.current.textMuted,
             modifier = Modifier.size(14.dp),
         )
         Spacer(modifier = Modifier.width(Spacing.xs.dp))
         Text(
             text = type.displayName,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
         )
@@ -391,9 +392,9 @@ private fun ConfigurationListItem(
                 .fillMaxWidth()
                 .background(
                     when {
-                        isSelected -> IntelliJColors.selectionBackground
-                        isHovered -> IntelliJColors.buttonBackgroundHover
-                        else -> IntelliJColors.toolWindowBackground
+                        isSelected -> LocalIntelliJColors.current.selectionBackground
+                        isHovered -> LocalIntelliJColors.current.buttonBackgroundHover
+                        else -> LocalIntelliJColors.current.toolWindowBackground
                     },
                 ).hoverable(interactionSource)
                 .clickable(onClick = onClick)
@@ -404,9 +405,9 @@ private fun ConfigurationListItem(
             text = configuration.name,
             color =
                 if (configuration.isTemporary) {
-                    IntelliJColors.textSecondary
+                    LocalIntelliJColors.current.textSecondary
                 } else {
-                    IntelliJColors.textPrimary
+                    LocalIntelliJColors.current.textPrimary
                 },
             fontSize = 12.sp,
             maxLines = 1,
@@ -423,12 +424,12 @@ private fun ConfigurationEditorPanel(
 ) {
     if (configuration == null) {
         Box(
-            modifier = modifier.background(IntelliJColors.background),
+            modifier = modifier.background(LocalIntelliJColors.current.background),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = "Select a configuration to edit",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 13.sp,
             )
         }
@@ -438,7 +439,7 @@ private fun ConfigurationEditorPanel(
     Column(
         modifier =
             modifier
-                .background(IntelliJColors.background)
+                .background(LocalIntelliJColors.current.background)
                 .padding(Spacing.md.dp),
         verticalArrangement = Arrangement.spacedBy(Spacing.md.dp),
     ) {
@@ -450,7 +451,7 @@ private fun ConfigurationEditorPanel(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        HorizontalDivider(color = IntelliJColors.border)
+        HorizontalDivider(color = LocalIntelliJColors.current.border)
 
         // Type-specific settings
         when (val settings = configuration.settings) {
@@ -584,7 +585,7 @@ private fun ConfigurationEditorPanel(
             -> {
                 Text(
                     text = "Tomcat settings editor coming soon",
-                    color = IntelliJColors.textSecondary,
+                    color = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.padding(16.dp),
                 )
             }
@@ -594,7 +595,7 @@ private fun ConfigurationEditorPanel(
             -> {
                 Text(
                     text = "Spring Boot settings editor coming soon",
-                    color = IntelliJColors.textSecondary,
+                    color = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.padding(16.dp),
                 )
             }
@@ -605,7 +606,7 @@ private fun ConfigurationEditorPanel(
             -> {
                 Text(
                     text = "Docker settings editor coming soon",
-                    color = IntelliJColors.textSecondary,
+                    color = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.padding(16.dp),
                 )
             }
@@ -613,7 +614,7 @@ private fun ConfigurationEditorPanel(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        HorizontalDivider(color = IntelliJColors.border)
+        HorizontalDivider(color = LocalIntelliJColors.current.border)
 
         // Common options
         Row(
@@ -625,14 +626,14 @@ private fun ConfigurationEditorPanel(
                 onCheckedChange = { onConfigurationChange(configuration.copy(storeAsProjectFile = it)) },
                 colors =
                     CheckboxDefaults.colors(
-                        checkedColor = IntelliJColors.accent,
-                        uncheckedColor = IntelliJColors.textSecondary,
+                        checkedColor = LocalIntelliJColors.current.accent,
+                        uncheckedColor = LocalIntelliJColors.current.textSecondary,
                     ),
             )
             Spacer(modifier = Modifier.width(Spacing.xs.dp))
             Text(
                 text = "Store as project file",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
             )
 
@@ -643,14 +644,14 @@ private fun ConfigurationEditorPanel(
                 onCheckedChange = { onConfigurationChange(configuration.copy(allowParallelRun = it)) },
                 colors =
                     CheckboxDefaults.colors(
-                        checkedColor = IntelliJColors.accent,
-                        uncheckedColor = IntelliJColors.textSecondary,
+                        checkedColor = LocalIntelliJColors.current.accent,
+                        uncheckedColor = LocalIntelliJColors.current.textSecondary,
                     ),
             )
             Spacer(modifier = Modifier.width(Spacing.xs.dp))
             Text(
                 text = "Allow parallel run",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
             )
         }
@@ -900,7 +901,7 @@ private fun CompoundSettingsEditor(
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
         Text(
             text = "Compound configurations run multiple configurations.",
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 12.sp,
         )
 
@@ -910,21 +911,21 @@ private fun CompoundSettingsEditor(
                 onCheckedChange = { onSettingsChange(settings.copy(parallel = it)) },
                 colors =
                     CheckboxDefaults.colors(
-                        checkedColor = IntelliJColors.accent,
-                        uncheckedColor = IntelliJColors.textSecondary,
+                        checkedColor = LocalIntelliJColors.current.accent,
+                        uncheckedColor = LocalIntelliJColors.current.textSecondary,
                     ),
             )
             Spacer(modifier = Modifier.width(Spacing.xs.dp))
             Text(
                 text = "Run in parallel",
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
             )
         }
 
         Text(
             text = "Configurations: ${settings.configurationIds.size}",
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
         )
     }
@@ -995,7 +996,7 @@ private fun PoetrySettingsEditor(
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
         Text(
             text = "Command: ${settings.command.displayName}",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
         )
 
@@ -1034,7 +1035,7 @@ private fun UvSettingsEditor(
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
         Text(
             text = "Command: ${settings.command.displayName}",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
         )
 
@@ -1073,7 +1074,7 @@ private fun GoSettingsEditor(
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
         Text(
             text = "Command: go ${settings.command.value}",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
         )
 
@@ -1156,24 +1157,25 @@ private fun NodePackageManagerSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Box {
+    var anchorHeightPx by remember { mutableStateOf(0) }
+    Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
         IntelliJButton(
             text = "Package manager: ${packageManager.displayName}",
             onClick = { expanded = true },
             modifier = Modifier.fillMaxWidth(),
         )
-        DropdownMenu(
+        PopupChromeMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
+            offsetY = anchorHeightPx,
         ) {
             NodePackageManager.entries.forEach { manager ->
-                DropdownMenuItem(
-                    text = { Text(manager.displayName) },
-                    onClick = {
-                        onPackageManagerChange(manager)
-                        expanded = false
-                    },
-                )
+                PopupListRow(selected = false, onClick = {
+                    onPackageManagerChange(manager)
+                    expanded = false
+                }) {
+                    Text(manager.displayName, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+                }
             }
         }
     }
@@ -1291,21 +1293,25 @@ private fun JavaBuildToolSelector(
     onBuildToolChange: (JavaBuildTool) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
+    var anchorHeightPx by remember { mutableStateOf(0) }
+    Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
         IntelliJButton(
             text = "Build tool: ${buildTool.displayName}",
             onClick = { expanded = true },
             modifier = Modifier.fillMaxWidth(),
         )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        PopupChromeMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            offsetY = anchorHeightPx,
+        ) {
             JavaBuildTool.entries.forEach { tool ->
-                DropdownMenuItem(
-                    text = { Text(tool.displayName) },
-                    onClick = {
-                        onBuildToolChange(tool)
-                        expanded = false
-                    },
-                )
+                PopupListRow(selected = false, onClick = {
+                    onBuildToolChange(tool)
+                    expanded = false
+                }) {
+                    Text(tool.displayName, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+                }
             }
         }
     }
@@ -1418,14 +1424,14 @@ private fun DotNetTestSettingsEditor(
             onCheckedChange = { onSettingsChange(settings.copy(noBuild = it)) },
             colors =
                 CheckboxDefaults.colors(
-                    checkedColor = IntelliJColors.accent,
-                    uncheckedColor = IntelliJColors.textSecondary,
+                    checkedColor = LocalIntelliJColors.current.accent,
+                    uncheckedColor = LocalIntelliJColors.current.textSecondary,
                 ),
         )
         Spacer(modifier = Modifier.width(Spacing.xs.dp))
         Text(
             text = "Skip build",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
         )
     }
@@ -1510,14 +1516,14 @@ private fun DotNetDebugSettingsEditor(
             onCheckedChange = { onSettingsChange(settings.copy(stopAtEntry = it)) },
             colors =
                 CheckboxDefaults.colors(
-                    checkedColor = IntelliJColors.accent,
-                    uncheckedColor = IntelliJColors.textSecondary,
+                    checkedColor = LocalIntelliJColors.current.accent,
+                    uncheckedColor = LocalIntelliJColors.current.textSecondary,
                 ),
         )
         Spacer(modifier = Modifier.width(Spacing.xs.dp))
         Text(
             text = "Stop at entry",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
         )
     }
@@ -1538,24 +1544,25 @@ private fun DotNetConfigurationSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Box {
+    var anchorHeightPx by remember { mutableStateOf(0) }
+    Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
         IntelliJButton(
             text = "Configuration: ${configuration.displayName}",
             onClick = { expanded = true },
             modifier = Modifier.width(180.dp),
         )
-        DropdownMenu(
+        PopupChromeMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
+            offsetY = anchorHeightPx,
         ) {
             DotNetConfigurationType.entries.forEach { type ->
-                DropdownMenuItem(
-                    text = { Text(type.displayName) },
-                    onClick = {
-                        onConfigurationChange(type)
-                        expanded = false
-                    },
-                )
+                PopupListRow(selected = false, onClick = {
+                    onConfigurationChange(type)
+                    expanded = false
+                }) {
+                    Text(type.displayName, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+                }
             }
         }
     }
@@ -1574,14 +1581,14 @@ private fun DotNetCommonOptions(
             onCheckedChange = onNoRestoreChange,
             colors =
                 CheckboxDefaults.colors(
-                    checkedColor = IntelliJColors.accent,
-                    uncheckedColor = IntelliJColors.textSecondary,
+                    checkedColor = LocalIntelliJColors.current.accent,
+                    uncheckedColor = LocalIntelliJColors.current.textSecondary,
                 ),
         )
         Spacer(modifier = Modifier.width(Spacing.xs.dp))
         Text(
             text = "Skip restore",
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
         )
     }
@@ -1607,7 +1614,7 @@ private fun DialogFooter(
             Modifier
                 .fillMaxWidth()
                 .height(48.dp)
-                .background(IntelliJColors.toolWindowBackground)
+                .background(LocalIntelliJColors.current.toolWindowBackground)
                 .padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.End,

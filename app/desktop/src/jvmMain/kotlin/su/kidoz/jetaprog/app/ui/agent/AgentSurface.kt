@@ -39,8 +39,6 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,16 +54,23 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.delay
+import su.kidoz.jetaprog.app.ui.components.PopupListRow
+import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.panels.FileBadge
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
 
@@ -117,7 +122,7 @@ private fun AgentSurfaceContent(
     modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(Unit) { dispatch(AgentIntent.EnsureConnected) }
-    Column(modifier = modifier.fillMaxSize().background(IntelliJColors.background)) {
+    Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
         AgentHeader(state, dispatch)
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -144,7 +149,7 @@ private fun AgentHeader(
             Modifier
                 .fillMaxWidth()
                 .height(48.dp)
-                .background(IntelliJColors.background)
+                .background(LocalIntelliJColors.current.background)
                 .padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
@@ -165,7 +170,7 @@ private fun AgentHeader(
         }
         HeaderIcon(Icons.Default.MoreHoriz, "More") {}
     }
-    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(IntelliJColors.divider))
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
 }
 
 @Composable
@@ -177,7 +182,7 @@ private fun HeaderIcon(
     Icon(
         imageVector = icon,
         contentDescription = label,
-        tint = IntelliJColors.textSecondary,
+        tint = LocalIntelliJColors.current.textSecondary,
         modifier =
             Modifier
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
@@ -193,22 +198,25 @@ private fun ModelEffortChip(state: AgentUiState) {
         modifier =
             Modifier
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .background(IntelliJColors.surface)
-                .border(1.dp, IntelliJColors.agentCardBorder, RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
+                .background(LocalIntelliJColors.current.surface)
+                .border(
+                    1.dp,
+                    LocalIntelliJColors.current.agentCardBorder,
+                    RoundedCornerShape(Dimensions.cornerRadius.dp),
+                ).padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
     ) {
         GradientDot()
-        Text(state.model.shortName, color = IntelliJColors.textPrimary, fontSize = 11.sp)
-        Text("·", color = IntelliJColors.textMuted, fontSize = 11.sp)
-        Text(state.effort.label, color = IntelliJColors.agentEffortText, fontSize = 11.sp)
+        Text(state.model.shortName, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
+        Text("·", color = LocalIntelliJColors.current.textMuted, fontSize = 11.sp)
+        Text(state.effort.label, color = LocalIntelliJColors.current.agentEffortText, fontSize = 11.sp)
     }
 }
 
 @Composable
 private fun GradientDot(diameter: Int = 8) {
-    Box(modifier = Modifier.size(diameter.dp).clip(CircleShape).background(agentGradient))
+    Box(modifier = Modifier.size(diameter.dp).clip(CircleShape).background(agentGradient()))
 }
 
 @Composable
@@ -244,7 +252,7 @@ private fun Conversation(
 private fun UserTurnView(turn: Turn.User) {
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
         Box(
-            modifier = Modifier.size(24.dp).clip(CircleShape).background(IntelliJColors.accentMuted),
+            modifier = Modifier.size(24.dp).clip(CircleShape).background(LocalIntelliJColors.current.accentMuted),
             contentAlignment = Alignment.Center,
         ) {
             Text("You".first().toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -254,10 +262,15 @@ private fun UserTurnView(turn: Turn.User) {
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
-                Text("You", color = IntelliJColors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text(turn.timeLabel, color = IntelliJColors.textMuted, fontSize = 11.sp)
+                Text(
+                    "You",
+                    color = LocalIntelliJColors.current.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(turn.timeLabel, color = LocalIntelliJColors.current.textMuted, fontSize = 11.sp)
             }
-            Text(turn.text, color = IntelliJColors.textPrimary, fontSize = 13.sp)
+            Text(turn.text, color = LocalIntelliJColors.current.textPrimary, fontSize = 13.sp)
             if (turn.context.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp)) {
                     turn.context.forEach { ContextChip(it) }
@@ -273,14 +286,14 @@ private fun ContextChip(fileName: String) {
         modifier =
             Modifier
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .background(IntelliJColors.surface)
-                .border(1.dp, IntelliJColors.divider, RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
+                .background(LocalIntelliJColors.current.surface)
+                .border(1.dp, LocalIntelliJColors.current.divider, RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 1.dp),
     ) {
         FileBadge(fileName)
-        Text(fileName, color = IntelliJColors.textSecondary, fontSize = 11.sp)
+        Text(fileName, color = LocalIntelliJColors.current.textSecondary, fontSize = 11.sp)
     }
 }
 
@@ -296,7 +309,7 @@ private fun AgentTurnView(
         ) {
             AgentAvatar(tileSize = 24, iconSize = 15, cornerRadius = 12)
             Text("Agent", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Text(turn.timeLabel, color = IntelliJColors.textMuted, fontSize = 11.sp)
+            Text(turn.timeLabel, color = LocalIntelliJColors.current.textMuted, fontSize = 11.sp)
         }
         Column(
             modifier = Modifier.padding(start = 34.dp),
@@ -317,7 +330,12 @@ private fun BlockView(
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = block.text,
-                    color = if (block.thought) IntelliJColors.textMuted else IntelliJColors.textPrimary,
+                    color =
+                        if (block.thought) {
+                            LocalIntelliJColors.current.textMuted
+                        } else {
+                            LocalIntelliJColors.current.textPrimary
+                        },
                     fontStyle = if (block.thought) FontStyle.Italic else FontStyle.Normal,
                     fontSize = 13.sp,
                     modifier = Modifier.weight(1f, fill = false),
@@ -358,7 +376,7 @@ private fun EmptyState(dispatch: (AgentIntent) -> Unit) {
         AgentAvatar(tileSize = 48, iconSize = 26)
         Text(
             text = "Ask the agent to build, refactor, or explain your project",
-            color = IntelliJColors.textSecondary,
+            color = LocalIntelliJColors.current.textSecondary,
             fontSize = 14.sp,
         )
         Column(
@@ -371,12 +389,15 @@ private fun EmptyState(dispatch: (AgentIntent) -> Unit) {
                     modifier =
                         Modifier
                             .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                            .background(IntelliJColors.surface)
-                            .border(1.dp, IntelliJColors.divider, RoundedCornerShape(Dimensions.cornerRadius.dp))
-                            .clickable { dispatch(AgentIntent.Send(prompt)) }
+                            .background(LocalIntelliJColors.current.surface)
+                            .border(
+                                1.dp,
+                                LocalIntelliJColors.current.divider,
+                                RoundedCornerShape(Dimensions.cornerRadius.dp),
+                            ).clickable { dispatch(AgentIntent.Send(prompt)) }
                             .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
                 ) {
-                    Text(prompt, color = IntelliJColors.textPrimary, fontSize = 12.sp)
+                    Text(prompt, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
                 }
             }
         }
@@ -401,27 +422,27 @@ private fun AgentPresenceBar(
             Modifier
                 .fillMaxWidth()
                 .height(36.dp)
-                .background(IntelliJColors.brandGradientEnd.copy(alpha = 0.10f))
+                .background(LocalIntelliJColors.current.brandGradientEnd.copy(alpha = 0.10f))
                 .padding(horizontal = Spacing.lg.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
         PulsingDot()
-        Text(presence.action, color = IntelliJColors.editorIdentifier, fontSize = 12.sp)
+        Text(presence.action, color = LocalIntelliJColors.current.editorIdentifier, fontSize = 12.sp)
         presence.fileName?.let { ContextChip(it) }
         Text(
             text = "· ${formatElapsed(elapsed)}",
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
         )
         Spacer(Modifier.weight(1f))
         PillButton(
             text = "Stop",
             icon = Icons.Default.Stop,
-            background = IntelliJColors.buttonBackground,
-            foreground = IntelliJColors.agentStopText,
+            background = LocalIntelliJColors.current.buttonBackground,
+            foreground = LocalIntelliJColors.current.agentStopText,
             onClick = { dispatch(AgentIntent.Stop) },
-            iconTint = IntelliJColors.agentStopText,
+            iconTint = LocalIntelliJColors.current.agentStopText,
             bordered = true,
         )
     }
@@ -442,7 +463,7 @@ private fun PulsingDot() {
                 .size(9.dp)
                 .alpha(a)
                 .clip(CircleShape)
-                .background(IntelliJColors.brandGradientEnd),
+                .background(LocalIntelliJColors.current.brandGradientEnd),
     )
 }
 
@@ -457,23 +478,26 @@ private fun AgentComposer(
             dispatch(AgentIntent.Send(input.trim()))
         }
     }
-    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(IntelliJColors.divider))
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
     Column(modifier = Modifier.fillMaxWidth().padding(Spacing.md.dp)) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .background(IntelliJColors.surface)
-                    .border(1.dp, IntelliJColors.border, RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
-                    .padding(Spacing.md.dp),
+                    .background(LocalIntelliJColors.current.surface)
+                    .border(
+                        1.dp,
+                        LocalIntelliJColors.current.border,
+                        RoundedCornerShape(Dimensions.cornerRadiusLarge.dp),
+                    ).padding(Spacing.md.dp),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
             Box(modifier = Modifier.fillMaxWidth().height(38.dp)) {
                 if (input.isEmpty()) {
                     Text(
                         text = "Ask the agent to build a feature, refactor, explain code, or run the project…",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 13.sp,
                     )
                 }
@@ -482,11 +506,11 @@ private fun AgentComposer(
                     onValueChange = { dispatch(AgentIntent.SetComposerInput(it)) },
                     textStyle =
                         TextStyle(
-                            color = IntelliJColors.textPrimary,
+                            color = LocalIntelliJColors.current.textPrimary,
                             fontSize = 13.sp,
                             fontFamily = JetaProgFonts.codeFont,
                         ),
-                    cursorBrush = SolidColor(IntelliJColors.accent),
+                    cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -517,8 +541,8 @@ private fun ComposerChip(
         modifier =
             Modifier
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .background(IntelliJColors.background)
-                .border(1.dp, IntelliJColors.divider, RoundedCornerShape(Dimensions.cornerRadius.dp))
+                .background(LocalIntelliJColors.current.background)
+                .border(1.dp, LocalIntelliJColors.current.divider, RoundedCornerShape(Dimensions.cornerRadius.dp))
                 .clickable(onClick = onClick)
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -527,10 +551,10 @@ private fun ComposerChip(
         Icon(
             icon,
             contentDescription = null,
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(Dimensions.iconSm.dp),
         )
-        Text(label, color = IntelliJColors.textSecondary, fontSize = 11.sp)
+        Text(label, color = LocalIntelliJColors.current.textSecondary, fontSize = 11.sp)
     }
 }
 
@@ -540,45 +564,66 @@ private fun ModelPickerChip(
     dispatch: (AgentIntent) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    Box {
+    var anchorHeightPx by remember { mutableStateOf(0) }
+    Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
         Row(
             modifier =
                 Modifier
                     .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .background(IntelliJColors.background)
-                    .border(1.dp, IntelliJColors.agentCardBorder, RoundedCornerShape(Dimensions.cornerRadius.dp))
-                    .clickable { open = true }
+                    .background(LocalIntelliJColors.current.background)
+                    .border(
+                        1.dp,
+                        LocalIntelliJColors.current.agentCardBorder,
+                        RoundedCornerShape(Dimensions.cornerRadius.dp),
+                    ).clickable { open = true }
                     .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
         ) {
             GradientDot(diameter = 7)
-            Text(state.model.shortName, color = IntelliJColors.textPrimary, fontSize = 11.sp)
+            Text(state.model.shortName, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
             Icon(
                 Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = IntelliJColors.textMuted,
+                tint = LocalIntelliJColors.current.textMuted,
                 modifier = Modifier.size(Dimensions.iconSm.dp),
             )
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            AGENT_MODELS.forEach { model ->
-                DropdownMenuItem(
-                    text = { Text(model.displayName, fontSize = 12.sp) },
-                    onClick = {
-                        dispatch(AgentIntent.SetModel(model, state.effort))
-                        open = false
-                    },
-                )
-            }
-            Effort.entries.forEach { effort ->
-                DropdownMenuItem(
-                    text = { Text("Effort: ${effort.label}", fontSize = 12.sp) },
-                    onClick = {
-                        dispatch(AgentIntent.SetModel(state.model, effort))
-                        open = false
-                    },
-                )
+        if (open) {
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(0, anchorHeightPx),
+                onDismissRequest = { open = false },
+                properties = PopupProperties(focusable = true),
+            ) {
+                Column(
+                    modifier =
+                        Modifier
+                            .width(180.dp)
+                            .popupChrome(Dimensions.cornerRadius.dp)
+                            .padding(vertical = Spacing.xs.dp),
+                ) {
+                    AGENT_MODELS.forEach { model ->
+                        PopupListRow(selected = false, height = Dimensions.popupRowHeightCompact.dp, onClick = {
+                            dispatch(AgentIntent.SetModel(model, state.effort))
+                            open = false
+                        }) {
+                            Text(model.displayName, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+                        }
+                    }
+                    Effort.entries.forEach { effort ->
+                        PopupListRow(selected = false, height = Dimensions.popupRowHeightCompact.dp, onClick = {
+                            dispatch(AgentIntent.SetModel(state.model, effort))
+                            open = false
+                        }) {
+                            Text(
+                                "Effort: ${effort.label}",
+                                color = LocalIntelliJColors.current.textPrimary,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -594,7 +639,7 @@ private fun SessionChangesRail(
             Modifier
                 .width(RAIL_WIDTH.dp)
                 .fillMaxHeight()
-                .background(IntelliJColors.surface)
+                .background(LocalIntelliJColors.current.surface)
                 .verticalScroll(rememberScrollState()),
     ) {
         Spacer(Modifier.height(Spacing.xs.dp))
@@ -602,7 +647,7 @@ private fun SessionChangesRail(
         if (state.sessionChanges.isEmpty()) {
             Text(
                 "No changes yet",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
             )
@@ -615,16 +660,16 @@ private fun SessionChangesRail(
                 PillButton(
                     text = "Accept all",
                     icon = null,
-                    background = IntelliJColors.buttonBackground,
-                    foreground = IntelliJColors.textPrimary,
+                    background = LocalIntelliJColors.current.buttonBackground,
+                    foreground = LocalIntelliJColors.current.textPrimary,
                     onClick = { dispatch(AgentIntent.AcceptAll) },
                     bordered = true,
                 )
                 PillButton(
                     text = "Revert all",
                     icon = null,
-                    background = IntelliJColors.surface,
-                    foreground = IntelliJColors.textSecondary,
+                    background = LocalIntelliJColors.current.surface,
+                    foreground = LocalIntelliJColors.current.textSecondary,
                     onClick = { dispatch(AgentIntent.RevertAll) },
                     bordered = true,
                 )
@@ -637,7 +682,7 @@ private fun SessionChangesRail(
                     .height(
                         1.dp,
                     ).padding(horizontal = Spacing.md.dp)
-                    .background(IntelliJColors.divider),
+                    .background(LocalIntelliJColors.current.divider),
         )
         RailLabel("PERMISSIONS")
         PermissionRow(PermissionKind.READ, "Read files", state, dispatch)
@@ -651,7 +696,7 @@ private fun SessionChangesRail(
 private fun RailLabel(text: String) {
     Text(
         text = text,
-        color = IntelliJColors.textMuted,
+        color = LocalIntelliJColors.current.textMuted,
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
@@ -668,14 +713,22 @@ private fun SessionChangeRow(change: SessionFileChange) {
         FileBadge(change.name)
         Text(
             change.name,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 12.sp,
             maxLines = 1,
             modifier = Modifier.weight(1f, fill = false),
         )
         Spacer(Modifier.weight(1f))
-        if (change.added > 0) Text("+${change.added}", color = IntelliJColors.diffAddedGutter, fontSize = 11.sp)
-        if (change.removed > 0) Text("−${change.removed}", color = IntelliJColors.diffRemovedText, fontSize = 11.sp)
+        if (change.added >
+            0
+        ) {
+            Text("+${change.added}", color = LocalIntelliJColors.current.diffAddedGutter, fontSize = 11.sp)
+        }
+        if (change.removed >
+            0
+        ) {
+            Text("−${change.removed}", color = LocalIntelliJColors.current.diffRemovedText, fontSize = 11.sp)
+        }
     }
 }
 
@@ -692,7 +745,7 @@ private fun PermissionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
-        Text(label, color = IntelliJColors.textPrimary, fontSize = 12.sp)
+        Text(label, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
         Spacer(Modifier.weight(1f))
         PermissionToggle(on) {
             dispatch(AgentIntent.SetPermission(kind, if (on) PermissionPolicy.ASK else PermissionPolicy.AUTO))
@@ -711,7 +764,7 @@ private fun PermissionToggle(
                 .width(34.dp)
                 .height(18.dp)
                 .clip(RoundedCornerShape(9.dp))
-                .background(if (on) IntelliJColors.success else IntelliJColors.divider)
+                .background(if (on) LocalIntelliJColors.current.success else LocalIntelliJColors.current.divider)
                 .clickable(onClick = onToggle),
         contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
@@ -734,7 +787,14 @@ private fun subtitleFor(state: AgentUiState): String =
         AgentConnection.DISCONNECTED -> "MCP · idle"
     }
 
+@Composable
 private fun subtitleColor(state: AgentUiState): Color =
-    if (state.connection == AgentConnection.ERROR) IntelliJColors.error else IntelliJColors.textMuted
+    if (state.connection ==
+        AgentConnection.ERROR
+    ) {
+        LocalIntelliJColors.current.error
+    } else {
+        LocalIntelliJColors.current.textMuted
+    }
 
 private fun formatElapsed(seconds: Long): String = "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"

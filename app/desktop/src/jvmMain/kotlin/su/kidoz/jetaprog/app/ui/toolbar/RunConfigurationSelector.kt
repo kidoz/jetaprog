@@ -11,11 +11,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -25,7 +28,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -39,11 +41,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.ui.components.popupChrome
+import su.kidoz.jetaprog.app.ui.theme.Dimensions
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.configuration.ConfigurationId
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
@@ -100,7 +108,7 @@ public fun RunConfigurationSelector(
             contentDescription = "Run",
             enabled = state.activeConfiguration != null && !state.isRunning,
             onClick = onRun,
-            tint = IntelliJColors.success,
+            tint = LocalIntelliJColors.current.success,
         )
 
         // Debug button
@@ -109,7 +117,7 @@ public fun RunConfigurationSelector(
             contentDescription = "Debug",
             enabled = state.activeConfiguration != null && !state.isRunning,
             onClick = onDebug,
-            tint = IntelliJColors.accent,
+            tint = LocalIntelliJColors.current.accent,
         )
 
         // Stop button
@@ -118,7 +126,7 @@ public fun RunConfigurationSelector(
             contentDescription = "Stop",
             enabled = state.isRunning,
             onClick = onStop,
-            tint = IntelliJColors.error,
+            tint = LocalIntelliJColors.current.error,
         )
     }
 }
@@ -136,7 +144,8 @@ private fun ConfigurationDropdown(
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
-    Box {
+    var anchorHeightPx by remember { mutableStateOf(0) }
+    Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
         // Dropdown trigger — transparent background, highlight on hover only
         Row(
             modifier =
@@ -144,7 +153,7 @@ private fun ConfigurationDropdown(
                     .clip(RoundedCornerShape(4.dp))
                     .background(
                         if (isHovered || expanded) {
-                            IntelliJColors.buttonBackgroundHover
+                            LocalIntelliJColors.current.buttonBackgroundHover
                         } else {
                             Color.Transparent
                         },
@@ -158,7 +167,14 @@ private fun ConfigurationDropdown(
             Icon(
                 imageVector = activeConfiguration?.type?.toIcon() ?: Icons.Default.Settings,
                 contentDescription = null,
-                tint = if (activeConfiguration != null) IntelliJColors.textSecondary else IntelliJColors.textMuted,
+                tint =
+                    if (activeConfiguration !=
+                        null
+                    ) {
+                        LocalIntelliJColors.current.textSecondary
+                    } else {
+                        LocalIntelliJColors.current.textMuted
+                    },
                 modifier = Modifier.size(16.dp),
             )
 
@@ -169,9 +185,9 @@ private fun ConfigurationDropdown(
                 text = activeConfiguration?.name ?: "Add Configuration...",
                 color =
                     if (activeConfiguration != null) {
-                        IntelliJColors.textPrimary
+                        LocalIntelliJColors.current.textPrimary
                     } else {
-                        IntelliJColors.textMuted
+                        LocalIntelliJColors.current.textMuted
                     },
                 fontSize = 12.sp,
                 maxLines = 1,
@@ -183,68 +199,78 @@ private fun ConfigurationDropdown(
             Icon(
                 imageVector = Icons.Default.ArrowDropDown,
                 contentDescription = null,
-                tint = IntelliJColors.textSecondary,
+                tint = LocalIntelliJColors.current.textSecondary,
                 modifier = Modifier.size(16.dp),
             )
         }
 
         // Dropdown menu — fixed width, flat list
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { onExpandedChange(false) },
-            modifier =
-                Modifier
-                    .background(IntelliJColors.surface)
-                    .width(250.dp),
-        ) {
-            // Split into permanent and temporary configs
-            val permanent = configurations.filter { !it.isTemporary }
-            val temporary = configurations.filter { it.isTemporary }
+        if (expanded) {
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(0, anchorHeightPx),
+                onDismissRequest = { onExpandedChange(false) },
+                properties = PopupProperties(focusable = true),
+            ) {
+                Column(
+                    modifier =
+                        Modifier
+                            .width(250.dp)
+                            .popupChrome(Dimensions.cornerRadius.dp)
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = Spacing.xs.dp),
+                ) {
+                    // Split into permanent and temporary configs
+                    val permanent = configurations.filter { !it.isTemporary }
+                    val temporary = configurations.filter { it.isTemporary }
 
-            // Permanent configurations — flat list with type icon
-            permanent.forEach { config ->
-                ConfigurationMenuItem(
-                    configuration = config,
-                    isSelected = config.id == activeConfiguration?.id,
-                    onClick = { onSelect(config.id) },
-                )
+                    // Permanent configurations — flat list with type icon
+                    permanent.forEach { config ->
+                        ConfigurationMenuItem(
+                            configuration = config,
+                            isSelected = config.id == activeConfiguration?.id,
+                            onClick = { onSelect(config.id) },
+                        )
+                    }
+
+                    // Divider between permanent and temporary
+                    if (permanent.isNotEmpty() && temporary.isNotEmpty()) {
+                        HorizontalDivider(color = LocalIntelliJColors.current.border)
+                    }
+
+                    // Temporary configurations
+                    temporary.forEach { config ->
+                        ConfigurationMenuItem(
+                            configuration = config,
+                            isSelected = config.id == activeConfiguration?.id,
+                            onClick = { onSelect(config.id) },
+                        )
+                    }
+
+                    if (configurations.isNotEmpty()) {
+                        HorizontalDivider(color = LocalIntelliJColors.current.border)
+                    }
+
+                    // "Add Recommended" — subtle link style
+                    ActionMenuItem(
+                        icon = Icons.Default.Add,
+                        text = "Add Recommended...",
+                        textColor = LocalIntelliJColors.current.textLink,
+                        onClick = onCreateRecommended,
+                    )
+
+                    HorizontalDivider(color = LocalIntelliJColors.current.border)
+
+                    // "Edit Configurations..." — bottom action
+                    ActionMenuItem(
+                        icon = Icons.Default.Settings,
+                        text = "Edit Configurations...",
+                        textColor = LocalIntelliJColors.current.textPrimary,
+                        onClick = onEditConfigurations,
+                    )
+                }
             }
-
-            // Divider between permanent and temporary
-            if (permanent.isNotEmpty() && temporary.isNotEmpty()) {
-                HorizontalDivider(color = IntelliJColors.border)
-            }
-
-            // Temporary configurations
-            temporary.forEach { config ->
-                ConfigurationMenuItem(
-                    configuration = config,
-                    isSelected = config.id == activeConfiguration?.id,
-                    onClick = { onSelect(config.id) },
-                )
-            }
-
-            if (configurations.isNotEmpty()) {
-                HorizontalDivider(color = IntelliJColors.border)
-            }
-
-            // "Add Recommended" — subtle link style
-            ActionMenuItem(
-                icon = Icons.Default.Add,
-                text = "Add Recommended...",
-                textColor = IntelliJColors.textLink,
-                onClick = onCreateRecommended,
-            )
-
-            HorizontalDivider(color = IntelliJColors.border)
-
-            // "Edit Configurations..." — bottom action
-            ActionMenuItem(
-                icon = Icons.Default.Settings,
-                text = "Edit Configurations...",
-                textColor = IntelliJColors.textPrimary,
-                onClick = onEditConfigurations,
-            )
         }
     }
 }
@@ -264,8 +290,8 @@ private fun ConfigurationMenuItem(
                 .fillMaxWidth()
                 .background(
                     when {
-                        isSelected -> IntelliJColors.selectionBackground
-                        isHovered -> IntelliJColors.buttonBackgroundHover
+                        isSelected -> LocalIntelliJColors.current.selectionBackground
+                        isHovered -> LocalIntelliJColors.current.buttonBackgroundHover
                         else -> Color.Transparent
                     },
                 ).hoverable(interactionSource)
@@ -276,7 +302,7 @@ private fun ConfigurationMenuItem(
         Icon(
             imageVector = configuration.type.toIcon(),
             contentDescription = null,
-            tint = if (isSelected) IntelliJColors.accent else IntelliJColors.textSecondary,
+            tint = if (isSelected) LocalIntelliJColors.current.accent else LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(16.dp),
         )
 
@@ -285,7 +311,7 @@ private fun ConfigurationMenuItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = configuration.name,
-                color = IntelliJColors.textPrimary,
+                color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
                 fontStyle = if (configuration.isTemporary) FontStyle.Italic else FontStyle.Normal,
                 maxLines = 1,
@@ -297,7 +323,7 @@ private fun ConfigurationMenuItem(
             if (subtitle != null) {
                 Text(
                     text = subtitle,
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 10.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -309,7 +335,7 @@ private fun ConfigurationMenuItem(
         if (configuration.isTemporary) {
             Text(
                 text = "temp",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 9.sp,
             )
         }
@@ -334,7 +360,7 @@ private fun ActionMenuItem(
             Modifier
                 .fillMaxWidth()
                 .background(
-                    if (isHovered) IntelliJColors.buttonBackgroundHover else Color.Transparent,
+                    if (isHovered) LocalIntelliJColors.current.buttonBackgroundHover else Color.Transparent,
                 ).hoverable(interactionSource)
                 .clickable(onClick = onClick)
                 .padding(horizontal = Spacing.md.dp, vertical = 6.dp),
@@ -343,7 +369,7 @@ private fun ActionMenuItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = IntelliJColors.textSecondary,
+            tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(16.dp),
         )
         Spacer(modifier = Modifier.width(Spacing.sm.dp))
@@ -361,7 +387,7 @@ private fun ToolbarButton(
     contentDescription: String,
     enabled: Boolean,
     onClick: () -> Unit,
-    tint: Color = IntelliJColors.textPrimary,
+    tint: Color = LocalIntelliJColors.current.textPrimary,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -373,7 +399,7 @@ private fun ToolbarButton(
                 .clip(RoundedCornerShape(4.dp))
                 .background(
                     if (isHovered && enabled) {
-                        IntelliJColors.buttonBackgroundHover
+                        LocalIntelliJColors.current.buttonBackgroundHover
                     } else {
                         Color.Transparent
                     },
@@ -384,7 +410,7 @@ private fun ToolbarButton(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = if (enabled) tint else IntelliJColors.textMuted,
+            tint = if (enabled) tint else LocalIntelliJColors.current.textMuted,
             modifier = Modifier.size(18.dp),
         )
     }
