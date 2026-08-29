@@ -261,13 +261,20 @@ public fun MainScreen(app: JetaProgApplication) {
     val currentSession = session
     if (currentSession == null) {
         // No project open — show the Welcome Hub.
-        Box(modifier = Modifier.fillMaxSize().background(IntelliJColors.background)) {
+        val welcomeSettingsState by app.settingsViewModel.state.collectAsState()
+        Box(modifier = Modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
             WelcomeScreen(
                 viewModel = app.welcomeViewModel,
+                settingsViewModel = app.settingsViewModel,
                 nowEpochMillis = System.currentTimeMillis(),
+                onOpenSettings = { app.settingsViewModel.dispatch(SettingsIntent.Show) },
                 modifier = Modifier.fillMaxSize(),
             )
             NotificationOverlay(center = app.notificationCenter)
+            SettingsDialog(
+                state = welcomeSettingsState,
+                onIntent = { intent -> app.settingsViewModel.dispatch(intent) },
+            )
         }
         return
     }

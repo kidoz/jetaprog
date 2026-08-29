@@ -1,8 +1,6 @@
 package su.kidoz.jetaprog.app.ui.welcome
 
-import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.launch
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.common.mvi.MviViewModel
 import su.kidoz.jetaprog.settings.recent.RecentProjectEntry
 import su.kidoz.jetaprog.settings.recent.RecentProjectsService
@@ -73,24 +71,15 @@ public class WelcomeViewModel(
                 name = it.name,
                 path = it.path,
                 lastOpenedEpochMillis = it.lastOpenedEpochMillis,
-                accent = accentFor(it.path),
+                accentIndex = accentIndexFor(it.path),
             )
         }
 
     private companion object {
-        /** Stable accent palette for project tiles (matches the design references). */
-        private val TILE_PALETTE =
-            listOf(
-                IntelliJColors.iconKotlin,
-                IntelliJColors.accent,
-                IntelliJColors.success,
-                IntelliJColors.warning,
-                IntelliJColors.iconJava,
-                IntelliJColors.debugVarType,
-                IntelliJColors.terminalMagenta,
-            )
+        /** Number of colors in the welcome-tile accent palette (see `WelcomeScreen`). */
+        private const val TILE_ACCENT_COUNT = 7
 
-        /** Deterministically picks a palette color from a project path. */
-        private fun accentFor(path: String): Color = TILE_PALETTE[abs(path.hashCode()) % TILE_PALETTE.size]
+        /** Deterministically picks a tile accent index from a project path. */
+        private fun accentIndexFor(path: String): Int = abs(path.hashCode()) % TILE_ACCENT_COUNT
     }
 }

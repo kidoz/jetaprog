@@ -1,7 +1,6 @@
 package su.kidoz.jetaprog.app.ui.welcome
 
 import androidx.compose.runtime.Immutable
-import androidx.compose.ui.graphics.Color
 import su.kidoz.jetaprog.common.mvi.Effect
 import su.kidoz.jetaprog.common.mvi.Intent
 import su.kidoz.jetaprog.common.mvi.State
@@ -12,14 +11,15 @@ import su.kidoz.jetaprog.common.mvi.State
  * @property name Display name (project directory name).
  * @property path Absolute path of the project root.
  * @property lastOpenedEpochMillis Last-opened wall-clock time in epoch milliseconds.
- * @property accent Tile accent color, derived deterministically from [path].
+ * @property accentIndex Index into the welcome-tile accent palette, derived
+ *   deterministically from [path]; resolved to a color by the UI layer.
  */
 @Immutable
 public data class RecentProject(
     val name: String,
     val path: String,
     val lastOpenedEpochMillis: Long,
-    val accent: Color,
+    val accentIndex: Int,
 )
 
 /**
