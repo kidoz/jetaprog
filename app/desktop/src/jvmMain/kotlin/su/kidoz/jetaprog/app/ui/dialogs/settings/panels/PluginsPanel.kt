@@ -21,12 +21,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.plugin.BundledPluginCatalog
 import su.kidoz.jetaprog.app.ui.components.IntelliJCheckbox
 import su.kidoz.jetaprog.app.ui.components.IntelliJDropdown
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingRow
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingSection
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.model.PluginUpdatePolicy
 import su.kidoz.jetaprog.settings.model.PluginsSettings
@@ -75,13 +77,13 @@ public fun PluginsPanel(
         SettingSection(title = "INSTALLED PLUGINS") {
             Text(
                 text = "Manage installed plugins. Disabled plugins will not be loaded on startup.",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(bottom = Spacing.md.dp),
             )
 
             // Bundled plugins (hardcoded for now)
-            BUNDLED_PLUGINS.forEach { plugin ->
+            BundledPluginCatalog.plugins.forEach { plugin ->
                 PluginRow(
                     id = plugin.id,
                     name = plugin.name,
@@ -98,10 +100,10 @@ public fun PluginsPanel(
         if (settings.disabledPlugins.isNotEmpty()) {
             SettingSection(title = "DISABLED PLUGINS") {
                 settings.disabledPlugins.forEach { pluginId ->
-                    val plugin = BUNDLED_PLUGINS.find { it.id == pluginId }
+                    val plugin = BundledPluginCatalog.plugins.find { it.id == pluginId }
                     Text(
                         text = "• ${plugin?.name ?: pluginId}",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = Spacing.xxs.dp),
                     )
@@ -128,7 +130,7 @@ private fun PluginRow(
                 .fillMaxWidth()
                 .padding(vertical = Spacing.xs.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .background(IntelliJColors.surfaceContainer)
+                .background(LocalIntelliJColors.current.surfaceContainer)
                 .padding(Spacing.sm.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -140,39 +142,44 @@ private fun PluginRow(
             Icon(
                 imageVector = Icons.Default.Extension,
                 contentDescription = null,
-                tint = if (isEnabled) IntelliJColors.accent else IntelliJColors.textMuted,
+                tint = if (isEnabled) LocalIntelliJColors.current.accent else LocalIntelliJColors.current.textMuted,
                 modifier = Modifier.size(24.dp),
             )
             Column(modifier = Modifier.padding(start = Spacing.sm.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = name,
-                        color = if (isEnabled) IntelliJColors.textPrimary else IntelliJColors.textMuted,
+                        color =
+                            if (isEnabled) {
+                                LocalIntelliJColors.current.textPrimary
+                            } else {
+                                LocalIntelliJColors.current.textMuted
+                            },
                         fontSize = 13.sp,
                     )
                     Text(
                         text = "v$version",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 11.sp,
                         modifier = Modifier.padding(start = Spacing.sm.dp),
                     )
                     if (isBundled) {
                         Text(
                             text = "Bundled",
-                            color = IntelliJColors.textMuted,
+                            color = LocalIntelliJColors.current.textMuted,
                             fontSize = 10.sp,
                             modifier =
                                 Modifier
                                     .padding(start = Spacing.sm.dp)
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(IntelliJColors.backgroundDarker)
+                                    .background(LocalIntelliJColors.current.backgroundDarker)
                                     .padding(horizontal = Spacing.xs.dp, vertical = 2.dp),
                         )
                     }
                 }
                 Text(
                     text = description,
-                    color = IntelliJColors.textMuted,
+                    color = LocalIntelliJColors.current.textMuted,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 2.dp),
                 )
@@ -185,50 +192,3 @@ private fun PluginRow(
         )
     }
 }
-
-/**
- * Information about a plugin.
- */
-private data class PluginInfo(
-    val id: String,
-    val name: String,
-    val description: String,
-    val version: String,
-)
-
-/**
- * List of bundled plugins (placeholder data).
- */
-private val BUNDLED_PLUGINS =
-    listOf(
-        PluginInfo(
-            id = "kotlin-language",
-            name = "Kotlin Language Support",
-            description = "Syntax highlighting, code completion, and navigation for Kotlin",
-            version = "1.0.0",
-        ),
-        PluginInfo(
-            id = "vala-language",
-            name = "Vala Language Support",
-            description = "Syntax highlighting and LSP integration for Vala",
-            version = "0.9.0",
-        ),
-        PluginInfo(
-            id = "git-integration",
-            name = "Git Integration",
-            description = "Version control with Git, diff viewer, and commit history",
-            version = "1.0.0",
-        ),
-        PluginInfo(
-            id = "mcp-integration",
-            name = "MCP Integration",
-            description = "Model Context Protocol server for AI agent integration",
-            version = "1.0.0",
-        ),
-        PluginInfo(
-            id = "terminal",
-            name = "Terminal",
-            description = "Integrated terminal emulator",
-            version = "1.0.0",
-        ),
-    )

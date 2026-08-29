@@ -624,26 +624,33 @@ public class ProjectSession(
         // Initialize configuration manager
         configurationViewModel.dispatch(ConfigurationIntent.Initialize(projectPath))
 
-        // Register bundled plugins (lazy activation handled by LazyPluginActivator)
-        pluginManager.registerBundledPlugin(
-            KotlinPlugin(
-                classpathProvider = { kotlinClasspathResolver?.workspaceClasspath().orEmpty() },
-                sharedSemanticAnalyzer = kotlinSemanticAnalyzer,
-            ),
-        )
-        pluginManager.registerBundledPlugin(KotlinMultiplatformPlugin())
-        pluginManager.registerBundledPlugin(CPlugin())
-        pluginManager.registerBundledPlugin(CppPlugin())
-        pluginManager.registerBundledPlugin(DotNetPlugin())
-        pluginManager.registerBundledPlugin(EntityFrameworkPlugin())
-        pluginManager.registerBundledPlugin(DotPrologPlugin())
-        pluginManager.registerBundledPlugin(GoPlugin())
-        pluginManager.registerBundledPlugin(JavaPlugin())
-        pluginManager.registerBundledPlugin(SpringPlugin())
-        pluginManager.registerBundledPlugin(JavaScriptTypeScriptPlugin())
-        pluginManager.registerBundledPlugin(PythonPlugin())
-        pluginManager.registerBundledPlugin(RustPlugin())
-        pluginManager.registerBundledPlugin(ValaPlugin())
+        // Register bundled plugins (lazy activation handled by LazyPluginActivator).
+        // Plugins disabled in settings are not registered at all, so neither the
+        // eager activation below nor lazy activation triggers can start them.
+        val disabledPlugins = settingsService.getCurrentSettings().plugins.disabledPlugins
+        val bundledPlugins =
+            listOf(
+                KotlinPlugin(
+                    classpathProvider = { kotlinClasspathResolver?.workspaceClasspath().orEmpty() },
+                    sharedSemanticAnalyzer = kotlinSemanticAnalyzer,
+                ),
+                KotlinMultiplatformPlugin(),
+                CPlugin(),
+                CppPlugin(),
+                DotNetPlugin(),
+                EntityFrameworkPlugin(),
+                DotPrologPlugin(),
+                GoPlugin(),
+                JavaPlugin(),
+                SpringPlugin(),
+                JavaScriptTypeScriptPlugin(),
+                PythonPlugin(),
+                RustPlugin(),
+                ValaPlugin(),
+            )
+        bundledPlugins
+            .filter { it.manifest.id !in disabledPlugins }
+            .forEach { pluginManager.registerBundledPlugin(it) }
 
         // Activate plugins that should start immediately (empty or * activation events)
         pluginManager.installedPlugins.value
