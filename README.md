@@ -5,12 +5,13 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
 **embedded MCP server** for first-class AI-agent integration.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.0-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.10-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Compose Multiplatform](https://img.shields.io/badge/Compose-1.11.1-4285F4.svg?logo=jetpackcompose&logoColor=white)](https://www.jetbrains.com/compose-multiplatform/)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-informational.svg)](#installation)
 
 > **Status:** under active development. The core editor, language services, build integration,
-> and plugin system are working; debugging, VCS, and the plugin marketplace are on the roadmap.
+> plugin system, debugging (DAP), and Git integration are working; the plugin marketplace
+> and third-party plugin installation are on the roadmap.
 
 ---
 
@@ -28,8 +29,16 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
 
 ### Language intelligence
 - LSP client with a hybrid model: fast in-process providers with LSP fallback
-- Bundled language plugins: **Kotlin, Python, Rust, Vala**
-- Editor syntax support for Java, C++, Markdown, TOML, XML, Meson, and more
+- Bundled language plugins: **Kotlin, Java (+Spring), Python, Rust, Vala, Go,
+  JavaScript/TypeScript, C/C++ (clangd), .NET (Roslyn)** — with framework
+  sub-plugins for Spring Boot, Kotlin Multiplatform, Entity Framework Core, and DotProlog
+- Editor syntax support for Markdown, TOML, XML, Meson, Prolog, MSBuild, and more
+
+### Debugging & VCS
+- DAP-based debugger with a bundled JVM/JDI adapter: breakpoints, stepping,
+  stack frames, variables, watches, and inline value hints
+- Git integration: status, staging, commit, push/pull, branches, diffs,
+  commit history, and per-gutter line-change markers
 
 ### Build & tooling
 - Build-system runners: **Gradle, Cargo, Meson, Python (Poetry / uv)**
@@ -50,14 +59,13 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
 
 | Area | Technology |
 |------|------------|
-| Language | Kotlin 2.4.0 (JVM target 25) |
+| Language | Kotlin 2.4.10 (JVM target 25) |
 | UI | Compose Multiplatform 1.11.1 (Desktop) |
 | Async | Kotlin Coroutines 1.11.0 |
-| DI | Koin 4.2.1 |
-| Serialization | kotlinx.serialization 1.11.0 |
-| HTTP / WebSocket | Ktor 3.5.0 |
-| Persistence | SQLDelight 2.3.2 |
-| Build | Gradle 9.5 (Kotlin DSL, version catalog, convention plugins) |
+| DI | Manual constructor injection |
+| Serialization | kotlinx.serialization 1.11.0 (JSON settings/storage) |
+| HTTP / WebSocket | Ktor 3.5.2 |
+| Build | Gradle 9.6+ (Kotlin DSL, version catalog, convention plugins) |
 | Quality | ktlint, detekt, explicit API mode, all warnings as errors |
 
 ---
@@ -129,12 +137,13 @@ app/desktop    Compose Desktop application (UI shell, editor, dialogs)
 
 ## Roadmap
 
-- [ ] Full debugger UI on top of the DAP foundation
-- [ ] Version control (status, diff, stage, commit) integration
-- [ ] Symbol-aware refactorings (rename, extract, move)
-- [ ] IDE test runner with a results tree
+- [x] Full debugger UI on top of the DAP foundation
+- [x] Version control (status, diff, stage, commit) integration
+- [x] IDE test runner with a results tree
+- [x] Additional language plugins (Go, TypeScript, C/C++)
+- [ ] Symbol-aware refactorings beyond Kotlin rename (extract, move, inline)
 - [ ] Plugin marketplace and third-party plugin installation
-- [ ] Additional language plugins (Go, TypeScript, C/C++)
+- [ ] Remote development and multi-window support
 
 ---
 
