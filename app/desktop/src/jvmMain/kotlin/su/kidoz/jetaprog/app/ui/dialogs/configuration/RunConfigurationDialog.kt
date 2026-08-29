@@ -523,11 +523,9 @@ private fun ConfigurationEditorPanel(
             is ConfigurationSettings.CargoTest,
             is ConfigurationSettings.CargoClippy,
             -> {
-                // TODO: Implement Cargo settings editors
-                Text(
-                    text = "Cargo settings editor coming soon",
-                    color = IntelliJColors.textSecondary,
-                    modifier = Modifier.padding(16.dp),
+                CargoSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
                 )
             }
 
@@ -1716,3 +1714,207 @@ private fun parseArguments(value: String): List<String> =
     value
         .split(" ")
         .filter { it.isNotBlank() }
+
+/**
+ * Editor for the four Cargo configuration types ([ConfigurationSettings.CargoBuild],
+ * [ConfigurationSettings.CargoRun], [ConfigurationSettings.CargoTest],
+ * [ConfigurationSettings.CargoClippy]); renders the fields relevant to each.
+ */
+@Composable
+private fun CargoSettingsEditor(
+    settings: ConfigurationSettings,
+    onSettingsChange: (ConfigurationSettings) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
+        when (settings) {
+            is ConfigurationSettings.CargoBuild -> {
+                IntelliJDropdown(
+                    selectedItem = settings.profile,
+                    items = CargoProfileType.entries.toList(),
+                    onItemSelected = { profile -> onSettingsChange(settings.copy(profile = profile)) },
+                    label = "Profile",
+                    itemToString = { it.displayName },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJTextField(
+                    value = settings.target ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(target = it.ifBlank { null })) },
+                    label = "Target triple:",
+                    placeholder = "Host target by default",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJTextField(
+                    value = settings.package_ ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(package_ = it.ifBlank { null })) },
+                    label = "Package:",
+                    placeholder = "Whole workspace by default",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJTextField(
+                    value = settings.features.joinToString(" "),
+                    onValueChange = { onSettingsChange(settings.copy(features = parseArguments(it))) },
+                    label = "Features:",
+                    placeholder = "serde tokio/rt",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp)) {
+                    IntelliJCheckbox(
+                        checked = settings.allFeatures,
+                        onCheckedChange = { onSettingsChange(settings.copy(allFeatures = it)) },
+                        label = "All features",
+                    )
+                    IntelliJCheckbox(
+                        checked = settings.noDefaultFeatures,
+                        onCheckedChange = { onSettingsChange(settings.copy(noDefaultFeatures = it)) },
+                        label = "No default features",
+                    )
+                }
+            }
+
+            is ConfigurationSettings.CargoRun -> {
+                IntelliJDropdown(
+                    selectedItem = settings.profile,
+                    items = CargoProfileType.entries.toList(),
+                    onItemSelected = { profile -> onSettingsChange(settings.copy(profile = profile)) },
+                    label = "Profile",
+                    itemToString = { it.displayName },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJTextField(
+                    value = settings.bin ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(bin = it.ifBlank { null })) },
+                    label = "Binary:",
+                    placeholder = "Default binary by default",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJTextField(
+                    value = settings.example ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(example = it.ifBlank { null })) },
+                    label = "Example:",
+                    placeholder = "Run an example instead of a binary",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJTextField(
+                    value = settings.programArguments.joinToString(" "),
+                    onValueChange = { onSettingsChange(settings.copy(programArguments = parseArguments(it))) },
+                    label = "Program arguments:",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJTextField(
+                    value = settings.features.joinToString(" "),
+                    onValueChange = { onSettingsChange(settings.copy(features = parseArguments(it))) },
+                    label = "Features:",
+                    placeholder = "serde tokio/rt",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            is ConfigurationSettings.CargoTest -> {
+                IntelliJTextField(
+                    value = settings.testName ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(testName = it.ifBlank { null })) },
+                    label = "Test name:",
+                    placeholder = "All tests by default",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJDropdown(
+                    selectedItem = settings.profile,
+                    items = CargoProfileType.entries.toList(),
+                    onItemSelected = { profile -> onSettingsChange(settings.copy(profile = profile)) },
+                    label = "Profile",
+                    itemToString = { it.displayName },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJTextField(
+                    value = settings.package_ ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(package_ = it.ifBlank { null })) },
+                    label = "Package:",
+                    placeholder = "Whole workspace by default",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                IntelliJTextField(
+                    value = settings.testArguments.joinToString(" "),
+                    onValueChange = { onSettingsChange(settings.copy(testArguments = parseArguments(it))) },
+                    label = "Test arguments:",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp)) {
+                    IntelliJCheckbox(
+                        checked = settings.lib,
+                        onCheckedChange = { onSettingsChange(settings.copy(lib = it)) },
+                        label = "Library tests only",
+                    )
+                    IntelliJCheckbox(
+                        checked = settings.doc,
+                        onCheckedChange = { onSettingsChange(settings.copy(doc = it)) },
+                        label = "Doc tests only",
+                    )
+                    IntelliJCheckbox(
+                        checked = settings.nocapture,
+                        onCheckedChange = { onSettingsChange(settings.copy(nocapture = it)) },
+                        label = "Show output",
+                    )
+                }
+            }
+
+            is ConfigurationSettings.CargoClippy -> {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
+                    IntelliJCheckbox(
+                        checked = settings.fix,
+                        onCheckedChange = { onSettingsChange(settings.copy(fix = it)) },
+                        label = "Automatically apply suggestions",
+                    )
+                    IntelliJCheckbox(
+                        checked = settings.allTargets,
+                        onCheckedChange = { onSettingsChange(settings.copy(allTargets = it)) },
+                        label = "Check all targets",
+                    )
+                    IntelliJCheckbox(
+                        checked = settings.denyWarnings,
+                        onCheckedChange = { onSettingsChange(settings.copy(denyWarnings = it)) },
+                        label = "Treat warnings as errors",
+                    )
+                }
+                IntelliJTextField(
+                    value = settings.package_ ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(package_ = it.ifBlank { null })) },
+                    label = "Package:",
+                    placeholder = "Whole workspace by default",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            else -> {
+                // Non-Cargo settings never reach this editor.
+            }
+        }
+
+        IntelliJTextField(
+            value = settings.cargoWorkingDirectory() ?: "",
+            onValueChange = { onSettingsChange(settings.withCargoWorkingDirectory(it.ifBlank { null })) },
+            label = "Working directory:",
+            placeholder = "Project root by default",
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/** Reads the `workingDirectory` of any Cargo settings variant. */
+private fun ConfigurationSettings.cargoWorkingDirectory(): String? =
+    when (this) {
+        is ConfigurationSettings.CargoBuild -> workingDirectory
+        is ConfigurationSettings.CargoRun -> workingDirectory
+        is ConfigurationSettings.CargoTest -> workingDirectory
+        is ConfigurationSettings.CargoClippy -> workingDirectory
+        else -> null
+    }
+
+/** Copies [value] into the `workingDirectory` of any Cargo settings variant. */
+private fun ConfigurationSettings.withCargoWorkingDirectory(value: String?): ConfigurationSettings =
+    when (this) {
+        is ConfigurationSettings.CargoBuild -> copy(workingDirectory = value)
+        is ConfigurationSettings.CargoRun -> copy(workingDirectory = value)
+        is ConfigurationSettings.CargoTest -> copy(workingDirectory = value)
+        is ConfigurationSettings.CargoClippy -> copy(workingDirectory = value)
+        else -> this
+    }
