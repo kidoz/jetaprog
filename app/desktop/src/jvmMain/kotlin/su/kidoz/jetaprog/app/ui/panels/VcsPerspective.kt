@@ -22,8 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
+import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.GitViewModel
 import su.kidoz.jetaprog.vcs.GitChange
@@ -53,16 +52,9 @@ private const val LOG_SECTION_EXPANDED_HEIGHT = 230
 private const val LOG_SECTION_COLLAPSED_HEIGHT = 32
 private const val LOG_TAB_STRIP_HEIGHT = 30
 private const val LOG_COLUMN_HEADER_HEIGHT = 24
-private const val LOG_FILTER_HEIGHT = 24
 private const val LOG_ROW_HEIGHT = 28
 private const val AUTHOR_COLUMN_WIDTH = 150
 private const val DATE_COLUMN_WIDTH = 120
-
-private val DIFF_ADD_BG = IntelliJColors.diffAddedBackground
-private val DIFF_DELETE_BG = IntelliJColors.diffRemovedBackground
-private val DIFF_ADD_TEXT = IntelliJColors.diffAddedText
-private val DIFF_DELETE_TEXT = IntelliJColors.diffRemovedText
-private val DIFF_ADD_SIGN = IntelliJColors.diffAddedGutter
 
 /** A single side of a parsed unified diff. */
 private enum class DiffKind { CONTEXT, ADD, DELETE }
@@ -95,7 +87,7 @@ public fun VcsMainArea(
             if (selected == null) emptyList<DiffLine>() to emptyList() else parseUnifiedDiff(state.diff)
         }
 
-    Column(modifier = modifier.fillMaxSize().background(IntelliJColors.background)) {
+    Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
         DiffHeader(
             change = selected,
             additions = newLines.count { it.kind == DiffKind.ADD },
@@ -106,7 +98,7 @@ public fun VcsMainArea(
                 Box(modifier = Modifier.fillMaxSize().padding(Spacing.lg.dp)) {
                     Text(
                         text = "Select a changed file to view its diff.",
-                        color = IntelliJColors.textMuted,
+                        color = LocalIntelliJColors.current.textMuted,
                         fontSize = 13.sp,
                     )
                 }
@@ -146,27 +138,27 @@ private fun DiffHeader(
             Modifier
                 .fillMaxWidth()
                 .height(Dimensions.panelHeaderHeight.dp)
-                .background(IntelliJColors.background)
+                .background(LocalIntelliJColors.current.background)
                 .padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
         if (change == null) {
-            Text(text = "Version Control", color = IntelliJColors.textSecondary, fontSize = 13.sp)
+            Text(text = "Version Control", color = LocalIntelliJColors.current.textSecondary, fontSize = 13.sp)
             return@Row
         }
         FileBadge(fileName = change.fileName())
         Text(text = change.fileName(), color = Color.White, fontSize = 13.sp)
         Text(
             text = change.parentPath(),
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 12.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        DiffStat(symbol = "+", count = additions, color = IntelliJColors.success)
-        DiffStat(symbol = "−", count = deletions, color = DIFF_DELETE_TEXT)
+        DiffStat(symbol = "+", count = additions, color = LocalIntelliJColors.current.success)
+        DiffStat(symbol = "−", count = deletions, color = LocalIntelliJColors.current.diffRemovedText)
     }
 }
 
@@ -178,7 +170,7 @@ private fun DiffStat(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(color))
-        Text(text = "$symbol$count", color = IntelliJColors.textSecondary, fontSize = 12.sp)
+        Text(text = "$symbol$count", color = LocalIntelliJColors.current.textSecondary, fontSize = 12.sp)
     }
 }
 
@@ -201,12 +193,12 @@ private fun DiffColumn(
     ) {
         Text(
             text = title,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
             modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
         )
         val horizontalScroll = rememberScrollState()
-        LazyColumn(modifier = Modifier.fillMaxSize().background(IntelliJColors.background)) {
+        LazyColumn(modifier = Modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
             items(lines) { line ->
                 DiffRow(line = line, horizontalScroll = horizontalScroll)
             }
@@ -219,28 +211,29 @@ private fun DiffRow(
     line: DiffLine,
     horizontalScroll: androidx.compose.foundation.ScrollState,
 ) {
+    val palette = LocalIntelliJColors.current
     val background =
         when (line.kind) {
-            DiffKind.ADD -> DIFF_ADD_BG
-            DiffKind.DELETE -> DIFF_DELETE_BG
+            DiffKind.ADD -> palette.diffAddedBackground
+            DiffKind.DELETE -> palette.diffRemovedBackground
             DiffKind.CONTEXT -> Color.Transparent
         }
     val signColor =
         when (line.kind) {
-            DiffKind.ADD -> DIFF_ADD_SIGN
-            DiffKind.DELETE -> DIFF_DELETE_TEXT
-            DiffKind.CONTEXT -> IntelliJColors.textMuted
+            DiffKind.ADD -> palette.diffAddedGutter
+            DiffKind.DELETE -> palette.diffRemovedText
+            DiffKind.CONTEXT -> palette.textMuted
         }
     val textColor =
         when (line.kind) {
-            DiffKind.ADD -> DIFF_ADD_TEXT
-            DiffKind.DELETE -> DIFF_DELETE_TEXT
-            DiffKind.CONTEXT -> IntelliJColors.textPrimary
+            DiffKind.ADD -> palette.diffAddedText
+            DiffKind.DELETE -> palette.diffRemovedText
+            DiffKind.CONTEXT -> palette.textPrimary
         }
     Row(modifier = Modifier.fillMaxWidth().height(21.dp).background(background)) {
         Text(
             text = line.number?.toString().orEmpty(),
-            color = IntelliJColors.lineNumberForeground,
+            color = LocalIntelliJColors.current.lineNumberForeground,
             fontSize = 12.sp,
             fontFamily = JetaProgFonts.codeFont,
             modifier = Modifier.width(44.dp).padding(end = Spacing.md.dp),
@@ -276,44 +269,37 @@ private fun GitLogTable(
             Modifier
                 .fillMaxWidth()
                 .height(if (expanded) LOG_SECTION_EXPANDED_HEIGHT.dp else LOG_SECTION_COLLAPSED_HEIGHT.dp)
-                .background(IntelliJColors.background),
+                .background(LocalIntelliJColors.current.background),
     ) {
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(Dimensions.splitterThickness.dp)
-                    .background(IntelliJColors.divider),
+                    .background(LocalIntelliJColors.current.divider),
         )
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(LOG_TAB_STRIP_HEIGHT.dp)
-                    .background(IntelliJColors.surface)
+                    .background(LocalIntelliJColors.current.surface)
                     .padding(horizontal = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp),
         ) {
             LogTab(icon = Icons.Filled.AccountTree, label = "Log", selected = true)
-            if (expanded) {
-                LogTab(icon = Icons.Filled.History, label = "File History", selected = false)
-            } else {
-                Text(
-                    text = "${commits.size} commits",
-                    color = IntelliJColors.textMuted,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                )
-            }
+            Text(
+                text = "${commits.size} commits",
+                color = LocalIntelliJColors.current.textMuted,
+                fontSize = 11.sp,
+                maxLines = 1,
+            )
             Spacer(modifier = Modifier.weight(1f))
-            if (expanded) {
-                LogFilterChip()
-            }
             Icon(
                 imageVector = if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ExpandLess,
                 contentDescription = if (expanded) "Collapse log" else "Expand log",
-                tint = IntelliJColors.textSecondary,
+                tint = LocalIntelliJColors.current.textSecondary,
                 modifier =
                     Modifier
                         .size(Dimensions.iconMd.dp)
@@ -324,28 +310,6 @@ private fun GitLogTable(
         if (expanded) {
             GitLogRows(commits = commits)
         }
-    }
-}
-
-@Composable
-private fun LogFilterChip() {
-    Row(
-        modifier =
-            Modifier
-                .height(LOG_FILTER_HEIGHT.dp)
-                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .background(IntelliJColors.inputBackground)
-                .padding(horizontal = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Filled.FilterList,
-            contentDescription = null,
-            tint = IntelliJColors.textMuted,
-            modifier = Modifier.size(Dimensions.iconSm.dp),
-        )
-        Text(text = "Branch · User · Date", color = IntelliJColors.textSecondary, fontSize = 11.sp)
     }
 }
 
@@ -362,19 +326,19 @@ private fun GitLogRows(commits: List<GitCommit>) {
         ) {
             Text(
                 text = "Branch / Commit",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 text = "Author",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
                 modifier = Modifier.width(AUTHOR_COLUMN_WIDTH.dp),
             )
             Text(
                 text = "Date",
-                color = IntelliJColors.textMuted,
+                color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
                 modifier = Modifier.width(DATE_COLUMN_WIDTH.dp),
             )
@@ -402,12 +366,22 @@ private fun LogTab(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (selected) IntelliJColors.textPrimary else IntelliJColors.textSecondary,
+                tint =
+                    if (selected) {
+                        LocalIntelliJColors.current.textPrimary
+                    } else {
+                        LocalIntelliJColors.current.textSecondary
+                    },
                 modifier = Modifier.size(15.dp),
             )
             Text(
                 text = label,
-                color = if (selected) IntelliJColors.textPrimary else IntelliJColors.textSecondary,
+                color =
+                    if (selected) {
+                        LocalIntelliJColors.current.textPrimary
+                    } else {
+                        LocalIntelliJColors.current.textSecondary
+                    },
                 fontSize = 12.sp,
             )
         }
@@ -418,7 +392,7 @@ private fun LogTab(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(2.dp)
-                        .background(IntelliJColors.accent),
+                        .background(LocalIntelliJColors.current.accent),
             )
         }
     }
@@ -435,13 +409,20 @@ private fun LogRow(commit: GitCommit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
-        Box(modifier = Modifier.size(10.dp).clip(RoundedCornerShape(5.dp)).background(gitColorFor(commit.author)))
+        Box(
+            modifier =
+                Modifier
+                    .size(
+                        10.dp,
+                    ).clip(RoundedCornerShape(5.dp))
+                    .background(gitColorFor(commit.author, gitAvatarPalette())),
+        )
         commit.refs.firstOrNull()?.let { ref ->
             Row(
                 modifier =
                     Modifier
                         .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                        .background(IntelliJColors.successMuted)
+                        .background(LocalIntelliJColors.current.successMuted)
                         .padding(horizontal = 6.dp, vertical = 1.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -449,15 +430,15 @@ private fun LogRow(commit: GitCommit) {
                 Icon(
                     imageVector = Icons.Filled.AccountTree,
                     contentDescription = null,
-                    tint = IntelliJColors.success,
+                    tint = LocalIntelliJColors.current.success,
                     modifier = Modifier.size(12.dp),
                 )
-                Text(text = ref, color = IntelliJColors.success, fontSize = 11.sp, maxLines = 1)
+                Text(text = ref, color = LocalIntelliJColors.current.success, fontSize = 11.sp, maxLines = 1)
             }
         }
         Text(
             text = commit.message,
-            color = IntelliJColors.textPrimary,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -471,7 +452,7 @@ private fun LogRow(commit: GitCommit) {
             Avatar(author = commit.author)
             Text(
                 text = commit.author,
-                color = IntelliJColors.textSecondary,
+                color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -479,7 +460,7 @@ private fun LogRow(commit: GitCommit) {
         }
         Text(
             text = commit.relativeDate,
-            color = IntelliJColors.textMuted,
+            color = LocalIntelliJColors.current.textMuted,
             fontSize = 12.sp,
             maxLines = 1,
             modifier = Modifier.width(DATE_COLUMN_WIDTH.dp),
