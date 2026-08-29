@@ -110,27 +110,27 @@ private val JetaProgTypography: Typography by lazy {
     )
 }
 
-// Thin flat scrollbars on the token colors; the Compose Desktop default is a
+// Thin flat scrollbars on the active palette; the Compose Desktop default is a
 // black-alpha thumb that is nearly invisible on the dark surfaces.
-@Suppress("MagicNumber")
-private val JetaProgScrollbarStyle: ScrollbarStyle by lazy {
+@Composable
+private fun jetaProgScrollbarStyle(palette: IntelliJPalette): ScrollbarStyle =
     ScrollbarStyle(
         minimalHeight = 16.dp,
         thickness = 8.dp,
         shape = RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
         hoverDurationMillis = 120,
-        unhoverColor = IntelliJColors.scrollbarThumb,
-        hoverColor = IntelliJColors.scrollbarThumbHover,
+        unhoverColor = palette.scrollbarThumb,
+        hoverColor = palette.scrollbarThumbHover,
     )
-}
 
 /**
  * JetaProg IDE theme.
  *
- * Supplies a Material color scheme derived from the design tokens, sets
- * JetBrains Mono as the default typeface so `Text` calls without an explicit
- * `fontFamily` still render on-contract, and styles desktop scrollbars from
- * the scrollbar tokens.
+ * Supplies a Material color scheme derived from the design tokens, publishes
+ * the active [IntelliJPalette] through [LocalIntelliJColors] so custom
+ * composables render on-palette, sets JetBrains Mono as the default typeface
+ * so `Text` calls without an explicit `fontFamily` still render on-contract,
+ * and styles desktop scrollbars from the scrollbar tokens.
  */
 @Composable
 public fun JetaProgTheme(
@@ -138,8 +138,12 @@ public fun JetaProgTheme(
     content: @Composable () -> Unit,
 ) {
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val palette = if (darkTheme) IntelliJColors else IntelliJLightColors
 
-    CompositionLocalProvider(LocalScrollbarStyle provides JetaProgScrollbarStyle) {
+    CompositionLocalProvider(
+        LocalIntelliJColors provides palette,
+        LocalScrollbarStyle provides jetaProgScrollbarStyle(palette),
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = JetaProgTypography,

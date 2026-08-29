@@ -6,266 +6,268 @@ import androidx.compose.ui.graphics.Color
  * Modern flat dark theme color palette.
  * Inspired by IntelliJ IDEA Darcula but with improved contrast and modern aesthetics.
  */
-public object IntelliJColors {
+public object IntelliJColors : IntelliJPalette {
+    public override val isDark: Boolean = true
+
     // ============================================================
     // BACKGROUND COLORS (warmer, less harsh)
     // ============================================================
-    public val background: Color = Color(0xFF1A1B1E)
-    public val backgroundDarker: Color = Color(0xFF141517)
-    public val backgroundLighter: Color = Color(0xFF252629)
+    public override val background: Color = Color(0xFF1A1B1E)
+    public override val backgroundDarker: Color = Color(0xFF141517)
+    public override val backgroundLighter: Color = Color(0xFF252629)
 
     // ============================================================
     // SURFACE COLORS (subtle differentiation)
     // ============================================================
-    public val surface: Color = Color(0xFF1F2023)
-    public val surfaceElevated: Color = Color(0xFF232427)
-    public val surfaceContainer: Color = Color(0xFF282A2E)
-    public val surfaceHover: Color = Color(0xFF2D2F33)
+    public override val surface: Color = Color(0xFF1F2023)
+    public override val surfaceElevated: Color = Color(0xFF232427)
+    public override val surfaceContainer: Color = Color(0xFF282A2E)
+    public override val surfaceHover: Color = Color(0xFF2D2F33)
 
     // Panel colors (aliased for compatibility)
-    public val toolWindowBackground: Color = surface
-    public val toolWindowHeader: Color = surfaceElevated
-    public val toolWindowBorder: Color = Color(0xFF2A2B2F)
+    public override val toolWindowBackground: Color = surface
+    public override val toolWindowHeader: Color = surfaceElevated
+    public override val toolWindowBorder: Color = Color(0xFF2A2B2F)
 
     // ============================================================
     // TEXT COLORS (improved contrast) - must be defined early
     // ============================================================
-    public val textPrimary: Color = Color(0xFFD4D4D4)
-    public val textSecondary: Color = Color(0xFF9D9D9D)
-    public val textMuted: Color = Color(0xFF6B6B6B)
-    public val textDisabled: Color = Color(0xFF505050)
-    public val textLink: Color = Color(0xFF6BB3F8)
-    public val textInverse: Color = Color(0xFF1A1B1E)
+    public override val textPrimary: Color = Color(0xFFD4D4D4)
+    public override val textSecondary: Color = Color(0xFF9D9D9D)
+    public override val textMuted: Color = Color(0xFF6B6B6B)
+    public override val textDisabled: Color = Color(0xFF505050)
+    public override val textLink: Color = Color(0xFF6BB3F8)
+    public override val textInverse: Color = Color(0xFF1A1B1E)
 
     // ============================================================
     // ACCENT COLORS (more vibrant) - must be defined early
     // ============================================================
-    public val accent: Color = Color(0xFF5B9BD5)
-    public val accentHover: Color = Color(0xFF6BAADF)
-    public val accentPressed: Color = Color(0xFF4B8BC5)
-    public val accentMuted: Color = Color(0xFF3D5A80)
-    public val accentSubtle: Color = Color(0xFF264F78)
+    public override val accent: Color = Color(0xFF5B9BD5)
+    public override val accentHover: Color = Color(0xFF6BAADF)
+    public override val accentPressed: Color = Color(0xFF4B8BC5)
+    public override val accentMuted: Color = Color(0xFF3D5A80)
+    public override val accentSubtle: Color = Color(0xFF264F78)
 
     // Semantic colors
-    public val success: Color = Color(0xFF4EC969)
-    public val successMuted: Color = Color(0xFF2D4A35)
-    public val warning: Color = Color(0xFFDBA800)
-    public val warningMuted: Color = Color(0xFF4A4020)
-    public val error: Color = Color(0xFFF85149)
-    public val errorMuted: Color = Color(0xFF4A2A2A)
-    public val info: Color = Color(0xFF58A6FF)
-    public val infoMuted: Color = Color(0xFF264F78)
+    public override val success: Color = Color(0xFF4EC969)
+    public override val successMuted: Color = Color(0xFF2D4A35)
+    public override val warning: Color = Color(0xFFDBA800)
+    public override val warningMuted: Color = Color(0xFF4A4020)
+    public override val error: Color = Color(0xFFF85149)
+    public override val errorMuted: Color = Color(0xFF4A2A2A)
+    public override val info: Color = Color(0xFF58A6FF)
+    public override val infoMuted: Color = Color(0xFF264F78)
 
     // ============================================================
     // EDITOR COLORS
     // ============================================================
-    public val editorBackground: Color = background
-    public val editorGutter: Color = Color(0xFF1E1F22)
-    public val editorLineHighlight: Color = Color(0xFF1E2126)
-    public val editorSelection: Color = Color(0xFF264F78)
-    public val editorCaretRow: Color = Color(0xFF1E2126)
+    public override val editorBackground: Color = background
+    public override val editorGutter: Color = Color(0xFF1E1F22)
+    public override val editorLineHighlight: Color = Color(0xFF1E2126)
+    public override val editorSelection: Color = Color(0xFF264F78)
+    public override val editorCaretRow: Color = Color(0xFF1E2126)
 
     /** Caret-line background highlight (brighter than [editorCaretRow]). */
-    public val editorCurrentLine: Color = Color(0xFF20242B)
+    public override val editorCurrentLine: Color = Color(0xFF20242B)
 
     /** Blinking caret bar color. */
-    public val editorCaret: Color = Color(0xFFAEAFAD)
+    public override val editorCaret: Color = Color(0xFFAEAFAD)
 
     /** Active text-selection background inside the editor. */
-    public val editorSelectionActive: Color = Color(0xFF2D4A6B)
+    public override val editorSelectionActive: Color = Color(0xFF2D4A6B)
 
     /** Default identifier/body text — slightly brighter than [textPrimary] for code. */
-    public val editorIdentifier: Color = Color(0xFFD7DBE0)
+    public override val editorIdentifier: Color = Color(0xFFD7DBE0)
 
     // ============================================================
     // TAB COLORS (modern flat style)
     // ============================================================
-    public val tabBackground: Color = Color.Transparent
-    public val tabBackgroundSelected: Color = Color(0xFF2D2F33)
-    public val tabBackgroundHover: Color = Color(0xFF252629)
-    public val tabBorder: Color = Color.Transparent
-    public val tabUnderline: Color = accent
+    public override val tabBackground: Color = Color.Transparent
+    public override val tabBackgroundSelected: Color = Color(0xFF2D2F33)
+    public override val tabBackgroundHover: Color = Color(0xFF252629)
+    public override val tabBorder: Color = Color.Transparent
+    public override val tabUnderline: Color = accent
 
     // ============================================================
     // ACTIVITY BAR (left sidebar icons)
     // ============================================================
-    public val activityBarBackground: Color = backgroundDarker
-    public val activityBarForeground: Color = Color(0xFF8B8D91)
-    public val activityBarForegroundActive: Color = Color(0xFFFFFFFF)
-    public val activityBarIndicator: Color = accent
-    public val activityBarHover: Color = Color(0xFF252629)
+    public override val activityBarBackground: Color = backgroundDarker
+    public override val activityBarForeground: Color = Color(0xFF8B8D91)
+    public override val activityBarForegroundActive: Color = Color(0xFFFFFFFF)
+    public override val activityBarIndicator: Color = accent
+    public override val activityBarHover: Color = Color(0xFF252629)
 
     // ============================================================
     // SIDEBAR/TREE
     // ============================================================
-    public val treeBackground: Color = surface
-    public val treeSelectionBackground: Color = Color(0xFF2D4F6E)
-    public val treeSelectionInactive: Color = Color(0xFF2A2D30)
-    public val treeForeground: Color = textPrimary
-    public val treeHoverBackground: Color = Color(0xFF252629)
+    public override val treeBackground: Color = surface
+    public override val treeSelectionBackground: Color = Color(0xFF2D4F6E)
+    public override val treeSelectionInactive: Color = Color(0xFF2A2D30)
+    public override val treeForeground: Color = textPrimary
+    public override val treeHoverBackground: Color = Color(0xFF252629)
 
     /** Rows for paths excluded by `.gitignore` — dimmed, but still readable. */
-    public val treeForegroundIgnored: Color = Color(0xFF6E7175)
+    public override val treeForegroundIgnored: Color = Color(0xFF6E7175)
 
     /** Vertical indent-guide line in the project tree (one per depth level). */
-    public val treeIndentGuide: Color = Color(0xFF2A2C30)
+    public override val treeIndentGuide: Color = Color(0xFF2A2C30)
 
     /** Left accent bar drawn on the selected tree row. */
-    public val treeSelectionAccent: Color = accent
+    public override val treeSelectionAccent: Color = accent
 
     // ============================================================
     // STATUS BAR
     // ============================================================
-    public val statusBarBackground: Color = backgroundDarker
-    public val statusBarForeground: Color = textSecondary
-    public val statusBarHover: Color = Color(0xFF252629)
-    public val statusBarDivider: Color = Color(0xFF2A2B2F)
+    public override val statusBarBackground: Color = backgroundDarker
+    public override val statusBarForeground: Color = textSecondary
+    public override val statusBarHover: Color = Color(0xFF252629)
+    public override val statusBarDivider: Color = Color(0xFF2A2B2F)
 
     // ============================================================
     // BUTTON COLORS
     // ============================================================
-    public val buttonBackground: Color = Color(0xFF2D2F33)
-    public val buttonBackgroundHover: Color = Color(0xFF363840)
-    public val buttonBackgroundPressed: Color = Color(0xFF252629)
-    public val buttonForeground: Color = textPrimary
+    public override val buttonBackground: Color = Color(0xFF2D2F33)
+    public override val buttonBackgroundHover: Color = Color(0xFF363840)
+    public override val buttonBackgroundPressed: Color = Color(0xFF252629)
+    public override val buttonForeground: Color = textPrimary
 
-    public val buttonPrimaryBackground: Color = accent
-    public val buttonPrimaryBackgroundHover: Color = accentHover
-    public val buttonPrimaryForeground: Color = Color(0xFFFFFFFF)
+    public override val buttonPrimaryBackground: Color = accent
+    public override val buttonPrimaryBackgroundHover: Color = accentHover
+    public override val buttonPrimaryForeground: Color = Color(0xFFFFFFFF)
 
-    public val buttonDangerBackground: Color = Color(0xFF8B3038)
-    public val buttonDangerBackgroundHover: Color = Color(0xFFA03840)
-    public val buttonDangerForeground: Color = Color(0xFFFFFFFF)
+    public override val buttonDangerBackground: Color = Color(0xFF8B3038)
+    public override val buttonDangerBackgroundHover: Color = Color(0xFFA03840)
+    public override val buttonDangerForeground: Color = Color(0xFFFFFFFF)
 
     // ============================================================
     // INPUT/TEXTFIELD COLORS
     // ============================================================
-    public val inputBackground: Color = Color(0xFF1E1F22)
-    public val inputBackgroundHover: Color = Color(0xFF232427)
-    public val inputBorder: Color = Color(0xFF3D3F42)
-    public val inputBorderHover: Color = Color(0xFF4D4F52)
-    public val inputBorderFocused: Color = accent
-    public val inputPlaceholder: Color = textMuted
+    public override val inputBackground: Color = Color(0xFF1E1F22)
+    public override val inputBackgroundHover: Color = Color(0xFF232427)
+    public override val inputBorder: Color = Color(0xFF3D3F42)
+    public override val inputBorderHover: Color = Color(0xFF4D4F52)
+    public override val inputBorderFocused: Color = accent
+    public override val inputPlaceholder: Color = textMuted
 
     // ============================================================
     // SCROLLBAR COLORS (thin, modern)
     // ============================================================
-    public val scrollbarThumb: Color = Color(0xFF4A4C50)
-    public val scrollbarThumbHover: Color = Color(0xFF5A5C60)
-    public val scrollbarTrack: Color = Color.Transparent
+    public override val scrollbarThumb: Color = Color(0xFF4A4C50)
+    public override val scrollbarThumbHover: Color = Color(0xFF5A5C60)
+    public override val scrollbarTrack: Color = Color.Transparent
 
     // ============================================================
     // DIVIDER/BORDER
     // ============================================================
-    public val divider: Color = Color(0xFF2A2B2F)
-    public val border: Color = Color(0xFF3D3F42)
-    public val borderSubtle: Color = Color(0xFF232427)
+    public override val divider: Color = Color(0xFF2A2B2F)
+    public override val border: Color = Color(0xFF3D3F42)
+    public override val borderSubtle: Color = Color(0xFF232427)
 
     // ============================================================
     // TERMINAL COLORS
     // ============================================================
-    public val terminalBackground: Color = background
-    public val terminalHeader: Color = surfaceElevated
-    public val terminalInputBackground: Color = Color(0xFF2D2D30)
-    public val terminalForeground: Color = textPrimary
-    public val terminalCursor: Color = accent
-    public val terminalSelectionBackground: Color = editorSelection
-    public val terminalGreen: Color = Color(0xFF4EC9B0)
-    public val terminalRed: Color = Color(0xFFE74C3C)
-    public val terminalYellow: Color = Color(0xFFDCDCAA)
-    public val terminalBlue: Color = Color(0xFF569CD6)
-    public val terminalMagenta: Color = Color(0xFFC586C0)
-    public val terminalCyan: Color = Color(0xFF4EC9B0)
+    public override val terminalBackground: Color = background
+    public override val terminalHeader: Color = surfaceElevated
+    public override val terminalInputBackground: Color = Color(0xFF2D2D30)
+    public override val terminalForeground: Color = textPrimary
+    public override val terminalCursor: Color = accent
+    public override val terminalSelectionBackground: Color = editorSelection
+    public override val terminalGreen: Color = Color(0xFF4EC9B0)
+    public override val terminalRed: Color = Color(0xFFE74C3C)
+    public override val terminalYellow: Color = Color(0xFFDCDCAA)
+    public override val terminalBlue: Color = Color(0xFF569CD6)
+    public override val terminalMagenta: Color = Color(0xFFC586C0)
+    public override val terminalCyan: Color = Color(0xFF4EC9B0)
 
     // ============================================================
     // GUTTER COLORS
     // ============================================================
-    public val gutterBackground: Color = editorGutter
-    public val lineNumberForeground: Color = Color(0xFF5A5D63)
-    public val lineNumberForegroundActive: Color = Color(0xFFC9CDD2)
+    public override val gutterBackground: Color = editorGutter
+    public override val lineNumberForeground: Color = Color(0xFF5A5D63)
+    public override val lineNumberForegroundActive: Color = Color(0xFFC9CDD2)
 
     // ============================================================
     // BREADCRUMBS
     // ============================================================
-    public val breadcrumbsBackground: Color = Color.Transparent
-    public val breadcrumbsForeground: Color = textSecondary
-    public val breadcrumbsForegroundHover: Color = textPrimary
-    public val breadcrumbsFileForeground: Color = textPrimary
-    public val breadcrumbsBackgroundHover: Color = surfaceHover
-    public val breadcrumbsSeparator: Color = textMuted
+    public override val breadcrumbsBackground: Color = Color.Transparent
+    public override val breadcrumbsForeground: Color = textSecondary
+    public override val breadcrumbsForegroundHover: Color = textPrimary
+    public override val breadcrumbsFileForeground: Color = textPrimary
+    public override val breadcrumbsBackgroundHover: Color = surfaceHover
+    public override val breadcrumbsSeparator: Color = textMuted
 
     // ============================================================
     // ICONS
     // ============================================================
-    public val iconDefault: Color = Color(0xFF9D9FA3)
-    public val iconFolder: Color = Color(0xFFD4A656)
-    public val iconFile: Color = Color(0xFF8AB4F8)
-    public val iconKotlin: Color = Color(0xFF7F52FF)
-    public val iconJava: Color = Color(0xFFE37933)
-    public val iconRust: Color = Color(0xFFDEA584)
-    public val iconCpp: Color = Color(0xFF5C8DBC)
-    public val iconVala: Color = Color(0xFF7239B3)
-    public val iconPython: Color = Color(0xFF3776AB)
+    public override val iconDefault: Color = Color(0xFF9D9FA3)
+    public override val iconFolder: Color = Color(0xFFD4A656)
+    public override val iconFile: Color = Color(0xFF8AB4F8)
+    public override val iconKotlin: Color = Color(0xFF7F52FF)
+    public override val iconJava: Color = Color(0xFFE37933)
+    public override val iconRust: Color = Color(0xFFDEA584)
+    public override val iconCpp: Color = Color(0xFF5C8DBC)
+    public override val iconVala: Color = Color(0xFF7239B3)
+    public override val iconPython: Color = Color(0xFF3776AB)
 
     /** Git-owned files such as `.gitignore`. */
-    public val iconGit: Color = Color(0xFFF05033)
+    public override val iconGit: Color = Color(0xFFF05033)
 
     // Line number text color (alias for navigation components)
-    public val lineNumberText: Color = lineNumberForeground
+    public override val lineNumberText: Color = lineNumberForeground
 
     // ============================================================
     // DROPDOWN/POPUP COLORS
     // ============================================================
-    public val popupBackground: Color = surfaceContainer
-    public val popupBorder: Color = Color(0xFF3D3F42)
-    public val popupShadow: Color = Color(0x40000000)
-    public val menuItemHover: Color = Color(0xFF2D4F6E)
+    public override val popupBackground: Color = surfaceContainer
+    public override val popupBorder: Color = Color(0xFF3D3F42)
+    public override val popupShadow: Color = Color(0x40000000)
+    public override val menuItemHover: Color = Color(0xFF2D4F6E)
 
     // ============================================================
     // DIALOG COLORS
     // ============================================================
-    public val dialogBackground: Color = surfaceElevated
-    public val dialogOverlay: Color = Color(0xB3000000)
+    public override val dialogBackground: Color = surfaceElevated
+    public override val dialogOverlay: Color = Color(0xB3000000)
 
     // ============================================================
     // FOCUS/SELECTION
     // ============================================================
-    public val focusRing: Color = accent.copy(alpha = 0.5f)
-    public val selectionBackground: Color = accentSubtle
-    public val selectionInactive: Color = Color(0xFF2A2D30)
+    public override val focusRing: Color = accent.copy(alpha = 0.5f)
+    public override val selectionBackground: Color = accentSubtle
+    public override val selectionInactive: Color = Color(0xFF2A2D30)
 
     // ============================================================
     // EDITOR EXTRAS (indent guides, diagnostics)
     // ============================================================
-    public val editorIndentGuide: Color = Color(0xFF2A2B2F)
-    public val editorIndentGuideActive: Color = Color(0xFF4A4C50)
-    public val diagnosticErrorStripe: Color = error
-    public val diagnosticWarningStripe: Color = warning
-    public val diagnosticInfoStripe: Color = info
-    public val diagnosticHintStripe: Color = textMuted
+    public override val editorIndentGuide: Color = Color(0xFF2A2B2F)
+    public override val editorIndentGuideActive: Color = Color(0xFF4A4C50)
+    public override val diagnosticErrorStripe: Color = error
+    public override val diagnosticWarningStripe: Color = warning
+    public override val diagnosticInfoStripe: Color = info
+    public override val diagnosticHintStripe: Color = textMuted
 
     // ============================================================
     // NOTIFICATIONS (toast / banner)
     // ============================================================
-    public val notificationBackground: Color = surfaceContainer
-    public val notificationBorder: Color = border
-    public val notificationInfoStripe: Color = info
-    public val notificationSuccessStripe: Color = success
-    public val notificationWarningStripe: Color = warning
-    public val notificationErrorStripe: Color = error
+    public override val notificationBackground: Color = surfaceContainer
+    public override val notificationBorder: Color = border
+    public override val notificationInfoStripe: Color = info
+    public override val notificationSuccessStripe: Color = success
+    public override val notificationWarningStripe: Color = warning
+    public override val notificationErrorStripe: Color = error
 
     // ============================================================
     // WELCOME HUB
     // ============================================================
 
     /** Background of a hovered / first recent-project row. */
-    public val welcomeRecentRowHover: Color = Color(0xFF232831)
+    public override val welcomeRecentRowHover: Color = Color(0xFF232831)
 
     /** Brand "J" tile gradient — start color. */
-    public val brandGradientStart: Color = Color(0xFF5B9BD5)
+    public override val brandGradientStart: Color = Color(0xFF5B9BD5)
 
     /** Brand "J" tile gradient — end color. */
-    public val brandGradientEnd: Color = Color(0xFF7F52FF)
+    public override val brandGradientEnd: Color = Color(0xFF7F52FF)
 
     // ============================================================
     // AGENT SURFACE
@@ -275,96 +277,121 @@ public object IntelliJColors {
     // approval gate and presence bar. Keep in lockstep with IntelliJLightColors.
 
     /** Background of tool-call / diff / approval cards. */
-    public val toolCardBackground: Color = Color(0xFF1C1D20)
+    public override val toolCardBackground: Color = Color(0xFF1C1D20)
 
     /** Purple-tinted border for agent cards and the model/effort chip. */
-    public val agentCardBorder: Color = Color(0xFF34303F)
+    public override val agentCardBorder: Color = Color(0xFF34303F)
 
     /** Background of the monospace result / command code blocks inside cards. */
-    public val codeBlockBackground: Color = Color(0xFF16191A)
+    public override val codeBlockBackground: Color = Color(0xFF16191A)
 
     /** Effort-level text in the model/effort chip. */
-    public val agentEffortText: Color = Color(0xFFB49BE0)
+    public override val agentEffortText: Color = Color(0xFFB49BE0)
 
     /** Border of the "Proposed" diff pill. */
-    public val agentPillBorder: Color = Color(0xFF463C66)
+    public override val agentPillBorder: Color = Color(0xFF463C66)
 
     /** Text of the "Proposed" diff pill. */
-    public val agentPillText: Color = Color(0xFFC9B8F0)
+    public override val agentPillText: Color = Color(0xFFC9B8F0)
 
     /** Filled background of the diff Accept button. */
-    public val diffAcceptBackground: Color = Color(0xFF3D7A4E)
+    public override val diffAcceptBackground: Color = Color(0xFF3D7A4E)
 
     /** Added-line background in an inline diff. */
-    public val diffAddedBackground: Color = Color(0xFF1E2D22)
+    public override val diffAddedBackground: Color = Color(0xFF1E2D22)
 
     /** Removed-line background in an inline diff. */
-    public val diffRemovedBackground: Color = Color(0xFF2E2122)
+    public override val diffRemovedBackground: Color = Color(0xFF2E2122)
 
     /** Added-line text in an inline diff. */
-    public val diffAddedText: Color = Color(0xFFA6C9A0)
+    public override val diffAddedText: Color = Color(0xFFA6C9A0)
 
     /** Removed-line text in an inline diff. */
-    public val diffRemovedText: Color = Color(0xFFD26B6B)
+    public override val diffRemovedText: Color = Color(0xFFD26B6B)
 
     /** Added-line gutter sign in an inline diff. */
-    public val diffAddedGutter: Color = Color(0xFF7FB97A)
+    public override val diffAddedGutter: Color = Color(0xFF7FB97A)
 
     /** Border of the approval (permission gate) card. */
-    public val approvalBorder: Color = Color(0xFF4A4326)
+    public override val approvalBorder: Color = Color(0xFF4A4326)
 
     /** Body text of the approval (permission gate) card. */
-    public val approvalText: Color = Color(0xFFE8D9A8)
+    public override val approvalText: Color = Color(0xFFE8D9A8)
 
     /** Border of the agent Stop button. */
-    public val agentStopBorder: Color = Color(0xFF5A3A3A)
+    public override val agentStopBorder: Color = Color(0xFF5A3A3A)
 
     /** Text/icon of the agent Stop button. */
-    public val agentStopText: Color = Color(0xFFE0A0A0)
+    public override val agentStopText: Color = Color(0xFFE0A0A0)
 
     // ============================================================
     // DEBUGGER
     // ============================================================
 
     /** Filled breakpoint dot. */
-    public val breakpointRed: Color = Color(0xFFDB5C5C)
+    public override val breakpointRed: Color = Color(0xFFDB5C5C)
 
     /** Full-width wash on the current execution line (warning at ~13% alpha). */
-    public val executionLineBackground: Color = Color(0x21DBA800)
+    public override val executionLineBackground: Color = Color(0x21DBA800)
 
     /** End-of-line inline variable value hint. */
-    public val inlineValueText: Color = Color(0xFF6E7E6B)
+    public override val inlineValueText: Color = Color(0xFF6E7E6B)
 
     /** PAUSED state chip text. */
-    public val debugPausedText: Color = Color(0xFFE0C060)
+    public override val debugPausedText: Color = Color(0xFFE0C060)
 
     /** RUNNING state chip text. */
-    public val debugRunningText: Color = Color(0xFF7FCB8C)
+    public override val debugRunningText: Color = Color(0xFF7FCB8C)
 
     /** Variable name in the variables/watches tree. */
-    public val debugVarName: Color = Color(0xFF9876AA)
+    public override val debugVarName: Color = Color(0xFF9876AA)
 
     /** String variable value. */
-    public val debugVarString: Color = Color(0xFF6A8759)
+    public override val debugVarString: Color = Color(0xFF6A8759)
 
     /** Numeric variable value. */
-    public val debugVarNumber: Color = Color(0xFF6897BB)
+    public override val debugVarNumber: Color = Color(0xFF6897BB)
 
     /** Type/identifier variable value. */
-    public val debugVarType: Color = Color(0xFF52B8B0)
+    public override val debugVarType: Color = Color(0xFF52B8B0)
+
+    // ============================================================
+    // FILE TYPE BADGES (shared by tree icons and editor tab badges)
+    // ============================================================
+
+    /** Markup sources: XML, HTML, YAML. */
+    public override val fileIconMarkup: Color = Color(0xFFCC7832)
+
+    /** Data files: JSON, properties. */
+    public override val fileIconData: Color = Color(0xFF6A8759)
+
+    /** Markdown documents. */
+    public override val fileIconMarkdown: Color = Color(0xFF6897BB)
+
+    /** Gradle build scripts. */
+    public override val fileIconGradle: Color = Color(0xFF499C54)
+
+    /** TOML config files. */
+    public override val fileIconToml: Color = Color(0xFFE76D50)
+
+    /** JavaScript sources. */
+    public override val fileIconJavascript: Color = Color(0xFFF7DF1E)
+
+    /** TypeScript sources. */
+    public override val fileIconTypescript: Color = Color(0xFF3178C6)
 
     // ============================================================
     // WINDOW CHROME (macOS traffic lights — OS constants, same in both palettes)
     // ============================================================
 
     /** macOS traffic-light close button. */
-    public val windowCloseButton: Color = Color(0xFFFF5F57)
+    public override val windowCloseButton: Color = Color(0xFFFF5F57)
 
     /** macOS traffic-light minimize button. */
-    public val windowMinimizeButton: Color = Color(0xFFFEBC2E)
+    public override val windowMinimizeButton: Color = Color(0xFFFEBC2E)
 
     /** macOS traffic-light zoom button. */
-    public val windowZoomButton: Color = Color(0xFF28C840)
+    public override val windowZoomButton: Color = Color(0xFF28C840)
 }
 
 /**
@@ -387,12 +414,19 @@ public object Spacing {
 public object Dimensions {
     // Shell
     public val activityBarWidth: Int = 48
+    public val titleBarHeight: Int = 30
     public val statusBarHeight: Int = 24
     public val menuBarHeight: Int = 32
     public val mainToolbarHeight: Int = 32
 
     /** Taller toolbar used when filled with chips and the Search Everywhere field. */
     public val mainToolbarHeightFilled: Int = 36
+
+    /** Minimum width of the Search Everywhere field in the toolbar. */
+    public val searchEverywhereWidth: Int = 190
+
+    /** Default width of menu-bar / dropdown menus. */
+    public val menuWidth: Int = 260
 
     /** Default width of the project tool window. */
     public val projectPanelWidth: Int = 264
@@ -503,235 +537,246 @@ public object Elevation {
  * dark palette.**
  */
 @Suppress("LargeClass")
-public object IntelliJLightColors {
+public object IntelliJLightColors : IntelliJPalette {
+    public override val isDark: Boolean = false
+
     // Backgrounds
-    public val background: Color = Color(0xFFF8F8F8)
-    public val backgroundDarker: Color = Color(0xFFEBEBEB)
-    public val backgroundLighter: Color = Color(0xFFFFFFFF)
+    public override val background: Color = Color(0xFFF8F8F8)
+    public override val backgroundDarker: Color = Color(0xFFEBEBEB)
+    public override val backgroundLighter: Color = Color(0xFFFFFFFF)
 
     // Surfaces
-    public val surface: Color = Color(0xFFFFFFFF)
-    public val surfaceElevated: Color = Color(0xFFF2F2F2)
-    public val surfaceContainer: Color = Color(0xFFEDEDED)
-    public val surfaceHover: Color = Color(0xFFE5E5E5)
+    public override val surface: Color = Color(0xFFFFFFFF)
+    public override val surfaceElevated: Color = Color(0xFFF2F2F2)
+    public override val surfaceContainer: Color = Color(0xFFEDEDED)
+    public override val surfaceHover: Color = Color(0xFFE5E5E5)
 
     // Tool window aliases
-    public val toolWindowBackground: Color = surface
-    public val toolWindowHeader: Color = surfaceElevated
-    public val toolWindowBorder: Color = Color(0xFFD4D4D4)
+    public override val toolWindowBackground: Color = surface
+    public override val toolWindowHeader: Color = surfaceElevated
+    public override val toolWindowBorder: Color = Color(0xFFD4D4D4)
 
     // Text
-    public val textPrimary: Color = Color(0xFF1F1F1F)
-    public val textSecondary: Color = Color(0xFF555555)
-    public val textMuted: Color = Color(0xFF8A8A8A)
-    public val textDisabled: Color = Color(0xFFB0B0B0)
-    public val textLink: Color = Color(0xFF2470B3)
-    public val textInverse: Color = Color(0xFFFFFFFF)
+    public override val textPrimary: Color = Color(0xFF1F1F1F)
+    public override val textSecondary: Color = Color(0xFF555555)
+    public override val textMuted: Color = Color(0xFF8A8A8A)
+    public override val textDisabled: Color = Color(0xFFB0B0B0)
+    public override val textLink: Color = Color(0xFF2470B3)
+    public override val textInverse: Color = Color(0xFFFFFFFF)
 
     // Accent
-    public val accent: Color = Color(0xFF2D7DD2)
-    public val accentHover: Color = Color(0xFF3A8AE0)
-    public val accentPressed: Color = Color(0xFF246BB5)
-    public val accentMuted: Color = Color(0xFFB0CCEB)
-    public val accentSubtle: Color = Color(0xFFCFE0F4)
+    public override val accent: Color = Color(0xFF2D7DD2)
+    public override val accentHover: Color = Color(0xFF3A8AE0)
+    public override val accentPressed: Color = Color(0xFF246BB5)
+    public override val accentMuted: Color = Color(0xFFB0CCEB)
+    public override val accentSubtle: Color = Color(0xFFCFE0F4)
 
     // Semantic
-    public val success: Color = Color(0xFF2EA043)
-    public val successMuted: Color = Color(0xFFD7EFDD)
-    public val warning: Color = Color(0xFFB58800)
-    public val warningMuted: Color = Color(0xFFFAEFC8)
-    public val error: Color = Color(0xFFD13438)
-    public val errorMuted: Color = Color(0xFFF7D6D7)
-    public val info: Color = Color(0xFF1E7AC9)
-    public val infoMuted: Color = Color(0xFFCFE0F4)
+    public override val success: Color = Color(0xFF2EA043)
+    public override val successMuted: Color = Color(0xFFD7EFDD)
+    public override val warning: Color = Color(0xFFB58800)
+    public override val warningMuted: Color = Color(0xFFFAEFC8)
+    public override val error: Color = Color(0xFFD13438)
+    public override val errorMuted: Color = Color(0xFFF7D6D7)
+    public override val info: Color = Color(0xFF1E7AC9)
+    public override val infoMuted: Color = Color(0xFFCFE0F4)
 
     // Editor
-    public val editorBackground: Color = Color(0xFFFFFFFF)
-    public val editorGutter: Color = Color(0xFFF5F5F5)
-    public val editorLineHighlight: Color = Color(0xFFEEF6FB)
-    public val editorSelection: Color = Color(0xFFCFE0F4)
-    public val editorCaretRow: Color = Color(0xFFEEF6FB)
-    public val editorCurrentLine: Color = Color(0xFFEAF3FA)
-    public val editorCaret: Color = Color(0xFF333333)
-    public val editorSelectionActive: Color = Color(0xFFBBD6F2)
-    public val editorIdentifier: Color = Color(0xFF1F1F1F)
+    public override val editorBackground: Color = Color(0xFFFFFFFF)
+    public override val editorGutter: Color = Color(0xFFF5F5F5)
+    public override val editorLineHighlight: Color = Color(0xFFEEF6FB)
+    public override val editorSelection: Color = Color(0xFFCFE0F4)
+    public override val editorCaretRow: Color = Color(0xFFEEF6FB)
+    public override val editorCurrentLine: Color = Color(0xFFEAF3FA)
+    public override val editorCaret: Color = Color(0xFF333333)
+    public override val editorSelectionActive: Color = Color(0xFFBBD6F2)
+    public override val editorIdentifier: Color = Color(0xFF1F1F1F)
 
     // Tabs
-    public val tabBackground: Color = Color.Transparent
-    public val tabBackgroundSelected: Color = Color(0xFFFFFFFF)
-    public val tabBackgroundHover: Color = Color(0xFFEDEDED)
-    public val tabBorder: Color = Color.Transparent
-    public val tabUnderline: Color = accent
+    public override val tabBackground: Color = Color.Transparent
+    public override val tabBackgroundSelected: Color = Color(0xFFFFFFFF)
+    public override val tabBackgroundHover: Color = Color(0xFFEDEDED)
+    public override val tabBorder: Color = Color.Transparent
+    public override val tabUnderline: Color = accent
 
     // Activity bar
-    public val activityBarBackground: Color = Color(0xFFEBEBEB)
-    public val activityBarForeground: Color = Color(0xFF6E6E6E)
-    public val activityBarForegroundActive: Color = Color(0xFF1F1F1F)
-    public val activityBarIndicator: Color = accent
-    public val activityBarHover: Color = Color(0xFFDFDFDF)
+    public override val activityBarBackground: Color = Color(0xFFEBEBEB)
+    public override val activityBarForeground: Color = Color(0xFF6E6E6E)
+    public override val activityBarForegroundActive: Color = Color(0xFF1F1F1F)
+    public override val activityBarIndicator: Color = accent
+    public override val activityBarHover: Color = Color(0xFFDFDFDF)
 
     // Trees
-    public val treeBackground: Color = surface
-    public val treeSelectionBackground: Color = Color(0xFFCFE0F4)
-    public val treeSelectionInactive: Color = Color(0xFFE2E2E2)
-    public val treeForeground: Color = textPrimary
+    public override val treeBackground: Color = surface
+    public override val treeSelectionBackground: Color = Color(0xFFCFE0F4)
+    public override val treeSelectionInactive: Color = Color(0xFFE2E2E2)
+    public override val treeForeground: Color = textPrimary
 
     /** Rows for paths excluded by `.gitignore` — dimmed, but still readable. */
-    public val treeForegroundIgnored: Color = Color(0xFF8C8C8C)
-    public val treeHoverBackground: Color = Color(0xFFEDEDED)
-    public val treeIndentGuide: Color = Color(0xFFE2E2E2)
-    public val treeSelectionAccent: Color = accent
+    public override val treeForegroundIgnored: Color = Color(0xFF8C8C8C)
+    public override val treeHoverBackground: Color = Color(0xFFEDEDED)
+    public override val treeIndentGuide: Color = Color(0xFFE2E2E2)
+    public override val treeSelectionAccent: Color = accent
 
     // Status bar
-    public val statusBarBackground: Color = Color(0xFFEBEBEB)
-    public val statusBarForeground: Color = textSecondary
-    public val statusBarHover: Color = Color(0xFFDFDFDF)
-    public val statusBarDivider: Color = Color(0xFFD4D4D4)
+    public override val statusBarBackground: Color = Color(0xFFEBEBEB)
+    public override val statusBarForeground: Color = textSecondary
+    public override val statusBarHover: Color = Color(0xFFDFDFDF)
+    public override val statusBarDivider: Color = Color(0xFFD4D4D4)
 
     // Buttons (default/secondary)
-    public val buttonBackground: Color = Color(0xFFF2F2F2)
-    public val buttonBackgroundHover: Color = Color(0xFFE5E5E5)
-    public val buttonBackgroundPressed: Color = Color(0xFFD4D4D4)
-    public val buttonForeground: Color = textPrimary
+    public override val buttonBackground: Color = Color(0xFFF2F2F2)
+    public override val buttonBackgroundHover: Color = Color(0xFFE5E5E5)
+    public override val buttonBackgroundPressed: Color = Color(0xFFD4D4D4)
+    public override val buttonForeground: Color = textPrimary
 
     // Buttons (primary)
-    public val buttonPrimaryBackground: Color = accent
-    public val buttonPrimaryBackgroundHover: Color = accentHover
-    public val buttonPrimaryForeground: Color = Color(0xFFFFFFFF)
+    public override val buttonPrimaryBackground: Color = accent
+    public override val buttonPrimaryBackgroundHover: Color = accentHover
+    public override val buttonPrimaryForeground: Color = Color(0xFFFFFFFF)
 
     // Buttons (danger)
-    public val buttonDangerBackground: Color = Color(0xFFD13438)
-    public val buttonDangerBackgroundHover: Color = Color(0xFFE04A4E)
-    public val buttonDangerForeground: Color = Color(0xFFFFFFFF)
+    public override val buttonDangerBackground: Color = Color(0xFFD13438)
+    public override val buttonDangerBackgroundHover: Color = Color(0xFFE04A4E)
+    public override val buttonDangerForeground: Color = Color(0xFFFFFFFF)
 
     // Inputs
-    public val inputBackground: Color = Color(0xFFFFFFFF)
-    public val inputBackgroundHover: Color = Color(0xFFFAFAFA)
-    public val inputBorder: Color = Color(0xFFC4C4C4)
-    public val inputBorderHover: Color = Color(0xFF9D9D9D)
-    public val inputBorderFocused: Color = accent
-    public val inputPlaceholder: Color = textMuted
+    public override val inputBackground: Color = Color(0xFFFFFFFF)
+    public override val inputBackgroundHover: Color = Color(0xFFFAFAFA)
+    public override val inputBorder: Color = Color(0xFFC4C4C4)
+    public override val inputBorderHover: Color = Color(0xFF9D9D9D)
+    public override val inputBorderFocused: Color = accent
+    public override val inputPlaceholder: Color = textMuted
 
     // Scrollbars
-    public val scrollbarThumb: Color = Color(0xFFC4C4C4)
-    public val scrollbarThumbHover: Color = Color(0xFF9D9D9D)
-    public val scrollbarTrack: Color = Color.Transparent
+    public override val scrollbarThumb: Color = Color(0xFFC4C4C4)
+    public override val scrollbarThumbHover: Color = Color(0xFF9D9D9D)
+    public override val scrollbarTrack: Color = Color.Transparent
 
     // Dividers
-    public val divider: Color = Color(0xFFD4D4D4)
-    public val border: Color = Color(0xFFC4C4C4)
-    public val borderSubtle: Color = Color(0xFFE5E5E5)
+    public override val divider: Color = Color(0xFFD4D4D4)
+    public override val border: Color = Color(0xFFC4C4C4)
+    public override val borderSubtle: Color = Color(0xFFE5E5E5)
 
     // Terminal
-    public val terminalBackground: Color = Color(0xFFFFFFFF)
-    public val terminalHeader: Color = surfaceElevated
-    public val terminalInputBackground: Color = Color(0xFFF5F5F5)
-    public val terminalForeground: Color = textPrimary
-    public val terminalCursor: Color = accent
-    public val terminalSelectionBackground: Color = editorSelection
-    public val terminalGreen: Color = Color(0xFF2EA043)
-    public val terminalRed: Color = Color(0xFFD13438)
-    public val terminalYellow: Color = Color(0xFFB58800)
-    public val terminalBlue: Color = Color(0xFF1E7AC9)
-    public val terminalMagenta: Color = Color(0xFF9B30A8)
-    public val terminalCyan: Color = Color(0xFF1A8B8B)
+    public override val terminalBackground: Color = Color(0xFFFFFFFF)
+    public override val terminalHeader: Color = surfaceElevated
+    public override val terminalInputBackground: Color = Color(0xFFF5F5F5)
+    public override val terminalForeground: Color = textPrimary
+    public override val terminalCursor: Color = accent
+    public override val terminalSelectionBackground: Color = editorSelection
+    public override val terminalGreen: Color = Color(0xFF2EA043)
+    public override val terminalRed: Color = Color(0xFFD13438)
+    public override val terminalYellow: Color = Color(0xFFB58800)
+    public override val terminalBlue: Color = Color(0xFF1E7AC9)
+    public override val terminalMagenta: Color = Color(0xFF9B30A8)
+    public override val terminalCyan: Color = Color(0xFF1A8B8B)
 
     // Gutter
-    public val gutterBackground: Color = editorGutter
-    public val lineNumberForeground: Color = Color(0xFF999999)
-    public val lineNumberForegroundActive: Color = Color(0xFF333333)
+    public override val gutterBackground: Color = editorGutter
+    public override val lineNumberForeground: Color = Color(0xFF999999)
+    public override val lineNumberForegroundActive: Color = Color(0xFF333333)
 
     // Breadcrumbs
-    public val breadcrumbsBackground: Color = Color.Transparent
-    public val breadcrumbsForeground: Color = textSecondary
-    public val breadcrumbsForegroundHover: Color = textPrimary
-    public val breadcrumbsFileForeground: Color = textPrimary
-    public val breadcrumbsBackgroundHover: Color = surfaceHover
-    public val breadcrumbsSeparator: Color = textMuted
+    public override val breadcrumbsBackground: Color = Color.Transparent
+    public override val breadcrumbsForeground: Color = textSecondary
+    public override val breadcrumbsForegroundHover: Color = textPrimary
+    public override val breadcrumbsFileForeground: Color = textPrimary
+    public override val breadcrumbsBackgroundHover: Color = surfaceHover
+    public override val breadcrumbsSeparator: Color = textMuted
 
     // Icons
-    public val iconDefault: Color = Color(0xFF6E6E6E)
-    public val iconFolder: Color = Color(0xFFC79427)
-    public val iconFile: Color = Color(0xFF2470B3)
-    public val iconKotlin: Color = Color(0xFF7F52FF)
-    public val iconJava: Color = Color(0xFFB85420)
-    public val iconRust: Color = Color(0xFFB47A60)
-    public val iconCpp: Color = Color(0xFF3A6E9C)
-    public val iconVala: Color = Color(0xFF552B85)
-    public val iconPython: Color = Color(0xFF2E5A85)
+    public override val iconDefault: Color = Color(0xFF6E6E6E)
+    public override val iconFolder: Color = Color(0xFFC79427)
+    public override val iconFile: Color = Color(0xFF2470B3)
+    public override val iconKotlin: Color = Color(0xFF7F52FF)
+    public override val iconJava: Color = Color(0xFFB85420)
+    public override val iconRust: Color = Color(0xFFB47A60)
+    public override val iconCpp: Color = Color(0xFF3A6E9C)
+    public override val iconVala: Color = Color(0xFF552B85)
+    public override val iconPython: Color = Color(0xFF2E5A85)
 
     /** Git-owned files such as `.gitignore`. */
-    public val iconGit: Color = Color(0xFFC63A20)
+    public override val iconGit: Color = Color(0xFFC63A20)
 
-    public val lineNumberText: Color = lineNumberForeground
+    public override val lineNumberText: Color = lineNumberForeground
 
     // Popups
-    public val popupBackground: Color = Color(0xFFFFFFFF)
-    public val popupBorder: Color = Color(0xFFC4C4C4)
-    public val popupShadow: Color = Color(0x33000000)
-    public val menuItemHover: Color = Color(0xFFCFE0F4)
+    public override val popupBackground: Color = Color(0xFFFFFFFF)
+    public override val popupBorder: Color = Color(0xFFC4C4C4)
+    public override val popupShadow: Color = Color(0x33000000)
+    public override val menuItemHover: Color = Color(0xFFCFE0F4)
 
     // Dialogs
-    public val dialogBackground: Color = Color(0xFFFFFFFF)
-    public val dialogOverlay: Color = Color(0x66000000)
+    public override val dialogBackground: Color = Color(0xFFFFFFFF)
+    public override val dialogOverlay: Color = Color(0x66000000)
 
     // Focus / selection
-    public val focusRing: Color = accent.copy(alpha = 0.4f)
-    public val selectionBackground: Color = accentSubtle
-    public val selectionInactive: Color = Color(0xFFE2E2E2)
+    public override val focusRing: Color = accent.copy(alpha = 0.4f)
+    public override val selectionBackground: Color = accentSubtle
+    public override val selectionInactive: Color = Color(0xFFE2E2E2)
 
     // Editor extras
-    public val editorIndentGuide: Color = Color(0xFFE2E2E2)
-    public val editorIndentGuideActive: Color = Color(0xFFB0B0B0)
-    public val diagnosticErrorStripe: Color = error
-    public val diagnosticWarningStripe: Color = warning
-    public val diagnosticInfoStripe: Color = info
-    public val diagnosticHintStripe: Color = textMuted
+    public override val editorIndentGuide: Color = Color(0xFFE2E2E2)
+    public override val editorIndentGuideActive: Color = Color(0xFFB0B0B0)
+    public override val diagnosticErrorStripe: Color = error
+    public override val diagnosticWarningStripe: Color = warning
+    public override val diagnosticInfoStripe: Color = info
+    public override val diagnosticHintStripe: Color = textMuted
 
     // Notifications
-    public val notificationBackground: Color = surface
-    public val notificationBorder: Color = border
-    public val notificationInfoStripe: Color = info
-    public val notificationSuccessStripe: Color = success
-    public val notificationWarningStripe: Color = warning
-    public val notificationErrorStripe: Color = error
+    public override val notificationBackground: Color = surface
+    public override val notificationBorder: Color = border
+    public override val notificationInfoStripe: Color = info
+    public override val notificationSuccessStripe: Color = success
+    public override val notificationWarningStripe: Color = warning
+    public override val notificationErrorStripe: Color = error
 
     // Welcome hub
-    public val welcomeRecentRowHover: Color = Color(0xFFE9EFF6)
-    public val brandGradientStart: Color = Color(0xFF5B9BD5)
-    public val brandGradientEnd: Color = Color(0xFF7F52FF)
+    public override val welcomeRecentRowHover: Color = Color(0xFFE9EFF6)
+    public override val brandGradientStart: Color = Color(0xFF5B9BD5)
+    public override val brandGradientEnd: Color = Color(0xFF7F52FF)
 
     // Agent surface (parity with IntelliJColors)
-    public val toolCardBackground: Color = Color(0xFFF2F2F2)
-    public val agentCardBorder: Color = Color(0xFFD8CEEC)
-    public val codeBlockBackground: Color = Color(0xFFF1F2F4)
-    public val agentEffortText: Color = Color(0xFF6A4BB0)
-    public val agentPillBorder: Color = Color(0xFFB7A4E8)
-    public val agentPillText: Color = Color(0xFF6A4BB0)
-    public val diffAcceptBackground: Color = Color(0xFF2EA043)
-    public val diffAddedBackground: Color = Color(0xFFE2F4E6)
-    public val diffRemovedBackground: Color = Color(0xFFFBE3E4)
-    public val diffAddedText: Color = Color(0xFF2E7D43)
-    public val diffRemovedText: Color = Color(0xFFC0392B)
-    public val diffAddedGutter: Color = Color(0xFF2EA043)
-    public val approvalBorder: Color = Color(0xFFE6D9A6)
-    public val approvalText: Color = Color(0xFF7A6A20)
-    public val agentStopBorder: Color = Color(0xFFE0B4B4)
-    public val agentStopText: Color = Color(0xFFB23B3B)
+    public override val toolCardBackground: Color = Color(0xFFF2F2F2)
+    public override val agentCardBorder: Color = Color(0xFFD8CEEC)
+    public override val codeBlockBackground: Color = Color(0xFFF1F2F4)
+    public override val agentEffortText: Color = Color(0xFF6A4BB0)
+    public override val agentPillBorder: Color = Color(0xFFB7A4E8)
+    public override val agentPillText: Color = Color(0xFF6A4BB0)
+    public override val diffAcceptBackground: Color = Color(0xFF2EA043)
+    public override val diffAddedBackground: Color = Color(0xFFE2F4E6)
+    public override val diffRemovedBackground: Color = Color(0xFFFBE3E4)
+    public override val diffAddedText: Color = Color(0xFF2E7D43)
+    public override val diffRemovedText: Color = Color(0xFFC0392B)
+    public override val diffAddedGutter: Color = Color(0xFF2EA043)
+    public override val approvalBorder: Color = Color(0xFFE6D9A6)
+    public override val approvalText: Color = Color(0xFF7A6A20)
+    public override val agentStopBorder: Color = Color(0xFFE0B4B4)
+    public override val agentStopText: Color = Color(0xFFB23B3B)
 
     // Debugger (parity with IntelliJColors)
-    public val breakpointRed: Color = Color(0xFFDB5C5C)
-    public val executionLineBackground: Color = Color(0x29B58800)
-    public val inlineValueText: Color = Color(0xFF5E7A5B)
-    public val debugPausedText: Color = Color(0xFF8A6D00)
-    public val debugRunningText: Color = Color(0xFF2E7D43)
-    public val debugVarName: Color = Color(0xFF6A4BA0)
-    public val debugVarString: Color = Color(0xFF2E7D43)
-    public val debugVarNumber: Color = Color(0xFF1E66A8)
-    public val debugVarType: Color = Color(0xFF2A8A86)
+    public override val breakpointRed: Color = Color(0xFFDB5C5C)
+    public override val executionLineBackground: Color = Color(0x29B58800)
+    public override val inlineValueText: Color = Color(0xFF5E7A5B)
+    public override val debugPausedText: Color = Color(0xFF8A6D00)
+    public override val debugRunningText: Color = Color(0xFF2E7D43)
+    public override val debugVarName: Color = Color(0xFF6A4BA0)
+    public override val debugVarString: Color = Color(0xFF2E7D43)
+    public override val debugVarNumber: Color = Color(0xFF1E66A8)
+    public override val debugVarType: Color = Color(0xFF2A8A86)
+
+    // File type badges (brand colors, shared with the dark palette)
+    public override val fileIconMarkup: Color = Color(0xFFCC7832)
+    public override val fileIconData: Color = Color(0xFF6A8759)
+    public override val fileIconMarkdown: Color = Color(0xFF6897BB)
+    public override val fileIconGradle: Color = Color(0xFF499C54)
+    public override val fileIconToml: Color = Color(0xFFE76D50)
+    public override val fileIconJavascript: Color = Color(0xFFF7DF1E)
+    public override val fileIconTypescript: Color = Color(0xFF3178C6)
 
     // Window chrome (parity with IntelliJColors — OS constants)
-    public val windowCloseButton: Color = Color(0xFFFF5F57)
-    public val windowMinimizeButton: Color = Color(0xFFFEBC2E)
-    public val windowZoomButton: Color = Color(0xFF28C840)
+    public override val windowCloseButton: Color = Color(0xFFFF5F57)
+    public override val windowMinimizeButton: Color = Color(0xFFFEBC2E)
+    public override val windowZoomButton: Color = Color(0xFF28C840)
 }

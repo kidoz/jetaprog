@@ -18,7 +18,7 @@ REPO = Path(__file__).resolve().parents[1]
 THEME = REPO / "app/desktop/src/jvmMain/kotlin/su/kidoz/jetaprog/app/ui/theme/IntelliJColors.kt"
 OUT = REPO / "DESIGN_TOKENS.generated.md"
 
-COLOR_RE = re.compile(r"public val (\w+): Color = Color\(0x([0-9A-Fa-f]{8})\)")
+COLOR_RE = re.compile(r"public (?:override )?val (\w+): Color = Color\(0x([0-9A-Fa-f]{8})\)")
 INT_RE = re.compile(r"public val (\w+): Int = (\d+)")
 
 
