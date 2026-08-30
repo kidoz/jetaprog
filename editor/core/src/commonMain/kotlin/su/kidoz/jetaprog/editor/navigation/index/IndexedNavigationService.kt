@@ -296,6 +296,14 @@ public class IndexedNavigationService(
 
     override suspend fun getLastEditLocation(): NavigationHistoryEntry? = history.getLastEditLocation()
 
+    override suspend fun recordEdit(
+        filePath: String,
+        position: TextPosition,
+        preview: String?,
+    ) {
+        history.recordEdit(filePath, position, preview)
+    }
+
     // ========================================================================
     // Private Helpers
     // ========================================================================

@@ -795,10 +795,10 @@ public class DefaultNavigationService(
     /**
      * Record an edit location for "last edit location" navigation.
      */
-    public fun recordEdit(
+    override suspend fun recordEdit(
         filePath: String,
         position: TextPosition,
-        preview: String? = null,
+        preview: String?,
     ) {
         history.recordEdit(filePath, position, preview)
     }

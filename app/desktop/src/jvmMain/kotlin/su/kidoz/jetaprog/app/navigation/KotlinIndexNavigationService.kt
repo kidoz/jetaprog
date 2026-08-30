@@ -416,6 +416,14 @@ public class KotlinIndexNavigationService(
 
     override suspend fun getLastEditLocation(): NavigationHistoryEntry? = delegate.getLastEditLocation()
 
+    override suspend fun recordEdit(
+        filePath: String,
+        position: TextPosition,
+        preview: String?,
+    ) {
+        delegate.recordEdit(filePath, position, preview)
+    }
+
     // ========================================================================
     // Helpers
     // ========================================================================

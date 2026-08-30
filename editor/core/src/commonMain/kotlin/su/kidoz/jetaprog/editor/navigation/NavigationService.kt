@@ -272,6 +272,15 @@ public interface NavigationService {
      * @return The last edit location, or null if none
      */
     public suspend fun getLastEditLocation(): NavigationHistoryEntry?
+
+    /**
+     * Records an edit location for "jump to last edit location" navigation.
+     */
+    public suspend fun recordEdit(
+        filePath: String,
+        position: TextPosition,
+        preview: String? = null,
+    )
 }
 
 /**

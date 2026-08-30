@@ -944,11 +944,31 @@ public class EditorViewModel(
         documentSessions[uri] = session.update()
     }
 
+    private var editLocationJob: Job? = null
+
+    /**
+     * Records the edit location (IntelliJ's "change place") after typing pauses,
+     * powering Jump-to-Last-Edit-Location and the Recent Locations popup.
+     */
+    private fun scheduleEditLocationRecord() {
+        val service = navigationService ?: return
+        val uri = currentState.activeDocumentUri ?: return
+        val position = currentState.cursor.position
+        editLocationJob?.cancel()
+        editLocationJob =
+            viewModelScope.launch {
+                delay(EDIT_LOCATION_DEBOUNCE_MS)
+                runCatching { service.recordEdit(uri.value, position) }
+            }
+    }
+
     private fun updateContent(
         content: String,
         coalesceUndo: Boolean = true,
     ) {
         if (content == currentState.content) return
+
+        scheduleEditLocationRecord()
 
         currentState.activeDocumentUri?.let { uri ->
             undoManagerFor(uri.value).recordBeforeEdit(
@@ -2823,6 +2843,9 @@ public class EditorViewModel(
         )
 
     internal companion object {
+        /** Typing pause before an edit location is recorded. */
+        const val EDIT_LOCATION_DEBOUNCE_MS = 800L
+
         /**
          * Debounce delay for hover requests in milliseconds.
          */
