@@ -60,6 +60,12 @@ public fun NavigationHost(
         query = state.searchQuery,
         results = state.searchResults,
         showTabs = state.searchTabsVisible,
+        canShowMore = state.canShowMoreResults,
+        onExpand = {
+            scope.launch {
+                viewModel.processIntent(NavigationIntent.ExpandResults)
+            }
+        },
         onQueryChange = { query ->
             scope.launch {
                 viewModel.processIntent(NavigationIntent.Search(query))

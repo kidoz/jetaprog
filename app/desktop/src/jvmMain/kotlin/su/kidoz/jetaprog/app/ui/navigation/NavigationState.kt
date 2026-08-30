@@ -19,6 +19,10 @@ public data class NavigationState(
     val searchQuery: String = "",
     val searchResults: List<NavigationSearchResult> = emptyList(),
     val isSearching: Boolean = false,
+    /** Max results currently requested; grows via [NavigationIntent.ExpandResults]. */
+    val resultsLimit: Int = 30,
+    /** Whether more results likely exist beyond [resultsLimit]. */
+    val canShowMoreResults: Boolean = false,
     /** True when the popup was opened as Search Everywhere; keeps the mode tabs visible. */
     val searchTabsVisible: Boolean = false,
     // File structure popup
@@ -49,6 +53,9 @@ public sealed interface NavigationIntent {
     ) : NavigationIntent
 
     public data object HideSearchPopup : NavigationIntent
+
+    /** Raise the search results limit and re-run the current search. */
+    public data object ExpandResults : NavigationIntent
 
     public data class Search(
         val query: String,

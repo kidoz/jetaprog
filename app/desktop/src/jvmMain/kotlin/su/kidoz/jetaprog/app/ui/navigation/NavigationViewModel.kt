@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.ui.navigation
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -7,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
 import su.kidoz.jetaprog.editor.navigation.NavigationHistoryEntry
@@ -36,6 +38,10 @@ public class NavigationViewModel(
         when (intent) {
             is NavigationIntent.ShowSearchPopup -> {
                 showSearchPopup(intent.mode)
+            }
+
+            NavigationIntent.ExpandResults -> {
+                expandResults()
             }
 
             is NavigationIntent.HideSearchPopup -> {
@@ -186,35 +192,35 @@ public class NavigationViewModel(
         delay(SEARCH_DEBOUNCE_MS)
         if (generation != searchGeneration) return
 
+        // Index scans and disk walks are CPU/IO work; keep them off the caller
+        // (usually the UI) dispatcher.
         val results =
-            navigationService?.let { service ->
-                when (_state.value.searchMode) {
-                    SearchMode.ALL -> {
-                        val allResults = service.searchEverywhere(query)
-                        allResults.values.flatten()
+            withContext(Dispatchers.Default) {
+                val limit = _state.value.resultsLimit
+                navigationService?.let { service ->
+                    when (_state.value.searchMode) {
+                        SearchMode.ALL -> service.searchEverywhere(query, limit).values.flatten()
+                        SearchMode.CLASSES -> service.searchClasses(query, limit = limit)
+                        SearchMode.FILES -> service.searchFiles(query, limit = limit)
+                        SearchMode.SYMBOLS -> service.searchSymbols(query, limit = limit)
                     }
-
-                    SearchMode.CLASSES -> {
-                        service.searchClasses(query)
-                    }
-
-                    SearchMode.FILES -> {
-                        service.searchFiles(query)
-                    }
-
-                    SearchMode.SYMBOLS -> {
-                        service.searchSymbols(query)
-                    }
-                }
-            } ?: emptyList()
+                } ?: emptyList()
+            }
 
         if (generation != searchGeneration) return
         _state.update {
             it.copy(
                 searchResults = results,
                 isSearching = false,
+                canShowMoreResults = results.size >= _state.value.resultsLimit,
             )
         }
+    }
+
+    /** Raises the results limit and re-runs the current search. */
+    private suspend fun expandResults() {
+        _state.update { it.copy(resultsLimit = it.resultsLimit + RESULTS_PAGE) }
+        search(_state.value.searchQuery)
     }
 
     private suspend fun changeSearchMode(mode: SearchMode) {
@@ -468,6 +474,9 @@ public class NavigationViewModel(
     private companion object {
         /** Keystroke debounce before a search runs; a newer keystroke supersedes it. */
         const val SEARCH_DEBOUNCE_MS = 120L
+
+        /** Results added per "Show more" expansion. */
+        const val RESULTS_PAGE = 30
     }
 
     /**

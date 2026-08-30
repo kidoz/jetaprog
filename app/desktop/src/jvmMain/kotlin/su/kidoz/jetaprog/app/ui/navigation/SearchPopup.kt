@@ -94,6 +94,8 @@ public fun SearchPopup(
     onModeChange: (SearchMode) -> Unit,
     modifier: Modifier = Modifier,
     showTabs: Boolean = false,
+    canShowMore: Boolean = false,
+    onExpand: () -> Unit = {},
 ) {
     if (!isVisible) return
 
@@ -214,6 +216,11 @@ public fun SearchPopup(
                                 isSelected = index == selectedIndex,
                                 onClick = { onResultSelect(result) },
                             )
+                        }
+                        if (canShowMore) {
+                            item(key = "show-more") {
+                                ShowMoreRow(onClick = onExpand)
+                            }
                         }
                     }
                     VerticalScrollbar(
@@ -570,3 +577,26 @@ private fun NavigationSymbolKind.toColor(): Color =
 
         else -> LocalIntelliJColors.current.textSecondary
     }
+
+/** A trailing "Show more" row that grows the search result limit. */
+@Composable
+private fun ShowMoreRow(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = "Show more results",
+            color = LocalIntelliJColors.current.textLink,
+            fontSize = 12.sp,
+        )
+    }
+}
