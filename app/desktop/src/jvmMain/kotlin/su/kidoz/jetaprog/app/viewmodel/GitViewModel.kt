@@ -55,6 +55,8 @@ public data class GitState(
     val commitLog: List<GitCommit> = emptyList(),
     /** The pending commit message. */
     val commitMessage: String = "",
+    /** Whether the next commit amends the previous one. */
+    val amendMode: Boolean = false,
     /** Whether a git operation is in progress. */
     val isBusy: Boolean = false,
     /** The most recent error, if any. */
@@ -212,6 +214,27 @@ public class GitViewModel(
         _state.update { it.copy(changesViewMode = mode) }
     }
 
+    /**
+     * Toggles amend mode; enabling pre-fills the message from HEAD so the
+     * user edits the previous commit's message instead of retyping it.
+     */
+    public fun setAmendMode(enabled: Boolean) {
+        _state.update {
+            if (it.amendMode == enabled) {
+                it
+            } else {
+                it.copy(amendMode = enabled)
+            }
+        }
+        if (enabled) {
+            scope.launch {
+                service
+                    .headCommitMessage()
+                    .onSuccess { message -> _state.update { it.copy(commitMessage = message) } }
+            }
+        }
+    }
+
     /** Updates the commit message. */
     public fun setCommitMessage(message: String) {
         _state.update { it.copy(commitMessage = message) }
@@ -220,13 +243,14 @@ public class GitViewModel(
     /** Commits the staged changes with the current message. */
     public fun commit() {
         val message = _state.value.commitMessage.trim()
-        if (message.isEmpty() || _state.value.staged.isEmpty()) return
+        val amend = _state.value.amendMode
+        if (message.isEmpty() || (_state.value.staged.isEmpty() && !amend)) return
         scope.launch {
             _state.update { it.copy(isBusy = true, error = null) }
             service
-                .commit(message)
+                .commit(message, amend)
                 .onSuccess {
-                    _state.update { it.copy(commitMessage = "", diff = "", selected = null) }
+                    _state.update { it.copy(commitMessage = "", amendMode = false, diff = "", selected = null) }
                     refresh()
                 }.onFailure { error -> fail(error) }
         }
@@ -235,13 +259,14 @@ public class GitViewModel(
     /** Commits the staged changes, then pushes to the upstream. */
     public fun commitAndPush() {
         val message = _state.value.commitMessage.trim()
-        if (message.isEmpty() || _state.value.staged.isEmpty()) return
+        val amend = _state.value.amendMode
+        if (message.isEmpty() || (_state.value.staged.isEmpty() && !amend)) return
         scope.launch {
             _state.update { it.copy(isBusy = true, error = null) }
             service
-                .commit(message)
+                .commit(message, amend)
                 .onSuccess {
-                    _state.update { it.copy(commitMessage = "", diff = "", selected = null) }
+                    _state.update { it.copy(commitMessage = "", amendMode = false, diff = "", selected = null) }
                     service
                         .push()
                         .onSuccess { refresh() }

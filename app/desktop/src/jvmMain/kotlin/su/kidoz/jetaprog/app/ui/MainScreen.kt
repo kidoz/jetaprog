@@ -720,7 +720,13 @@ private fun MainScreenContent(
                         }
 
                         ActivityBarItem.VCS -> {
-                            GitPanel(viewModel = session.gitViewModel, modifier = panelModifier)
+                            GitPanel(
+                                viewModel = session.gitViewModel,
+                                modifier = panelModifier,
+                                onSaveOpenDocuments = {
+                                    session.editorViewModel.dispatch(EditorIntent.SaveAll)
+                                },
+                            )
                         }
 
                         ActivityBarItem.AGENT -> {

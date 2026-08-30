@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
+import su.kidoz.jetaprog.app.ui.components.IntelliJCheckbox
 import su.kidoz.jetaprog.app.ui.components.ToolWindowButton
 import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
@@ -75,6 +76,7 @@ import su.kidoz.jetaprog.vcs.GitChange
 public fun GitPanel(
     viewModel: GitViewModel,
     modifier: Modifier = Modifier,
+    onSaveOpenDocuments: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -189,10 +191,21 @@ public fun GitPanel(
 
         CommitArea(
             commitMessage = state.commitMessage,
-            canCommit = !state.isBusy && state.staged.isNotEmpty() && state.commitMessage.isNotBlank(),
+            amendMode = state.amendMode,
+            isBusy = state.isBusy,
+            hasStagedChanges = state.staged.isNotEmpty(),
             onCommitMessageChange = viewModel::setCommitMessage,
-            onCommit = viewModel::commit,
-            onCommitAndPush = viewModel::commitAndPush,
+            onAmendModeChange = viewModel::setAmendMode,
+            onCommit = {
+                // IntelliJ-style phase: persist open documents before committing
+                // so unsaved editor content is not left out of the commit.
+                onSaveOpenDocuments()
+                viewModel.commit()
+            },
+            onCommitAndPush = {
+                onSaveOpenDocuments()
+                viewModel.commitAndPush()
+            },
         )
     }
 
@@ -503,11 +516,15 @@ private fun DirectoryRow(
 @Composable
 private fun CommitArea(
     commitMessage: String,
-    canCommit: Boolean,
+    amendMode: Boolean,
+    isBusy: Boolean,
+    hasStagedChanges: Boolean,
     onCommitMessageChange: (String) -> Unit,
+    onAmendModeChange: (Boolean) -> Unit,
     onCommit: () -> Unit,
     onCommitAndPush: () -> Unit,
 ) {
+    val canCommit = !isBusy && (hasStagedChanges || amendMode) && commitMessage.isNotBlank()
     Column(
         modifier =
             Modifier
@@ -516,6 +533,12 @@ private fun CommitArea(
                 .padding(Spacing.sm.dp),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
+        IntelliJCheckbox(
+            checked = amendMode,
+            onCheckedChange = onAmendModeChange,
+            label = "Amend previous commit",
+            enabled = !isBusy,
+        )
         OutlinedTextField(
             value = commitMessage,
             onValueChange = onCommitMessageChange,

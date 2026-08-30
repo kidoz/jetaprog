@@ -27,8 +27,17 @@ public interface GitService {
     /** Unstages [paths] (git reset HEAD). */
     public suspend fun unstage(paths: List<String>): Result<Unit>
 
-    /** Commits the staged changes with [message]; returns git's output. */
-    public suspend fun commit(message: String): Result<String>
+    /**
+     * Commits the staged changes with [message]; when [amend], folds them into
+     * the previous commit instead of creating a new one.
+     */
+    public suspend fun commit(
+        message: String,
+        amend: Boolean = false,
+    ): Result<String>
+
+    /** Returns the current HEAD commit's full message. */
+    public suspend fun headCommitMessage(): Result<String>
 
     /** Returns the most recent commits, newest first, up to [limit]. */
     public suspend fun log(limit: Int): Result<List<GitCommit>>
@@ -109,10 +118,26 @@ public class DefaultGitService(
 
     override suspend fun unstage(paths: List<String>): Result<Unit> = mutate("reset", paths, "-q", "HEAD")
 
-    override suspend fun commit(message: String): Result<String> =
-        run("commit", "-m", message).mapCatching { result ->
+    override suspend fun commit(
+        message: String,
+        amend: Boolean,
+    ): Result<String> {
+        val args =
+            if (amend) {
+                arrayOf("commit", "--amend", "-m", message)
+            } else {
+                arrayOf("commit", "-m", message)
+            }
+        return run(*args).mapCatching { result ->
             if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git commit failed" } })
             result.stdout
+        }
+    }
+
+    override suspend fun headCommitMessage(): Result<String> =
+        run("log", "-1", "--pretty=%B").mapCatching { result ->
+            if (!result.isSuccess) error(result.stderr.ifBlank { "git log failed" })
+            result.stdout.trim()
         }
 
     override suspend fun log(limit: Int): Result<List<GitCommit>> =
