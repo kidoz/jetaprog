@@ -13,11 +13,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -89,6 +91,8 @@ import su.kidoz.jetaprog.lsp.server.DefaultServerRegistry
 import su.kidoz.jetaprog.lsp.server.EmbeddedServerConfig
 import su.kidoz.jetaprog.lsp.server.EmbeddedServerRegistry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.platform.filesystem.FileSystemEvent
+import su.kidoz.jetaprog.platform.filesystem.FileSystemEventType
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.plugins.cfamily.CPlugin
 import su.kidoz.jetaprog.plugins.cfamily.CppPlugin
@@ -689,6 +693,7 @@ public class ProjectSession(
 
         // Keep editor gutter VCS markers in sync with the active document and git state
         sessionScope.launch { observeGitLineMarkers() }
+        sessionScope.launch { observeProjectFileEvents() }
 
         // Keep the plugin editor surface aligned with tab switches initiated by the UI.
         sessionScope.launch {
@@ -795,6 +800,48 @@ public class ProjectSession(
             }
         }
         return isDouble
+    }
+
+    /**
+     * Watches the project tree for file events (editor saves, external edits,
+     * branch switches) and refreshes the Git state — the panel, branch chip
+     * and editor gutters then update themselves without a manual reload.
+     * Refreshes are debounced and skipped while an operation is in flight.
+     */
+    private suspend fun observeProjectFileEvents() {
+        fileSystem
+            .watch(projectPath, recursive = true)
+            .collectLatest { event ->
+                reindexChangedFile(event)
+                delay(PROJECT_WATCH_REFRESH_DEBOUNCE_MS)
+                gitViewModel.refreshIfIdle()
+            }
+    }
+
+    /**
+     * Updates the symbol indexes for a single changed file — cheap, so it runs
+     * per event while the git refresh below stays debounced. Deleted files are
+     * dropped from both indexes.
+     */
+    private suspend fun reindexChangedFile(event: FileSystemEvent) {
+        val path = event.path
+        val segments = path.substringAfter(projectPath).split('/')
+        if (segments.any { it.startsWith(".") || it in WorkspaceSymbolIndexService.EXCLUDED_DIRECTORIES }) {
+            return
+        }
+        when (event.type) {
+            FileSystemEventType.DELETED -> {
+                workspaceSymbolIndexService.indexFile(path)
+                kotlinSymbolIndex.removeFile(path)
+            }
+
+            else -> {
+                workspaceSymbolIndexService.indexFile(path)
+                if (path.endsWith(".kt")) {
+                    kotlinSymbolIndex.indexFile(path)
+                }
+            }
+        }
     }
 
     private suspend fun observeGitLineMarkers() {
@@ -950,5 +997,8 @@ public class ProjectSession(
     private companion object {
         /** Two Shift releases within this window count as double-Shift (Search Everywhere). */
         const val DOUBLE_SHIFT_INTERVAL_MILLIS = 300L
+
+        /** Debounce for repository file events before refreshing Git state. */
+        const val PROJECT_WATCH_REFRESH_DEBOUNCE_MS = 400L
     }
 }

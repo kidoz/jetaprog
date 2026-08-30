@@ -62,6 +62,21 @@ public class KotlinSymbolIndex {
         }
 
     /**
+     * Removes all symbols of [filePath] (when the file was deleted or moved).
+     */
+    public suspend fun removeFile(filePath: String): Unit =
+        mutex.withLock {
+            val removed = symbolsByFile.remove(filePath) ?: return@withLock
+            removed.forEach { symbol ->
+                symbolsByName[symbol.name]?.let { list ->
+                    list.remove(symbol)
+                    if (list.isEmpty()) symbolsByName.remove(symbol.name)
+                }
+                symbolsByFqName.remove(symbol.fqName)
+            }
+        }
+
+    /**
      * Finds symbols by name.
      */
     public suspend fun findByName(name: String): List<KotlinSymbol> =

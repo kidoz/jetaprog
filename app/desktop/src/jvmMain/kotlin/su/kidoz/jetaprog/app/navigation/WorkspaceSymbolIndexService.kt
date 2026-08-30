@@ -58,11 +58,12 @@ public class WorkspaceSymbolIndexService(
         }
     }
 
-    private companion object {
-        val EXCLUDED_DIRECTORIES = setOf("build", "out", "dist", "node_modules", "target", "bin", "obj")
+    public companion object {
+        public val EXCLUDED_DIRECTORIES: Set<String> =
+            setOf("build", "out", "dist", "node_modules", "target", "bin", "obj")
 
         /** Files larger than this are skipped to keep indexing fast. */
-        const val MAX_INDEXED_FILE_BYTES = 1_000_000L
+        public const val MAX_INDEXED_FILE_BYTES: Long = 1_000_000L
     }
 }
 
