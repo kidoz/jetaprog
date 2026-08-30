@@ -16,6 +16,8 @@ import su.kidoz.jetaprog.vcs.GitBranch
 import su.kidoz.jetaprog.vcs.GitChange
 import su.kidoz.jetaprog.vcs.GitCommit
 import su.kidoz.jetaprog.vcs.GitLineChange
+import su.kidoz.jetaprog.vcs.GitLocalInfo
+import su.kidoz.jetaprog.vcs.GitRepoInfoReader
 import su.kidoz.jetaprog.vcs.GitService
 
 /** Available layouts for changes in the Git panel. */
@@ -70,9 +72,15 @@ public class GitViewModel(
     private val projectPath: String,
 ) : Disposable {
     private val service: GitService = DefaultGitService(processExecutor, projectPath)
+
+    /** Reads branch/HEAD state from the `.git` directory without a subprocess. */
+    private val repoInfoReader = GitRepoInfoReader(projectPath)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val _state = MutableStateFlow(GitState())
+
+    private var lastHeadSha: String? = null
+    private var lastRefsKey: String = ""
 
     /** The observable panel state. */
     public val state: StateFlow<GitState> = _state.asStateFlow()
@@ -84,7 +92,10 @@ public class GitViewModel(
     /** Reloads repository status. */
     public fun refresh() {
         scope.launch {
-            if (!service.isRepository()) {
+            // The `.git` reader doubles as the repository check: reading HEAD
+            // is a couple of file reads, cheaper than `git rev-parse`.
+            val localInfo = readLocalInfo()
+            if (localInfo == null && !service.isRepository()) {
                 _state.update { it.copy(isRepository = false) }
                 return@launch
             }
@@ -96,21 +107,57 @@ public class GitViewModel(
                         it.copy(
                             isRepository = true,
                             isBusy = false,
-                            branch = status.branch,
+                            branch = localInfo?.currentBranch ?: status.branch,
                             ahead = status.ahead,
                             behind = status.behind,
                             staged = status.staged,
                             unstaged = status.unstaged,
                         )
                     }
-                    service
-                        .log(LOG_LIMIT)
-                        .onSuccess { log -> _state.update { it.copy(commitLog = log) } }
-                    service
-                        .branches()
-                        .onSuccess { branches -> _state.update { it.copy(branches = branches) } }
+                    refreshHistoryAndBranches(localInfo)
                 }.onFailure { error -> fail(error) }
         }
+    }
+
+    /**
+     * Refreshes only when no git operation is in flight; used by the
+     * file-watcher so external changes update the panel without ever
+     * interleaving with a running operation (which refreshes on completion).
+     */
+    public fun refreshIfIdle() {
+        if (!_state.value.isBusy) {
+            refresh()
+        }
+    }
+
+    private fun readLocalInfo(): GitLocalInfo? = runCatching { repoInfoReader.read() }.getOrNull()
+
+    /**
+     * Refreshes the commit log and branch list only when the underlying refs
+     * changed: both come from the `.git` reader (no subprocess), so an
+     * unchanged HEAD sha and an unchanged ref set skip the `git log` and
+     * `git branch` calls entirely.
+     */
+    private suspend fun refreshHistoryAndBranches(localInfo: GitLocalInfo?) {
+        val headSha = localInfo?.headSha
+        val refsKey =
+            localInfo?.branches?.joinToString(separator = ",") { "${it.name}:${it.sha}" }.orEmpty()
+        val firstLoad = _state.value.commitLog.isEmpty() && _state.value.branches.isEmpty()
+        val refsChanged = headSha != lastHeadSha || refsKey != lastRefsKey
+        if (!firstLoad && !refsChanged) return
+        if (headSha != null) lastHeadSha = headSha
+        if (refsKey.isNotEmpty()) lastRefsKey = refsKey
+
+        if (localInfo != null && localInfo.branches.isNotEmpty()) {
+            _state.update { it.copy(branches = localInfo.branches) }
+        } else {
+            service
+                .branches()
+                .onSuccess { branches -> _state.update { it.copy(branches = branches) } }
+        }
+        service
+            .log(LOG_LIMIT)
+            .onSuccess { log -> _state.update { it.copy(commitLog = log) } }
     }
 
     /** Selects a change and loads its diff. */

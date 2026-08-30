@@ -56,6 +56,8 @@ public data class GitBranch(
     val name: String,
     /** Whether this branch is currently checked out. */
     val isCurrent: Boolean,
+    /** Commit sha the ref points at, when known (null for CLI-derived lists). */
+    val sha: String? = null,
 )
 
 /** The kind of change to a single line relative to HEAD. */
