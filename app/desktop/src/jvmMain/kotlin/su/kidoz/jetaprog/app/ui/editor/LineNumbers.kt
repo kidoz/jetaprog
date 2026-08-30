@@ -251,11 +251,6 @@ public fun LineNumbers(
 }
 
 /**
- * Convert SyntaxColor to Compose Color.
- */
-private fun SyntaxColor.toComposeColor(): Color = Color(red = red, green = green, blue = blue, alpha = alpha)
-
-/**
  * Gutter bar color for a VCS line change marker.
  */
 @Composable

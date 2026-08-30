@@ -1231,7 +1231,7 @@ private fun visualizeWhitespace(text: String): String =
 /**
  * Convert SyntaxColor to Compose Color.
  */
-private fun SyntaxColor.toComposeColor(): Color =
+internal fun SyntaxColor.toComposeColor(): Color =
     Color(
         red = red / 255f,
         green = green / 255f,
@@ -1242,7 +1242,7 @@ private fun SyntaxColor.toComposeColor(): Color =
 /**
  * Convert TokenStyle to Compose SpanStyle.
  */
-private fun TokenStyle.toSpanStyle(): SpanStyle =
+internal fun TokenStyle.toSpanStyle(): SpanStyle =
     SpanStyle(
         color = foreground.toComposeColor(),
         fontWeight = if (bold) FontWeight.Bold else null,

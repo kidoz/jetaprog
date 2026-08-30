@@ -35,16 +35,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.editor.toSpanStyle
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.GitViewModel
+import su.kidoz.jetaprog.editor.syntax.highlighting.DarkSyntaxTheme
+import su.kidoz.jetaprog.editor.syntax.highlighting.LightSyntaxTheme
+import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
 import su.kidoz.jetaprog.vcs.GitChange
 import su.kidoz.jetaprog.vcs.GitCommit
 
@@ -64,6 +71,8 @@ private data class DiffLine(
     val sign: Char,
     val text: String,
     val kind: DiffKind,
+    /** Index of the paired line on the opposite side for intraline diffing. */
+    val counterpart: Int? = null,
 )
 
 /**
@@ -86,6 +95,7 @@ public fun VcsMainArea(
         remember(state.diff, selected) {
             if (selected == null) emptyList<DiffLine>() to emptyList() else parseUnifiedDiff(state.diff)
         }
+    val extension = selected?.path?.substringAfterLast('.', "") ?: ""
 
     Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
         DiffHeader(
@@ -107,12 +117,16 @@ public fun VcsMainArea(
                     DiffColumn(
                         title = "Before — HEAD",
                         lines = oldLines,
+                        oppositeLines = newLines,
+                        extension = extension,
                         modifier = Modifier.weight(1f).fillMaxSize(),
                         borderRight = true,
                     )
                     DiffColumn(
                         title = "After — Working tree",
                         lines = newLines,
+                        oppositeLines = oldLines,
+                        extension = extension,
                         modifier = Modifier.weight(1f).fillMaxSize(),
                         borderRight = false,
                     )
@@ -178,6 +192,8 @@ private fun DiffStat(
 private fun DiffColumn(
     title: String,
     lines: List<DiffLine>,
+    oppositeLines: List<DiffLine>,
+    extension: String,
     modifier: Modifier = Modifier,
     borderRight: Boolean = false,
 ) {
@@ -200,7 +216,13 @@ private fun DiffColumn(
         val horizontalScroll = rememberScrollState()
         LazyColumn(modifier = Modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
             items(lines) { line ->
-                DiffRow(line = line, horizontalScroll = horizontalScroll)
+                val counterpartText = line.counterpart?.let { oppositeLines.getOrNull(it)?.text }
+                DiffRow(
+                    line = line,
+                    counterpartText = counterpartText,
+                    extension = extension,
+                    horizontalScroll = horizontalScroll,
+                )
             }
         }
     }
@@ -209,14 +231,50 @@ private fun DiffColumn(
 @Composable
 private fun DiffRow(
     line: DiffLine,
+    counterpartText: String?,
+    extension: String,
     horizontalScroll: androidx.compose.foundation.ScrollState,
 ) {
     val palette = LocalIntelliJColors.current
+    val isDark = palette.isDark
+    val theme = if (isDark) DarkSyntaxTheme else LightSyntaxTheme
     val background =
         when (line.kind) {
             DiffKind.ADD -> palette.diffAddedBackground
             DiffKind.DELETE -> palette.diffRemovedBackground
             DiffKind.CONTEXT -> Color.Transparent
+        }
+    val annotated =
+        remember(line.text, extension, isDark) { highlightDiffLine(line.text, extension, theme) }
+    // Word-level highlight inside changed lines (IntelliJ's intraline diff).
+    val intraline =
+        remember(line.text, counterpartText) {
+            counterpartText?.let { counterpart ->
+                when (line.kind) {
+                    DiffKind.ADD -> intralineChangeRanges(counterpart, line.text)?.changedRanges
+                    DiffKind.DELETE -> intralineChangeRanges(line.text, counterpart)?.baseRanges
+                    DiffKind.CONTEXT -> null
+                }
+            }
+        }
+    val intralineBackground =
+        when (line.kind) {
+            DiffKind.ADD -> palette.diffAddedGutter.copy(alpha = INTRALINE_ALPHA)
+            DiffKind.DELETE -> palette.diffRemovedText.copy(alpha = INTRALINE_ALPHA)
+            DiffKind.CONTEXT -> Color.Transparent
+        }
+    val styled =
+        remember(annotated, intraline, intralineBackground) {
+            if (intraline.isNullOrEmpty()) {
+                annotated
+            } else {
+                buildAnnotatedString {
+                    append(annotated)
+                    for (range in intraline) {
+                        addStyle(SpanStyle(background = intralineBackground), range.first, range.last + 1)
+                    }
+                }
+            }
         }
     val signColor =
         when (line.kind) {
@@ -248,7 +306,7 @@ private fun DiffRow(
             maxLines = 1,
         )
         Text(
-            text = line.text.ifEmpty { " " },
+            text = styled.ifEmpty { AnnotatedString(" ") },
             color = textColor,
             fontSize = 12.sp,
             fontFamily = JetaProgFonts.codeFont,
@@ -257,6 +315,9 @@ private fun DiffRow(
         )
     }
 }
+
+/** Word-highlight opacity over the line background for intraline changes. */
+private const val INTRALINE_ALPHA = 0.35f
 
 @Composable
 private fun GitLogTable(
@@ -468,10 +529,13 @@ private fun LogRow(commit: GitCommit) {
     }
 }
 
-/** Splits a unified diff into independent "old" and "new" line lists with line numbers. */
+/**
+ * Splits a unified diff into independent "old" and "new" line lists with line
+ * numbers, pairing each removed line with its added counterpart inside a
+ * change block so the view can highlight intra-line differences.
+ */
 private fun parseUnifiedDiff(diff: String): Pair<List<DiffLine>, List<DiffLine>> {
-    val old = mutableListOf<DiffLine>()
-    val new = mutableListOf<DiffLine>()
+    val raw = mutableListOf<Triple<DiffKind, Int, String>>()
     var oldNumber = 0
     var newNumber = 0
     var inHunk = false
@@ -488,12 +552,12 @@ private fun parseUnifiedDiff(diff: String): Pair<List<DiffLine>, List<DiffLine>>
         if (!inHunk) continue
         when {
             line.startsWith("+") -> {
-                new.add(DiffLine(newNumber, '+', line.drop(1), DiffKind.ADD))
+                raw += Triple(DiffKind.ADD, newNumber, line.drop(1))
                 newNumber++
             }
 
             line.startsWith("-") -> {
-                old.add(DiffLine(oldNumber, '-', line.drop(1), DiffKind.DELETE))
+                raw += Triple(DiffKind.DELETE, oldNumber, line.drop(1))
                 oldNumber++
             }
 
@@ -503,12 +567,61 @@ private fun parseUnifiedDiff(diff: String): Pair<List<DiffLine>, List<DiffLine>>
 
             else -> {
                 val text = if (line.isEmpty()) "" else line.drop(1)
-                old.add(DiffLine(oldNumber, ' ', text, DiffKind.CONTEXT))
-                new.add(DiffLine(newNumber, ' ', text, DiffKind.CONTEXT))
+                raw += Triple(DiffKind.CONTEXT, oldNumber, text)
+                raw += Triple(DiffKind.CONTEXT, newNumber, text)
                 oldNumber++
                 newNumber++
             }
         }
+    }
+
+    val old = mutableListOf<DiffLine>()
+    val new = mutableListOf<DiffLine>()
+    val oldIndexByRaw = mutableMapOf<Int, Int>()
+    val newIndexByRaw = mutableMapOf<Int, Int>()
+    raw.forEachIndexed { rawIndex, (kind, number, text) ->
+        when (kind) {
+            DiffKind.DELETE -> {
+                oldIndexByRaw[rawIndex] = old.size
+                old += DiffLine(number, '-', text, kind)
+            }
+
+            DiffKind.ADD -> {
+                newIndexByRaw[rawIndex] = new.size
+                new += DiffLine(number, '+', text, kind)
+            }
+
+            DiffKind.CONTEXT -> {
+                oldIndexByRaw[rawIndex] = old.size
+                newIndexByRaw[rawIndex] = new.size
+                old += DiffLine(number, ' ', text, kind)
+                new += DiffLine(number, ' ', text, kind)
+            }
+        }
+    }
+
+    // Pair consecutive DELETE/ADD runs in order: the k-th removed line of a
+    // change block with the k-th added line, for intraline diffing.
+    var index = 0
+    while (index < raw.size) {
+        if (raw[index].first == DiffKind.CONTEXT) {
+            index++
+            continue
+        }
+        val deletes = mutableListOf<Int>()
+        val adds = mutableListOf<Int>()
+        var block = index
+        while (block < raw.size && raw[block].first != DiffKind.CONTEXT) {
+            if (raw[block].first == DiffKind.DELETE) deletes += block else adds += block
+            block++
+        }
+        for (k in 0 until minOf(deletes.size, adds.size)) {
+            val oldIndex = oldIndexByRaw.getValue(deletes[k])
+            val newIndex = newIndexByRaw.getValue(adds[k])
+            old[oldIndex] = old[oldIndex].copy(counterpart = newIndex)
+            new[newIndex] = new[newIndex].copy(counterpart = oldIndex)
+        }
+        index = block + 1
     }
     return old to new
 }
