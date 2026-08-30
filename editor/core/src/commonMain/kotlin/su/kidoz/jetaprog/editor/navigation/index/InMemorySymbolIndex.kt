@@ -9,10 +9,17 @@ import su.kidoz.jetaprog.editor.navigation.SearchScope
  * This implementation uses hash maps for O(1) exact lookups and
  * efficient prefix/pattern matching for incremental search.
  *
- * Thread safety: This implementation is NOT thread-safe. Access should
- * be synchronized externally or restricted to a single thread.
+ * @param openFilesProvider Returns the currently open file paths; backs the
+ *   [SearchScope.OPEN_FILES] scope.
+ * @param activeFileProvider Returns the active file path, if any; backs the
+ *   [SearchScope.FILE] scope.
  */
-public class InMemorySymbolIndex : SymbolIndex {
+public class InMemorySymbolIndex(
+    private val openFilesProvider: () -> Set<String> = { emptySet() },
+    private val activeFileProvider: () -> String? = { null },
+) : SymbolIndex {
+    private val lock = Any()
+
     // Primary storage: file path -> list of symbols
     private val fileToSymbols = mutableMapOf<String, MutableList<IndexedSymbol>>()
 
@@ -23,20 +30,21 @@ public class InMemorySymbolIndex : SymbolIndex {
     private val listeners = mutableListOf<SymbolIndexListener>()
 
     override val symbolCount: Int
-        get() = fileToSymbols.values.sumOf { it.size }
+        get() = synchronized(lock) { fileToSymbols.values.sumOf { it.size } }
 
     override val fileCount: Int
-        get() = fileToSymbols.size
+        get() = synchronized(lock) { fileToSymbols.size }
 
     override suspend fun findByName(
         name: String,
         scope: SearchScope,
     ): List<IndexedSymbol> {
         val lowerName = name.lowercase()
-        return nameIndex[lowerName]
-            ?.filter { it.name.equals(name, ignoreCase = true) }
-            ?.filter { matchesScope(it, scope) }
-            ?: emptyList()
+        return synchronized(lock) {
+            (nameIndex[lowerName]?.toList() ?: emptyList())
+                .filter { it.name.equals(name, ignoreCase = true) }
+                .filter { matchesScope(it, scope) }
+        }
     }
 
     override suspend fun findByPrefix(
@@ -49,14 +57,16 @@ public class InMemorySymbolIndex : SymbolIndex {
         val lowerPrefix = prefix.lowercase()
         val results = mutableListOf<IndexedSymbol>()
 
-        // Search through name index entries that start with the prefix
-        for ((key, symbols) in nameIndex) {
-            if (key.startsWith(lowerPrefix)) {
-                for (symbol in symbols) {
-                    if (matchesScope(symbol, scope)) {
-                        results.add(symbol)
-                        if (results.size >= limit) {
-                            return results
+        synchronized(lock) {
+            // Search through name index entries that start with the prefix
+            for ((key, symbols) in nameIndex) {
+                if (key.startsWith(lowerPrefix)) {
+                    for (symbol in symbols.toList()) {
+                        if (matchesScope(symbol, scope)) {
+                            results.add(symbol)
+                            if (results.size >= limit) {
+                                return results
+                            }
                         }
                     }
                 }
@@ -76,23 +86,25 @@ public class InMemorySymbolIndex : SymbolIndex {
         val matcher = PatternMatcher(pattern)
         val results = mutableListOf<IndexedSymbolMatch>()
 
-        for (symbols in fileToSymbols.values) {
-            for (symbol in symbols) {
-                if (!matchesScope(symbol, scope)) continue
+        synchronized(lock) {
+            for ((_, symbols) in fileToSymbols) {
+                for (symbol in symbols.toList()) {
+                    if (!matchesScope(symbol, scope)) continue
 
-                val match = matcher.match(symbol.name)
-                if (match != null) {
-                    results.add(
-                        IndexedSymbolMatch(
-                            symbol = symbol,
-                            score = match.score,
-                            matchRanges = match.ranges,
-                        ),
-                    )
+                    val match = matcher.match(symbol.name)
+                    if (match != null) {
+                        results.add(
+                            IndexedSymbolMatch(
+                                symbol = symbol,
+                                score = match.score,
+                                matchRanges = match.ranges,
+                            ),
+                        )
 
-                    // Early exit if we have enough high-quality matches
-                    if (results.size >= limit * 2) {
-                        break
+                        // Early exit if we have enough high-quality matches
+                        if (results.size >= limit * 2) {
+                            break
+                        }
                     }
                 }
             }
@@ -109,12 +121,14 @@ public class InMemorySymbolIndex : SymbolIndex {
     ): List<IndexedSymbol> {
         val results = mutableListOf<IndexedSymbol>()
 
-        for (symbols in fileToSymbols.values) {
-            for (symbol in symbols) {
-                if (symbol.kind == kind && matchesScope(symbol, scope)) {
-                    results.add(symbol)
-                    if (results.size >= limit) {
-                        return results
+        synchronized(lock) {
+            for ((_, symbols) in fileToSymbols) {
+                for (symbol in symbols.toList()) {
+                    if (symbol.kind == kind && matchesScope(symbol, scope)) {
+                        results.add(symbol)
+                        if (results.size >= limit) {
+                            return results
+                        }
                     }
                 }
             }
@@ -124,36 +138,46 @@ public class InMemorySymbolIndex : SymbolIndex {
     }
 
     override suspend fun getFileSymbols(filePath: String): List<IndexedSymbol> =
-        fileToSymbols[filePath]
-            ?.sortedBy { it.offset }
-            ?: emptyList()
+        synchronized(lock) {
+            fileToSymbols[filePath]
+                ?.sortedBy { it.offset }
+                .orEmpty()
+        }
 
     override fun indexFile(
         filePath: String,
         symbols: List<IndexedSymbol>,
     ) {
-        // Remove existing symbols for this file first
-        removeFile(filePath)
+        synchronized(lock) {
+            // Remove existing symbols for this file first
+            removeFileLocked(filePath)
 
-        if (symbols.isEmpty()) return
+            if (symbols.isEmpty()) return
 
-        // Add to primary storage
-        val symbolList = symbols.toMutableList()
-        fileToSymbols[filePath] = symbolList
+            // Add to primary storage
+            fileToSymbols[filePath] = symbols.toMutableList()
 
-        // Add to name index
-        for (symbol in symbols) {
-            val lowerName = symbol.name.lowercase()
-            nameIndex.getOrPut(lowerName) { mutableListOf() }.add(symbol)
-        }
+            // Add to name index
+            for (symbol in symbols) {
+                val lowerName = symbol.name.lowercase()
+                nameIndex.getOrPut(lowerName) { mutableListOf() }.add(symbol)
+            }
 
-        // Notify listeners
-        for (listener in listeners) {
-            listener.onFileIndexed(filePath, symbols.size)
+            // Notify listeners
+            for (listener in listeners.toList()) {
+                listener.onFileIndexed(filePath, symbols.size)
+            }
         }
     }
 
     override fun removeFile(filePath: String) {
+        synchronized(lock) {
+            removeFileLocked(filePath)
+        }
+    }
+
+    /** Caller must hold [lock]. */
+    private fun removeFileLocked(filePath: String) {
         val symbols = fileToSymbols.remove(filePath) ?: return
 
         // Remove from name index
@@ -166,18 +190,20 @@ public class InMemorySymbolIndex : SymbolIndex {
         }
 
         // Notify listeners
-        for (listener in listeners) {
+        for (listener in listeners.toList()) {
             listener.onFileRemoved(filePath)
         }
     }
 
     override fun clear() {
-        fileToSymbols.clear()
-        nameIndex.clear()
+        synchronized(lock) {
+            fileToSymbols.clear()
+            nameIndex.clear()
 
-        // Notify listeners
-        for (listener in listeners) {
-            listener.onIndexCleared()
+            // Notify listeners
+            for (listener in listeners.toList()) {
+                listener.onIndexCleared()
+            }
         }
     }
 
@@ -199,18 +225,19 @@ public class InMemorySymbolIndex : SymbolIndex {
         symbol: IndexedSymbol,
         scope: SearchScope,
     ): Boolean =
-        when (scope) {
-            SearchScope.PROJECT -> true
+        synchronized(lock) {
+            when (scope) {
+                SearchScope.PROJECT -> true
 
-            SearchScope.ALL_WITH_LIBRARIES -> true
+                SearchScope.ALL_WITH_LIBRARIES -> true
 
-            SearchScope.FILE -> false
+                SearchScope.FILE -> symbol.filePath == activeFileProvider()
 
-            // Requires specific file context
-            SearchScope.MODULE -> true
+                // Single-module project: module scoping degenerates to project.
+                SearchScope.MODULE -> true
 
-            // TODO: Implement module scoping
-            SearchScope.OPEN_FILES -> false // Requires open file context
+                SearchScope.OPEN_FILES -> symbol.filePath in openFilesProvider()
+            }
         }
 }
 

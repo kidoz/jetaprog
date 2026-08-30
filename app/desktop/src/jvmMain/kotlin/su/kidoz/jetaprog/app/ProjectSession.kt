@@ -214,7 +214,19 @@ public class ProjectSession(
      * Generic workspace symbol index for languages that have a symbol extractor but no
      * dedicated analyzer, so Go to Class/Symbol and definition fallback work without LSP.
      */
-    private val workspaceSymbolIndex = InMemorySymbolIndex()
+    private val workspaceSymbolIndex =
+        InMemorySymbolIndex(
+            openFilesProvider = {
+                editorViewModel.state.value.tabs
+                    .map { it.uri.toString() }
+                    .toSet()
+            },
+            activeFileProvider = {
+                editorViewModel.state.value.activeTab
+                    ?.uri
+                    ?.toString()
+            },
+        )
 
     private val workspaceSymbolIndexer =
         SymbolIndexer(workspaceSymbolIndex).apply {
