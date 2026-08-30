@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.navigation
 
 import su.kidoz.jetaprog.app.adapter.SnapshotTextDocument
+import su.kidoz.jetaprog.common.text.CamelHumpMatcher
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.document.LanguageId
 import su.kidoz.jetaprog.editor.language.LanguageDefinitionRegistry
@@ -972,6 +973,13 @@ public class DefaultNavigationService(
         text: String,
         query: String,
     ): List<MatchRange> {
+        if (query.isBlank()) return emptyList()
+        // CamelHump fragments first (finds `FIF` in `findInFiles`); fall back
+        // to plain substring occurrences for matches the hump matcher rejects.
+        val fragments = CamelHumpMatcher(query).matchingFragments(text)
+        if (fragments != null) {
+            return fragments.map { MatchRange(start = it.first, endInclusive = it.last) }
+        }
         val ranges = mutableListOf<MatchRange>()
         val lowerText = text.lowercase()
         val lowerQuery = query.lowercase()
@@ -1015,9 +1023,9 @@ public class DefaultNavigationService(
             score += 100
         }
 
-        // CamelCase matching
-        val camelMatches = matchCamelCase(text, query)
-        score += camelMatches * 50
+        // CamelHump matching with IntelliJ-style scoring (word-start bonus,
+        // gap and skipped-hump penalties); 0 when the hump matcher rejects.
+        score += CamelHumpMatcher(query).matchingScore(text) ?: 0
 
         // Shorter names are preferred for equal matches
         score -= text.length

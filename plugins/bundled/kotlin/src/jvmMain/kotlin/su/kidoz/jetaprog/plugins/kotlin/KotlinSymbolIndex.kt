@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import su.kidoz.jetaprog.common.text.CamelHumpMatcher
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import java.io.File
@@ -84,9 +85,9 @@ public class KotlinSymbolIndex {
         limit: Int = 50,
     ): List<KotlinSymbol> =
         mutex.withLock {
-            val lowerQuery = query.lowercase()
+            val matcher = CamelHumpMatcher(query)
             symbolsByName.entries
-                .filter { it.key.lowercase().contains(lowerQuery) }
+                .filter { matcher.matches(it.key) }
                 .flatMap { it.value }
                 .take(limit)
         }
