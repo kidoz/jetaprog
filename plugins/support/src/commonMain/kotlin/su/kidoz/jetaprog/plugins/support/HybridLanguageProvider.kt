@@ -1,5 +1,7 @@
 package su.kidoz.jetaprog.plugins.support
 
+import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.CancellationException
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
@@ -100,6 +102,8 @@ public data class RegisteredProvider<T>(
  * This class manages multiple providers for a single language and routes
  * requests based on priority, availability, and configuration.
  */
+private val logger = KotlinLogging.logger {}
+
 public class HybridLanguageProvider(
     private val config: HybridProviderConfig,
     private val settingsService: SettingsService,
@@ -342,7 +346,8 @@ public class HybridLanguageProvider(
                     }
                 }
             } catch (e: Exception) {
-                // TODO: Log exception
+                if (e is CancellationException) throw e
+                logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
         }
@@ -368,6 +373,8 @@ public class HybridLanguageProvider(
                     return result
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
         }
@@ -393,6 +400,8 @@ public class HybridLanguageProvider(
                     return result
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
         }
@@ -416,6 +425,8 @@ public class HybridLanguageProvider(
                     return result
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
         }
@@ -440,6 +451,8 @@ public class HybridLanguageProvider(
                     return result
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
         }
@@ -463,6 +476,8 @@ public class HybridLanguageProvider(
                     return result
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
         }
@@ -487,6 +502,8 @@ public class HybridLanguageProvider(
                     return result
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
         }
