@@ -287,7 +287,7 @@ private fun TabButton(
     onClick: () -> Unit,
 ) {
     val backgroundColor = if (isSelected) LocalIntelliJColors.current.accent else Color.Transparent
-    val textColor = if (isSelected) Color.White else LocalIntelliJColors.current.textSecondary
+    val textColor = LocalIntelliJColors.current.textPrimary
 
     Box(
         modifier =

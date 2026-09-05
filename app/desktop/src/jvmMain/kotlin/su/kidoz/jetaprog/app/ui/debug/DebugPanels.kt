@@ -280,7 +280,7 @@ private fun CallStack(
                     )
                     Text(
                         frame.method,
-                        color = if (frame.isCurrent) Color.White else LocalIntelliJColors.current.textPrimary,
+                        color = LocalIntelliJColors.current.textPrimary,
                         fontSize = 12.5.sp,
                     )
                     Text(

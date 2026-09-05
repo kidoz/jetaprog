@@ -620,8 +620,6 @@ private fun ProjectTreeNode(
                     text = displayName,
                     color =
                         when {
-                            isSelected -> Color.White
-
                             // Excluded by .gitignore — dimmed, the way IntelliJ and VS Code show it.
                             isIgnored -> LocalIntelliJColors.current.treeForegroundIgnored
 

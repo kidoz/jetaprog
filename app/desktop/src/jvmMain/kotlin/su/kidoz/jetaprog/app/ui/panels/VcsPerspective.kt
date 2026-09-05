@@ -162,7 +162,7 @@ private fun DiffHeader(
             return@Row
         }
         FileBadge(fileName = change.fileName())
-        Text(text = change.fileName(), color = Color.White, fontSize = 13.sp)
+        Text(text = change.fileName(), color = LocalIntelliJColors.current.textPrimary, fontSize = 13.sp)
         Text(
             text = change.parentPath(),
             color = LocalIntelliJColors.current.textMuted,

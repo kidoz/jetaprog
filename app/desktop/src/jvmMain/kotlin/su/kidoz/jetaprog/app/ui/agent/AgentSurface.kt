@@ -168,7 +168,12 @@ private fun AgentHeader(
         ) {
             AgentAvatar(tileSize = 26, iconSize = 16, cornerRadius = 7)
             Column {
-                Text("Agent", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Agent",
+                    color = LocalIntelliJColors.current.textPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Text(subtitleFor(state), color = subtitleColor(state), fontSize = 10.sp)
             }
             ModelEffortChip(state)
@@ -327,7 +332,12 @@ private fun AgentTurnView(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
             AgentAvatar(tileSize = 24, iconSize = 15, cornerRadius = 12)
-            Text("Agent", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Agent",
+                color = LocalIntelliJColors.current.textPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
             Text(turn.timeLabel, color = LocalIntelliJColors.current.textMuted, fontSize = 11.sp)
         }
         Column(
