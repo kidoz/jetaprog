@@ -17,6 +17,7 @@ import kotlinx.serialization.json.putJsonObject
 import su.kidoz.jetaprog.app.keymap.KeymapManager
 import su.kidoz.jetaprog.app.mcp.registerIdeTools
 import su.kidoz.jetaprog.app.notification.NotificationCenter
+import su.kidoz.jetaprog.app.plugin.PluginDialogRequests
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeViewModel
 import su.kidoz.jetaprog.app.viewmodel.CloneRepositoryViewModel
@@ -163,6 +164,12 @@ public class JetaProgApplication {
      */
     public val notificationCenter: NotificationCenter = NotificationCenter()
 
+    /**
+     * Queue of pending plugin modal requests (input box, quick pick),
+     * rendered by the dialog host in the main shell.
+     */
+    public val pluginDialogRequests: PluginDialogRequests = PluginDialogRequests()
+
     // ========================================================================
     // Project Session
     // ========================================================================
@@ -199,6 +206,8 @@ public class JetaProgApplication {
                 languageServerManager = languageServerManager,
                 databaseProfileStore = databaseProfileStore,
                 databaseCredentialStore = databaseCredentialStore,
+                notificationCenter = notificationCenter,
+                pluginDialogRequests = pluginDialogRequests,
                 keymapManager = keymapManager,
                 ideMcpEndpoint = {
                     mcpServer.endpoint?.let { IdeMcpEndpoint(url = it, authToken = mcpServer.authToken) }

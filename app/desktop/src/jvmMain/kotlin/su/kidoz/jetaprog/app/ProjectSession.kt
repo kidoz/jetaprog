@@ -38,6 +38,9 @@ import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.navigation.DiskFileContentProvider
 import su.kidoz.jetaprog.app.navigation.KotlinIndexNavigationService
 import su.kidoz.jetaprog.app.navigation.WorkspaceSymbolIndexService
+import su.kidoz.jetaprog.app.notification.NotificationCenter
+import su.kidoz.jetaprog.app.notification.NotificationCenterBridge
+import su.kidoz.jetaprog.app.plugin.PluginDialogRequests
 import su.kidoz.jetaprog.app.project.ProjectFileActions
 import su.kidoz.jetaprog.app.quickfix.KotlinQuickFixService
 import su.kidoz.jetaprog.app.refactoring.KotlinRenameService
@@ -164,6 +167,10 @@ public class ProjectSession(
     private val languageServerManager: LanguageServerManager,
     databaseProfileStore: DatabaseProfileStore,
     databaseCredentialStore: SessionDatabaseCredentialStore,
+    /** Process-wide toast hub the plugin notification service renders into. */
+    private val notificationCenter: NotificationCenter,
+    /** Host for the plugin API's modal requests (input box, quick pick). */
+    private val pluginDialogRequests: PluginDialogRequests,
     /** Application-wide keymap honoring user shortcut overrides. */
     private val keymapManager: KeymapManager,
     private val ideMcpEndpoint: () -> IdeMcpEndpoint? = { null },
@@ -455,7 +462,7 @@ public class ProjectSession(
             editor = editorService,
             languages = LanguageServiceImpl(languageRegistry, languageServerManager, projectPath),
             commands = commandService,
-            notifications = NotificationServiceImpl(),
+            notifications = NotificationServiceImpl(NotificationCenterBridge(notificationCenter, pluginDialogRequests)),
             terminal = TerminalServiceImpl(processExecutor, projectPath),
             lint = lintService,
             storageFactory = { pluginId -> StorageServiceImpl(pluginId, projectPath) },

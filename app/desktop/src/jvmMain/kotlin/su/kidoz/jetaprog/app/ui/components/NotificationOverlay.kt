@@ -156,15 +156,21 @@ private fun NotificationToast(
                         fontSize = 12.sp,
                     )
                 }
-                if (notification.actionLabel != null && notification.onAction != null) {
+                if (notification.actions.isNotEmpty()) {
                     Spacer(modifier = Modifier.size(Spacing.xxs.dp))
-                    NotificationActionLink(
-                        label = notification.actionLabel,
-                        onClick = {
-                            notification.onAction.invoke()
-                            onDismiss()
-                        },
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp),
+                    ) {
+                        notification.actions.forEach { action ->
+                            NotificationActionLink(
+                                label = action.label,
+                                onClick = {
+                                    action.onClick()
+                                    onDismiss()
+                                },
+                            )
+                        }
+                    }
                 }
             }
 

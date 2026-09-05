@@ -29,9 +29,10 @@ public enum class NotificationSeverity {
  * @property title Required short heading. Must read independently of body.
  * @property message Optional secondary body. Use the *subject + cause +
  *                   remedy* pattern from the UI/UX guide.
- * @property actionLabel Optional action button label (e.g. "Retry"). Pair
- *                       with [onAction]; both null = no action button.
- * @property onAction Callback invoked when the action button is clicked.
+ * @property actions Optional action buttons (e.g. "Retry", plugin message
+ *                   action items). Rendered as links under the body.
+ * @property onDismiss Optional callback invoked once when the notification is
+ *                     dismissed by any path (button, timer, or [NotificationCenter.dismiss]).
  * @property autoDismissMs Auto-dismiss timeout. Pass `null` to require
  *                         manual dismissal (typical for errors).
  */
@@ -40,14 +41,22 @@ public data class Notification(
     public val severity: NotificationSeverity,
     public val title: String,
     public val message: String? = null,
-    public val actionLabel: String? = null,
-    public val onAction: (() -> Unit)? = null,
+    public val actions: List<NotificationAction> = emptyList(),
+    public val onDismiss: (() -> Unit)? = null,
     public val autoDismissMs: Long? = DEFAULT_AUTO_DISMISS_MS,
 ) {
     public companion object {
         public const val DEFAULT_AUTO_DISMISS_MS: Long = 8_000L
     }
 }
+
+/**
+ * A clickable action on a [Notification].
+ */
+public data class NotificationAction(
+    public val label: String,
+    public val onClick: () -> Unit,
+)
 
 /**
  * Process-wide notification hub. Single instance per application
@@ -71,6 +80,17 @@ public class NotificationCenter {
         val stamped = notification.copy(id = id)
         mutable.update { it + stamped }
         return id
+    }
+
+    /**
+     * Updates the body message of a live notification (e.g. progress steps).
+     * No-op when [id] is unknown.
+     */
+    public fun updateMessage(
+        id: Long,
+        message: String?,
+    ) {
+        mutable.update { current -> current.map { if (it.id == id) it.copy(message = message) else it } }
     }
 
     /** Convenience: push an info-severity notification. */
@@ -108,13 +128,29 @@ public class NotificationCenter {
             ),
         )
 
-    /** Dismiss a specific notification. No-op if [id] is unknown. */
+    /**
+     * Dismiss a specific notification, firing its [Notification.onDismiss]
+     * callback once. No-op if [id] is unknown.
+     */
     public fun dismiss(id: Long) {
-        mutable.update { current -> current.filterNot { it.id == id } }
+        var dismissed: Notification? = null
+        mutable.update { current ->
+            current.mapNotNull { notification ->
+                if (notification.id == id) {
+                    dismissed = notification
+                    null
+                } else {
+                    notification
+                }
+            }
+        }
+        dismissed?.onDismiss?.invoke()
     }
 
-    /** Dismiss every active notification. */
+    /** Dismiss every active notification, firing each [Notification.onDismiss]. */
     public fun dismissAll() {
+        val current = mutable.value
         mutable.update { emptyList() }
+        current.forEach { it.onDismiss?.invoke() }
     }
 }

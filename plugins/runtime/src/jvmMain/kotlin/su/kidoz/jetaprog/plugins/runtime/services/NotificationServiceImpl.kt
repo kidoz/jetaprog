@@ -10,19 +10,25 @@ import su.kidoz.jetaprog.plugins.api.services.QuickPickOptions
 private val logger = KotlinLogging.logger {}
 
 /**
- * Implementation of NotificationService for showing notifications.
+ * Implementation of NotificationService that surfaces plugin messages in the
+ * host UI through [bridge].
  *
- * This is a placeholder implementation that logs messages.
- * In a full implementation, this would integrate with the UI.
+ * Messages, progress, input boxes, quick picks, and status-bar messages all
+ * render in the application (toasts and modal dialogs). Without a bridge —
+ * headless or test setups — everything falls back to console logging and
+ * dialog-style calls return null.
+ *
+ * @param bridge The host UI port, or null to log only.
  */
-public class NotificationServiceImpl : NotificationService {
+public class NotificationServiceImpl(
+    private val bridge: UiNotificationBridge? = null,
+) : NotificationService {
     override suspend fun showInformationMessage(
         message: String,
         vararg items: String,
     ): String? {
         logger.info { "[INFO] $message" }
-        // In a full implementation, this would show a dialog and return the selected item
-        return null
+        return bridge?.showMessage(UiMessageSeverity.INFO, message, items.toList())
     }
 
     override suspend fun showWarningMessage(
@@ -30,7 +36,7 @@ public class NotificationServiceImpl : NotificationService {
         vararg items: String,
     ): String? {
         logger.warn { "[WARNING] $message" }
-        return null
+        return bridge?.showMessage(UiMessageSeverity.WARNING, message, items.toList())
     }
 
     override suspend fun showErrorMessage(
@@ -38,7 +44,7 @@ public class NotificationServiceImpl : NotificationService {
         vararg items: String,
     ): String? {
         logger.error { "[ERROR] $message" }
-        return null
+        return bridge?.showMessage(UiMessageSeverity.ERROR, message, items.toList())
     }
 
     override suspend fun <T> withProgress(
@@ -48,6 +54,7 @@ public class NotificationServiceImpl : NotificationService {
     ): T {
         logger.info { "[PROGRESS] Starting: $title" }
 
+        val handle = bridge?.beginProgress(title)
         val progress =
             object : Progress {
                 override fun report(
@@ -57,20 +64,27 @@ public class NotificationServiceImpl : NotificationService {
                     if (message != null) {
                         logger.info { "[PROGRESS] $title: $message" }
                     }
+                    handle?.report(message, increment)
                 }
             }
 
         return try {
             task(progress)
         } finally {
+            handle?.close()
             logger.info { "[PROGRESS] Completed: $title" }
         }
     }
 
     override suspend fun showInputBox(options: InputBoxOptions): String? {
         logger.info { "[INPUT] ${options.prompt ?: options.title}" }
-        // In a full implementation, this would show an input dialog
-        return null
+        return bridge?.requestInput(
+            title = options.title,
+            prompt = options.prompt,
+            value = options.value,
+            placeholder = options.placeHolder,
+            password = options.password,
+        )
     }
 
     override suspend fun <T : QuickPickItem> showQuickPick(
@@ -78,8 +92,14 @@ public class NotificationServiceImpl : NotificationService {
         options: QuickPickOptions,
     ): T? {
         logger.info { "[QUICKPICK] ${options.title ?: "Select item"}: ${items.map { it.label }}" }
-        // In a full implementation, this would show a quick pick dialog
-        return null
+        val picked =
+            bridge?.requestQuickPick(
+                items = items,
+                title = options.title,
+                placeholder = options.placeHolder,
+                multiSelect = false,
+            )
+        return picked?.firstOrNull()
     }
 
     override suspend fun <T : QuickPickItem> showQuickPickMulti(
@@ -87,8 +107,12 @@ public class NotificationServiceImpl : NotificationService {
         options: QuickPickOptions,
     ): List<T>? {
         logger.info { "[QUICKPICK_MULTI] ${options.title ?: "Select items"}: ${items.map { it.label }}" }
-        // In a full implementation, this would show a multi-select dialog
-        return null
+        return bridge?.requestQuickPick(
+            items = items,
+            title = options.title,
+            placeholder = options.placeHolder,
+            multiSelect = true,
+        )
     }
 
     override fun setStatusBarMessage(
@@ -96,6 +120,6 @@ public class NotificationServiceImpl : NotificationService {
         hideAfterMs: Long,
     ) {
         logger.info { "[STATUS] $message" }
-        // In a full implementation, this would update the status bar
+        bridge?.showStatus(message, hideAfterMs)
     }
 }

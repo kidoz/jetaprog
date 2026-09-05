@@ -109,6 +109,7 @@ import su.kidoz.jetaprog.app.ui.panels.RunOutputPanel
 import su.kidoz.jetaprog.app.ui.panels.TerminalPanel
 import su.kidoz.jetaprog.app.ui.panels.TestResultsPanel
 import su.kidoz.jetaprog.app.ui.panels.VcsMainArea
+import su.kidoz.jetaprog.app.ui.plugin.PluginDialogHost
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
@@ -1353,7 +1354,9 @@ private fun MainScreenContent(
             notificationCenter = notificationCenter,
         )
 
-        // Toast overlay — last child so it sits above everything except modals.
+        // Plugin modal requests (input box, quick pick) and the toast overlay —
+        // last children so they sit above everything except modals.
+        PluginDialogHost(requestQueue = app.pluginDialogRequests)
         NotificationOverlay(center = notificationCenter)
     }
 }
