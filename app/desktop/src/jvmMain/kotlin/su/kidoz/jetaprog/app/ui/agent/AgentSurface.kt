@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -69,10 +70,14 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.delay
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.ui.components.ButtonStyle
+import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
 import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
+import su.kidoz.jetaprog.app.ui.dialogs.DialogContainer
+import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
 import su.kidoz.jetaprog.app.ui.panels.FileBadge
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
@@ -153,6 +158,7 @@ private fun AgentHeader(
     dispatch: (AgentIntent) -> Unit,
 ) {
     var headerHeightPx by remember { mutableStateOf(0) }
+    var pendingDelete by remember { mutableStateOf<AgentSessionRecord?>(null) }
     Box(
         modifier = Modifier.onSizeChanged { headerHeightPx = it.height },
     ) {
@@ -189,9 +195,60 @@ private fun AgentHeader(
         if (state.historyVisible) {
             AgentHistoryPopup(
                 records = state.sessionHistory,
-                dispatch = dispatch,
                 offsetY = headerHeightPx,
+                onRestore = { id ->
+                    dispatch(AgentIntent.RestoreSession(id))
+                    dispatch(AgentIntent.HideHistory)
+                },
+                onDeleteRequest = { pendingDelete = it },
+                onDismiss = { dispatch(AgentIntent.HideHistory) },
             )
+        }
+    }
+    if (pendingDelete != null) {
+        val record = pendingDelete
+        if (record != null) {
+            // Inline overlay (not a secondary Dialog window) so the confirm
+            // stays part of the main composition — and semantics tree.
+            DialogOverlay(isVisible = true, onDismiss = { pendingDelete = null }) {
+                DialogContainer(modifier = Modifier.width(420.dp)) {
+                    Column(modifier = Modifier.padding(Spacing.lg.dp)) {
+                        Text(
+                            text = "Delete session?",
+                            color = LocalIntelliJColors.current.textPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(Modifier.height(Spacing.sm.dp))
+                        Text(
+                            text = "Delete \"${record.title}\"? This cannot be undone.",
+                            color = LocalIntelliJColors.current.textSecondary,
+                            fontSize = 13.sp,
+                        )
+                        Spacer(Modifier.height(Spacing.lg.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IntelliJButton(
+                                text = "Cancel",
+                                onClick = { pendingDelete = null },
+                                style = ButtonStyle.SECONDARY,
+                            )
+                            Spacer(Modifier.width(Spacing.sm.dp))
+                            IntelliJButton(
+                                text = "Delete",
+                                onClick = {
+                                    dispatch(AgentIntent.DeleteSession(record.id))
+                                    pendingDelete = null
+                                },
+                                style = ButtonStyle.DANGER,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
@@ -828,20 +885,21 @@ private fun formatElapsed(seconds: Long): String = "${seconds / 60}:${(seconds %
 
 /**
  * Popup listing persisted agent conversations, most recent first: clicking a
- * row restores the transcript into the surface, the trailing icon deletes it.
+ * row restores the transcript into the surface, the trailing icon asks the
+ * host to delete it (the confirm overlay lives above this popup).
  */
 @Composable
-private fun AgentHistoryPopup(
+internal fun AgentHistoryPopup(
     records: List<AgentSessionRecord>,
-    dispatch: (AgentIntent) -> Unit,
     offsetY: Int,
+    onRestore: (String) -> Unit,
+    onDeleteRequest: (AgentSessionRecord) -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var pendingDelete by remember { mutableStateOf<AgentSessionRecord?>(null) }
-
     PopupChromeMenu(
         expanded = true,
-        onDismissRequest = { dispatch(AgentIntent.HideHistory) },
+        onDismissRequest = onDismiss,
         modifier = modifier,
         offsetY = offsetY,
     ) {
@@ -856,11 +914,9 @@ private fun AgentHistoryPopup(
             for (record in records) {
                 PopupListRow(
                     selected = false,
-                    onClick = {
-                        dispatch(AgentIntent.RestoreSession(record.id))
-                    },
+                    onClick = { onRestore(record.id) },
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = record.title,
                             color = LocalIntelliJColors.current.textPrimary,
@@ -871,15 +927,14 @@ private fun AgentHistoryPopup(
                         Text(
                             text =
                                 DateFormat
-                                    .getDateInstance(
-                                        DateFormat.SHORT,
-                                    ).format(java.util.Date(record.savedAtEpochMillis)),
+                                    .getDateInstance(DateFormat.SHORT)
+                                    .format(java.util.Date(record.savedAtEpochMillis)),
                             color = LocalIntelliJColors.current.textMuted,
                             fontSize = 10.sp,
                         )
                     }
                     IconButton(
-                        onClick = { pendingDelete = record },
+                        onClick = { onDeleteRequest(record) },
                         modifier = Modifier.size(20.dp),
                     ) {
                         Icon(
@@ -892,18 +947,5 @@ private fun AgentHistoryPopup(
                 }
             }
         }
-    }
-
-    pendingDelete?.let { record ->
-        ConfirmationDialog(
-            title = "Delete session?",
-            message = "Delete \"${record.title}\"? This cannot be undone.",
-            confirmLabel = "Delete",
-            onConfirm = {
-                dispatch(AgentIntent.DeleteSession(record.id))
-                pendingDelete = null
-            },
-            onDismiss = { pendingDelete = null },
-        )
     }
 }
