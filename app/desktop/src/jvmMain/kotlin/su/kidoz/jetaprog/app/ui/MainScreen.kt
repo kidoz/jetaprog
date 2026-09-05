@@ -749,6 +749,16 @@ private fun MainScreenContent(
                                         EditorIntent.NavigateTo(path = path, position = TextPosition(line, column)),
                                     )
                                 },
+                                dirtyOpenPaths =
+                                    editorState.tabs
+                                        .filter { it.isDirty }
+                                        .map { tab -> tab.uri.value.removePrefix("file://") }
+                                        .toSet(),
+                                onFilesReplaced = { paths ->
+                                    paths.forEach { path ->
+                                        session.editorViewModel.dispatch(EditorIntent.ReloadFile(path))
+                                    }
+                                },
                                 modifier = panelModifier,
                             )
                         }

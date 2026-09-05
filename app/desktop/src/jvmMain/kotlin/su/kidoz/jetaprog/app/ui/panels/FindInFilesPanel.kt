@@ -20,10 +20,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -47,31 +50,48 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.components.ButtonStyle
+import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
+import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
+import su.kidoz.jetaprog.app.viewmodel.ReplaceInFilesSummary
 import su.kidoz.jetaprog.app.viewmodel.TextSearchState
 import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
 import su.kidoz.jetaprog.editor.search.FileTextMatches
 import su.kidoz.jetaprog.editor.search.TextSearchMatch
 
 /**
- * Project-wide full-text search ("Find in Files").
+ * Project-wide full-text search and replacement ("Find in Files").
  *
  * @param viewModel the search view model.
  * @param onOpenMatch invoked with (filePath, line, column) when a match is clicked.
  * @param modifier the layout modifier.
+ * @param dirtyOpenPaths open files with unsaved changes; they are excluded
+ *   from Replace in Files so their buffers cannot clobber the replacements.
+ * @param onFilesReplaced invoked with the rewritten paths once a replace run
+ *   finishes, so open editors can reload their buffers from disk.
  */
 @Composable
 public fun FindInFilesPanel(
     viewModel: TextSearchViewModel,
     onOpenMatch: (String, Int, Int) -> Unit,
     modifier: Modifier = Modifier,
+    dirtyOpenPaths: Set<String> = emptySet(),
+    onFilesReplaced: (List<String>) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
+    var replaceMode by remember { mutableStateOf(false) }
+
+    state.replaceSummary?.let { summary ->
+        if (summary.replacedPaths.isNotEmpty()) {
+            LaunchedEffect(summary) { onFilesReplaced(summary.replacedPaths) }
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
         FindInFilesHeader()
@@ -92,10 +112,20 @@ public fun FindInFilesPanel(
                 singleLine = true,
                 placeholder = "Search files",
                 trailingContent = {
-                    SearchFieldAction(
-                        enabled = state.query.isNotEmpty() && !state.isSearching,
-                        onClick = viewModel::search,
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xxs.dp)) {
+                        SearchFieldAction(
+                            icon = Icons.Default.FindReplace,
+                            description = "Toggle replace in files",
+                            enabled = !state.isSearching && !state.isReplacing,
+                            onClick = { replaceMode = !replaceMode },
+                        )
+                        SearchFieldAction(
+                            icon = Icons.Default.Search,
+                            description = "Search files",
+                            enabled = state.query.isNotEmpty() && !state.isSearching,
+                            onClick = viewModel::search,
+                        )
+                    }
                 },
                 modifier =
                     Modifier.fillMaxWidth().onKeyEvent { event ->
@@ -107,6 +137,15 @@ public fun FindInFilesPanel(
                         }
                     },
             )
+
+            if (replaceMode) {
+                IntelliJTextField(
+                    value = state.replacement,
+                    onValueChange = viewModel::setReplacement,
+                    singleLine = true,
+                    placeholder = "Replace with",
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -132,12 +171,7 @@ public fun FindInFilesPanel(
                 )
             }
 
-            val statusText =
-                when {
-                    state.isSearching -> "Searching files…"
-                    state.totalMatches > 0 -> "${state.totalMatches} matches in ${state.results.size} files"
-                    else -> null
-                }
+            val statusText = replaceStatusText(state)
             statusText?.let {
                 Text(
                     text = it,
@@ -149,6 +183,15 @@ public fun FindInFilesPanel(
                 )
             }
 
+            if (replaceMode && state.results.isNotEmpty()) {
+                IntelliJButton(
+                    text = "Replace All…",
+                    onClick = viewModel::requestReplaceAll,
+                    enabled = !state.isSearching && !state.isReplacing,
+                    style = ButtonStyle.PRIMARY,
+                )
+            }
+
             SearchPanelContent(
                 state = state,
                 onOpenMatch = onOpenMatch,
@@ -156,6 +199,66 @@ public fun FindInFilesPanel(
             )
         }
     }
+
+    if (state.awaitingReplaceConfirmation) {
+        ReplaceConfirmationDialog(
+            state = state,
+            onConfirm = { viewModel.confirmReplaceAll(dirtyOpenPaths) },
+            onDismiss = viewModel::cancelReplaceAll,
+        )
+    }
+}
+
+/** One-line status for the search header, or null when there is nothing to report. */
+@Composable
+private fun replaceStatusText(state: TextSearchState): String? {
+    val summary = state.replaceSummary
+    return when {
+        state.isReplacing -> "Replacing…"
+        summary != null -> replaceSummaryText(summary)
+        state.isSearching -> "Searching files…"
+        state.totalMatches > 0 -> "${state.totalMatches} matches in ${state.results.size} files"
+        else -> null
+    }
+}
+
+private fun replaceSummaryText(summary: ReplaceInFilesSummary): String =
+    buildString {
+        append("Replaced ${summary.occurrences} occurrence")
+        if (summary.occurrences != 1) append("s")
+        append(" in ${summary.replacedPaths.size} file")
+        if (summary.replacedPaths.size != 1) append("s")
+        if (summary.skippedPaths.isNotEmpty()) {
+            append(", ${summary.skippedPaths.size} skipped (unsaved changes)")
+        }
+        if (summary.failures.isNotEmpty()) {
+            append(", ${summary.failures.size} failed")
+        }
+    }
+
+@Composable
+private fun ReplaceConfirmationDialog(
+    state: TextSearchState,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val fileCount = state.results.size
+    val message =
+        buildString {
+            append("Replace ${state.totalMatches} occurrence")
+            if (state.totalMatches != 1) append("s")
+            append(" of \"${state.query}\" with \"${state.replacement}\"")
+            append(" in $fileCount file")
+            if (fileCount != 1) append("s")
+            append("?")
+        }
+    ConfirmationDialog(
+        title = "Replace in Files",
+        message = message,
+        confirmLabel = "Replace All",
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable
@@ -180,6 +283,8 @@ private fun FindInFilesHeader() {
 
 @Composable
 private fun SearchFieldAction(
+    icon: ImageVector,
+    description: String,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
@@ -190,13 +295,13 @@ private fun SearchFieldAction(
                 .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
                 .clickable(enabled = enabled, onClick = onClick)
                 .semantics {
-                    contentDescription = "Search files"
+                    contentDescription = description
                     role = Role.Button
                 },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = Icons.Default.Search,
+            imageVector = icon,
             contentDescription = null,
             tint = if (enabled) LocalIntelliJColors.current.textSecondary else LocalIntelliJColors.current.textDisabled,
             modifier = Modifier.size(Dimensions.iconMd.dp),

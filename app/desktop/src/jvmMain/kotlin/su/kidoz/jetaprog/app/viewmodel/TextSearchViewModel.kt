@@ -13,7 +13,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.Disposable
+import su.kidoz.jetaprog.editor.search.FileReplaceStatus
 import su.kidoz.jetaprog.editor.search.FileTextMatches
+import su.kidoz.jetaprog.editor.search.ProjectTextReplacer
 import su.kidoz.jetaprog.editor.search.ProjectTextSearcher
 import su.kidoz.jetaprog.editor.search.TextSearchQuery
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -36,19 +38,46 @@ public data class TextSearchState(
     val totalMatches: Int = 0,
     /** Whether the last search completed with a query but found nothing. */
     val searched: Boolean = false,
+    /** The replacement text for Replace in Files. */
+    val replacement: String = "",
+    /** Whether a replace-all confirmation is awaiting the user's decision. */
+    val awaitingReplaceConfirmation: Boolean = false,
+    /** Whether Replace in Files is writing files. */
+    val isReplacing: Boolean = false,
+    /** Summary of the last completed replace run, if any. */
+    val replaceSummary: ReplaceInFilesSummary? = null,
 )
 
 /**
- * Drives project-wide full-text search ("Find in Files").
+ * Outcome of a completed Replace-in-Files run.
+ */
+public data class ReplaceInFilesSummary(
+    /** Paths of the files that were rewritten, in traversal order. */
+    val replacedPaths: List<String> = emptyList(),
+    /** Total occurrences replaced across all files. */
+    val occurrences: Int = 0,
+    /** Files left untouched because they are open with unsaved changes. */
+    val skippedPaths: List<String> = emptyList(),
+    /** Files that could not be written, keyed by path with the error message. */
+    val failures: Map<String, String> = emptyMap(),
+) {
+    /** Whether the run changed anything at all. */
+    public val isEmpty: Boolean
+        get() = replacedPaths.isEmpty() && skippedPaths.isEmpty() && failures.isEmpty()
+}
+
+/**
+ * Drives project-wide full-text search and replacement ("Find in Files").
  *
  * @param projectPath the workspace root searched.
- * @param fileSystem used to traverse and read files.
+ * @param fileSystem used to traverse, read, and write files.
  */
 public class TextSearchViewModel(
     private val projectPath: String,
     fileSystem: FileSystem,
 ) : Disposable {
     private val searcher = ProjectTextSearcher(fileSystem)
+    private val replacer = ProjectTextReplacer(fileSystem)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var searchJob: Job? = null
 
@@ -81,9 +110,72 @@ public class TextSearchViewModel(
         scheduleSearch()
     }
 
+    /** Updates the replacement text used by Replace in Files. */
+    public fun setReplacement(replacement: String) {
+        _state.update { it.copy(replacement = replacement) }
+    }
+
     /** Runs the search immediately with the current query and options. */
     public fun search() {
         startSearch(debounced = false)
+    }
+
+    /**
+     * Opens the replace-all confirmation with the current results. Does
+     * nothing while there is nothing to replace.
+     */
+    public fun requestReplaceAll() {
+        val current = _state.value
+        if (current.query.isEmpty() || current.results.isEmpty() || current.isReplacing) return
+        _state.update { it.copy(awaitingReplaceConfirmation = true, replaceSummary = null) }
+    }
+
+    /** Closes the replace-all confirmation without replacing anything. */
+    public fun cancelReplaceAll() {
+        _state.update { it.copy(awaitingReplaceConfirmation = false) }
+    }
+
+    /**
+     * Replaces every current match on disk with the replacement text,
+     * re-reading each file so stale results never overwrite newer content.
+     *
+     * @param skipPaths files to leave untouched — open editors with unsaved
+     *   changes whose buffers would otherwise clobber the replacement on save.
+     */
+    public fun confirmReplaceAll(skipPaths: Set<String> = emptySet()) {
+        val current = _state.value
+        if (current.query.isEmpty() || current.isReplacing) return
+        val query =
+            TextSearchQuery(
+                query = current.query,
+                caseSensitive = current.caseSensitive,
+                regex = current.regex,
+                wholeWord = current.wholeWord,
+            )
+        val replacement = current.replacement
+        _state.update { it.copy(awaitingReplaceConfirmation = false, isReplacing = true, replaceSummary = null) }
+        scope.launch {
+            val results =
+                withContext(Dispatchers.IO) {
+                    replacer.replaceAll(projectPath, query, replacement, skipPaths)
+                }
+            val summary =
+                ReplaceInFilesSummary(
+                    replacedPaths = results.filter { it.status == FileReplaceStatus.REPLACED }.map { it.filePath },
+                    occurrences =
+                        results
+                            .filter { it.status == FileReplaceStatus.REPLACED }
+                            .sumOf { it.replaced },
+                    skippedPaths = results.filter { it.status == FileReplaceStatus.SKIPPED }.map { it.filePath },
+                    failures =
+                        results
+                            .filter { it.status == FileReplaceStatus.FAILED }
+                            .associate { it.filePath to (it.error ?: "unknown error") },
+                )
+            _state.update { it.copy(isReplacing = false, replaceSummary = summary) }
+            // Refresh the match list so it reflects the post-replace content.
+            startSearch(debounced = false, preserveSummary = true)
+        }
     }
 
     // Search-as-you-type: every query/option change lands here; the debounce lets
@@ -93,16 +185,35 @@ public class TextSearchViewModel(
         startSearch(debounced = true)
     }
 
-    private fun startSearch(debounced: Boolean) {
+    private fun startSearch(
+        debounced: Boolean,
+        preserveSummary: Boolean = false,
+    ) {
         searchJob?.cancel()
         if (_state.value.query.isEmpty()) {
             _state.update {
-                it.copy(results = emptyList(), totalMatches = 0, searched = false, isSearching = false)
+                it.copy(
+                    results = emptyList(),
+                    totalMatches = 0,
+                    searched = false,
+                    isSearching = false,
+                    awaitingReplaceConfirmation = false,
+                    replaceSummary = null,
+                )
             }
             return
         }
 
-        _state.update { it.copy(isSearching = true) }
+        // New query/options invalidate the previous replace run's summary and
+        // any confirmation built on the old results. The refresh triggered by
+        // a finished replace keeps its summary — it only refreshes the list.
+        _state.update {
+            it.copy(
+                isSearching = true,
+                awaitingReplaceConfirmation = false,
+                replaceSummary = if (preserveSummary) it.replaceSummary else null,
+            )
+        }
         searchJob =
             scope.launch {
                 if (debounced) delay(SEARCH_DEBOUNCE_MS)

@@ -21,6 +21,8 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
 - Syntax highlighting for many languages (hand-written lexers + Tree-sitter)
 - Code completion, signature help, and hover information
 - Find & replace with case / whole-word / regex options and live match highlighting
+- Project-wide find in files, plus replace in files with a confirmation dialog
+  (files open with unsaved changes are skipped and clean buffers reload automatically)
 - Undo/redo with edit coalescing
 - Smart typing: auto-indent, auto-closing brackets and quotes, comment toggling,
   indent/dedent, move-line, and bracket matching
