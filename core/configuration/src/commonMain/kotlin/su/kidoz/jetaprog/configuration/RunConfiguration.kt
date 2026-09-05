@@ -43,6 +43,10 @@ public enum class ConfigurationType(
     @SerialName("meson_build")
     MESON_BUILD("Meson Build", "meson"),
 
+    /** CMake build. */
+    @SerialName("cmake_build")
+    CMAKE_BUILD("CMake Build", "cmake"),
+
     /** Meson run executable. */
     @SerialName("meson_run")
     MESON_RUN("Meson Run", "meson"),
@@ -229,6 +233,23 @@ public sealed interface ConfigurationSettings {
         val buildType: MesonBuildType = MesonBuildType.DEBUG,
         /** Additional meson compile arguments. */
         val arguments: List<String> = emptyList(),
+    ) : ConfigurationSettings
+
+    /**
+     * CMake build configuration. Builds via `cmake --build`, configuring the
+     * build directory first when it has no cache yet.
+     */
+    @Serializable
+    @SerialName("cmake_build")
+    public data class CMakeBuild(
+        /** Build configuration type passed as CMAKE_BUILD_TYPE. */
+        val buildType: String = "Debug",
+        /** Targets to build; empty builds the default target. */
+        val targets: List<String> = emptyList(),
+        /** Build directory (relative to the project root). */
+        val buildDirectory: String = "build",
+        /** Environment variables for the build. */
+        val environment: Map<String, String> = emptyMap(),
     ) : ConfigurationSettings
 
     /**

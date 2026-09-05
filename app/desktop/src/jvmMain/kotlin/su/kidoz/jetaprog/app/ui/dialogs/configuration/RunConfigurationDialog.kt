@@ -469,6 +469,13 @@ private fun ConfigurationEditorPanel(
                 )
             }
 
+            is ConfigurationSettings.CMakeBuild -> {
+                CMakeBuildSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
+                )
+            }
+
             is ConfigurationSettings.MesonRun -> {
                 MesonRunSettingsEditor(
                     settings = settings,
@@ -1647,6 +1654,7 @@ private fun DialogFooter(
 private fun ConfigurationType.toIcon(): ImageVector =
     when (this) {
         ConfigurationType.GRADLE -> Icons.Default.Build
+        ConfigurationType.CMAKE_BUILD -> Icons.Default.Build
         ConfigurationType.MESON_BUILD -> Icons.Default.Build
         ConfigurationType.MESON_RUN -> Icons.Default.PlayArrow
         ConfigurationType.PYTHON -> Icons.Default.PlayArrow
@@ -1682,6 +1690,7 @@ private fun ConfigurationType.toIcon(): ImageVector =
 
 private val configurationCreationTypes =
     listOf(
+        ConfigurationType.CMAKE_BUILD,
         ConfigurationType.APPLICATION,
         ConfigurationType.PYTHON,
         ConfigurationType.CARGO_RUN,
@@ -1918,3 +1927,40 @@ private fun ConfigurationSettings.withCargoWorkingDirectory(value: String?): Con
         is ConfigurationSettings.CargoClippy -> copy(workingDirectory = value)
         else -> this
     }
+
+/**
+ * Editor for CMake build configurations: build directory, configuration type,
+ * and targets. The build directory must contain a CMake cache (configured once
+ * via `cmake -S . -B <dir>`); `cmake --build` then compiles it.
+ */
+@Composable
+private fun CMakeBuildSettingsEditor(
+    settings: ConfigurationSettings.CMakeBuild,
+    onSettingsChange: (ConfigurationSettings.CMakeBuild) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
+        IntelliJDropdown(
+            selectedItem = settings.buildType,
+            items = listOf("Debug", "Release", "RelWithDebInfo", "MinSizeRel"),
+            onItemSelected = { onSettingsChange(settings.copy(buildType = it)) },
+            label = "Build type",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.buildDirectory,
+            onValueChange = { onSettingsChange(settings.copy(buildDirectory = it.ifBlank { "build" })) },
+            label = "Build directory:",
+            placeholder = "build",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.targets.joinToString(" "),
+            onValueChange = { onSettingsChange(settings.copy(targets = parseArguments(it))) },
+            label = "Targets:",
+            placeholder = "All targets by default",
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}

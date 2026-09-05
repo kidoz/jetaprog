@@ -335,6 +335,10 @@ public class ConfigurationViewModel(
                 executeMesonBuild(settings)
             }
 
+            is ConfigurationSettings.CMakeBuild -> {
+                executeViaOrchestrator(config)
+            }
+
             is ConfigurationSettings.MesonRun -> {
                 executeMesonRun(settings)
             }
@@ -1119,6 +1123,7 @@ public class ConfigurationViewModel(
         if (exists("package.json")) return ConfigurationType.NODE_RUN
         if (hasDotNetProject(root)) return ConfigurationType.DOTNET_RUN
         if (exists("meson.build")) return ConfigurationType.MESON_BUILD
+        if (exists("CMakeLists.txt")) return ConfigurationType.CMAKE_BUILD
         if (exists("uv.lock") || hasPyprojectSection(root, "tool.uv")) return ConfigurationType.UV
         if (exists("poetry.lock") || hasPyprojectSection(root, "tool.poetry")) return ConfigurationType.POETRY
 
@@ -1164,6 +1169,15 @@ public class ConfigurationViewModel(
             ConfigurationType.MESON_BUILD -> {
                 configurationManager.createMesonBuildConfiguration(
                     name = name,
+                )
+            }
+
+            ConfigurationType.CMAKE_BUILD -> {
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = name,
+                    type = ConfigurationType.CMAKE_BUILD,
+                    settings = ConfigurationSettings.CMakeBuild(),
                 )
             }
 
@@ -1472,6 +1486,7 @@ public class ConfigurationViewModel(
         when (type) {
             ConfigurationType.GRADLE -> "New Gradle Configuration"
             ConfigurationType.MESON_BUILD -> "New Meson Build"
+            ConfigurationType.CMAKE_BUILD -> "New CMake Build"
             ConfigurationType.MESON_RUN -> "New Meson Run"
             ConfigurationType.APPLICATION -> "New Application"
             ConfigurationType.SHELL_SCRIPT -> "New Shell Script"
@@ -1508,6 +1523,7 @@ public class ConfigurationViewModel(
         when (type) {
             ConfigurationType.GRADLE -> "Gradle Build"
             ConfigurationType.MESON_BUILD -> "Meson Build"
+            ConfigurationType.CMAKE_BUILD -> "CMake Build"
             ConfigurationType.MESON_RUN -> "Meson Run"
             ConfigurationType.APPLICATION -> "Application"
             ConfigurationType.SHELL_SCRIPT -> "Shell Script"

@@ -86,10 +86,9 @@ public class ConfigurationDiscovery(
             }
 
             ProjectType.CMAKE -> {
-                emptyList()
+                createCMakeConfigurations(project, existingNames)
             }
 
-            // CMake support TODO
             ProjectType.NODEJS -> {
                 createNodeConfigurations(project, existingNames)
             }
@@ -479,6 +478,32 @@ public class ConfigurationDiscovery(
                     ),
             ),
         )
+    }
+
+    private fun createCMakeConfigurations(
+        project: DetectedProject,
+        existingNames: Set<String>,
+    ): List<RunConfiguration> {
+        val configs = mutableListOf<RunConfiguration>()
+        val baseName = project.projectName ?: "CMake"
+
+        val buildName = "$baseName Build"
+        if (buildName !in existingNames) {
+            configs.add(
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = buildName,
+                    type = ConfigurationType.CMAKE_BUILD,
+                    isTemporary = false,
+                    settings =
+                        ConfigurationSettings.CMakeBuild(
+                            buildDirectory = "build",
+                        ),
+                ),
+            )
+        }
+
+        return configs
     }
 
     private fun createMesonConfigurations(

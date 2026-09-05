@@ -510,6 +510,7 @@ private fun RunConfiguration.subtitle(): String? =
 private fun ConfigurationType.toIcon(): ImageVector =
     when (this) {
         ConfigurationType.GRADLE -> Icons.Default.Build
+        ConfigurationType.CMAKE_BUILD -> Icons.Default.Build
         ConfigurationType.MESON_BUILD -> Icons.Default.Build
         ConfigurationType.MESON_RUN -> Icons.Default.PlayArrow
         ConfigurationType.PYTHON -> Icons.Default.PlayArrow

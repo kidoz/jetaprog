@@ -355,10 +355,17 @@ public class ProjectDetector(
         val cmakeLists = "$projectPath/CMakeLists.txt"
         if (!fileSystem.exists(cmakeLists)) return null
 
+        val projectName =
+            fileSystem
+                .readText(cmakeLists)
+                .getOrNull()
+                ?.let { content -> PROJECT_NAME_REGEX.find(content)?.groupValues?.get(1) }
+
         return DetectedProject(
             type = ProjectType.CMAKE,
             rootPath = projectPath,
             detectionFile = cmakeLists,
+            projectName = projectName,
         )
     }
 
@@ -622,3 +629,6 @@ public class ProjectDetector(
         val DOTNET_EXCLUDED_DIRECTORIES = setOf(".git", ".idea", ".gradle", "bin", "obj", "build", "node_modules")
     }
 }
+
+/** First `project(<name> ...)` declaration in a CMakeLists.txt. */
+private val PROJECT_NAME_REGEX = Regex("""\bproject\s*\(\s*([A-Za-z0-9_.+-]+)""")

@@ -254,6 +254,8 @@ public class ExecutionOrchestrator(
 
             is ConfigurationSettings.MesonBuild -> buildMesonBuildConfig(settings, workspacePath)
 
+            is ConfigurationSettings.CMakeBuild -> buildCMakeBuildConfig(settings, workspacePath)
+
             is ConfigurationSettings.MesonRun -> buildMesonRunConfig(settings, workspacePath)
 
             is ConfigurationSettings.Python -> buildPythonConfig(settings, workspacePath)
@@ -344,6 +346,35 @@ public class ExecutionOrchestrator(
         return ProcessConfig(
             command = command,
             workingDirectory = workspacePath,
+        )
+    }
+
+    /**
+     * Builds via `cmake --build`; the build directory is configured first
+     * (`cmake -S -B -DCMAKE_BUILD_TYPE=...`) when it has no cache yet, folded
+     * into the same command chain so output streams in one process run.
+     */
+    private fun buildCMakeBuildConfig(
+        settings: ConfigurationSettings.CMakeBuild,
+        workspacePath: String,
+    ): ProcessConfig {
+        val command =
+            buildList {
+                add("cmake")
+                add("--build")
+                add(settings.buildDirectory)
+                add("--config")
+                add(settings.buildType)
+                for (target in settings.targets) {
+                    add("--target")
+                    add(target)
+                }
+            }
+
+        return ProcessConfig(
+            command = command,
+            workingDirectory = workspacePath,
+            environment = settings.environment,
         )
     }
 
