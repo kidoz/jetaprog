@@ -1219,6 +1219,7 @@ private fun MainScreenContent(
                     },
                 isGradleSyncing = gradleSyncState == GradleSyncState.Syncing,
                 hasGradleSyncError = gradleSyncState is GradleSyncState.Failed,
+                onBranchClick = { onSelectedActivityItemChange(ActivityBarItem.VCS) },
             )
         }
 

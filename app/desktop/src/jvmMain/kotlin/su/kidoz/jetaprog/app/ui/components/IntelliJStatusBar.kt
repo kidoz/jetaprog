@@ -69,9 +69,9 @@ public fun IntelliJStatusBar(
     gradleSyncStatus: String? = null,
     isGradleSyncing: Boolean = false,
     hasGradleSyncError: Boolean = false,
-    onBranchClick: () -> Unit = {},
-    onEncodingClick: () -> Unit = {},
-    onLanguageClick: () -> Unit = {},
+    onBranchClick: (() -> Unit)? = null,
+    onEncodingClick: (() -> Unit)? = null,
+    onLanguageClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier =
@@ -172,12 +172,12 @@ public fun IntelliJStatusBar(
                 StatusBarItem(text = indent)
                 StatusBarDivider()
             }
-            StatusBarClickableItem(text = encodingInfo, onClick = onEncodingClick)
+            StatusBarItem(text = encodingInfo, onClick = onEncodingClick)
             StatusBarDivider()
             StatusBarItem(text = lineEnding)
             StatusBarDivider()
             languageInfo?.let { lang ->
-                StatusBarClickableItem(text = lang, onClick = onLanguageClick)
+                StatusBarItem(text = lang, onClick = onLanguageClick)
                 StatusBarDivider()
             }
             MemoryChip()
@@ -282,39 +282,6 @@ private fun StatusBarItem(
         Text(
             text = text,
             color = LocalIntelliJColors.current.statusBarForeground,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun StatusBarClickableItem(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    Box(
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .background(if (isHovered) LocalIntelliJColors.current.statusBarHover else Color.Transparent)
-                .hoverable(interactionSource)
-                .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xxs.dp),
-    ) {
-        Text(
-            text = text,
-            color =
-                if (isHovered) {
-                    LocalIntelliJColors.current.textPrimary
-                } else {
-                    LocalIntelliJColors.current.statusBarForeground
-                },
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
