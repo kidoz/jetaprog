@@ -141,6 +141,13 @@ public class EditorViewModel(
     private var signatureHelpJob: Job? = null
     private var lintJob: Job? = null
     private var autoSaveJob: Job? = null
+
+    /**
+     * Set when the user moves the cursor themselves. A workspace restore that
+     * finishes afterwards must not yank the caret (and scroll) away from where
+     * they are already working.
+     */
+    private var userMovedCursorSinceRestore = false
     private val lspOpenDocuments = mutableSetOf<String>()
     private val undoManagers = mutableMapOf<String, UndoManager>()
     private val incrementalTokenizers = mutableMapOf<String, IncrementalTokenizer>()
@@ -368,6 +375,7 @@ public class EditorViewModel(
             }
 
             is EditorIntent.MoveCursor -> {
+                userMovedCursorSinceRestore = true
                 moveCursor(intent.position)
             }
 
@@ -632,6 +640,10 @@ public class EditorViewModel(
     }
 
     private suspend fun restoreSession(intent: EditorIntent.RestoreSession) {
+        // Opening files does real IO; the user may already be clicking around
+        // in whatever tab is visible. Remember that: a late restore must not
+        // yank the caret and scroll away from where they are working.
+        userMovedCursorSinceRestore = false
         val existingFiles =
             intent.filePaths.withIndex().filter { (_, path) ->
                 withContext(Dispatchers.IO) { fileSystem.exists(path) }
@@ -642,7 +654,9 @@ public class EditorViewModel(
         if (activeIndex >= 0) {
             switchTab(activeIndex)
         }
-        intent.cursor?.let { moveCursor(it, synchronizeUi = true) }
+        if (!userMovedCursorSinceRestore) {
+            intent.cursor?.let { moveCursor(it, synchronizeUi = true) }
+        }
     }
 
     private suspend fun saveCurrentFile() {
