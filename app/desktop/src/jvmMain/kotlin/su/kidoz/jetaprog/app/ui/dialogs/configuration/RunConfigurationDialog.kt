@@ -595,13 +595,19 @@ private fun ConfigurationEditorPanel(
                 )
             }
 
-            is su.kidoz.jetaprog.configuration.SpringBootSettings,
-            is su.kidoz.jetaprog.configuration.SpringBootDevServerSettings,
-            -> {
-                Text(
-                    text = "Spring Boot settings editor coming soon",
-                    color = LocalIntelliJColors.current.textSecondary,
-                    modifier = Modifier.padding(16.dp),
+            is su.kidoz.jetaprog.configuration.SpringBootSettings -> {
+                SpringBootSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
+                )
+            }
+
+            is su.kidoz.jetaprog.configuration.SpringBootDevServerSettings -> {
+                SpringBootSettingsEditor(
+                    settings = settings.baseSettings,
+                    onSettingsChange = {
+                        onConfigurationChange(configuration.copy(settings = settings.copy(baseSettings = it)))
+                    },
                 )
             }
 
@@ -1927,6 +1933,92 @@ private fun ConfigurationSettings.withCargoWorkingDirectory(value: String?): Con
         is ConfigurationSettings.CargoClippy -> copy(workingDirectory = value)
         else -> this
     }
+
+/**
+ * Editor for Spring Boot run configurations: main class, profiles, JVM and
+ * program arguments, working directory, and the remote-debug triple. The
+ * dev-server variant edits the wrapped [ConfigurationSettings.SpringBootSettings].
+ */
+@Composable
+private fun SpringBootSettingsEditor(
+    settings: su.kidoz.jetaprog.configuration.SpringBootSettings,
+    onSettingsChange: (su.kidoz.jetaprog.configuration.SpringBootSettings) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
+        IntelliJTextField(
+            value = settings.mainClass,
+            onValueChange = { onSettingsChange(settings.copy(mainClass = it)) },
+            label = "Main class:",
+            placeholder = "com.example.demo.DemoApplication",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.modulePath,
+            onValueChange = { onSettingsChange(settings.copy(modulePath = it)) },
+            label = "Module classpath:",
+            placeholder = "Module root by default",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.activeProfiles.joinToString(" "),
+            onValueChange = { onSettingsChange(settings.copy(activeProfiles = parseArguments(it))) },
+            label = "Active profiles:",
+            placeholder = "dev local",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.vmOptions,
+            onValueChange = { onSettingsChange(settings.copy(vmOptions = it)) },
+            label = "VM options:",
+            placeholder = "-Xmx2g",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.programArguments,
+            onValueChange = { onSettingsChange(settings.copy(programArguments = it)) },
+            label = "Program arguments:",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.workingDirectory ?: "",
+            onValueChange = { onSettingsChange(settings.copy(workingDirectory = it.ifBlank { null })) },
+            label = "Working directory:",
+            placeholder = "Project root by default",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IntelliJCheckbox(
+                checked = settings.enableDebug,
+                onCheckedChange = { onSettingsChange(settings.copy(enableDebug = it)) },
+                label = "Enable debug agent",
+            )
+            if (settings.enableDebug) {
+                IntelliJTextField(
+                    value = settings.debugPort.toString(),
+                    onValueChange = { value ->
+                        value.toIntOrNull()?.let { port -> onSettingsChange(settings.copy(debugPort = port)) }
+                    },
+                    label = "Debug port:",
+                    modifier = Modifier.width(110.dp),
+                )
+                IntelliJCheckbox(
+                    checked = settings.debugSuspend,
+                    onCheckedChange = { onSettingsChange(settings.copy(debugSuspend = it)) },
+                    label = "Suspend on start",
+                )
+            }
+        }
+    }
+}
 
 /**
  * Editor for CMake build configurations: build directory, configuration type,
