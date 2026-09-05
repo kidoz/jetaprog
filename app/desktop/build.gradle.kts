@@ -60,9 +60,28 @@ kotlin {
         jvmTest {
             dependencies {
                 implementation(libs.bundles.testing)
+                implementation(libs.compose.ui.test)
             }
         }
     }
+}
+
+// UI tests also remain in jvmTest/allTests so the normal verification gate covers them.
+tasks.register<Test>("uiTest") {
+    group = "verification"
+    description = "Runs Compose interaction tests and captures UI review artifacts."
+    val desktopTests = tasks.named<Test>("jvmTest").get()
+    testClassesDirs = desktopTests.testClassesDirs
+    classpath = desktopTests.classpath
+    javaLauncher.set(desktopTests.javaLauncher)
+    useJUnitPlatform()
+    filter { includeTestsMatching("*UiTest") }
+    maxParallelForks = 1
+    val artifacts = layout.buildDirectory.dir("reports/uiTest/artifacts")
+    systemProperty("jetaprog.ui.artifacts", artifacts.get().asFile.absolutePath)
+    systemProperty("java.awt.headless", "true")
+    systemProperty("skiko.renderApi", "SOFTWARE")
+    outputs.dir(artifacts)
 }
 
 compose.desktop {
