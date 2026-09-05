@@ -134,6 +134,15 @@ public class NavigationHistory(
     public fun getRecentFiles(limit: Int = 30): List<String> = recentFiles.toList().takeLast(limit).reversed()
 
     /**
+     * Seed the recent-files list from a persisted snapshot (most recent
+     * first, as returned by [getRecentFiles]). Existing entries are replaced.
+     */
+    public fun restoreRecentFiles(paths: List<String>) {
+        recentFiles.clear()
+        paths.reversed().forEach { recentFiles.add(it) }
+    }
+
+    /**
      * Clear all history.
      */
     public fun clear() {

@@ -33,10 +33,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +48,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.JetaProgApplication
 import su.kidoz.jetaprog.app.ProjectSession
@@ -339,6 +342,15 @@ private fun MainScreenContent(
     browseLocation: () -> Unit,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
 ) {
+    // Layout persisted in the workspace state: seed the initial UI values once
+    // per session and write changes back so they survive a restart.
+    val restoredLayout = remember(session) { session.panelLayout.value }
+    LaunchedEffect(session) {
+        restoredLayout.sidebarItem?.let { name ->
+            ActivityBarItem.entries.firstOrNull { it.name == name }?.let(onSelectedActivityItemChange)
+        }
+    }
+
     val editorState by session.editorViewModel.state.collectAsState()
     val editorSettings by session.editorViewModel.settings.collectAsState()
     val terminalState by session.terminalViewModel.state.collectAsState()
@@ -360,8 +372,21 @@ private fun MainScreenContent(
         notificationCenter.error(title = "Gradle sync failed", message = failure.message)
     }
 
+    LaunchedEffect(selectedActivityItem) {
+        session.panelLayout.update { it.copy(sidebarItem = selectedActivityItem?.name) }
+    }
+
     // Unified bottom tool window (Terminal / Build / Problems). null = hidden.
-    var selectedBottomTab by remember { mutableStateOf<BottomTab?>(null) }
+    var selectedBottomTab by remember(session) {
+        mutableStateOf<BottomTab?>(
+            restoredLayout.activeBottomPanel?.let { name ->
+                BottomTab.entries.firstOrNull { it.name == name }
+            },
+        )
+    }
+    LaunchedEffect(selectedBottomTab) {
+        session.panelLayout.update { it.copy(activeBottomPanel = selectedBottomTab?.name) }
+    }
     val openTerminalTab: () -> Unit = {
         if (!terminalState.isVisible) {
             session.terminalViewModel.dispatch(TerminalIntent.ToggleVisibility)
@@ -739,7 +764,10 @@ private fun MainScreenContent(
                 if (sidebarItem in SIDEBAR_PANEL_ITEMS && !agentInPerspective) {
                     val minWidth = Dimensions.toolWindowMinWidth.dp
                     val maxWidth = Dimensions.toolWindowMaxWidth.dp
-                    var leftPanelWidth by remember { mutableStateOf(Dimensions.projectPanelWidth.dp) }
+                    var leftPanelWidth by remember(session) { mutableStateOf(restoredLayout.projectPanelWidth.dp) }
+                    LaunchedEffect(leftPanelWidth) {
+                        session.panelLayout.update { it.copy(projectPanelWidth = leftPanelWidth.value.toInt()) }
+                    }
                     val panelModifier = Modifier.width(leftPanelWidth).fillMaxHeight()
                     when (sidebarItem) {
                         ActivityBarItem.SEARCH -> {
@@ -796,6 +824,16 @@ private fun MainScreenContent(
                         }
 
                         else -> {
+                            val expandedDirs =
+                                remember(session) {
+                                    mutableStateMapOf<String, Boolean>().apply {
+                                        session.treeExpansion.value.forEach { path -> put(path, true) }
+                                    }
+                                }
+                            LaunchedEffect(session) {
+                                snapshotFlow { expandedDirs.filterValues { expanded -> expanded }.keys.toSet() }
+                                    .collect { expanded -> session.treeExpansion.value = expanded }
+                            }
                             ProjectPanel(
                                 projectPath = currentProjectPath,
                                 onFileOpen = { path -> session.editorViewModel.dispatch(EditorIntent.OpenFile(path)) },
@@ -806,6 +844,7 @@ private fun MainScreenContent(
                                     notificationCenter.warning(title = "Project", message = message)
                                 },
                                 onPathRemoved = { path -> session.closeTabFor(path) },
+                                expandedDirs = expandedDirs,
                             )
                         }
                     }

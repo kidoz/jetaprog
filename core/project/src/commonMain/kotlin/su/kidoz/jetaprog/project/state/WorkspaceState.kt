@@ -164,6 +164,11 @@ public data class PanelLayout(
      * Active bottom panel (terminal, problems, output, etc.).
      */
     val activeBottomPanel: String? = null,
+    /**
+     * Name of the active left-side activity-bar item (e.g. "PROJECT"), or
+     * null when the left tool window is hidden.
+     */
+    val sidebarItem: String? = null,
 )
 
 /**

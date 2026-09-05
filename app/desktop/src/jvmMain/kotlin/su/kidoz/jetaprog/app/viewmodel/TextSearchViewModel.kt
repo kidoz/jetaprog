@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,6 +20,7 @@ import su.kidoz.jetaprog.editor.search.ProjectTextReplacer
 import su.kidoz.jetaprog.editor.search.ProjectTextSearcher
 import su.kidoz.jetaprog.editor.search.TextSearchQuery
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.project.state.WorkspaceState
 
 /** State of the Find-in-Files panel. */
 public data class TextSearchState(
@@ -46,6 +48,10 @@ public data class TextSearchState(
     val isReplacing: Boolean = false,
     /** Summary of the last completed replace run, if any. */
     val replaceSummary: ReplaceInFilesSummary? = null,
+    /** Executed searches, most recent first (persisted per project). */
+    val searchHistory: List<String> = emptyList(),
+    /** Applied replacements, most recent first (persisted per project). */
+    val replaceHistory: List<String> = emptyList(),
 )
 
 /**
@@ -75,6 +81,7 @@ public data class ReplaceInFilesSummary(
 public class TextSearchViewModel(
     private val projectPath: String,
     fileSystem: FileSystem,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : Disposable {
     private val searcher = ProjectTextSearcher(fileSystem)
     private val replacer = ProjectTextReplacer(fileSystem)
@@ -117,7 +124,31 @@ public class TextSearchViewModel(
 
     /** Runs the search immediately with the current query and options. */
     public fun search() {
+        recordSearch(_state.value.query)
         startSearch(debounced = false)
+    }
+
+    /**
+     * Seeds the persisted histories after a project opens, most recent first.
+     */
+    public fun seedHistories(
+        searches: List<String>,
+        replacements: List<String>,
+    ) {
+        _state.update {
+            it.copy(
+                searchHistory = searches.take(MAX_HISTORY_SIZE),
+                replaceHistory = replacements.take(MAX_HISTORY_SIZE),
+            )
+        }
+    }
+
+    /** Adds [query] to the search history, deduplicated and most recent first. */
+    private fun recordSearch(query: String) {
+        if (query.isEmpty()) return
+        _state.update {
+            it.copy(searchHistory = (listOf(query) + it.searchHistory).distinct().take(MAX_HISTORY_SIZE))
+        }
     }
 
     /**
@@ -153,10 +184,18 @@ public class TextSearchViewModel(
                 wholeWord = current.wholeWord,
             )
         val replacement = current.replacement
-        _state.update { it.copy(awaitingReplaceConfirmation = false, isReplacing = true, replaceSummary = null) }
+        _state.update {
+            it.copy(
+                awaitingReplaceConfirmation = false,
+                isReplacing = true,
+                replaceSummary = null,
+                searchHistory = (listOf(current.query) + it.searchHistory).distinct().take(MAX_HISTORY_SIZE),
+                replaceHistory = (listOf(replacement) + it.replaceHistory).distinct().take(MAX_HISTORY_SIZE),
+            )
+        }
         scope.launch {
             val results =
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     replacer.replaceAll(projectPath, query, replacement, skipPaths)
                 }
             val summary =
@@ -225,7 +264,7 @@ public class TextSearchViewModel(
                         regex = current.regex,
                         wholeWord = current.wholeWord,
                     )
-                val results = withContext(Dispatchers.IO) { searcher.search(projectPath, query) }
+                val results = withContext(ioDispatcher) { searcher.search(projectPath, query) }
                 _state.update {
                     it.copy(
                         isSearching = false,
@@ -244,5 +283,8 @@ public class TextSearchViewModel(
     private companion object {
         /** Delay between the last keystroke and the project scan it triggers. */
         const val SEARCH_DEBOUNCE_MS = 250L
+
+        /** Capacity shared with the persisted workspace state. */
+        const val MAX_HISTORY_SIZE = WorkspaceState.MAX_HISTORY_SIZE
     }
 }

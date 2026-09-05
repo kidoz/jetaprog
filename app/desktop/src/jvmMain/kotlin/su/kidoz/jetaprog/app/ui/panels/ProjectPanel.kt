@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,6 +89,9 @@ import java.io.File
  * - More tree node spacing (28dp)
  * - Better icon alignment
  * - Smooth hover states
+ *
+ * @param expandedDirs Optional externally-owned expansion state; when given,
+ *   the panel reads and writes it so the host can persist tree expansion.
  */
 @Composable
 @Suppress("LongParameterList")
@@ -99,10 +103,12 @@ public fun ProjectPanel(
     fileActions: ProjectFileActions? = null,
     onMessage: (String) -> Unit = {},
     onPathRemoved: (String) -> Unit = {},
+    expandedDirs: SnapshotStateMap<String, Boolean>? = null,
 ) {
     val projectName = remember(projectPath) { File(projectPath).name }
     var rootFiles by remember { mutableStateOf<List<File>>(emptyList()) }
-    val expandedDirs = remember { mutableStateMapOf<String, Boolean>() }
+    val ownedExpandedDirs = remember { mutableStateMapOf<String, Boolean>() }
+    val expandedDirs = expandedDirs ?: ownedExpandedDirs
     val childrenCache = remember { mutableStateMapOf<String, List<File>>() }
     var selectedPath by remember { mutableStateOf<String?>(null) }
     var pendingAction by remember { mutableStateOf<ProjectFileAction?>(null) }

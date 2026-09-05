@@ -5,6 +5,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -23,6 +24,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class TextSearchViewModelTest {
     private val scheduler = TestCoroutineScheduler()
+    private val testDispatcher = StandardTestDispatcher(scheduler)
 
     /** In-memory file contents served by [fileSystem]; writes land here too. */
     private val contents =
@@ -83,7 +85,7 @@ class TextSearchViewModelTest {
     @Test
     fun searchPopulatesPerFileResults() =
         runTest {
-            val viewModel = TextSearchViewModel("/proj", fileSystem)
+            val viewModel = TextSearchViewModel("/proj", fileSystem, testDispatcher)
 
             viewModel.setQuery("old")
             scheduler.advanceUntilIdle()
@@ -97,7 +99,7 @@ class TextSearchViewModelTest {
     @Test
     fun confirmReplaceAllRewritesMatchingFilesAndReportsSummary() =
         runTest {
-            val viewModel = TextSearchViewModel("/proj", fileSystem)
+            val viewModel = TextSearchViewModel("/proj", fileSystem, testDispatcher)
             viewModel.setQuery("old")
             scheduler.advanceUntilIdle()
             viewModel.setReplacement("new")
@@ -115,7 +117,7 @@ class TextSearchViewModelTest {
     @Test
     fun skippedPathsAreReportedAndNotWritten() =
         runTest {
-            val viewModel = TextSearchViewModel("/proj", fileSystem)
+            val viewModel = TextSearchViewModel("/proj", fileSystem, testDispatcher)
             viewModel.setQuery("old")
             scheduler.advanceUntilIdle()
             viewModel.setReplacement("new")
@@ -132,7 +134,7 @@ class TextSearchViewModelTest {
     @Test
     fun replaceConfirmationClosesOnNewQuery() =
         runTest {
-            val viewModel = TextSearchViewModel("/proj", fileSystem)
+            val viewModel = TextSearchViewModel("/proj", fileSystem, testDispatcher)
             viewModel.setQuery("old")
             scheduler.advanceUntilIdle()
             viewModel.state.first { it.searched }
@@ -152,7 +154,7 @@ class TextSearchViewModelTest {
     @Test
     fun emptyQueryClearsResultsAndSummary() =
         runTest {
-            val viewModel = TextSearchViewModel("/proj", fileSystem)
+            val viewModel = TextSearchViewModel("/proj", fileSystem, testDispatcher)
             viewModel.setQuery("old")
             scheduler.advanceUntilIdle()
             viewModel.setReplacement("new")
@@ -165,6 +167,40 @@ class TextSearchViewModelTest {
             assertEquals(0, state.totalMatches)
             assertFalse(state.searched)
             assertNull(state.replaceSummary)
+            viewModel.dispose()
+        }
+
+    @Test
+    fun explicitSearchAndReplaceRecordPersistableHistories() =
+        runTest {
+            val viewModel = TextSearchViewModel("/proj", fileSystem, testDispatcher)
+            viewModel.seedHistories(searches = listOf("seeded"), replacements = listOf("seeded-new"))
+
+            viewModel.setQuery("old")
+            scheduler.advanceUntilIdle()
+            viewModel.setReplacement("new")
+            viewModel.search()
+            viewModel.confirmReplaceAll()
+            viewModel.state.first { it.replaceSummary != null }
+
+            val state = viewModel.state.value
+            assertEquals(listOf("old", "seeded"), state.searchHistory)
+            assertEquals(listOf("new", "seeded-new"), state.replaceHistory)
+            viewModel.dispose()
+        }
+
+    @Test
+    fun debouncedTypingDoesNotRecordSearchHistory() =
+        runTest {
+            val viewModel = TextSearchViewModel("/proj", fileSystem, testDispatcher)
+
+            viewModel.setQuery("typed-not-executed")
+            scheduler.advanceUntilIdle()
+
+            assertTrue(
+                viewModel.state.value.searchHistory
+                    .isEmpty(),
+            )
             viewModel.dispose()
         }
 }

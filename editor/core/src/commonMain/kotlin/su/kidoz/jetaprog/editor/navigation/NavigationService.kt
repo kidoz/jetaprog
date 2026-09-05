@@ -232,6 +232,13 @@ public interface NavigationService {
     public suspend fun getRecentFiles(limit: Int = 30): List<NavigationHistoryEntry>
 
     /**
+     * Seed the recent-files list from a persisted snapshot (most recent
+     * first). No-op when [paths] is empty. Implementations without a history
+     * may ignore this.
+     */
+    public suspend fun seedRecentFiles(paths: List<String>): Unit = Unit
+
+    /**
      * Get recent navigation locations.
      *
      * @param limit Maximum number of locations

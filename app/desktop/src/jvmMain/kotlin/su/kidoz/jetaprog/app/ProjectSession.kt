@@ -135,6 +135,7 @@ import su.kidoz.jetaprog.plugins.vala.ValaPlugin
 import su.kidoz.jetaprog.project.service.JvmFileOperations
 import su.kidoz.jetaprog.project.service.ProjectDirectoryService
 import su.kidoz.jetaprog.project.state.CursorState
+import su.kidoz.jetaprog.project.state.PanelLayout
 import su.kidoz.jetaprog.project.state.TabState
 import su.kidoz.jetaprog.project.state.WorkspaceState
 import su.kidoz.jetaprog.settings.SettingsService
@@ -179,6 +180,20 @@ public class ProjectSession(
     private val gradleExecutionService = JvmGradleExecutionService(processExecutor)
     private val executionOrchestrator = ExecutionOrchestrator(processExecutor, sessionScope)
     private val databaseExecutionService = JvmDatabaseExecutionService()
+
+    /**
+     * The persisted layout of the IDE around the project — left panel width,
+     * visible sidebar item, and the active bottom tab. The UI reads the
+     * initial values and writes changes back; [saveWorkspaceState] persists
+     * the latest snapshot.
+     */
+    public val panelLayout: MutableStateFlow<PanelLayout> = MutableStateFlow(PanelLayout())
+
+    /**
+     * Expanded directories of the project tree, mirrored from the panel so
+     * they survive a restart.
+     */
+    public val treeExpansion: MutableStateFlow<Set<String>> = MutableStateFlow(emptySet())
 
     /** Database connections, schema metadata, and query execution for this project session. */
     public val databaseViewModel: DatabaseViewModel =
@@ -899,6 +914,12 @@ public class ProjectSession(
 
     private suspend fun restoreWorkspaceState() {
         val state = projectDirectoryService.loadWorkspaceState().getOrNull() ?: return
+
+        panelLayout.value = state.panelLayout
+        treeExpansion.value = state.expandedPaths
+        navigationService.seedRecentFiles(state.recentFiles)
+        textSearchViewModel.seedHistories(state.searchHistory, state.replaceHistory)
+
         if (state.openTabs.isEmpty()) return
 
         val activeTab = state.openTabs.getOrNull(state.activeTabIndex)
@@ -943,10 +964,16 @@ public class ProjectSession(
                     isDirty = tab.isDirty,
                 )
             }
+        val searchState = textSearchViewModel.state.value
         projectDirectoryService.saveWorkspaceState(
             existing.copy(
                 openTabs = openTabs,
                 activeTabIndex = editorState.activeTabIndex,
+                expandedPaths = treeExpansion.value,
+                panelLayout = panelLayout.value,
+                recentFiles = navigationService.getRecentFiles(WorkspaceState.MAX_RECENT_FILES).map { it.filePath },
+                searchHistory = searchState.searchHistory,
+                replaceHistory = searchState.replaceHistory,
             ),
         )
     }
