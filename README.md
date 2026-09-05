@@ -62,7 +62,7 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
 | Area | Technology |
 |------|------------|
 | Language | Kotlin 2.4.10 (JVM target 25) |
-| UI | Compose Multiplatform 1.11.1 (Desktop) |
+| UI | Compose Multiplatform 1.12.0 (Desktop) |
 | Async | Kotlin Coroutines 1.11.0 |
 | DI | Manual constructor injection |
 | Serialization | kotlinx.serialization 1.11.0 (JSON settings/storage) |
