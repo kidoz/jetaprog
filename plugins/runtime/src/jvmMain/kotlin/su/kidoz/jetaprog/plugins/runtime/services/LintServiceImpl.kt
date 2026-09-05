@@ -1,9 +1,12 @@
 package su.kidoz.jetaprog.plugins.runtime.services
 
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.job
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.lint.config.LintConfiguration
 import su.kidoz.jetaprog.lint.config.RuleOverride
@@ -20,6 +23,7 @@ import su.kidoz.jetaprog.lint.provider.LintProviderRegistry
 import su.kidoz.jetaprog.plugins.api.services.LintService
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Implementation of LintService that delegates to LintEngine and LintProviderRegistry.
@@ -33,6 +37,9 @@ public class LintServiceImpl(
     private val summaryFlowInternal = MutableStateFlow(LintSummary.EMPTY)
     private var configuration = LintConfiguration()
     private val isLinting = AtomicBoolean(false)
+
+    /** The coroutine running the current lint; cancelled by [cancelLint]. */
+    private val activeLintJob = AtomicReference<Job?>(null)
 
     override fun registerProvider(provider: LintProvider): Disposable {
         providerRegistry.register(provider)
@@ -56,6 +63,7 @@ public class LintServiceImpl(
         content: String,
     ): List<LintResult> {
         isLinting.set(true)
+        activeLintJob.set(currentCoroutineContext().job)
         try {
             val input =
                 LintInput(
@@ -142,7 +150,9 @@ public class LintServiceImpl(
     override fun isLinting(): Boolean = isLinting.get()
 
     override fun cancelLint() {
-        // TODO: Implement cancellation support
+        // Cooperative cancellation: the engine checks coroutine activeness, so
+        // cancelling the running lint coroutine aborts it before it publishes.
+        activeLintJob.getAndSet(null)?.cancel()
         isLinting.set(false)
     }
 
