@@ -80,6 +80,9 @@ import su.kidoz.jetaprog.app.ui.debug.DebugBottomContent
 import su.kidoz.jetaprog.app.ui.debug.DebugIntent
 import su.kidoz.jetaprog.app.ui.debug.DebugSidePanel
 import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
+import su.kidoz.jetaprog.app.ui.dialogs.clone.CloneRepositoryDialog
+import su.kidoz.jetaprog.app.ui.dialogs.clone.CloneRepositoryEffect
+import su.kidoz.jetaprog.app.ui.dialogs.clone.CloneRepositoryIntent
 import su.kidoz.jetaprog.app.ui.dialogs.configuration.RunConfigurationDialog
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectDialog
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectEffect
@@ -242,10 +245,7 @@ public fun MainScreen(app: JetaProgApplication) {
                 }
 
                 is WelcomeEffect.StartClone -> {
-                    app.notificationCenter.info(
-                        title = "Clone Repository",
-                        message = "Repository cloning is coming soon.",
-                    )
+                    app.cloneRepositoryViewModel.dispatch(CloneRepositoryIntent.Show)
                 }
 
                 is WelcomeEffect.OpenInNewWindow -> {
@@ -275,6 +275,39 @@ public fun MainScreen(app: JetaProgApplication) {
                 state = welcomeSettingsState,
                 onIntent = { intent -> app.settingsViewModel.dispatch(intent) },
             )
+            CloneRepositoryDialog(
+                viewModel = app.cloneRepositoryViewModel,
+                onBrowseDestination = {
+                    val chooser =
+                        JFileChooser().apply {
+                            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                            dialogTitle = "Select Destination Directory"
+                            currentDirectory =
+                                File(
+                                    app.cloneRepositoryViewModel.state.value.destinationDirectory
+                                        .ifEmpty { System.getProperty("user.home") },
+                                )
+                        }
+                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                        app.cloneRepositoryViewModel.dispatch(
+                            CloneRepositoryIntent.SetDestinationDirectory(chooser.selectedFile.absolutePath),
+                        )
+                    }
+                },
+            )
+            LaunchedEffect(app.cloneRepositoryViewModel) {
+                app.cloneRepositoryViewModel.effects.collect { effect ->
+                    when (effect) {
+                        is CloneRepositoryEffect.Cloned -> {
+                            app.notificationCenter.info(
+                                title = "Repository cloned",
+                                message = "Opened ${effect.projectPath.substringAfterLast('/')}.",
+                            )
+                            app.openProject(effect.projectPath)
+                        }
+                    }
+                }
+            }
         }
         return
     }

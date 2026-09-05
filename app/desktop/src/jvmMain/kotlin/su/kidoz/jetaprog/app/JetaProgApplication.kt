@@ -14,6 +14,7 @@ import su.kidoz.jetaprog.app.mcp.registerIdeTools
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeViewModel
+import su.kidoz.jetaprog.app.viewmodel.CloneRepositoryViewModel
 import su.kidoz.jetaprog.app.viewmodel.IdeMcpEndpoint
 import su.kidoz.jetaprog.app.viewmodel.NewProjectViewModel
 import su.kidoz.jetaprog.app.viewmodel.SettingsViewModel
@@ -120,6 +121,12 @@ public class JetaProgApplication {
      * The settings view model (global).
      */
     public val settingsViewModel: SettingsViewModel = SettingsViewModel(settingsService)
+
+    /**
+     * The clone repository view model (global).
+     */
+    public val cloneRepositoryViewModel: CloneRepositoryViewModel =
+        CloneRepositoryViewModel(processExecutor)
 
     /**
      * The new project view model (global).
