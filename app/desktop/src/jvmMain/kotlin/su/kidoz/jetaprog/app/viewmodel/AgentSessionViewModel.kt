@@ -39,8 +39,12 @@ import su.kidoz.jetaprog.acp.protocol.ToolCallContent
 import su.kidoz.jetaprog.acp.protocol.ToolCallStatus
 import su.kidoz.jetaprog.acp.protocol.ToolKind
 import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
+import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
+import su.kidoz.jetaprog.app.agent.AgentHistoryRole
+import su.kidoz.jetaprog.app.agent.AgentHistoryStore
 import su.kidoz.jetaprog.app.agent.AgentPrefs
 import su.kidoz.jetaprog.app.agent.AgentPrefsStore
+import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
@@ -58,6 +62,7 @@ import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.platform.filesystem.WorkspacePathException
 import su.kidoz.jetaprog.platform.filesystem.WorkspacePathGuard
 import java.io.File
+import java.util.UUID
 
 /**
  * Drives the AI agent surface from a single Agent Client Protocol session.
@@ -83,6 +88,7 @@ public class AgentSessionViewModel(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val agentCommand = defaultAgentCommand
     private val prefsStore = AgentPrefsStore(fileSystem, projectPath)
+    private val historyStore = AgentHistoryStore(fileSystem, projectPath)
     private val pathGuard = WorkspacePathGuard { projectPath }
 
     private val _state = MutableStateFlow(AgentUiState())
@@ -92,6 +98,7 @@ public class AgentSessionViewModel(
 
     private var client: AcpClient? = null
     private var sessionId: String? = null
+    private var recordId: String? = null
     private var seq = 0
     private val pendingApprovals = mutableMapOf<String, PendingApproval>()
 
@@ -129,7 +136,26 @@ public class AgentSessionViewModel(
             }
 
             AgentIntent.NewChat -> {
+                archiveConversation()
+                recordId = null
                 _state.update { it.copy(turns = emptyList(), error = null) }
+            }
+
+            AgentIntent.ShowHistory -> {
+                _state.update { it.copy(sessionHistory = historyStore.list(), historyVisible = true) }
+            }
+
+            AgentIntent.HideHistory -> {
+                _state.update { it.copy(historyVisible = false) }
+            }
+
+            is AgentIntent.RestoreSession -> {
+                restoreSession(intent.recordId)
+            }
+
+            is AgentIntent.DeleteSession -> {
+                historyStore.remove(intent.recordId)
+                _state.update { it.copy(sessionHistory = historyStore.list()) }
             }
 
             is AgentIntent.ToggleToolCall -> {
@@ -304,6 +330,83 @@ public class AgentSessionViewModel(
                     }
                 }
             st.copy(isStreaming = false, presence = null, turns = turns)
+        }
+        // Persist the transcript once the turn settles (fire-and-forget).
+        scope.launch { archiveConversation() }
+    }
+
+    // ------------------------------------------------------------------------
+    // Session history
+    // ------------------------------------------------------------------------
+
+    /**
+     * Persists the conversation transcript (user messages plus the agent's
+     * text blocks; tool calls, diffs and approvals are not restorable and are
+     * skipped). Creates the record on first use and upserts afterwards.
+     */
+    private suspend fun archiveConversation() {
+        val messages =
+            _state.value.turns
+                .flatMap { turn ->
+                    when (turn) {
+                        is Turn.User -> {
+                            listOf(AgentHistoryMessage(AgentHistoryRole.USER, turn.text))
+                        }
+
+                        is Turn.Agent -> {
+                            turn.blocks
+                                .filterIsInstance<Block.Text>()
+                                .filter { !it.thought }
+                                .map { AgentHistoryMessage(AgentHistoryRole.AGENT, it.text) }
+                        }
+                    }
+                }.filter { it.text.isNotBlank() }
+        if (messages.none { it.role == AgentHistoryRole.USER }) return
+
+        val id = recordId ?: UUID.randomUUID().toString().also { recordId = it }
+        val title =
+            messages
+                .firstOrNull { it.role == AgentHistoryRole.USER }
+                ?.text
+                ?.replace('\n', ' ')
+                ?.trim()
+                ?.let { if (it.length > TITLE_MAX_CHARS) it.take(TITLE_MAX_CHARS) + "…" else it }
+                ?: "Agent session"
+        historyStore.save(
+            AgentSessionRecord(
+                id = id,
+                title = title,
+                projectPath = projectPath,
+                savedAtEpochMillis = System.currentTimeMillis(),
+                messages = messages,
+            ),
+        )
+    }
+
+    /** Rebuilds the surface turns from a persisted transcript. */
+    private suspend fun restoreSession(recordIdToRestore: String) {
+        val record = historyStore.list().firstOrNull { it.id == recordIdToRestore } ?: return
+        recordId = record.id
+        var counter = 0
+        val turns =
+            record.messages.map { message ->
+                val id = "restored-${record.id}-${counter++}"
+                when (message.role) {
+                    AgentHistoryRole.USER -> {
+                        Turn.User(id = id, text = message.text, timeLabel = "")
+                    }
+
+                    AgentHistoryRole.AGENT -> {
+                        Turn.Agent(
+                            id = id,
+                            timeLabel = "",
+                            blocks = listOf(Block.Text(id = "$id-text", text = message.text)),
+                        )
+                    }
+                }
+            }
+        _state.update {
+            it.copy(turns = turns, historyVisible = false, error = null, presence = null, isStreaming = false)
         }
     }
 
@@ -672,6 +775,9 @@ public class AgentSessionViewModel(
 
         /** Option ids used for approvals the IDE raises itself (direct file writes). */
         private const val ALLOW_OPTION_ID = "allow"
+
+        /** Max characters of a persisted session title. */
+        const val TITLE_MAX_CHARS = 40
         private const val REJECT_OPTION_ID = "reject"
 
         /**

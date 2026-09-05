@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.CloseFullscreen
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -40,6 +41,7 @@ import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,17 +57,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.delay
+import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
 import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
+import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.panels.FileBadge
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
@@ -73,6 +80,7 @@ import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
+import java.text.DateFormat
 
 private const val CONVERSATION_MAX_WIDTH = 760
 private const val RAIL_WIDTH = 264
@@ -144,28 +152,41 @@ private fun AgentHeader(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .background(LocalIntelliJColors.current.background)
-                .padding(horizontal = Spacing.md.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    var headerHeightPx by remember { mutableStateOf(0) }
+    Box(
+        modifier = Modifier.onSizeChanged { headerHeightPx = it.height },
     ) {
-        AgentAvatar(tileSize = 26, iconSize = 16, cornerRadius = 7)
-        Column {
-            Text("Agent", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text(subtitleFor(state), color = subtitleColor(state), fontSize = 10.sp)
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(LocalIntelliJColors.current.background)
+                    .padding(horizontal = Spacing.md.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+        ) {
+            AgentAvatar(tileSize = 26, iconSize = 16, cornerRadius = 7)
+            Column {
+                Text("Agent", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(subtitleFor(state), color = subtitleColor(state), fontSize = 10.sp)
+            }
+            ModelEffortChip(state)
+            Spacer(Modifier.weight(1f))
+            HeaderIcon(Icons.Default.History, "History") { dispatch(AgentIntent.ShowHistory) }
+            HeaderIcon(Icons.Default.Add, "New chat") { dispatch(AgentIntent.NewChat) }
+            if (state.docked) {
+                HeaderIcon(Icons.Default.OpenInFull, "Expand") { dispatch(AgentIntent.ExpandToPerspective) }
+            } else {
+                HeaderIcon(Icons.Default.CloseFullscreen, "Dock") { dispatch(AgentIntent.DockToToolWindow) }
+            }
         }
-        ModelEffortChip(state)
-        Spacer(Modifier.weight(1f))
-        HeaderIcon(Icons.Default.Add, "New chat") { dispatch(AgentIntent.NewChat) }
-        if (state.docked) {
-            HeaderIcon(Icons.Default.OpenInFull, "Expand") { dispatch(AgentIntent.ExpandToPerspective) }
-        } else {
-            HeaderIcon(Icons.Default.CloseFullscreen, "Dock") { dispatch(AgentIntent.DockToToolWindow) }
+        if (state.historyVisible) {
+            AgentHistoryPopup(
+                records = state.sessionHistory,
+                dispatch = dispatch,
+                offsetY = headerHeightPx,
+            )
         }
     }
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
@@ -794,3 +815,85 @@ private fun subtitleColor(state: AgentUiState): Color =
     }
 
 private fun formatElapsed(seconds: Long): String = "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
+
+/**
+ * Popup listing persisted agent conversations, most recent first: clicking a
+ * row restores the transcript into the surface, the trailing icon deletes it.
+ */
+@Composable
+private fun AgentHistoryPopup(
+    records: List<AgentSessionRecord>,
+    dispatch: (AgentIntent) -> Unit,
+    offsetY: Int,
+    modifier: Modifier = Modifier,
+) {
+    var pendingDelete by remember { mutableStateOf<AgentSessionRecord?>(null) }
+
+    PopupChromeMenu(
+        expanded = true,
+        onDismissRequest = { dispatch(AgentIntent.HideHistory) },
+        modifier = modifier,
+        offsetY = offsetY,
+    ) {
+        if (records.isEmpty()) {
+            Text(
+                text = "No saved sessions yet.",
+                color = LocalIntelliJColors.current.textMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
+            )
+        } else {
+            for (record in records) {
+                PopupListRow(
+                    selected = false,
+                    onClick = {
+                        dispatch(AgentIntent.RestoreSession(record.id))
+                    },
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = record.title,
+                            color = LocalIntelliJColors.current.textPrimary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text =
+                                DateFormat
+                                    .getDateInstance(
+                                        DateFormat.SHORT,
+                                    ).format(java.util.Date(record.savedAtEpochMillis)),
+                            color = LocalIntelliJColors.current.textMuted,
+                            fontSize = 10.sp,
+                        )
+                    }
+                    IconButton(
+                        onClick = { pendingDelete = record },
+                        modifier = Modifier.size(20.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete session",
+                            tint = LocalIntelliJColors.current.textSecondary,
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    pendingDelete?.let { record ->
+        ConfirmationDialog(
+            title = "Delete session?",
+            message = "Delete \"${record.title}\"? This cannot be undone.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                dispatch(AgentIntent.DeleteSession(record.id))
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null },
+        )
+    }
+}

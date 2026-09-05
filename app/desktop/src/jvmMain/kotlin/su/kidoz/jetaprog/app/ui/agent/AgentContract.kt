@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.ui.agent
 
 import androidx.compose.runtime.Immutable
+import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 
 /** Lifecycle of the connection to the backing ACP agent. */
 public enum class AgentConnection {
@@ -321,6 +322,10 @@ public data class AgentUiState(
     val docked: Boolean = false,
     val error: String? = null,
     val composerInput: String = "",
+    /** Persisted conversations, most recent first (loaded on History). */
+    val sessionHistory: List<AgentSessionRecord> = emptyList(),
+    /** Whether the History popup is shown. */
+    val historyVisible: Boolean = false,
 ) {
     /** Files the agent changed in the latest agent turn, for the session rail. */
     val sessionChanges: List<SessionFileChange>
@@ -364,6 +369,22 @@ public sealed interface AgentIntent {
 
     /** Start a fresh conversation, archiving the current one. */
     public data object NewChat : AgentIntent
+
+    /** Open the session History popup (loads persisted conversations). */
+    public data object ShowHistory : AgentIntent
+
+    /** Close the session History popup. */
+    public data object HideHistory : AgentIntent
+
+    /** Restore the persisted conversation with [recordId] into the surface. */
+    public data class RestoreSession(
+        val recordId: String,
+    ) : AgentIntent
+
+    /** Delete the persisted conversation with [recordId]. */
+    public data class DeleteSession(
+        val recordId: String,
+    ) : AgentIntent
 
     /** Toggle the expanded state of a tool-call card. */
     public data class ToggleToolCall(
