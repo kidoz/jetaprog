@@ -30,6 +30,10 @@ public data class AllSettings(
      * Plugin management settings.
      */
     val plugins: PluginsSettings = PluginsSettings.DEFAULT,
+    /**
+     * User-customized keyboard shortcuts.
+     */
+    val keymap: KeymapSettings = KeymapSettings.DEFAULT,
 ) {
     public companion object {
         /**

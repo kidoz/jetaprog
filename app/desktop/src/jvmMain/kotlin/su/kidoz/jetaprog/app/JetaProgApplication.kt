@@ -1,15 +1,20 @@
 package su.kidoz.jetaprog.app
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import su.kidoz.jetaprog.app.keymap.KeymapManager
 import su.kidoz.jetaprog.app.mcp.registerIdeTools
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
@@ -113,6 +118,15 @@ public class JetaProgApplication {
     private val settingsService: DefaultSettingsService = DefaultSettingsService(settingsStorage)
 
     /**
+     * The application-wide keymap. Custom overrides are re-applied whenever
+     * the user edits shortcuts in Settings → Keymap (or the settings file).
+     */
+    public val keymapManager: KeymapManager = KeymapManager()
+
+    /** Long-lived scope for application-level observers (settings → keymap). */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
      * The appearance settings stream, used to drive the IDE color theme.
      */
     public val appearanceSettings: Flow<AppearanceSettings> = settingsService.appearance
@@ -185,6 +199,7 @@ public class JetaProgApplication {
                 languageServerManager = languageServerManager,
                 databaseProfileStore = databaseProfileStore,
                 databaseCredentialStore = databaseCredentialStore,
+                keymapManager = keymapManager,
                 ideMcpEndpoint = {
                     mcpServer.endpoint?.let { IdeMcpEndpoint(url = it, authToken = mcpServer.authToken) }
                 },
@@ -215,6 +230,13 @@ public class JetaProgApplication {
      * into the Welcome Hub ([session] is `null`) until the user opens a project.
      */
     public suspend fun initialize() {
+        // Seed custom shortcuts from the persisted settings and keep them in
+        // sync when the settings change at runtime.
+        keymapManager.applyFromSettings(settingsService.getCurrentSettings().keymap)
+        appScope.launch {
+            settingsService.settings.collect { settings -> keymapManager.applyFromSettings(settings.keymap) }
+        }
+
         registerIdeTools(
             server = mcpServer,
             fileSystem = fileSystem,

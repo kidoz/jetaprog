@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -235,6 +236,7 @@ private fun getCategoryIcon(category: SettingsCategory): ImageVector =
         SettingsCategory.LANGUAGES -> Icons.Default.Code
         SettingsCategory.TOOLS -> Icons.Default.Build
         SettingsCategory.PLUGINS -> Icons.Default.Extension
+        SettingsCategory.KEYMAP -> Icons.Default.Keyboard
     }
 
 private fun getSubItems(category: SettingsCategory): List<String> =
@@ -244,4 +246,5 @@ private fun getSubItems(category: SettingsCategory): List<String> =
         SettingsCategory.LANGUAGES -> listOf("Kotlin", "Vala", "LSP Servers")
         SettingsCategory.TOOLS -> listOf("Build Systems", "MCP Servers", "External Tools")
         SettingsCategory.PLUGINS -> emptyList()
+        SettingsCategory.KEYMAP -> listOf("Shortcuts")
     }

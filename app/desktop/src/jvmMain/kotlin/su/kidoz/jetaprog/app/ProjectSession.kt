@@ -32,7 +32,7 @@ import su.kidoz.jetaprog.app.command.CommandPaletteViewModel
 import su.kidoz.jetaprog.app.database.DatabaseViewModel
 import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
 import su.kidoz.jetaprog.app.keymap.CommandActions
-import su.kidoz.jetaprog.app.keymap.DefaultKeymap
+import su.kidoz.jetaprog.app.keymap.KeymapManager
 import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.navigation.DiskFileContentProvider
@@ -164,6 +164,8 @@ public class ProjectSession(
     private val languageServerManager: LanguageServerManager,
     databaseProfileStore: DatabaseProfileStore,
     databaseCredentialStore: SessionDatabaseCredentialStore,
+    /** Application-wide keymap honoring user shortcut overrides. */
+    private val keymapManager: KeymapManager,
     private val ideMcpEndpoint: () -> IdeMcpEndpoint? = { null },
 ) : Disposable {
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -730,7 +732,7 @@ public class ProjectSession(
     /**
      * Handles an IDE-wide key event for navigation shortcuts.
      *
-     * Routed from the window's preview key handler. Recognizes the [su.kidoz.jetaprog.app.keymap.DefaultKeymap]
+     * Routed from the window's preview key handler. Recognizes the [su.kidoz.jetaprog.app.keymap.KeymapManager]
      * navigation chords (Go to Class/File/Symbol, declaration, usages, structure, back/forward)
      * plus double-Shift for Search Everywhere.
      *
@@ -749,7 +751,7 @@ public class ProjectSession(
         if (popupOpen) return false
 
         if (event.type == KeyEventType.KeyDown &&
-            DefaultKeymap.findAction(event) == CommandActions.COMMAND_PALETTE
+            keymapManager.findAction(event) == CommandActions.COMMAND_PALETTE
         ) {
             commandPaletteViewModel.dispatch(CommandPaletteIntent.Show)
             return true
@@ -758,7 +760,7 @@ public class ProjectSession(
         if (handleDoubleShift(event)) return true
 
         if (event.type == KeyEventType.KeyDown &&
-            DefaultKeymap.findAction(event) == NavigationActions.RENAME
+            keymapManager.findAction(event) == NavigationActions.RENAME
         ) {
             startRename()
             return true
@@ -778,6 +780,7 @@ public class ProjectSession(
             currentLine = cursor.line,
             currentColumn = cursor.column,
             scope = sessionScope,
+            keymapManager = keymapManager,
         )
     }
 

@@ -10,7 +10,6 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.type
 import kotlinx.coroutines.launch
-import su.kidoz.jetaprog.app.keymap.DefaultKeymap
 import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 
@@ -172,11 +171,12 @@ public fun handleNavigationKeyEvent(
     currentLine: Int,
     currentColumn: Int,
     scope: kotlinx.coroutines.CoroutineScope,
+    keymapManager: su.kidoz.jetaprog.app.keymap.KeymapManager,
 ): Boolean {
     // Only handle key down events
     if (event.type != KeyEventType.KeyDown) return false
 
-    val action = DefaultKeymap.findAction(event) ?: return false
+    val action = keymapManager.findAction(event) ?: return false
 
     when (action) {
         NavigationActions.GOTO_CLASS -> {

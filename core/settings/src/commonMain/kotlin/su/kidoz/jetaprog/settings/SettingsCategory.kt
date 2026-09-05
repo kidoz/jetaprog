@@ -49,4 +49,12 @@ public enum class SettingsCategory(
         displayName = "Plugins",
         description = "Manage installed plugins",
     ),
+
+    /**
+     * Keyboard shortcuts: view and customize action bindings.
+     */
+    KEYMAP(
+        displayName = "Keymap",
+        description = "View and customize keyboard shortcuts",
+    ),
 }

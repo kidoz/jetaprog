@@ -9,6 +9,7 @@ import su.kidoz.jetaprog.settings.model.AllSettings
 import su.kidoz.jetaprog.settings.model.AppearanceSettings
 import su.kidoz.jetaprog.settings.model.BuildSystemsConfig
 import su.kidoz.jetaprog.settings.model.EditorSettings
+import su.kidoz.jetaprog.settings.model.KeymapSettings
 import su.kidoz.jetaprog.settings.model.LanguageDefaults
 import su.kidoz.jetaprog.settings.model.LanguagesSettings
 import su.kidoz.jetaprog.settings.model.PluginsSettings
@@ -132,6 +133,7 @@ public class DefaultSettingsService(
                     SettingsCategory.LANGUAGES -> copy(languages = LanguagesSettings.DEFAULT)
                     SettingsCategory.TOOLS -> copy(tools = ToolsSettings.DEFAULT)
                     SettingsCategory.PLUGINS -> copy(plugins = PluginsSettings.DEFAULT)
+                    SettingsCategory.KEYMAP -> copy(keymap = KeymapSettings.DEFAULT)
                 }
             }
         }

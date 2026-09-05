@@ -7,6 +7,12 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import su.kidoz.jetaprog.settings.model.KeymapSettings
+import su.kidoz.jetaprog.settings.model.ShortcutSpec
 
 /**
  * Keyboard shortcut definition.
@@ -199,6 +205,44 @@ public object CommandActions {
 }
 
 /**
+ * Human-readable names for customizable actions, keyed by action id. Actions
+ * missing here fall back to their raw id in the Keymap settings panel.
+ */
+public val ACTION_DISPLAY_NAMES: Map<String, String> =
+    mapOf(
+        NavigationActions.GOTO_CLASS to "Go to Class",
+        NavigationActions.GOTO_FILE to "Go to File",
+        NavigationActions.GOTO_SYMBOL to "Go to Symbol",
+        NavigationActions.SEARCH_EVERYWHERE to "Search Everywhere",
+        NavigationActions.GOTO_DECLARATION to "Go to Declaration",
+        NavigationActions.GOTO_TYPE_DECLARATION to "Go to Type Declaration",
+        NavigationActions.GOTO_IMPLEMENTATION to "Go to Implementation(s)",
+        NavigationActions.GOTO_SUPER to "Go to Super Method",
+        NavigationActions.QUICK_DEFINITION to "Quick Definition",
+        NavigationActions.FIND_USAGES to "Find Usages",
+        NavigationActions.SHOW_USAGES to "Show Usages",
+        NavigationActions.HIGHLIGHT_USAGES to "Highlight Usages in File",
+        NavigationActions.NEXT_HIGHLIGHTED to "Next Highlighted Usage",
+        NavigationActions.PREV_HIGHLIGHTED to "Previous Highlighted Usage",
+        NavigationActions.FILE_STRUCTURE to "File Structure",
+        NavigationActions.SELECT_IN to "Select In…",
+        NavigationActions.NAVIGATION_BAR to "Jump to Navigation Bar",
+        NavigationActions.RECENT_FILES to "Recent Files",
+        NavigationActions.RECENT_LOCATIONS to "Recent Locations",
+        NavigationActions.BACK to "Back",
+        NavigationActions.FORWARD to "Forward",
+        NavigationActions.LAST_EDIT_LOCATION to "Last Edit Location",
+        NavigationActions.CALL_HIERARCHY to "Call Hierarchy",
+        NavigationActions.TYPE_HIERARCHY to "Type Hierarchy",
+        NavigationActions.RENAME to "Rename",
+        NavigationActions.NEXT_ERROR to "Next Highlighted Error",
+        NavigationActions.PREV_ERROR to "Previous Highlighted Error",
+        NavigationActions.NEXT_METHOD to "Next Method",
+        NavigationActions.PREV_METHOD to "Previous Method",
+        CommandActions.COMMAND_PALETTE to "Command Palette",
+    )
+
+/**
  * Default keymap with IntelliJ-style shortcuts.
  */
 public object DefaultKeymap {
@@ -261,15 +305,23 @@ public object DefaultKeymap {
 
 /**
  * Keymap manager that supports custom keymaps.
+ *
+ * Custom shortcuts are the single source of truth for overrides; the host
+ * application seeds them from the persisted settings (see [applyFromSettings])
+ * and the settings dialog writes changes back through [setShortcut] and
+ * [removeCustomShortcut].
  */
 public class KeymapManager {
-    private val customShortcuts = mutableMapOf<String, KeyboardShortcut>()
+    private val mutableCustomShortcuts = MutableStateFlow(emptyMap<String, KeyboardShortcut>())
+
+    /** The current custom overrides, keyed by action id. */
+    public val customShortcuts: StateFlow<Map<String, KeyboardShortcut>> = mutableCustomShortcuts.asStateFlow()
 
     /**
-     * Get the effective shortcut for an action.
+     * Get the effective shortcut for an action (custom override or default).
      */
     public fun getShortcut(action: String): KeyboardShortcut? =
-        customShortcuts[action] ?: DefaultKeymap.getShortcut(action)
+        mutableCustomShortcuts.value[action] ?: DefaultKeymap.getShortcut(action)
 
     /**
      * Set a custom shortcut for an action.
@@ -278,28 +330,98 @@ public class KeymapManager {
         action: String,
         shortcut: KeyboardShortcut,
     ) {
-        customShortcuts[action] = shortcut
+        mutableCustomShortcuts.update { it + (action to shortcut) }
     }
 
     /**
      * Remove a custom shortcut (revert to default).
      */
     public fun removeCustomShortcut(action: String) {
-        customShortcuts.remove(action)
+        mutableCustomShortcuts.update { it - action }
     }
 
     /**
-     * Find the action that matches a key event.
+     * Replaces all custom overrides with the persisted [settings], dropping
+     * entries whose key code is not recognized.
+     */
+    public fun applyFromSettings(settings: KeymapSettings) {
+        mutableCustomShortcuts.value =
+            settings.customShortcuts
+                .mapNotNull { (action, spec) ->
+                    spec.toKeyboardShortcut()?.let { action to it }
+                }.toMap()
+    }
+
+    /**
+     * The persisted form of the current overrides.
+     */
+    public fun toSettings(): KeymapSettings =
+        KeymapSettings(customShortcuts = mutableCustomShortcuts.value.mapValues { it.value.toSpec() })
+
+    /**
+     * Find the action that matches a key event (custom overrides first).
      */
     public fun findAction(event: KeyEvent): String? {
-        // Check custom shortcuts first
-        customShortcuts.entries.find { it.value.matches(event) }?.let { return it.key }
-        // Fall back to default
+        mutableCustomShortcuts.value.entries
+            .find { it.value.matches(event) }
+            ?.let { return it.key }
         return DefaultKeymap.findAction(event)
     }
 
     /**
-     * Get all actions with their shortcuts.
+     * Get all actions with their effective shortcuts.
      */
-    public fun getAllShortcuts(): Map<String, KeyboardShortcut> = DefaultKeymap.shortcuts + customShortcuts
+    public fun getAllShortcuts(): Map<String, KeyboardShortcut> = DefaultKeymap.shortcuts + mutableCustomShortcuts.value
+
+    /**
+     * Whether [action] has a user-defined override.
+     */
+    public fun isCustomized(action: String): Boolean = mutableCustomShortcuts.value.containsKey(action)
 }
+
+/**
+ * Converts a shortcut into its persisted settings form.
+ */
+public fun KeyboardShortcut.toSpec(): ShortcutSpec = ShortcutSpec(key.keyCode, ctrl, shift, alt, meta)
+
+/**
+ * Rebuilds a shortcut from its persisted form, or null when the key code is
+ * not one of the assignable keys.
+ */
+public fun ShortcutSpec.toKeyboardShortcut(): KeyboardShortcut? =
+    ASSIGNABLE_KEYS.firstOrNull { it.keyCode == keyCode }?.let { KeyboardShortcut(it, ctrl, shift, alt, meta) }
+
+/**
+ * Keys a user shortcut may be bound to — the full set accepted by the
+ * shortcut recorder in the Keymap settings panel.
+ */
+public val ASSIGNABLE_KEYS: List<Key> =
+    buildList {
+        addAll(listOf(Key.A, Key.B, Key.C, Key.D, Key.E, Key.F, Key.G, Key.H, Key.I, Key.J, Key.K, Key.L, Key.M))
+        addAll(listOf(Key.N, Key.O, Key.P, Key.Q, Key.R, Key.S, Key.T, Key.U, Key.V, Key.W, Key.X, Key.Y, Key.Z))
+        addAll(
+            listOf(Key.Zero, Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine),
+        )
+        addAll(
+            listOf(Key.F1, Key.F2, Key.F3, Key.F4, Key.F5, Key.F6, Key.F7, Key.F8, Key.F9, Key.F10, Key.F11, Key.F12),
+        )
+        addAll(
+            listOf(
+                Key.Escape,
+                Key.Enter,
+                Key.Tab,
+                Key.Backspace,
+                Key.Delete,
+                Key.Insert,
+                Key.MoveHome,
+                Key.MoveEnd,
+                Key.PageUp,
+                Key.PageDown,
+                Key.Spacebar,
+                Key.DirectionUp,
+                Key.DirectionDown,
+                Key.DirectionLeft,
+                Key.DirectionRight,
+            ),
+        )
+    }

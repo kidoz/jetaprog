@@ -33,12 +33,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.keymap.DefaultKeymap
+import su.kidoz.jetaprog.app.keymap.KeyboardShortcut
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
 import su.kidoz.jetaprog.app.ui.dialogs.settings.panels.AppearancePanel
 import su.kidoz.jetaprog.app.ui.dialogs.settings.panels.EditorPanel
+import su.kidoz.jetaprog.app.ui.dialogs.settings.panels.KeymapPanel
 import su.kidoz.jetaprog.app.ui.dialogs.settings.panels.LanguagesPanel
 import su.kidoz.jetaprog.app.ui.dialogs.settings.panels.PluginsPanel
 import su.kidoz.jetaprog.app.ui.dialogs.settings.panels.ToolsPanel
@@ -58,6 +61,7 @@ public fun SettingsDialog(
     state: SettingsState,
     onIntent: (SettingsIntent) -> Unit,
     modifier: Modifier = Modifier,
+    effectiveShortcuts: Map<String, KeyboardShortcut> = DefaultKeymap.shortcuts,
 ) {
     DialogOverlay(
         isVisible = state.isVisible,
@@ -109,6 +113,7 @@ public fun SettingsDialog(
                     SettingsPanel(
                         state = state,
                         onIntent = onIntent,
+                        panelShortcuts = effectiveShortcuts,
                         modifier =
                             Modifier
                                 .weight(1f)
@@ -245,6 +250,7 @@ private fun ScopeSelector(
 private fun SettingsPanel(
     state: SettingsState,
     onIntent: (SettingsIntent) -> Unit,
+    panelShortcuts: Map<String, KeyboardShortcut>,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -287,6 +293,14 @@ private fun SettingsPanel(
             SettingsCategory.PLUGINS -> {
                 PluginsPanel(
                     settings = state.effectiveSettings.plugins,
+                    onIntent = onIntent,
+                )
+            }
+
+            SettingsCategory.KEYMAP -> {
+                KeymapPanel(
+                    settings = state.effectiveSettings.keymap,
+                    shortcuts = panelShortcuts,
                     onIntent = onIntent,
                 )
             }

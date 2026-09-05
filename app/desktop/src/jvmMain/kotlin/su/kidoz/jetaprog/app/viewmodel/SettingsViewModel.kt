@@ -202,6 +202,15 @@ public class SettingsViewModel(
                 updatePlugins { copy(allowPrerelease = intent.allow) }
             }
 
+            // Keymap
+            is SettingsIntent.SetShortcut -> {
+                updateKeymap { copy(customShortcuts = customShortcuts + (intent.action to intent.spec)) }
+            }
+
+            is SettingsIntent.ResetShortcut -> {
+                updateKeymap { copy(customShortcuts = customShortcuts - intent.action) }
+            }
+
             // Actions
             is SettingsIntent.Apply -> {
                 handleApply()
@@ -343,6 +352,20 @@ public class SettingsViewModel(
         }
     }
 
+    private inline fun updateKeymap(
+        crossinline update: su.kidoz.jetaprog.settings.model.KeymapSettings.() ->
+        su.kidoz.jetaprog.settings.model.KeymapSettings,
+    ) {
+        updateState {
+            val currentSettings = pendingChanges ?: effectiveSettings
+            val newKeymap = currentSettings.keymap.update()
+            copy(
+                pendingChanges = currentSettings.copy(keymap = newKeymap),
+                hasUnsavedChanges = true,
+            )
+        }
+    }
+
     private fun handleAddMcpServer() {
         updateState {
             copy(
@@ -441,6 +464,7 @@ public class SettingsViewModel(
                         languages = pending.languages,
                         tools = pending.tools,
                         plugins = pending.plugins,
+                        keymap = pending.keymap,
                         pendingChanges = null,
                         hasUnsavedChanges = false,
                         isLoading = false,
@@ -503,6 +527,7 @@ public class SettingsViewModel(
                 languages = settings.languages,
                 tools = settings.tools,
                 plugins = settings.plugins,
+                keymap = settings.keymap,
                 pendingChanges = null,
                 hasUnsavedChanges = false,
                 isLoading = false,

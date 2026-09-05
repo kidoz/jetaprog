@@ -51,7 +51,6 @@ import su.kidoz.jetaprog.app.JetaProgApplication
 import su.kidoz.jetaprog.app.ProjectSession
 import su.kidoz.jetaprog.app.database.DatabaseEffect
 import su.kidoz.jetaprog.app.gradle.GradleSyncState
-import su.kidoz.jetaprog.app.keymap.DefaultKeymap
 import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
@@ -275,6 +274,7 @@ public fun MainScreen(app: JetaProgApplication) {
             SettingsDialog(
                 state = welcomeSettingsState,
                 onIntent = { intent -> app.settingsViewModel.dispatch(intent) },
+                effectiveShortcuts = app.keymapManager.getAllShortcuts(),
             )
             CloneRepositoryDialog(
                 viewModel = app.cloneRepositoryViewModel,
@@ -1269,6 +1269,7 @@ private fun MainScreenContent(
         SettingsDialog(
             state = settingsState,
             onIntent = { intent -> app.settingsViewModel.dispatch(intent) },
+            effectiveShortcuts = app.keymapManager.getAllShortcuts(),
         )
 
         if (showBreakpointsDialog) {
@@ -1397,7 +1398,7 @@ private fun IntelliJMenuBar(
         scope.launch { session.navigationViewModel.processIntent(intent) }
     }
 
-    fun keymapShortcut(action: String): String? = DefaultKeymap.getShortcut(action)?.toDisplayString()
+    fun keymapShortcut(action: String): String? = app.keymapManager.getShortcut(action)?.toDisplayString()
 
     Row(
         modifier =

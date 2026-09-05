@@ -10,10 +10,12 @@ import su.kidoz.jetaprog.settings.model.AllSettings
 import su.kidoz.jetaprog.settings.model.AppearanceSettings
 import su.kidoz.jetaprog.settings.model.CompletionProviderPreference
 import su.kidoz.jetaprog.settings.model.EditorSettings
+import su.kidoz.jetaprog.settings.model.KeymapSettings
 import su.kidoz.jetaprog.settings.model.LanguagesSettings
 import su.kidoz.jetaprog.settings.model.McpServerConfig
 import su.kidoz.jetaprog.settings.model.PluginUpdatePolicy
 import su.kidoz.jetaprog.settings.model.PluginsSettings
+import su.kidoz.jetaprog.settings.model.ShortcutSpec
 import su.kidoz.jetaprog.settings.model.Theme
 import su.kidoz.jetaprog.settings.model.ToolsSettings
 
@@ -71,6 +73,10 @@ public data class SettingsState(
      */
     val plugins: PluginsSettings = PluginsSettings.DEFAULT,
     /**
+     * Current keymap settings (custom shortcut overrides).
+     */
+    val keymap: KeymapSettings = KeymapSettings.DEFAULT,
+    /**
      * Pending changes not yet saved.
      */
     val pendingChanges: AllSettings? = null,
@@ -94,6 +100,7 @@ public data class SettingsState(
                 languages = languages,
                 tools = tools,
                 plugins = plugins,
+                keymap = keymap,
             )
 }
 
@@ -269,6 +276,16 @@ public sealed interface SettingsIntent : Intent {
 
     public data class SetAllowPrerelease(
         val allow: Boolean,
+    ) : SettingsIntent
+
+    // Keymap
+    public data class SetShortcut(
+        val action: String,
+        val spec: ShortcutSpec,
+    ) : SettingsIntent
+
+    public data class ResetShortcut(
+        val action: String,
     ) : SettingsIntent
 
     // Actions
