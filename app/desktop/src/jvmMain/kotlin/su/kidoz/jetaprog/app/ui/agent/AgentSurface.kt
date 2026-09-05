@@ -161,14 +161,12 @@ private fun AgentHeader(
         }
         ModelEffortChip(state)
         Spacer(Modifier.weight(1f))
-        HeaderIcon(Icons.Default.History, "History") {}
         HeaderIcon(Icons.Default.Add, "New chat") { dispatch(AgentIntent.NewChat) }
         if (state.docked) {
             HeaderIcon(Icons.Default.OpenInFull, "Expand") { dispatch(AgentIntent.ExpandToPerspective) }
         } else {
             HeaderIcon(Icons.Default.CloseFullscreen, "Dock") { dispatch(AgentIntent.DockToToolWindow) }
         }
-        HeaderIcon(Icons.Default.MoreHoriz, "More") {}
     }
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
 }
@@ -518,8 +516,6 @@ private fun AgentComposer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
-                ComposerChip(Icons.Default.AlternateEmail, "Add context") {}
-                ComposerChip(Icons.Default.Tune, "auto-run reads") {}
                 Spacer(Modifier.weight(1f))
                 ModelPickerChip(state, dispatch)
                 SendButton(
