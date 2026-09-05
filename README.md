@@ -113,6 +113,9 @@ app/desktop    Compose Desktop application (UI shell, editor, dialogs)
 # Run all tests
 ./gradlew test
 
+# Run rendered Compose interaction tests and capture UI review artifacts
+./gradlew :app:desktop:uiTest
+
 # Lint and static analysis (both must pass — warnings are treated as errors)
 ./gradlew ktlintCheck detekt
 
