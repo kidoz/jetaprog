@@ -140,7 +140,7 @@ public fun FindReplaceBar(
                     placeholder = "Replace",
                     modifier = Modifier.width(FIELD_WIDTH.dp),
                     onEnter = { onIntent(EditorIntent.ReplaceCurrent) },
-                    onShiftEnter = {},
+                    onShiftEnter = { onIntent(EditorIntent.FindPrevious) },
                     onEscape = { onIntent(EditorIntent.CloseFindBar) },
                 )
 
