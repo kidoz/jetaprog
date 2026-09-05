@@ -10,16 +10,20 @@ import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.filesystem.FileEntry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.platform.filesystem.FileSystemEvent
+import su.kidoz.jetaprog.plugins.api.services.SettingsAccessService
 import su.kidoz.jetaprog.plugins.api.services.WorkspaceFolder
 import su.kidoz.jetaprog.plugins.api.services.WorkspaceService
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.reflect.KClass
 
 /**
- * Implementation of WorkspaceService using the platform FileSystem.
+ * Implementation of WorkspaceService using the platform FileSystem and the
+ * IDE's settings for the plugin-facing configuration access.
  */
 public class WorkspaceServiceImpl(
     private val fileSystem: FileSystem,
     private val workspacePath: String,
+    private val settingsAccess: SettingsAccessService,
 ) : WorkspaceService {
     private val scope = CoroutineScope(Dispatchers.Default)
     private val watchJobs = ConcurrentHashMap<String, Job>()
@@ -118,23 +122,40 @@ public class WorkspaceServiceImpl(
         }
     }
 
-    override fun <T> getConfiguration(
+    override fun getConfigurationValue(
         section: String,
         key: String,
-    ): T? {
-        // TODO: Implement configuration access
-        return null
+        type: KClass<*>,
+    ): Any? {
+        val raw = settingsAccess.getAllSettings()["$section.$key"] ?: return null
+        return when (type) {
+            String::class -> raw
+            Int::class -> raw.toIntOrNull()
+            Long::class -> raw.toLongOrNull()
+            Boolean::class -> raw.toBooleanStrictOrNull()
+            Double::class -> raw.toDoubleOrNull()
+            Float::class -> raw.toFloatOrNull()
+            else -> null
+        }
     }
 
+    /**
+     * Configuration updates are not supported: IDE settings are typed models
+     * managed in the Settings dialog, not a generic key-value store. The call
+     * fails explicitly instead of silently doing nothing.
+     */
     override suspend fun updateConfiguration(
         section: String,
         key: String,
         value: Any?,
         global: Boolean,
     ): Result<Unit> =
-        runCatching {
-            // TODO: Implement configuration updates
-        }
+        Result.failure(
+            UnsupportedOperationException(
+                "Updating configuration '$section.$key' is not supported. " +
+                    "IDE settings are managed in the Settings dialog.",
+            ),
+        )
 
     private fun matchesPattern(
         name: String,

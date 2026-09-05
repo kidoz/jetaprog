@@ -417,7 +417,7 @@ public class ProjectSession(
     // ========================================================================
 
     private val workspaceService: WorkspaceServiceImpl by lazy {
-        WorkspaceServiceImpl(fileSystem, projectPath)
+        WorkspaceServiceImpl(fileSystem, projectPath, SettingsAccessServiceImpl(settingsService))
     }
 
     private val activationEventService: ActivationEventServiceImpl by lazy {

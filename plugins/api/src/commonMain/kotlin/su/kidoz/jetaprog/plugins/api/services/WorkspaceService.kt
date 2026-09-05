@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.filesystem.FileEntry
 import su.kidoz.jetaprog.platform.filesystem.FileSystemEvent
+import kotlin.reflect.KClass
 
 /**
  * Service for workspace operations.
@@ -89,22 +90,32 @@ public interface WorkspaceService {
     ): Disposable
 
     /**
-     * Gets a configuration value.
-     * @param section The configuration section
-     * @param key The configuration key
-     * @return The configuration value, or null if not set
+     * Gets a configuration value from the IDE settings (flat "section.key"
+     * space backed by the Settings dialog's typed models).
+     *
+     * Supported types: [String], [Int], [Long], [Boolean], [Double], [Float].
+     *
+     * @param section The configuration section (e.g. "editor")
+     * @param key The configuration key (e.g. "tabSize")
+     * @param type The expected value type; a mismatching stored value returns null
+     * @return The configuration value, or null if not set or not convertible
      */
-    public fun <T> getConfiguration(
+    public fun getConfigurationValue(
         section: String,
         key: String,
-    ): T?
+        type: KClass<*>,
+    ): Any?
 
     /**
-     * Updates a configuration value.
+     * Updates a configuration value. IDE settings are typed models managed in
+     * the Settings dialog — not a generic key-value store — so this call
+     * **fails explicitly** with [UnsupportedOperationException] rather than
+     * silently doing nothing.
+     *
      * @param section The configuration section
      * @param key The configuration key
-     * @param value The new value
-     * @param global Whether to update globally or for the workspace
+     * @param value The new value (ignored)
+     * @param global Whether to update globally or for the workspace (ignored)
      */
     public suspend fun updateConfiguration(
         section: String,
@@ -112,6 +123,20 @@ public interface WorkspaceService {
         value: Any?,
         global: Boolean = false,
     ): Result<Unit>
+}
+
+/**
+ * Typed convenience wrapper over [WorkspaceService.getConfigurationValue].
+ *
+ * @see WorkspaceService.getConfigurationValue
+ */
+public inline fun <reified T : Any> WorkspaceService.getConfiguration(
+    section: String,
+    key: String,
+): T? {
+    val value = getConfigurationValue(section, key, T::class) ?: return null
+    @Suppress("UNCHECKED_CAST")
+    return value as? T
 }
 
 /**
