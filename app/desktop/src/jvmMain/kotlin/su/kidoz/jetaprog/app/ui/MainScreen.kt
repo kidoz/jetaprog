@@ -100,6 +100,7 @@ import su.kidoz.jetaprog.app.ui.navigation.NavigationIntent
 import su.kidoz.jetaprog.app.ui.navigation.SearchMode
 import su.kidoz.jetaprog.app.ui.panels.BottomPanel
 import su.kidoz.jetaprog.app.ui.panels.BottomTab
+import su.kidoz.jetaprog.app.ui.panels.BreadcrumbDirectoryPopup
 import su.kidoz.jetaprog.app.ui.panels.BuildOutputPanel
 import su.kidoz.jetaprog.app.ui.panels.FindInFilesPanel
 import su.kidoz.jetaprog.app.ui.panels.GitPanel
@@ -832,6 +833,7 @@ private fun MainScreenContent(
                         }
 
                         // Breadcrumbs navigation: file path plus the symbols containing the cursor
+                        var breadcrumbPopupDirectory by remember { mutableStateOf<String?>(null) }
                         val activeTab = editorState.activeTab
                         if (activeTab != null) {
                             val projectName = currentProjectPath.substringAfterLast('/')
@@ -862,13 +864,36 @@ private fun MainScreenContent(
                                 segments = pathBreadcrumbs + symbolBreadcrumbs,
                                 onSegmentClick = { segment ->
                                     val position = segment.position
-                                    if (segment.type == BreadcrumbType.SYMBOL && position != null) {
-                                        session.editorViewModel.dispatch(
-                                            EditorIntent.NavigateTo(path = segment.path, position = position),
-                                        )
+                                    when {
+                                        segment.type == BreadcrumbType.SYMBOL && position != null -> {
+                                            session.editorViewModel.dispatch(
+                                                EditorIntent.NavigateTo(path = segment.path, position = position),
+                                            )
+                                        }
+
+                                        segment.type == BreadcrumbType.FILE -> {
+                                            session.editorViewModel.dispatch(EditorIntent.OpenFile(segment.path))
+                                        }
+
+                                        segment.type == BreadcrumbType.DIRECTORY ||
+                                            segment.type == BreadcrumbType.PROJECT -> {
+                                            breadcrumbPopupDirectory = segment.path
+                                        }
                                     }
                                 },
                             )
+                            breadcrumbPopupDirectory?.let { directory ->
+                                BreadcrumbDirectoryPopup(
+                                    directory = directory,
+                                    fileSystem = app.fileSystem,
+                                    onOpenFile = { path ->
+                                        breadcrumbPopupDirectory = null
+                                        session.editorViewModel.dispatch(EditorIntent.OpenFile(path))
+                                    },
+                                    onOpenDirectory = { breadcrumbPopupDirectory = it },
+                                    onDismiss = { breadcrumbPopupDirectory = null },
+                                )
+                            }
                         }
 
                         // Editor content
