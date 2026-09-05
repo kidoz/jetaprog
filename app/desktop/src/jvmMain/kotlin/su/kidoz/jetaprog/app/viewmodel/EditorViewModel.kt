@@ -234,6 +234,10 @@ public class EditorViewModel(
                 saveAllFiles()
             }
 
+            is EditorIntent.ReloadFile -> {
+                reloadFile(intent.path)
+            }
+
             is EditorIntent.SaveAs -> {
                 saveAs(intent.path)
             }
@@ -637,6 +641,81 @@ public class EditorViewModel(
             }
             emitEffect(EditorEffect.ShowError("Failed to open file: ${e.message}"))
         }
+    }
+
+    /**
+     * Re-reads an open document from disk after an external change (Replace in
+     * Files, external editor). Dirty buffers are never reloaded — unsaved user
+     * edits win — and undo history is dropped for reloaded documents, since
+     * undoing across an external rewrite would resurrect stale content.
+     */
+    private suspend fun reloadFile(path: String) {
+        val uri = DocumentUri.file(path)
+        val index = currentState.tabs.indexOfFirst { it.uri == uri }
+        if (index < 0 || currentState.tabs[index].isDirty) return
+
+        val content =
+            withContext(Dispatchers.IO) {
+                fileSystem.readText(path).getOrNull()
+            } ?: return
+        val languageId = detectLanguage(File(path).name)
+        undoManagers.remove(uri.value)
+        incrementalTokenizers.remove(uri.value)
+
+        if (index == currentState.activeTabIndex) {
+            reloadActiveDocument(uri, languageId, content)
+        } else {
+            snapshotActiveDocument()
+            documentSessions[uri.value] =
+                DocumentSession(
+                    content = content,
+                    languageId = languageId,
+                )
+        }
+    }
+
+    private fun reloadActiveDocument(
+        uri: DocumentUri,
+        languageId: LanguageId,
+        content: String,
+    ) {
+        val cursor = clampCursorToContent(content, currentState.cursor)
+        val lastLine = content.count { it == '\n' }
+        documentSessions[uri.value] =
+            DocumentSession(
+                content = content,
+                languageId = languageId,
+                cursor = cursor,
+                scrollLine = currentState.scrollLine.coerceIn(0, lastLine),
+            )
+        layeredHighlighter.clearSemanticTokens()
+        val tokens = tokenize(content, languageId, documentKey = uri.value)
+        updateState {
+            copy(
+                content = content,
+                documentVersion = 1,
+                languageId = languageId,
+                tokens = tokens,
+                cursor = cursor,
+                lineChangeMarkers = emptyMap(),
+                diagnostics = diagnosticsFor(uri),
+            )
+        }
+        refreshFindMatches()
+        syncDocumentChanged(uri, languageId, content)
+        syncDocumentSaved(uri, languageId, content)
+        scheduleLint(uri, languageId, content, LintTrigger.OPEN)
+    }
+
+    /** [cursor] clamped into [content]'s bounds, selection dropped. */
+    private fun clampCursorToContent(
+        content: String,
+        cursor: Cursor,
+    ): Cursor {
+        val lines = content.split('\n')
+        val line = cursor.position.line.coerceIn(0, (lines.size - 1).coerceAtLeast(0))
+        val column = cursor.position.column.coerceAtMost(lines[line].length)
+        return Cursor(TextPosition(line, column))
     }
 
     private suspend fun restoreSession(intent: EditorIntent.RestoreSession) {

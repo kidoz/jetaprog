@@ -41,6 +41,17 @@ public sealed interface EditorIntent : Intent {
     public data object SaveAll : EditorIntent
 
     /**
+     * Reload an open tab from disk after the file changed externally
+     * (e.g. Replace in Files).
+     *
+     * Dirty buffers are never reloaded — unsaved user edits win — and paths
+     * without an open tab are ignored.
+     */
+    public data class ReloadFile(
+        val path: String,
+    ) : EditorIntent
+
+    /**
      * Save the active document to a new path.
      */
     public data class SaveAs(
