@@ -385,6 +385,14 @@ public data class CompletionParams(
 )
 
 /**
+ * Parameters of the `$/cancelRequest` notification: the id of the request to abandon.
+ */
+@Serializable
+public data class CancelParams(
+    val id: Int,
+)
+
+/**
  * Completion context.
  */
 @Serializable
@@ -604,6 +612,7 @@ public object LspMethod {
     public const val INITIALIZED: String = "initialized"
     public const val SHUTDOWN: String = "shutdown"
     public const val EXIT: String = "exit"
+    public const val CANCEL_REQUEST: String = "$/cancelRequest"
 
     // Text Document Sync
     public const val DID_OPEN: String = "textDocument/didOpen"

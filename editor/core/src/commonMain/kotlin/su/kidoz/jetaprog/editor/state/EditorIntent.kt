@@ -321,6 +321,11 @@ public sealed interface EditorIntent : Intent {
         val filterText: String = "",
         /** When true, narrow the results to the type expected at the caret. */
         val smart: Boolean = false,
+        /**
+         * True when typing raised the request rather than the user asking for it. Typed
+         * requests are debounced so a burst of keystrokes costs one provider round trip.
+         */
+        val automatic: Boolean = false,
     ) : EditorIntent
 
     /**

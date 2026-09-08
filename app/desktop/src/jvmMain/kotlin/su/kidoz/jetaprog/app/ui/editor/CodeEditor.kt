@@ -580,7 +580,14 @@ public fun CodeEditor(
                                                 extractIdentifierPrefix(processed.text, processed.selection.end)
                                             onCompletionFilterChange(prefix)
                                             if (prefix.length >= MIN_AUTO_COMPLETION_LENGTH) {
-                                                onCompletionRequest(CompletionTriggerKind.Invoked, null, prefix)
+                                                // Marked automatic so the view model debounces it;
+                                                // an explicit Ctrl+Space is not delayed.
+                                                onIntent(
+                                                    EditorIntent.RequestCompletion(
+                                                        filterText = prefix,
+                                                        automatic = true,
+                                                    ),
+                                                )
                                             }
                                         }
                                         // Signature help triggers

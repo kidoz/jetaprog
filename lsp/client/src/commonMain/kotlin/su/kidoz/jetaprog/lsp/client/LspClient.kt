@@ -1,8 +1,10 @@
 package su.kidoz.jetaprog.lsp.client
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.launchIn
@@ -10,11 +12,14 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import su.kidoz.jetaprog.lsp.client.transport.LspTransport
 import su.kidoz.jetaprog.lsp.protocol.ApplyWorkspaceEditParams
 import su.kidoz.jetaprog.lsp.protocol.ApplyWorkspaceEditResult
+import su.kidoz.jetaprog.lsp.protocol.CancelParams
 import su.kidoz.jetaprog.lsp.protocol.ClientCapabilities
 import su.kidoz.jetaprog.lsp.protocol.CodeActionClientCapabilities
 import su.kidoz.jetaprog.lsp.protocol.CodeActionKindSupport
@@ -81,7 +86,17 @@ public data class LspClientConfig(
     val rootUri: String,
     val workspaceFolders: List<WorkspaceFolder> = emptyList(),
     val initializationOptions: JsonElement? = null,
-)
+    /**
+     * How long a request may wait for its response before it is abandoned and reported
+     * as having no result. A wedged server otherwise held the caller forever.
+     */
+    val requestTimeoutMillis: Long = DEFAULT_REQUEST_TIMEOUT_MILLIS,
+) {
+    public companion object {
+        /** Default request timeout; generous enough for a cold index on a large workspace. */
+        public const val DEFAULT_REQUEST_TIMEOUT_MILLIS: Long = 30_000L
+    }
+}
 
 /**
  * Callback for diagnostics published by the language server.
@@ -394,8 +409,27 @@ public class LspClient(
 
         transport.send(request)
 
-        val result = deferred.await()
+        val result =
+            try {
+                withTimeoutOrNull(config.requestTimeoutMillis) { deferred.await() }
+            } catch (e: CancellationException) {
+                // The caller moved on (a newer keystroke superseded this completion request).
+                // Tell the server so it stops working on it, and forget the pending entry.
+                withContext(NonCancellable) { abandonRequest(id) }
+                throw e
+            }
+        if (result == null && !deferred.isCompleted) {
+            abandonRequest(id)
+            return null
+        }
         return result?.let { json.decodeFromJsonElement(resultSerializer, it) }
+    }
+
+    private suspend fun abandonRequest(id: Int) {
+        mutex.withLock { pendingRequests.remove(id) }
+        runCatching {
+            sendNotification(LspMethod.CANCEL_REQUEST, CancelParams(id), CancelParams.serializer())
+        }
     }
 
     private suspend fun <P> sendNotification(

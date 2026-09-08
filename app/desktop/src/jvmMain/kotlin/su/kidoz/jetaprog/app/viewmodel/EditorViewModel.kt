@@ -348,6 +348,7 @@ public class EditorViewModel(
                     intent.triggerCharacter,
                     intent.filterText,
                     smart = intent.smart,
+                    automatic = intent.automatic,
                 )
             }
 
@@ -1969,6 +1970,7 @@ public class EditorViewModel(
         triggerCharacter: Char?,
         filterTextOverride: String?,
         smart: Boolean = false,
+        automatic: Boolean = false,
     ) {
         // Cancel any pending completion request
         completionJob?.cancel()
@@ -1980,14 +1982,30 @@ public class EditorViewModel(
                     extractCurrentIdentifierPrefix()
                 }
 
+        // Typing is debounced so a burst of keystrokes costs one provider round trip;
+        // an explicit request (Ctrl+Space) goes out at once.
+        val debounced = automatic || triggerKind != CompletionTriggerKind.Invoked
+        // Items already on screen are narrowed locally right away and stay up until the
+        // provider answers. A trigger character starts a new context, so nothing carries
+        // over; otherwise a popup that empties on every keystroke is unreadable.
+        val previous = currentState.completionState
+        val provisional =
+            if (previous.isVisible && triggerKind != CompletionTriggerKind.TriggerCharacter) {
+                completionController.filterItems(unfilteredCompletionItems, filterText)
+            } else {
+                emptyList()
+            }
+
         updateState {
             copy(
                 completionState =
                     CompletionState(
-                        isVisible = true,
-                        // Loading is raised only once the request is actually in flight,
-                        // so a debounced keystroke does not flash an empty popup.
-                        isLoading = triggerKind == CompletionTriggerKind.Invoked,
+                        // A debounced request with nothing to show yet stays hidden so a
+                        // keystroke does not flash an empty popup before the delay elapses.
+                        isVisible = provisional.isNotEmpty() || !debounced,
+                        isLoading = provisional.isEmpty() && !debounced,
+                        items = provisional,
+                        isIncomplete = previous.isIncomplete,
                         triggerPosition = cursor.position,
                         triggerKind = triggerKind,
                         triggerCharacter = triggerCharacter,
@@ -1996,13 +2014,20 @@ public class EditorViewModel(
             )
         }
 
-        // Launch completion request with debounce for auto-triggered completions
         completionJob =
             viewModelScope.launch {
-                // Debounce auto-triggered completions to avoid thrashing LSP servers
-                if (triggerKind != CompletionTriggerKind.Invoked) {
+                if (debounced) {
                     delay(COMPLETION_DEBOUNCE_MS)
-                    updateState { copy(completionState = completionState.copy(isLoading = true)) }
+                    // Raise the spinner only when there is nothing to show meanwhile.
+                    updateState {
+                        copy(
+                            completionState =
+                                completionState.copy(
+                                    isVisible = true,
+                                    isLoading = completionState.items.isEmpty(),
+                                ),
+                        )
+                    }
                 }
                 val completionList = getCompletionItems()
                 val completionItems = completionList.items
