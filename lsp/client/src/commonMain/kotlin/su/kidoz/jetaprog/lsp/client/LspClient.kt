@@ -42,6 +42,7 @@ import su.kidoz.jetaprog.lsp.protocol.JsonRpcResponse
 import su.kidoz.jetaprog.lsp.protocol.LspCodeAction
 import su.kidoz.jetaprog.lsp.protocol.LspCodeActionKind
 import su.kidoz.jetaprog.lsp.protocol.LspCompletionList
+import su.kidoz.jetaprog.lsp.protocol.LspCompletionResultSerializer
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentHighlight
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
 import su.kidoz.jetaprog.lsp.protocol.LspHover
@@ -105,6 +106,9 @@ public class LspClient(
         Json {
             ignoreUnknownKeys = true
             encodeDefaults = false
+            // Unknown enum values (a newer CompletionItemKind) and explicit nulls fall back
+            // to the field default instead of failing the whole response.
+            coerceInputValues = true
         }
 
     private val scope = CoroutineScope(context + SupervisorJob())
@@ -453,7 +457,7 @@ public class LspClient(
             LspMethod.COMPLETION,
             params,
             CompletionParams.serializer(),
-            LspCompletionList.serializer(),
+            LspCompletionResultSerializer,
         )
 
     /**

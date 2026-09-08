@@ -153,12 +153,15 @@ public fun LspCompletionItem.toCompletionItem(): CompletionItem =
         kind = kind?.toCompletionItemKind() ?: CompletionItemKind.Text,
         detail = detail,
         documentation = documentation?.value,
-        insertText = insertText ?: label,
+        // The edit's text is authoritative: servers use it for qualified names and
+        // re-exports, where insertText or the label would put the wrong thing in.
+        insertText = textEdit?.newText ?: insertText ?: label,
         insertTextIsSnippet = insertTextFormat == 2,
         filterText = filterText ?: label,
         sortText = sortText,
         preselect = preselect ?: false,
-        range = textEdit?.range?.toTextRange(),
+        range = textEdit?.insert?.toTextRange(),
+        replaceRange = textEdit?.replace?.toTextRange(),
         additionalTextEdits = additionalTextEdits?.map { it.toTextEditData() } ?: emptyList(),
     )
 
@@ -189,7 +192,7 @@ public fun LspHover.toHover(): Hover =
             listOf(
                 when (contents.kind) {
                     "markdown" -> MarkedString.Markdown(contents.value)
-                    else -> MarkedString.Code(contents.value, "text")
+                    else -> MarkedString.Code(language = "text", value = contents.value)
                 },
             ),
         range = range?.toTextRange(),
@@ -216,15 +219,18 @@ public fun LspSignatureInformation.toSignatureInformation(): SignatureInformatio
     SignatureInformation(
         label = label,
         documentation = documentation?.value,
-        parameters = parameters?.map { it.toParameterInformation() } ?: emptyList(),
+        parameters = parameters?.map { it.toParameterInformation(label) } ?: emptyList(),
     )
 
 /**
  * Convert LSP Parameter Information to JetaProg ParameterInformation.
+ *
+ * @param signatureLabel the enclosing signature's label, which offset-pair parameter
+ * labels address.
  */
-public fun LspParameterInformation.toParameterInformation(): ParameterInformation =
+public fun LspParameterInformation.toParameterInformation(signatureLabel: String): ParameterInformation =
     ParameterInformation(
-        label = label,
+        label = label.resolve(signatureLabel),
         documentation = documentation?.value,
     )
 

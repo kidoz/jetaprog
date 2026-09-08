@@ -40,6 +40,11 @@ public data class CompletionItem(
      */
     val range: TextRange? = null,
     /**
+     * Range to replace when the completion is accepted in overwrite mode (Tab), so the
+     * rest of the word after the caret is consumed. Falls back to [range] when null.
+     */
+    val replaceRange: TextRange? = null,
+    /**
      * Filter text for matching.
      */
     val filterText: String = label,

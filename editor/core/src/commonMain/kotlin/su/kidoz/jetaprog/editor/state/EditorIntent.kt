@@ -333,9 +333,13 @@ public sealed interface EditorIntent : Intent {
 
     /**
      * Apply the selected completion item.
+     *
+     * @param replaceSuffix true to overwrite the rest of the word after the caret (Tab),
+     * false to keep it (Enter or click).
      */
     public data class ApplyCompletion(
         val item: su.kidoz.jetaprog.common.completion.CompletionItem,
+        val replaceSuffix: Boolean = false,
     ) : EditorIntent
 
     /**

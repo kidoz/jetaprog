@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.plugins.support
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CancellationException
 import su.kidoz.jetaprog.common.Disposable
+import su.kidoz.jetaprog.common.completion.mergeDuplicateLabels
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.plugins.api.language.CompletionItem
@@ -352,9 +353,10 @@ public class HybridLanguageProvider(
             }
         }
 
-        // For Hybrid, we merge. For Native/LSP, we also merge all of that type.
-        // The old behavior of returning the first result is changed to be more robust.
-        return CompletionList(allItems.distinctBy { it.label }, allIncomplete)
+        // Providers overlap (index, PSI and a language server can all offer the same
+        // symbol). Items sharing a label are folded into one that keeps the server's
+        // rank and edits alongside the native provider's documentation.
+        return CompletionList(allItems.mergeDuplicateLabels(), allIncomplete)
     }
 
     /**

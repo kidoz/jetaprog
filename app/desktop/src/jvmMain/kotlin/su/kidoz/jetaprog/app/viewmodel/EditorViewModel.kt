@@ -13,6 +13,7 @@ import su.kidoz.jetaprog.app.adapter.TextDocumentAdapter
 import su.kidoz.jetaprog.common.completion.CompletionContext
 import su.kidoz.jetaprog.common.completion.CompletionItem
 import su.kidoz.jetaprog.common.completion.CompletionItemKind
+import su.kidoz.jetaprog.common.completion.CompletionList
 import su.kidoz.jetaprog.common.completion.CompletionTriggerKind
 import su.kidoz.jetaprog.common.mvi.MviViewModel
 import su.kidoz.jetaprog.common.text.MarkedString
@@ -351,7 +352,7 @@ public class EditorViewModel(
             }
 
             is EditorIntent.ApplyCompletion -> {
-                applyCompletion(intent.item)
+                applyCompletion(intent.item, intent.replaceSuffix)
             }
 
             is EditorIntent.DismissCompletion -> {
@@ -2003,7 +2004,8 @@ public class EditorViewModel(
                     delay(COMPLETION_DEBOUNCE_MS)
                     updateState { copy(completionState = completionState.copy(isLoading = true)) }
                 }
-                val completionItems = getCompletionItems()
+                val completionList = getCompletionItems()
+                val completionItems = completionList.items
                 unfilteredCompletionItems = completionItems
                 // Apply latest filter to the items (may have updated while request was in flight)
                 val activeFilter = currentState.completionState.filterText
@@ -2029,6 +2031,9 @@ public class EditorViewModel(
                         completionState =
                             completionState.copy(
                                 items = itemsToShow,
+                                // Kept so a longer prefix asks the server again instead of
+                                // filtering a truncated list locally.
+                                isIncomplete = completionList.isIncomplete,
                                 isLoading = false,
                                 selectedIndex = 0,
                                 isVisible = itemsToShow.isNotEmpty(),
@@ -2070,8 +2075,8 @@ public class EditorViewModel(
         return line.substring(start + 1, position.column)
     }
 
-    private suspend fun getCompletionItems(): List<CompletionItem> {
-        val registry = languageRegistry ?: return emptyList()
+    private suspend fun getCompletionItems(): CompletionList {
+        val registry = languageRegistry ?: return CompletionList(emptyList(), isIncomplete = false)
         return withContext(Dispatchers.Default) {
             val document = TextDocumentAdapter(currentState)
             val context =
@@ -2080,16 +2085,14 @@ public class EditorViewModel(
                     triggerCharacter = currentState.completionState.triggerCharacter,
                 )
 
-            registry
-                .provideCompletions(
-                    document,
-                    currentState.cursor.position,
-                    context,
-                ).items
+            registry.provideCompletions(document, currentState.cursor.position, context)
         }
     }
 
-    private fun applyCompletion(item: CompletionItem) {
+    private fun applyCompletion(
+        item: CompletionItem,
+        replaceSuffix: Boolean,
+    ) {
         val content = currentState.content
         val cursorPosition = currentState.cursor.position
 
@@ -2099,11 +2102,12 @@ public class EditorViewModel(
         // Prefer the range the language server supplied. Its edit is authoritative and
         // covers spans an identifier scan cannot, such as an include path or a qualified
         // name; the local scan is only a fallback for providers that send no range.
+        val serverRange = if (replaceSuffix) item.replaceRange ?: item.range else item.range
         val (replaceStart, replaceEnd) =
-            item.range?.let { range ->
+            serverRange?.let { range ->
                 positionToOffset(content, range.start.line, range.start.column) to
                     positionToOffset(content, range.end.line, range.end.column)
-            } ?: completionController.getReplacementRange(content, cursorOffset)
+            } ?: completionController.getReplacementRange(content, cursorOffset, includeSuffix = replaceSuffix)
 
         // Get current line's indentation
         val currentLineStart = content.lastIndexOf('\n', replaceStart - 1) + 1

@@ -215,6 +215,7 @@ public data class LspCompletionItem(
     val label: String,
     val kind: LspCompletionItemKind? = null,
     val detail: String? = null,
+    @Serializable(with = MarkupContentOrStringSerializer::class)
     val documentation: MarkupContent? = null,
     val deprecated: Boolean? = null,
     val preselect: Boolean? = null,
@@ -222,7 +223,7 @@ public data class LspCompletionItem(
     val filterText: String? = null,
     val insertText: String? = null,
     val insertTextFormat: Int? = null, // 1 = PlainText, 2 = Snippet
-    val textEdit: LspTextEdit? = null,
+    val textEdit: LspCompletionTextEdit? = null,
     val additionalTextEdits: List<LspTextEdit>? = null,
     val command: LspCommand? = null,
     val data: JsonElement? = null,
@@ -242,6 +243,7 @@ public data class LspCompletionList(
  */
 @Serializable
 public data class LspHover(
+    @Serializable(with = HoverContentsSerializer::class)
     val contents: MarkupContent,
     val range: LspRange? = null,
 )
@@ -281,6 +283,7 @@ public data class LspSignatureInformation(
     /**
      * Documentation for this signature.
      */
+    @Serializable(with = MarkupContentOrStringSerializer::class)
     val documentation: MarkupContent? = null,
     /**
      * The parameters of this signature.
@@ -298,12 +301,13 @@ public data class LspSignatureInformation(
 @Serializable
 public data class LspParameterInformation(
     /**
-     * The label of this parameter (name or offset tuple as string).
+     * The label of this parameter: its name, or an offset pair into the signature label.
      */
-    val label: String,
+    val label: LspParameterLabel,
     /**
      * Documentation for this parameter.
      */
+    @Serializable(with = MarkupContentOrStringSerializer::class)
     val documentation: MarkupContent? = null,
 )
 

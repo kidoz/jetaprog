@@ -760,9 +760,20 @@ public fun CodeEditor(
                                                         true
                                                     }
 
-                                                    Key.Enter, Key.Tab -> {
+                                                    // Enter keeps the rest of the word after the
+                                                    // caret; Tab overwrites it, as in IntelliJ.
+                                                    Key.Enter -> {
                                                         state.completionState.selectedItem?.let {
                                                             onCompletionSelect(it)
+                                                        }
+                                                        true
+                                                    }
+
+                                                    Key.Tab -> {
+                                                        state.completionState.selectedItem?.let {
+                                                            onIntent(
+                                                                EditorIntent.ApplyCompletion(it, replaceSuffix = true),
+                                                            )
                                                         }
                                                         true
                                                     }

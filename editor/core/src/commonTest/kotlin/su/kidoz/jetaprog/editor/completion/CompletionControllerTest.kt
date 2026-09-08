@@ -85,6 +85,35 @@ class CompletionControllerTest {
     }
 
     @Test
+    fun serverRankedItemsComeBeforeLocalOnesWhichKeepRelevanceOrder() {
+        // A language server and an in-process provider answered together. The server's
+        // semantic order leads; the extra local items follow by prefix relevance rather
+        // than being sorted by label against the server's opaque keys.
+        val items =
+            listOf(
+                item("valueLocal"),
+                item("val"),
+                item("validate", sortText = "0002"),
+                item("valueOf", sortText = "0001"),
+            )
+
+        val result = controller.filterItems(items, "val").map { it.label }
+
+        assertEquals(listOf("valueOf", "validate", "val", "valueLocal"), result)
+    }
+
+    @Test
+    fun replacementRangeKeepsTheSuffixWhenAskedTo() {
+        val content = "auto v = compute(value);"
+        val caret = content.indexOf("value") + 3
+
+        val (start, end) = controller.getReplacementRange(content, caret, includeSuffix = false)
+
+        assertEquals(content.indexOf("value"), start)
+        assertEquals(caret, end)
+    }
+
+    @Test
     fun replacementRangeCoversTheIdentifierAroundTheCaret() {
         val content = "auto v = compute(value);"
         val caret = content.indexOf("value") + 3

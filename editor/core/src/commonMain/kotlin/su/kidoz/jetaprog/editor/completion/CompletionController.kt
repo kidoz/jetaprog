@@ -50,17 +50,16 @@ public class CompletionController(
         // ranking in sortText. That ranking is semantic - it knows the types in scope - so
         // where it exists it must win. Local string scoring only orders results from
         // providers that offer no ranking of their own.
-        val serverRanked = matched.any { it.first.sortText != null }
+        //
+        // Items without a sortText (in-process providers) follow the server-ranked ones,
+        // ordered by local relevance. Sorting both under one key put native items in
+        // label order against opaque server keys.
         val comparator =
-            if (serverRanked) {
-                compareByDescending<Pair<CompletionItem, Int>> { it.first.preselect }
-                    .thenBy { it.first.sortText ?: it.first.label }
-                    .thenBy { it.first.label }
-            } else {
-                compareByDescending<Pair<CompletionItem, Int>> { it.first.preselect }
-                    .thenByDescending { it.second }
-                    .thenBy { it.first.label }
-            }
+            compareByDescending<Pair<CompletionItem, Int>> { it.first.preselect }
+                .thenByDescending { it.first.sortText != null }
+                .thenBy { it.first.sortText ?: "" }
+                .thenByDescending { it.second }
+                .thenBy { it.first.label }
 
         return matched
             .sortedWith(comparator)
@@ -138,11 +137,14 @@ public class CompletionController(
      *
      * @param content The document content
      * @param cursorOffset The cursor offset in the content
+     * @param includeSuffix Whether the part of the word after the caret is replaced too
+     * (Tab), or kept (Enter or click)
      * @return The start and end offsets of the word to replace
      */
     public fun getReplacementRange(
         content: String,
         cursorOffset: Int,
+        includeSuffix: Boolean = true,
     ): Pair<Int, Int> {
         // Find word start
         var start = cursorOffset
@@ -152,7 +154,7 @@ public class CompletionController(
 
         // Find word end
         var end = cursorOffset
-        while (end < content.length && isIdentifierChar(content[end])) {
+        while (includeSuffix && end < content.length && isIdentifierChar(content[end])) {
             end++
         }
 

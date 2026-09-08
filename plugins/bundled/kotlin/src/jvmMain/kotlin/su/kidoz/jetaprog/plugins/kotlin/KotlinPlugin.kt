@@ -15,7 +15,6 @@ import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
 import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinSemanticLintProvider
 import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinStyleProvider
 import su.kidoz.jetaprog.plugins.kotlin.lint.KotlinSyntaxLintProvider
-import su.kidoz.jetaprog.plugins.kotlin.providers.ConfigurableKotlinCompletionProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinCompletionProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinPsiCompletionProvider
 import su.kidoz.jetaprog.plugins.kotlin.providers.KotlinSemanticCompletionProvider
@@ -96,20 +95,21 @@ public class KotlinPlugin(
         val semantics = sharedSemanticAnalyzer ?: KotlinSemanticAnalyzer { classpathProvider() }
         semanticAnalyzer = semantics
 
-        // Register completion provider
+        // Register completion providers: project symbols from the index, and in-file
+        // declarations plus keywords from PSI. The registry folds items sharing a label,
+        // and applies the user's native/LSP preference, so no wrapper is needed here.
         val selector = DocumentSelector(languages = listOf(LanguageId.KOTLIN))
-        val nativeProvider = KotlinCompletionProvider(service)
-        val configurableProvider =
-            ConfigurableKotlinCompletionProvider(nativeProvider, KotlinPsiCompletionProvider(analyzer))
 
         startKotlinLanguageServerIfAvailable(workspacePath, selector)
 
-        context.languages
-            .registerCompletionProvider(
-                selector = selector,
-                provider = configurableProvider,
-                triggerCharacters = listOf('.', ':', '@'),
-            ).also { context.subscriptions.add(it) }
+        listOf(KotlinCompletionProvider(service), KotlinPsiCompletionProvider(analyzer)).forEach { provider ->
+            context.languages
+                .registerCompletionProvider(
+                    selector = selector,
+                    provider = provider,
+                    triggerCharacters = listOf('.', ':', '@'),
+                ).also { context.subscriptions.add(it) }
+        }
 
         // Register classpath-aware member completion (after '.')
         context.languages

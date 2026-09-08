@@ -248,7 +248,7 @@ private fun CompletionFooter() {
         horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp),
     ) {
         FooterHint("Enter", "Insert")
-        FooterHint("Tab", "Insert")
+        FooterHint("Tab", "Replace")
         FooterHint("Esc", "Cancel")
     }
 }
