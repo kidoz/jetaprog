@@ -52,10 +52,13 @@ class CloneRepositoryDialogUiTest {
         runComposeUiTest {
             val viewModel = shownViewModel()
 
-            onNodeWithText("Clone Repository").assertIsDisplayed()
-            onNodeWithText("Repository URL:").assertIsDisplayed()
-            onNodeWithText("Destination directory:").assertIsDisplayed()
-            onNodeWithText("Project name:").assertIsDisplayed()
+            // The dialog body sits under a click-swallowing Box, which merges its
+            // descendants' semantics; read the labels from the unmerged tree so the
+            // assertion does not depend on how that merge happens to be batched.
+            onNodeWithText("Clone Repository", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("Repository URL:", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("Destination directory:", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("Project name:", useUnmergedTree = true).assertIsDisplayed()
             onNodeWithText("Clone").assertIsNotEnabled()
 
             urlFieldInput().performTextInput("https://example.com/user/sample.git")
