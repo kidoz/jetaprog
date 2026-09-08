@@ -31,6 +31,7 @@ import su.kidoz.jetaprog.lsp.protocol.LspDocumentHighlightKind
 import su.kidoz.jetaprog.lsp.protocol.LspLocation
 import su.kidoz.jetaprog.lsp.protocol.LspPosition
 import su.kidoz.jetaprog.lsp.protocol.LspRange
+import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
 import su.kidoz.jetaprog.lsp.protocol.ReferenceContext
 import su.kidoz.jetaprog.lsp.protocol.ReferenceParams
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentIdentifier
@@ -129,20 +130,10 @@ public class DefaultNavigationService(
             val server = embeddedServerRegistry.getServer(languageId) ?: return@forEach
 
             // Get all indexed files and search their symbols
-            val symbolResults =
-                searchServerSymbols(server, query, limit) { kind ->
-                    kind in
-                        listOf(
-                            NavigationSymbolKind.CLASS,
-                            NavigationSymbolKind.INTERFACE,
-                            NavigationSymbolKind.ENUM,
-                            NavigationSymbolKind.STRUCT,
-                            NavigationSymbolKind.OBJECT,
-                            NavigationSymbolKind.TRAIT,
-                        )
-                }
+            val symbolResults = searchServerSymbols(server, query, limit) { it in CLASS_LIKE_KINDS }
             results.addAll(symbolResults)
         }
+        results.addAll(registrySymbols(query, limit) { it in CLASS_LIKE_KINDS })
 
         return results
             .sortedByDescending { it.score }
@@ -182,6 +173,7 @@ public class DefaultNavigationService(
             val symbolResults = searchServerSymbols(server, query, limit) { true }
             results.addAll(symbolResults)
         }
+        results.addAll(registrySymbols(query, limit) { true })
 
         return results
             .sortedByDescending { it.score }
@@ -513,6 +505,12 @@ public class DefaultNavigationService(
                 return adapter.toStructureItems(symbols, filePath)
             }
         }
+
+        // External language servers (gopls, jdtls, ...) registered through the registry.
+        languageRegistryProvider()
+            ?.provideDocumentSymbols(languageId, pathToUri(filePath))
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { return adapter.toStructureItems(it, filePath) }
 
         // Fall back to external LSP client
         val client = lspClient ?: return emptyList()
@@ -937,8 +935,28 @@ public class DefaultNavigationService(
         limit: Int,
         kindFilter: (NavigationSymbolKind) -> Boolean,
     ): List<NavigationSearchResult> =
-        server
-            .workspaceSymbol(WorkspaceSymbolParams(query))
+        toSearchResults(server.workspaceSymbol(WorkspaceSymbolParams(query)), query, limit, kindFilter)
+
+    /**
+     * Symbols from the external language servers. Without this, Go to Class and Go
+     * to Symbol came from the regex index even with gopls or jdtls running.
+     */
+    private suspend fun registrySymbols(
+        query: String,
+        limit: Int,
+        kindFilter: (NavigationSymbolKind) -> Boolean,
+    ): List<NavigationSearchResult> {
+        val registry = languageRegistryProvider() ?: return emptyList()
+        return toSearchResults(registry.searchWorkspaceSymbols(query), query, limit, kindFilter)
+    }
+
+    private fun toSearchResults(
+        symbols: List<LspSymbolInformation>,
+        query: String,
+        limit: Int,
+        kindFilter: (NavigationSymbolKind) -> Boolean,
+    ): List<NavigationSearchResult> =
+        symbols
             .mapNotNull { symbol ->
                 val kind = adapter.mapSymbolKind(symbol.kind)
                 if (!kindFilter(kind)) return@mapNotNull null
@@ -1065,3 +1083,14 @@ public class DefaultNavigationService(
         return if (queryIndex == lowerQuery.length) matches else 0
     }
 }
+
+/** Kinds Go to Class offers; everything else is left to Go to Symbol. */
+private val CLASS_LIKE_KINDS =
+    setOf(
+        NavigationSymbolKind.CLASS,
+        NavigationSymbolKind.INTERFACE,
+        NavigationSymbolKind.ENUM,
+        NavigationSymbolKind.STRUCT,
+        NavigationSymbolKind.OBJECT,
+        NavigationSymbolKind.TRAIT,
+    )

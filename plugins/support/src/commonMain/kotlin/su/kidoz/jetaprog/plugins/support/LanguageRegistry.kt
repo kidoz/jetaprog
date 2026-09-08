@@ -11,6 +11,8 @@ import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.lsp.client.LspClientConfig
+import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
+import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
 import su.kidoz.jetaprog.lsp.protocol.LspWorkspaceEdit
 import su.kidoz.jetaprog.lsp.protocol.WorkspaceFolder
 import su.kidoz.jetaprog.plugins.api.language.CompletionList
@@ -269,6 +271,37 @@ public class LanguageRegistry(
      * Whether a running LSP server is registered for the given language.
      */
     public fun hasLspServer(languageId: String): Boolean = lspServers.values.any { languageId in it.config.languageIds }
+
+    /**
+     * Structure of the document at [uri] from the external server covering [languageId].
+     * Empty when no server covers the language or it has nothing to report.
+     */
+    public suspend fun provideDocumentSymbols(
+        languageId: String,
+        uri: String,
+    ): List<LspDocumentSymbol> {
+        for (server in lspServers.values.filter { languageId in it.config.languageIds }) {
+            val symbols = server.querySafely("documentSymbol") { documentSymbols(uri) }
+            if (symbols.isNotEmpty()) return symbols
+        }
+        return emptyList()
+    }
+
+    /** Symbols matching [query] from every running external server. */
+    public suspend fun searchWorkspaceSymbols(query: String): List<LspSymbolInformation> =
+        lspServers.values.flatMap { server -> server.querySafely("workspaceSymbol") { workspaceSymbols(query) } }
+
+    private suspend fun <T> LspLanguageServer.querySafely(
+        feature: String,
+        query: suspend LspLanguageServer.() -> List<T>,
+    ): List<T> =
+        try {
+            query()
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            logger.warn(e) { "${config.name} $feature failed: ${e.message}" }
+            emptyList()
+        }
 
     /**
      * Add a diagnostics listener. The listener receives the name of the language server

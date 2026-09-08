@@ -50,12 +50,15 @@ import su.kidoz.jetaprog.lsp.protocol.LspCompletionList
 import su.kidoz.jetaprog.lsp.protocol.LspCompletionResultSerializer
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentHighlight
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
+import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbolResultSerializer
 import su.kidoz.jetaprog.lsp.protocol.LspHover
 import su.kidoz.jetaprog.lsp.protocol.LspLocation
 import su.kidoz.jetaprog.lsp.protocol.LspMethod
 import su.kidoz.jetaprog.lsp.protocol.LspSignatureHelp
+import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
 import su.kidoz.jetaprog.lsp.protocol.LspTextEdit
 import su.kidoz.jetaprog.lsp.protocol.LspWorkspaceEdit
+import su.kidoz.jetaprog.lsp.protocol.LspWorkspaceSymbolResultSerializer
 import su.kidoz.jetaprog.lsp.protocol.PublishDiagnosticsClientCapabilities
 import su.kidoz.jetaprog.lsp.protocol.PublishDiagnosticsParams
 import su.kidoz.jetaprog.lsp.protocol.ReferenceClientCapabilities
@@ -76,6 +79,7 @@ import su.kidoz.jetaprog.lsp.protocol.TextDocumentSyncClientCapabilities
 import su.kidoz.jetaprog.lsp.protocol.WorkspaceClientCapabilities
 import su.kidoz.jetaprog.lsp.protocol.WorkspaceEditClientCapabilities
 import su.kidoz.jetaprog.lsp.protocol.WorkspaceFolder
+import su.kidoz.jetaprog.lsp.protocol.WorkspaceSymbolParams
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -568,7 +572,18 @@ public class LspClient(
             LspMethod.DOCUMENT_SYMBOL,
             params,
             DocumentSymbolParams.serializer(),
-            kotlinx.serialization.builtins.ListSerializer(LspDocumentSymbol.serializer()),
+            LspDocumentSymbolResultSerializer,
+        )
+
+    /**
+     * Search the workspace for symbols matching a query.
+     */
+    public suspend fun workspaceSymbols(params: WorkspaceSymbolParams): List<LspSymbolInformation>? =
+        sendRequest(
+            LspMethod.WORKSPACE_SYMBOL,
+            params,
+            WorkspaceSymbolParams.serializer(),
+            LspWorkspaceSymbolResultSerializer,
         )
 
     /**

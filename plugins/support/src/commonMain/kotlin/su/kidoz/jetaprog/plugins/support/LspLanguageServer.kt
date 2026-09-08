@@ -13,7 +13,10 @@ import su.kidoz.jetaprog.lsp.protocol.DidCloseTextDocumentParams
 import su.kidoz.jetaprog.lsp.protocol.DidOpenTextDocumentParams
 import su.kidoz.jetaprog.lsp.protocol.DidSaveTextDocumentParams
 import su.kidoz.jetaprog.lsp.protocol.DocumentFormattingParams
+import su.kidoz.jetaprog.lsp.protocol.DocumentSymbolParams
+import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
 import su.kidoz.jetaprog.lsp.protocol.LspFormattingOptions
+import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
 import su.kidoz.jetaprog.lsp.protocol.ReferenceContext
 import su.kidoz.jetaprog.lsp.protocol.ReferenceParams
 import su.kidoz.jetaprog.lsp.protocol.SignatureHelpParams
@@ -22,6 +25,7 @@ import su.kidoz.jetaprog.lsp.protocol.TextDocumentIdentifier
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentItem
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentPositionParams
 import su.kidoz.jetaprog.lsp.protocol.VersionedTextDocumentIdentifier
+import su.kidoz.jetaprog.lsp.protocol.WorkspaceSymbolParams
 import su.kidoz.jetaprog.plugins.api.language.CompletionList
 import su.kidoz.jetaprog.plugins.api.services.CodeActionProvider
 import su.kidoz.jetaprog.plugins.api.services.CompletionProvider
@@ -281,6 +285,18 @@ public class LspLanguageServer(
 
             client.definition(params)?.map { it.toLocation() } ?: emptyList()
         }
+
+    /** Structure of the open document at [uri] as the server sees it; empty when it has none. */
+    public suspend fun documentSymbols(uri: String): List<LspDocumentSymbol> {
+        if (!isRunning) return emptyList()
+        return client.documentSymbols(DocumentSymbolParams(TextDocumentIdentifier(uri))) ?: emptyList()
+    }
+
+    /** Workspace-wide symbols matching [query]; empty until the server is initialized. */
+    public suspend fun workspaceSymbols(query: String): List<LspSymbolInformation> {
+        if (!isRunning) return emptyList()
+        return client.workspaceSymbols(WorkspaceSymbolParams(query)) ?: emptyList()
+    }
 
     /**
      * Create a references provider backed by this LSP server.
