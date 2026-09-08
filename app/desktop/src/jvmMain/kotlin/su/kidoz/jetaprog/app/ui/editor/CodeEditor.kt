@@ -31,8 +31,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -121,6 +123,21 @@ public fun CodeEditor(
     val effectiveSyntaxTheme = syntaxTheme ?: if (palette.isDark) DarkSyntaxTheme else LightSyntaxTheme
     val verticalScrollState = remember(state.activeDocumentUri) { androidx.compose.foundation.ScrollState(0) }
     val horizontalScrollState = remember(state.activeDocumentUri) { androidx.compose.foundation.ScrollState(0) }
+
+    // The text field reveals its caret whenever it gains focus, using the caret it held
+    // before the click that focused it (see EditorBringIntoViewSpec). Reveals stay muted
+    // while the field is unfocused and for a couple of frames after focus arrives, which
+    // is when that stale request is processed; typing afterwards reveals the caret as usual.
+    val bringIntoViewSpec = rememberEditorBringIntoViewSpec()
+    var textFieldFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(textFieldFocused) {
+        if (!textFieldFocused) {
+            bringIntoViewSpec.suppressed = true
+            return@LaunchedEffect
+        }
+        repeat(FOCUS_REVEAL_GRACE_FRAMES) { withFrameNanos {} }
+        bringIntoViewSpec.suppressed = false
+    }
     val textStyle =
         remember {
             TextStyle(
@@ -493,377 +510,385 @@ public fun CodeEditor(
                         }
                     }
 
-                    BasicTextField(
-                        value = textFieldValue,
-                        onValueChange = { newValue ->
-                            val oldText = textFieldValue.text
-                            val oldSelection = textFieldValue.selection
+                    ProvideEditorBringIntoViewSpec(bringIntoViewSpec) {
+                        BasicTextField(
+                            value = textFieldValue,
+                            onValueChange = { newValue ->
+                                val oldText = textFieldValue.text
+                                val oldSelection = textFieldValue.selection
 
-                            // Detect a single typed character (for auto-close and triggers)
-                            val typedChar =
-                                if (newValue.text.length == oldText.length + 1 &&
-                                    newValue.selection.collapsed &&
-                                    newValue.selection.start > 0 &&
-                                    oldText ==
-                                    newValue.text.removeRange(
-                                        newValue.selection.start - 1,
-                                        newValue.selection.start,
-                                    )
-                                ) {
-                                    newValue.text[newValue.selection.start - 1]
-                                } else {
-                                    null
-                                }
-
-                            // Auto-close brackets/quotes or skip over an existing closer
-                            val processed =
-                                typedChar
-                                    ?.takeIf { settings.autoCloseBrackets }
-                                    ?.let {
-                                        TextEditingOps.autoCloseAfterInsert(
-                                            newValue.text,
+                                // Detect a single typed character (for auto-close and triggers)
+                                val typedChar =
+                                    if (newValue.text.length == oldText.length + 1 &&
+                                        newValue.selection.collapsed &&
+                                        newValue.selection.start > 0 &&
+                                        oldText ==
+                                        newValue.text.removeRange(
+                                            newValue.selection.start - 1,
                                             newValue.selection.start,
-                                            it,
                                         )
-                                    }?.let {
-                                        TextFieldValue(
-                                            text = it.text,
-                                            selection = TextRange(it.selectionStart, it.selectionEnd),
-                                        )
-                                    } ?: newValue
+                                    ) {
+                                        newValue.text[newValue.selection.start - 1]
+                                    } else {
+                                        null
+                                    }
 
-                            textFieldValue = processed
-                            if (processed.selection != oldSelection) {
-                                onCursorMove(offsetToPosition(processed.text, processed.selection.end))
-                            }
-                            // Compare against the previous local text, not state.content:
-                            // the ViewModel lags by at least a frame, so typing a character
-                            // and deleting it again could leave the new text equal to the
-                            // stale state.content and the deletion was never propagated.
-                            if (processed.text != oldText) {
-                                // Update lastKnownContent to prevent LaunchedEffect from resetting cursor
-                                lastKnownContent = processed.text
-                                onContentChange(processed.text)
+                                // Auto-close brackets/quotes or skip over an existing closer
+                                val processed =
+                                    typedChar
+                                        ?.takeIf { settings.autoCloseBrackets }
+                                        ?.let {
+                                            TextEditingOps.autoCloseAfterInsert(
+                                                newValue.text,
+                                                newValue.selection.start,
+                                                it,
+                                            )
+                                        }?.let {
+                                            TextFieldValue(
+                                                text = it.text,
+                                                selection = TextRange(it.selectionStart, it.selectionEnd),
+                                            )
+                                        } ?: newValue
 
-                                // Check for trigger characters to auto-trigger completion
-                                if (typedChar != null) {
-                                    // Completion triggers for special characters
-                                    if (typedChar in COMPLETION_TRIGGER_CHARACTERS) {
-                                        val prefix =
-                                            extractIdentifierPrefix(processed.text, processed.selection.end)
-                                        onCompletionRequest(
-                                            CompletionTriggerKind.TriggerCharacter,
-                                            typedChar,
-                                            prefix,
-                                        )
-                                    } else if (typedChar.isLetterOrDigit() || typedChar == '_') {
-                                        // Auto-trigger completion when typing identifiers (after 2+ chars)
+                                textFieldValue = processed
+                                if (processed.selection != oldSelection) {
+                                    onCursorMove(offsetToPosition(processed.text, processed.selection.end))
+                                }
+                                // Compare against the previous local text, not state.content:
+                                // the ViewModel lags by at least a frame, so typing a character
+                                // and deleting it again could leave the new text equal to the
+                                // stale state.content and the deletion was never propagated.
+                                if (processed.text != oldText) {
+                                    // Update lastKnownContent to prevent LaunchedEffect from resetting cursor
+                                    lastKnownContent = processed.text
+                                    onContentChange(processed.text)
+
+                                    // Check for trigger characters to auto-trigger completion
+                                    if (typedChar != null) {
+                                        // Completion triggers for special characters
+                                        if (typedChar in COMPLETION_TRIGGER_CHARACTERS) {
+                                            val prefix =
+                                                extractIdentifierPrefix(processed.text, processed.selection.end)
+                                            onCompletionRequest(
+                                                CompletionTriggerKind.TriggerCharacter,
+                                                typedChar,
+                                                prefix,
+                                            )
+                                        } else if (typedChar.isLetterOrDigit() || typedChar == '_') {
+                                            // Auto-trigger completion when typing identifiers (after 2+ chars)
+                                            val prefix =
+                                                extractIdentifierPrefix(processed.text, processed.selection.end)
+                                            onCompletionFilterChange(prefix)
+                                            if (prefix.length >= MIN_AUTO_COMPLETION_LENGTH) {
+                                                onCompletionRequest(CompletionTriggerKind.Invoked, null, prefix)
+                                            }
+                                        }
+                                        // Signature help triggers
+                                        if (typedChar in SIGNATURE_HELP_TRIGGER_CHARACTERS) {
+                                            onSignatureHelpRequest(typedChar)
+                                        }
+                                    } else if (processed.text.length < oldText.length) {
                                         val prefix =
                                             extractIdentifierPrefix(processed.text, processed.selection.end)
                                         onCompletionFilterChange(prefix)
-                                        if (prefix.length >= MIN_AUTO_COMPLETION_LENGTH) {
-                                            onCompletionRequest(CompletionTriggerKind.Invoked, null, prefix)
-                                        }
                                     }
-                                    // Signature help triggers
-                                    if (typedChar in SIGNATURE_HELP_TRIGGER_CHARACTERS) {
-                                        onSignatureHelpRequest(typedChar)
-                                    }
-                                } else if (processed.text.length < oldText.length) {
-                                    val prefix =
-                                        extractIdentifierPrefix(processed.text, processed.selection.end)
-                                    onCompletionFilterChange(prefix)
                                 }
-                            }
-                            // Dismiss signature help on closing paren (also fires on skip-over)
-                            if (typedChar == ')') {
-                                onSignatureHelpDismiss()
-                            }
-                        },
-                        textStyle =
-                            textStyle.copy(
-                                // Keep the input layer invisible so the highlighted layer shows through.
-                                color = Color.Transparent,
-                            ),
-                        cursorBrush = SolidColor(effectiveSyntaxTheme.cursor.toComposeColor()),
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .verticalScroll(verticalScrollState)
-                                .let { scrollModifier ->
-                                    if (settings.wordWrap) {
-                                        scrollModifier
-                                    } else {
-                                        scrollModifier.horizontalScroll(horizontalScrollState)
-                                    }
-                                }.padding(start = 8.dp, top = 4.dp)
-                                .onPreviewKeyEvent { keyEvent ->
-                                    if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-
-                                    // Check for format shortcut: Ctrl+Alt+L (Windows/Linux) or Cmd+Option+L (macOS)
-                                    val isFormatShortcut =
-                                        keyEvent.key == Key.L &&
-                                            keyEvent.isAltPressed &&
-                                            (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
-                                    val ctrlOrMeta = keyEvent.isCtrlPressed || keyEvent.isMetaPressed
-                                    val plainCtrlOrMeta =
-                                        ctrlOrMeta && !keyEvent.isAltPressed && !keyEvent.isShiftPressed
-
-                                    when {
-                                        // Format document shortcut
-                                        isFormatShortcut -> {
-                                            onFormatDocument()
-                                            true
+                                // Dismiss signature help on closing paren (also fires on skip-over)
+                                if (typedChar == ')') {
+                                    onSignatureHelpDismiss()
+                                }
+                            },
+                            textStyle =
+                                textStyle.copy(
+                                    // Keep the input layer invisible so the highlighted layer shows through.
+                                    color = Color.Transparent,
+                                ),
+                            cursorBrush = SolidColor(effectiveSyntaxTheme.cursor.toComposeColor()),
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    // hasFocus, not isFocused: the scroll modifiers below carry a
+                                    // focus target of their own, so the field is a descendant here.
+                                    .onFocusChanged { textFieldFocused = it.hasFocus }
+                                    .verticalScroll(verticalScrollState)
+                                    .let { scrollModifier ->
+                                        if (settings.wordWrap) {
+                                            scrollModifier
+                                        } else {
+                                            scrollModifier.horizontalScroll(horizontalScrollState)
                                         }
+                                    }.padding(start = 8.dp, top = 4.dp)
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
 
-                                        // Redo: Ctrl+Shift+Z / Cmd+Shift+Z
-                                        ctrlOrMeta && keyEvent.isShiftPressed && keyEvent.key == Key.Z -> {
-                                            onIntent(EditorIntent.Redo)
-                                            true
-                                        }
+                                        // Check for format shortcut: Ctrl+Alt+L (Windows/Linux) or Cmd+Option+L (macOS)
+                                        val isFormatShortcut =
+                                            keyEvent.key == Key.L &&
+                                                keyEvent.isAltPressed &&
+                                                (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
+                                        val ctrlOrMeta = keyEvent.isCtrlPressed || keyEvent.isMetaPressed
+                                        val plainCtrlOrMeta =
+                                            ctrlOrMeta && !keyEvent.isAltPressed && !keyEvent.isShiftPressed
 
-                                        // Undo: Ctrl+Z / Cmd+Z
-                                        plainCtrlOrMeta && keyEvent.key == Key.Z -> {
-                                            onIntent(EditorIntent.Undo)
-                                            true
-                                        }
+                                        when {
+                                            // Format document shortcut
+                                            isFormatShortcut -> {
+                                                onFormatDocument()
+                                                true
+                                            }
 
-                                        // Quick fixes: Alt+Enter
-                                        keyEvent.isAltPressed && keyEvent.key == Key.Enter -> {
-                                            onIntent(EditorIntent.RequestQuickFixes)
-                                            true
-                                        }
+                                            // Redo: Ctrl+Shift+Z / Cmd+Shift+Z
+                                            ctrlOrMeta && keyEvent.isShiftPressed && keyEvent.key == Key.Z -> {
+                                                onIntent(EditorIntent.Redo)
+                                                true
+                                            }
 
-                                        // While the quick-fix popup is open it owns these keys.
-                                        state.quickFixState.isVisible &&
-                                            keyEvent.key == Key.DirectionDown -> {
-                                            onIntent(EditorIntent.MoveQuickFixSelection(1))
-                                            true
-                                        }
+                                            // Undo: Ctrl+Z / Cmd+Z
+                                            plainCtrlOrMeta && keyEvent.key == Key.Z -> {
+                                                onIntent(EditorIntent.Undo)
+                                                true
+                                            }
 
-                                        state.quickFixState.isVisible &&
-                                            keyEvent.key == Key.DirectionUp -> {
-                                            onIntent(EditorIntent.MoveQuickFixSelection(-1))
-                                            true
-                                        }
+                                            // Quick fixes: Alt+Enter
+                                            keyEvent.isAltPressed && keyEvent.key == Key.Enter -> {
+                                                onIntent(EditorIntent.RequestQuickFixes)
+                                                true
+                                            }
 
-                                        state.quickFixState.isVisible && keyEvent.key == Key.Enter -> {
-                                            onIntent(
-                                                EditorIntent.ApplyQuickFix(state.quickFixState.selectedIndex),
-                                            )
-                                            true
-                                        }
+                                            // While the quick-fix popup is open it owns these keys.
+                                            state.quickFixState.isVisible &&
+                                                keyEvent.key == Key.DirectionDown -> {
+                                                onIntent(EditorIntent.MoveQuickFixSelection(1))
+                                                true
+                                            }
 
-                                        state.quickFixState.isVisible && keyEvent.key == Key.Escape -> {
-                                            onIntent(EditorIntent.DismissQuickFixes)
-                                            true
-                                        }
+                                            state.quickFixState.isVisible &&
+                                                keyEvent.key == Key.DirectionUp -> {
+                                                onIntent(EditorIntent.MoveQuickFixSelection(-1))
+                                                true
+                                            }
 
-                                        // Find: Ctrl+F / Cmd+F
-                                        plainCtrlOrMeta && keyEvent.key == Key.F -> {
-                                            onIntent(EditorIntent.OpenFindBar(withReplace = false))
-                                            true
-                                        }
-
-                                        // Replace: Ctrl+R / Cmd+R
-                                        plainCtrlOrMeta && keyEvent.key == Key.R -> {
-                                            onIntent(EditorIntent.OpenFindBar(withReplace = true))
-                                            true
-                                        }
-
-                                        // Next/previous match: F3 / Shift+F3
-                                        keyEvent.key == Key.F3 && state.findReplaceState.isVisible -> {
-                                            onIntent(
-                                                if (keyEvent.isShiftPressed) {
-                                                    EditorIntent.FindPrevious
-                                                } else {
-                                                    EditorIntent.FindNext
-                                                },
-                                            )
-                                            true
-                                        }
-
-                                        // Duplicate line: Ctrl+D / Cmd+D
-                                        plainCtrlOrMeta && keyEvent.key == Key.D -> {
-                                            onIntent(EditorIntent.DuplicateLine)
-                                            true
-                                        }
-
-                                        // Delete line: Ctrl+Y / Cmd+Y
-                                        plainCtrlOrMeta && keyEvent.key == Key.Y -> {
-                                            onIntent(EditorIntent.DeleteLine)
-                                            true
-                                        }
-
-                                        // Ctrl+Shift+Space - smart completion, narrowed to
-                                        // the type expected at the caret. Must precede the
-                                        // plain Ctrl+Space branch, which would swallow it.
-                                        ctrlOrMeta &&
-                                            keyEvent.isShiftPressed &&
-                                            keyEvent.key == Key.Spacebar -> {
-                                            onIntent(
-                                                EditorIntent.RequestCompletion(
-                                                    triggerKind = CompletionTriggerKind.Invoked,
-                                                    filterText =
-                                                        extractIdentifierPrefix(
-                                                            textFieldValue.text,
-                                                            textFieldValue.selection.start,
-                                                        ),
-                                                    smart = true,
-                                                ),
-                                            )
-                                            true
-                                        }
-
-                                        // Ctrl+Space - manual completion trigger
-                                        keyEvent.isCtrlPressed && keyEvent.key == Key.Spacebar -> {
-                                            val prefix =
-                                                extractIdentifierPrefix(
-                                                    textFieldValue.text,
-                                                    textFieldValue.selection.start,
+                                            state.quickFixState.isVisible && keyEvent.key == Key.Enter -> {
+                                                onIntent(
+                                                    EditorIntent.ApplyQuickFix(state.quickFixState.selectedIndex),
                                                 )
-                                            onCompletionRequest(CompletionTriggerKind.Invoked, null, prefix)
-                                            true
-                                        }
+                                                true
+                                            }
 
-                                        // When completion is visible, handle navigation
-                                        state.completionState.isVisible -> {
-                                            when (keyEvent.key) {
-                                                Key.DirectionUp -> {
-                                                    onCompletionMoveUp()
-                                                    true
-                                                }
+                                            state.quickFixState.isVisible && keyEvent.key == Key.Escape -> {
+                                                onIntent(EditorIntent.DismissQuickFixes)
+                                                true
+                                            }
 
-                                                Key.DirectionDown -> {
-                                                    onCompletionMoveDown()
-                                                    true
-                                                }
+                                            // Find: Ctrl+F / Cmd+F
+                                            plainCtrlOrMeta && keyEvent.key == Key.F -> {
+                                                onIntent(EditorIntent.OpenFindBar(withReplace = false))
+                                                true
+                                            }
 
-                                                Key.Enter, Key.Tab -> {
-                                                    state.completionState.selectedItem?.let {
-                                                        onCompletionSelect(it)
+                                            // Replace: Ctrl+R / Cmd+R
+                                            plainCtrlOrMeta && keyEvent.key == Key.R -> {
+                                                onIntent(EditorIntent.OpenFindBar(withReplace = true))
+                                                true
+                                            }
+
+                                            // Next/previous match: F3 / Shift+F3
+                                            keyEvent.key == Key.F3 && state.findReplaceState.isVisible -> {
+                                                onIntent(
+                                                    if (keyEvent.isShiftPressed) {
+                                                        EditorIntent.FindPrevious
+                                                    } else {
+                                                        EditorIntent.FindNext
+                                                    },
+                                                )
+                                                true
+                                            }
+
+                                            // Duplicate line: Ctrl+D / Cmd+D
+                                            plainCtrlOrMeta && keyEvent.key == Key.D -> {
+                                                onIntent(EditorIntent.DuplicateLine)
+                                                true
+                                            }
+
+                                            // Delete line: Ctrl+Y / Cmd+Y
+                                            plainCtrlOrMeta && keyEvent.key == Key.Y -> {
+                                                onIntent(EditorIntent.DeleteLine)
+                                                true
+                                            }
+
+                                            // Ctrl+Shift+Space - smart completion, narrowed to
+                                            // the type expected at the caret. Must precede the
+                                            // plain Ctrl+Space branch, which would swallow it.
+                                            ctrlOrMeta &&
+                                                keyEvent.isShiftPressed &&
+                                                keyEvent.key == Key.Spacebar -> {
+                                                onIntent(
+                                                    EditorIntent.RequestCompletion(
+                                                        triggerKind = CompletionTriggerKind.Invoked,
+                                                        filterText =
+                                                            extractIdentifierPrefix(
+                                                                textFieldValue.text,
+                                                                textFieldValue.selection.start,
+                                                            ),
+                                                        smart = true,
+                                                    ),
+                                                )
+                                                true
+                                            }
+
+                                            // Ctrl+Space - manual completion trigger
+                                            keyEvent.isCtrlPressed && keyEvent.key == Key.Spacebar -> {
+                                                val prefix =
+                                                    extractIdentifierPrefix(
+                                                        textFieldValue.text,
+                                                        textFieldValue.selection.start,
+                                                    )
+                                                onCompletionRequest(CompletionTriggerKind.Invoked, null, prefix)
+                                                true
+                                            }
+
+                                            // When completion is visible, handle navigation
+                                            state.completionState.isVisible -> {
+                                                when (keyEvent.key) {
+                                                    Key.DirectionUp -> {
+                                                        onCompletionMoveUp()
+                                                        true
                                                     }
-                                                    true
-                                                }
 
-                                                Key.Escape -> {
-                                                    onCompletionDismiss()
-                                                    true
-                                                }
+                                                    Key.DirectionDown -> {
+                                                        onCompletionMoveDown()
+                                                        true
+                                                    }
 
-                                                else -> {
-                                                    false
+                                                    Key.Enter, Key.Tab -> {
+                                                        state.completionState.selectedItem?.let {
+                                                            onCompletionSelect(it)
+                                                        }
+                                                        true
+                                                    }
+
+                                                    Key.Escape -> {
+                                                        onCompletionDismiss()
+                                                        true
+                                                    }
+
+                                                    else -> {
+                                                        false
+                                                    }
                                                 }
                                             }
-                                        }
 
-                                        // Smart Enter with auto-indent
-                                        keyEvent.key == Key.Enter &&
-                                            !ctrlOrMeta &&
-                                            !keyEvent.isAltPressed &&
-                                            !keyEvent.isShiftPressed -> {
-                                            applyEdit(
-                                                TextEditingOps.autoIndentNewline(
-                                                    textFieldValue.text,
-                                                    textFieldValue.selection.min,
-                                                    textFieldValue.selection.max,
-                                                    indentUnit,
-                                                ),
-                                            )
-                                            true
-                                        }
-
-                                        // Dedent: Shift+Tab
-                                        keyEvent.key == Key.Tab && keyEvent.isShiftPressed -> {
-                                            applyEdit(
-                                                TextEditingOps.dedentLines(
-                                                    textFieldValue.text,
-                                                    textFieldValue.selection.min,
-                                                    textFieldValue.selection.max,
-                                                    indentUnit,
-                                                ),
-                                            )
-                                            true
-                                        }
-
-                                        // Indent: Tab
-                                        keyEvent.key == Key.Tab -> {
-                                            applyEdit(
-                                                TextEditingOps.indentLines(
-                                                    textFieldValue.text,
-                                                    textFieldValue.selection.min,
-                                                    textFieldValue.selection.max,
-                                                    indentUnit,
-                                                ),
-                                            )
-                                            true
-                                        }
-
-                                        // Toggle line comment: Ctrl+/ or Cmd+/
-                                        plainCtrlOrMeta && keyEvent.key == Key.Slash -> {
-                                            commentPrefix?.let { prefix ->
+                                            // Smart Enter with auto-indent
+                                            keyEvent.key == Key.Enter &&
+                                                !ctrlOrMeta &&
+                                                !keyEvent.isAltPressed &&
+                                                !keyEvent.isShiftPressed -> {
                                                 applyEdit(
-                                                    TextEditingOps.toggleLineComment(
+                                                    TextEditingOps.autoIndentNewline(
                                                         textFieldValue.text,
                                                         textFieldValue.selection.min,
                                                         textFieldValue.selection.max,
-                                                        prefix,
+                                                        indentUnit,
                                                     ),
                                                 )
+                                                true
                                             }
-                                            true
-                                        }
 
-                                        // Move lines up/down: Alt+Shift+Up / Alt+Shift+Down
-                                        keyEvent.isAltPressed &&
-                                            keyEvent.isShiftPressed &&
-                                            (keyEvent.key == Key.DirectionUp || keyEvent.key == Key.DirectionDown) -> {
-                                            TextEditingOps
-                                                .moveLines(
-                                                    textFieldValue.text,
-                                                    textFieldValue.selection.min,
-                                                    textFieldValue.selection.max,
-                                                    up = keyEvent.key == Key.DirectionUp,
-                                                )?.let(applyEdit)
-                                            true
-                                        }
+                                            // Dedent: Shift+Tab
+                                            keyEvent.key == Key.Tab && keyEvent.isShiftPressed -> {
+                                                applyEdit(
+                                                    TextEditingOps.dedentLines(
+                                                        textFieldValue.text,
+                                                        textFieldValue.selection.min,
+                                                        textFieldValue.selection.max,
+                                                        indentUnit,
+                                                    ),
+                                                )
+                                                true
+                                            }
 
-                                        // Close find bar with Escape
-                                        keyEvent.key == Key.Escape && state.findReplaceState.isVisible -> {
-                                            onIntent(EditorIntent.CloseFindBar)
-                                            true
-                                        }
+                                            // Indent: Tab
+                                            keyEvent.key == Key.Tab -> {
+                                                applyEdit(
+                                                    TextEditingOps.indentLines(
+                                                        textFieldValue.text,
+                                                        textFieldValue.selection.min,
+                                                        textFieldValue.selection.max,
+                                                        indentUnit,
+                                                    ),
+                                                )
+                                                true
+                                            }
 
-                                        else -> {
-                                            false
+                                            // Toggle line comment: Ctrl+/ or Cmd+/
+                                            plainCtrlOrMeta && keyEvent.key == Key.Slash -> {
+                                                commentPrefix?.let { prefix ->
+                                                    applyEdit(
+                                                        TextEditingOps.toggleLineComment(
+                                                            textFieldValue.text,
+                                                            textFieldValue.selection.min,
+                                                            textFieldValue.selection.max,
+                                                            prefix,
+                                                        ),
+                                                    )
+                                                }
+                                                true
+                                            }
+
+                                            // Move lines up/down: Alt+Shift+Up / Alt+Shift+Down
+                                            keyEvent.isAltPressed &&
+                                                keyEvent.isShiftPressed &&
+                                                (
+                                                    keyEvent.key == Key.DirectionUp ||
+                                                        keyEvent.key == Key.DirectionDown
+                                                ) -> {
+                                                TextEditingOps
+                                                    .moveLines(
+                                                        textFieldValue.text,
+                                                        textFieldValue.selection.min,
+                                                        textFieldValue.selection.max,
+                                                        up = keyEvent.key == Key.DirectionUp,
+                                                    )?.let(applyEdit)
+                                                true
+                                            }
+
+                                            // Close find bar with Escape
+                                            keyEvent.key == Key.Escape && state.findReplaceState.isVisible -> {
+                                                onIntent(EditorIntent.CloseFindBar)
+                                                true
+                                            }
+
+                                            else -> {
+                                                false
+                                            }
                                         }
-                                    }
-                                },
-                        decorationBox = { innerTextField ->
-                            Box {
-                                // Render syntax-highlighted text as visual layer
-                                Text(
-                                    text = annotatedString,
-                                    // Same style object as the input layer: two separately
-                                    // declared styles can silently drift out of alignment.
-                                    style =
-                                        textStyle.copy(
-                                            color = effectiveSyntaxTheme.defaultForeground.toComposeColor(),
-                                        ),
-                                )
-                                // Invisible input field on top (handles cursor and input). The
-                                // selection wash is translucent because it paints over the
-                                // highlighted layer below, not behind the glyphs.
-                                CompositionLocalProvider(
-                                    LocalTextSelectionColors provides editorSelectionColors,
-                                ) {
-                                    Box(modifier = Modifier.matchParentSize()) {
-                                        innerTextField()
+                                    },
+                            decorationBox = { innerTextField ->
+                                Box {
+                                    // Render syntax-highlighted text as visual layer
+                                    Text(
+                                        text = annotatedString,
+                                        // Same style object as the input layer: two separately
+                                        // declared styles can silently drift out of alignment.
+                                        style =
+                                            textStyle.copy(
+                                                color = effectiveSyntaxTheme.defaultForeground.toComposeColor(),
+                                            ),
+                                    )
+                                    // Invisible input field on top (handles cursor and input). The
+                                    // selection wash is translucent because it paints over the
+                                    // highlighted layer below, not behind the glyphs.
+                                    CompositionLocalProvider(
+                                        LocalTextSelectionColors provides editorSelectionColors,
+                                    ) {
+                                        Box(modifier = Modifier.matchParentSize()) {
+                                            innerTextField()
+                                        }
                                     }
                                 }
-                            }
-                        },
-                    )
+                            },
+                        )
+                    }
 
                     // Vertical scrollbar
                     VerticalScrollbar(
@@ -1030,6 +1055,9 @@ private val SIGNATURE_HELP_TRIGGER_CHARACTERS = setOf('(', ',')
  * Minimum identifier length to auto-trigger completion.
  */
 private const val MIN_AUTO_COMPLETION_LENGTH = 2
+
+/** Frames to keep caret reveals muted after the text field gains focus. */
+private const val FOCUS_REVEAL_GRACE_FRAMES = 2
 
 /** Alpha for the selection wash, which overlays the highlighted text layer. */
 private const val SELECTION_OVERLAY_ALPHA = 0.55f
