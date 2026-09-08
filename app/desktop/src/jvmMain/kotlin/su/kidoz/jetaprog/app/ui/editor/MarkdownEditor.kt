@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
+import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.editing.TextEditingOps
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.editor.state.EditorState
@@ -62,6 +63,7 @@ public fun MarkdownEditor(
     state: EditorState,
     onContentChange: (String) -> Unit,
     onIntent: (EditorIntent) -> Unit = {},
+    onGoToDefinition: (TextPosition) -> Unit = {},
     indentUnit: String = TextEditingOps.DEFAULT_INDENT_UNIT,
     settings: EditorSettings = EditorSettings.DEFAULT,
     modifier: Modifier = Modifier,
@@ -110,6 +112,7 @@ public fun MarkdownEditor(
                         onCompletionDismiss = { onIntent(EditorIntent.DismissCompletion) },
                         onCompletionFilterChange = { onIntent(EditorIntent.UpdateCompletionFilter(it)) },
                         onCursorMove = { onIntent(EditorIntent.MoveCursor(it)) },
+                        onGoToDefinition = onGoToDefinition,
                         onHoverRequest = { onIntent(EditorIntent.RequestHover(it)) },
                         onHoverDismiss = { onIntent(EditorIntent.DismissHover) },
                         onSignatureHelpRequest = {

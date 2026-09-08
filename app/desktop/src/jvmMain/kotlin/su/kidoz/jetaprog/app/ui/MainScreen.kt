@@ -353,6 +353,14 @@ private fun MainScreenContent(
 
     val editorState by session.editorViewModel.state.collectAsState()
     val editorSettings by session.editorViewModel.settings.collectAsState()
+    // Ctrl/Cmd+Click in the editor: same path as the Go to Declaration shortcut.
+    val goToDeclaration: (String, TextPosition) -> Unit = { uri, position ->
+        coroutineScope.launch {
+            session.navigationViewModel.processIntent(
+                NavigationIntent.GoToDeclaration(uri.removePrefix("file://"), position.line, position.column),
+            )
+        }
+    }
     val terminalState by session.terminalViewModel.state.collectAsState()
     val gradleState by session.gradleViewModel.state.collectAsState()
     val gradleSyncState by session.gradleImportCoordinator.state.collectAsState()
@@ -965,6 +973,9 @@ private fun MainScreenContent(
                                             )
                                         },
                                         onIntent = { session.editorViewModel.dispatch(it) },
+                                        onGoToDefinition = { position ->
+                                            goToDeclaration(activeTab.uri.value, position)
+                                        },
                                         indentUnit =
                                             if (editorSettings.editor.useTabs) {
                                                 "\t"
@@ -1020,6 +1031,9 @@ private fun MainScreenContent(
                                             session.editorViewModel.dispatch(
                                                 EditorIntent.MoveCursor(position),
                                             )
+                                        },
+                                        onGoToDefinition = { position ->
+                                            goToDeclaration(activeTab.uri.value, position)
                                         },
                                         onHoverRequest = { position ->
                                             session.editorViewModel.dispatch(

@@ -402,6 +402,10 @@ public class KotlinIndexNavigationService(
     override suspend fun getRecentLocations(limit: Int): List<NavigationHistoryEntry> =
         delegate.getRecentLocations(limit)
 
+    override suspend fun seedRecentFiles(paths: List<String>) {
+        delegate.seedRecentFiles(paths)
+    }
+
     override suspend fun recordNavigation(
         filePath: String,
         position: TextPosition,

@@ -256,7 +256,9 @@ public class EditorViewModel(
             }
 
             is EditorIntent.SwitchTab -> {
+                val previous = currentState.activeTabIndex
                 switchTab(intent.index)
+                if (currentState.activeTabIndex != previous) recordActiveDocument()
             }
 
             is EditorIntent.UpdateContent -> {
@@ -577,12 +579,22 @@ public class EditorViewModel(
         }
     }
 
-    private suspend fun openFile(path: String) {
+    /**
+     * Opens [path] in a tab, or switches to it if already open.
+     *
+     * @param recordInHistory whether the visit enters navigation history (Recent Files,
+     * Back). [navigateTo] records its precise target itself and passes false.
+     */
+    private suspend fun openFile(
+        path: String,
+        recordInHistory: Boolean = true,
+    ) {
         val fileName = File(path).name
         val uri = DocumentUri.file(path)
         val existingIndex = currentState.tabs.indexOfFirst { it.uri == uri }
         if (existingIndex >= 0) {
             switchTab(existingIndex)
+            if (recordInHistory) recordActiveDocument()
             return
         }
 
@@ -633,6 +645,7 @@ public class EditorViewModel(
 
             syncDocumentOpened(uri, languageId, content)
             scheduleLint(uri, languageId, content, LintTrigger.OPEN)
+            if (recordInHistory) recordActiveDocument()
             emitEffect(EditorEffect.FileOpened(path))
         } catch (e: Exception) {
             updateState {
@@ -1921,9 +1934,19 @@ public class EditorViewModel(
     ) {
         // Record navigation for back/forward support
         navigationService?.recordNavigation(path, position)
-        openFile(path)
+        openFile(path, recordInHistory = false)
         goToLine(position.line + 1)
         moveCursor(position, synchronizeUi = true)
+    }
+
+    /**
+     * Enters the active document and caret into navigation history. Only jumps used to
+     * be recorded, so files opened from the tree or the tab bar never showed up in
+     * Recent Files and Back could not return to them.
+     */
+    private suspend fun recordActiveDocument() {
+        val path = currentState.activeTab?.uri?.toPath() ?: return
+        navigationService?.recordNavigation(path, currentState.cursor.position)
     }
 
     private fun tokenize(

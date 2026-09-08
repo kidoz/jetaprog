@@ -49,6 +49,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -105,6 +107,7 @@ public fun CodeEditor(
     onCompletionDismiss: () -> Unit = {},
     onCompletionFilterChange: (String) -> Unit = {},
     onCursorMove: (TextPosition) -> Unit = {},
+    onGoToDefinition: (TextPosition) -> Unit = {},
     onHoverRequest: (TextPosition) -> Unit = {},
     onHoverDismiss: () -> Unit = {},
     onSignatureHelpRequest: (Char?) -> Unit = {},
@@ -399,6 +402,26 @@ public fun CodeEditor(
                                             PointerEventType.Exit -> {
                                                 lastHoverPosition = null
                                                 onHoverDismiss()
+                                            }
+
+                                            // Ctrl+Click (Cmd+Click on macOS) jumps to the
+                                            // declaration under the pointer. The press still
+                                            // reaches the text field, so the caret lands there too.
+                                            PointerEventType.Press -> {
+                                                val modifiers = event.keyboardModifiers
+                                                if (!modifiers.isCtrlPressed && !modifiers.isMetaPressed) continue
+                                                val pointer =
+                                                    event.changes.firstOrNull()?.position ?: continue
+                                                val position =
+                                                    pointerTextPosition(
+                                                        pointer = pointer,
+                                                        lines = textFieldValue.text.lines(),
+                                                        scrollY = verticalScrollState.value - editorPaddingTopPx,
+                                                        scrollX = horizontalScrollState.value - editorPaddingStartPx,
+                                                        lineHeightPx = lineHeightPxF,
+                                                        charWidthPx = charWidthPx,
+                                                    ) ?: continue
+                                                onGoToDefinition(position)
                                             }
                                         }
                                     }

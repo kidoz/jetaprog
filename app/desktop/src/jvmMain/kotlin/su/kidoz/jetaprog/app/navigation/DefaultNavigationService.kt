@@ -71,8 +71,9 @@ public class DefaultNavigationService(
     private val embeddedServerRegistry: EmbeddedServerRegistry? = null,
     private val workspacePath: String = System.getProperty("user.dir"),
     private val languageRegistryProvider: () -> LanguageRegistry? = { null },
+    /** Shared with the services layered above so every layer sees one back stack. */
+    private val history: NavigationHistory = NavigationHistory(),
 ) : NavigationService {
-    private val history = NavigationHistory()
     private val adapter = LspNavigationAdapter()
 
     // File extensions to include in file search

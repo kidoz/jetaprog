@@ -76,6 +76,7 @@ import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.database.DatabaseProfileStore
 import su.kidoz.jetaprog.database.JvmDatabaseExecutionService
 import su.kidoz.jetaprog.database.SessionDatabaseCredentialStore
+import su.kidoz.jetaprog.editor.navigation.NavigationHistory
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.index.CSharpSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.GoSymbolExtractor
@@ -269,6 +270,13 @@ public class ProjectSession(
     private val workspaceSymbolIndexService = WorkspaceSymbolIndexService(workspaceSymbolIndexer)
 
     /**
+     * One back stack for the whole navigation service chain. Each layer used to own
+     * its own history, so recent files seeded into the innermost one were never
+     * served by the outermost, which is the one the UI talks to.
+     */
+    private val navigationHistory = NavigationHistory()
+
+    /**
      * The navigation service for code navigation features.
      *
      * Layering, most authoritative first: embedded servers and the language registry
@@ -288,12 +296,14 @@ public class ProjectSession(
                             workspacePath = projectPath,
                             // Lazy: the registry (and its LSP servers) spins up after navigation is built
                             languageRegistryProvider = { languageRegistry },
+                            history = navigationHistory,
                         ),
                     symbolIndex = kotlinSymbolIndex,
                     fileSystem = fileSystem,
                     workspacePath = projectPath,
                     semanticAnalyzer = kotlinSemanticAnalyzer,
                 ),
+            history = navigationHistory,
             fileContentProvider = DiskFileContentProvider(),
         )
 

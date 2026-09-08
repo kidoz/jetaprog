@@ -286,6 +286,10 @@ public class IndexedNavigationService(
     override suspend fun getRecentLocations(limit: Int): List<NavigationHistoryEntry> =
         history.getRecentLocations(limit)
 
+    override suspend fun seedRecentFiles(paths: List<String>) {
+        history.restoreRecentFiles(paths)
+    }
+
     override suspend fun recordNavigation(
         filePath: String,
         position: TextPosition,
