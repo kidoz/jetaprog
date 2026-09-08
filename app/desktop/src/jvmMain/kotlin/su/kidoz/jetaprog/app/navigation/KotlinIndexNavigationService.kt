@@ -55,9 +55,15 @@ public class KotlinIndexNavigationService(
     private val fileSystem: FileSystem,
     private val workspacePath: String,
     private val semanticAnalyzer: KotlinSemanticAnalyzer? = null,
+    /** Text of a file as the editor currently holds it, or null when it is not open. */
+    private val liveContent: (String) -> String? = { null },
 ) : NavigationService {
     private val navigationProvider = KotlinNavigationProvider(symbolIndex)
     private val textSearcher = ProjectTextSearcher(fileSystem)
+
+    /** The editor's buffer when the file is open, so unsaved edits do not shift positions. */
+    private suspend fun contentOf(filePath: String): String? =
+        liveContent(filePath) ?: fileSystem.readText(filePath).getOrNull()
 
     // ========================================================================
     // Symbol Search
@@ -102,7 +108,7 @@ public class KotlinIndexNavigationService(
         delegate.getDefinition(filePath, position)?.let { return enrichWithIndexedSymbol(it) }
         if (!isKotlinFile(filePath)) return null
 
-        val content = fileSystem.readText(filePath).getOrNull() ?: return null
+        val content = contentOf(filePath) ?: return null
         val location = navigationProvider.goToDefinition(filePath, position, content) ?: return null
         val symbol = symbolIndex.getSymbolAt(location.filePath, location.position)
         return symbol?.toNavigationTarget()
@@ -165,7 +171,7 @@ public class KotlinIndexNavigationService(
         delegate.findUsages(filePath, position, scope)?.let { return it }
         if (!isKotlinFile(filePath)) return null
 
-        val content = fileSystem.readText(filePath).getOrNull() ?: return null
+        val content = contentOf(filePath) ?: return null
         val identifier = identifierAt(content, position) ?: return null
 
         // Whole-word text search finds every file that mentions the name; it is

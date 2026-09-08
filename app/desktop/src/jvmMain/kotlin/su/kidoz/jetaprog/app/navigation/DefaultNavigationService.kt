@@ -73,6 +73,8 @@ public class DefaultNavigationService(
     private val languageRegistryProvider: () -> LanguageRegistry? = { null },
     /** Shared with the services layered above so every layer sees one back stack. */
     private val history: NavigationHistory = NavigationHistory(),
+    /** Text of a file as the editor currently holds it, or null when it is not open. */
+    private val liveContent: (String) -> String? = { null },
 ) : NavigationService {
     private val adapter = LspNavigationAdapter()
 
@@ -836,7 +838,7 @@ public class DefaultNavigationService(
         query: suspend LanguageRegistry.(ProviderTextDocument, TextPosition) -> List<ProviderLocation>,
     ): List<LspLocation> {
         val registry = languageRegistryProvider() ?: return emptyList()
-        val content = fileSystem.readText(filePath).getOrNull() ?: return emptyList()
+        val content = liveContent(filePath) ?: fileSystem.readText(filePath).getOrNull() ?: return emptyList()
         val languageId = LanguageId(detectLanguageId(filePath))
         val document = SnapshotTextDocument.of(filePath, languageId, content)
         return registry.query(document, position).map { it.toLspLocation() }

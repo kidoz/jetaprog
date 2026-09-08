@@ -70,7 +70,10 @@ public class WorkspaceSymbolIndexService(
 /**
  * Reads file content from disk for index-based navigation fallbacks.
  */
-public class DiskFileContentProvider : FileContentProvider {
+public class DiskFileContentProvider(
+    /** Text of a file as the editor currently holds it, or null when it is not open. */
+    private val liveContent: (String) -> String? = { null },
+) : FileContentProvider {
     override fun getOffset(
         filePath: String,
         position: TextPosition,
@@ -105,9 +108,10 @@ public class DiskFileContentProvider : FileContentProvider {
     }
 
     override fun getContent(filePath: String): String? =
-        try {
-            File(filePath).takeIf { it.isFile }?.readText()
-        } catch (_: IOException) {
-            null
-        }
+        liveContent(filePath)
+            ?: try {
+                File(filePath).takeIf { it.isFile }?.readText()
+            } catch (_: IOException) {
+                null
+            }
 }

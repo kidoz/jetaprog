@@ -54,6 +54,7 @@ import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
 import su.kidoz.jetaprog.plugins.kotlin.SymbolKind
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Embedded LSP server for Kotlin backed by the local [KotlinSymbolIndex] and,
@@ -94,8 +95,11 @@ public class KotlinEmbeddedServer(
 
     private val navigationProvider = KotlinNavigationProvider(symbolIndex)
 
-    /** In-memory contents of open documents, keyed by path. */
-    private val openDocuments = mutableMapOf<String, String>()
+    /**
+     * In-memory contents of open documents, keyed by path. Written by document sync
+     * on the UI thread and read by navigation queries elsewhere.
+     */
+    private val openDocuments = ConcurrentHashMap<String, String>()
 
     // ========================================================================
     // Lifecycle

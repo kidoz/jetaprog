@@ -88,6 +88,7 @@ import su.kidoz.jetaprog.settings.SettingsService
 import su.kidoz.jetaprog.settings.model.AllSettings
 import java.io.File
 import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
 import su.kidoz.jetaprog.plugins.api.services.WorkspaceEdit as LanguageWorkspaceEdit
 
 private val logger = KotlinLogging.logger {}
@@ -156,7 +157,9 @@ public class EditorViewModel(
     /** LSP diagnostics keyed by document URI, then by the server that published them. */
     private val lspDiagnostics = mutableMapOf<String, MutableMap<String, List<Diagnostic>>>()
     private val lintDiagnostics = mutableMapOf<String, List<Diagnostic>>()
-    private val documentSessions = mutableMapOf<String, DocumentSession>()
+
+    // Read by navigation from a background thread (see openDocumentContent).
+    private val documentSessions = ConcurrentHashMap<String, DocumentSession>()
     private var pendingWorkspaceQuickFixes = emptyList<Pair<QuickFix, LanguageWorkspaceEdit>>()
 
     /**
@@ -577,6 +580,17 @@ public class EditorViewModel(
                 handleLegacyReplace(intent)
             }
         }
+    }
+
+    /**
+     * Current text of [path] when it is open in a tab, unsaved edits included; null
+     * otherwise. Navigation reads through this so results line up with what the user
+     * sees rather than with the file on disk.
+     */
+    public fun openDocumentContent(path: String): String? {
+        val uri = DocumentUri.file(path).value
+        if (currentState.activeDocumentUri?.value == uri) return currentState.content
+        return documentSessions[uri]?.content
     }
 
     /**

@@ -36,6 +36,7 @@ import su.kidoz.jetaprog.app.keymap.KeymapManager
 import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.navigation.DiskFileContentProvider
+import su.kidoz.jetaprog.app.navigation.EmbeddedServerDocumentSync
 import su.kidoz.jetaprog.app.navigation.KotlinIndexNavigationService
 import su.kidoz.jetaprog.app.navigation.WorkspaceSymbolIndexService
 import su.kidoz.jetaprog.app.notification.NotificationCenter
@@ -297,15 +298,20 @@ public class ProjectSession(
                             // Lazy: the registry (and its LSP servers) spins up after navigation is built
                             languageRegistryProvider = { languageRegistry },
                             history = navigationHistory,
+                            liveContent = ::openDocumentContent,
                         ),
                     symbolIndex = kotlinSymbolIndex,
                     fileSystem = fileSystem,
                     workspacePath = projectPath,
                     semanticAnalyzer = kotlinSemanticAnalyzer,
+                    liveContent = ::openDocumentContent,
                 ),
             history = navigationHistory,
-            fileContentProvider = DiskFileContentProvider(),
+            fileContentProvider = DiskFileContentProvider(liveContent = ::openDocumentContent),
         )
+
+    /** The editor's current text for [path] when it is open, so navigation sees unsaved edits. */
+    private fun openDocumentContent(path: String): String? = editorViewModel.openDocumentContent(path)
 
     /**
      * The navigation view model.
@@ -662,6 +668,8 @@ public class ProjectSession(
         embeddedServerRegistry.registerServerFactory("kotlin") {
             KotlinEmbeddedServer(kotlinSymbolIndex, kotlinSemanticAnalyzer)
         }
+        // Keep embedded servers in step with the editor, as the external ones already are.
+        languageRegistry.addDocumentSyncListener(EmbeddedServerDocumentSync(embeddedServerRegistry))
 
         // Load the project lint configuration (.jetaprog/lint.json)
         JvmLintConfigurationStorage()

@@ -1,5 +1,7 @@
 package su.kidoz.jetaprog.plugins.support
 
+import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -37,6 +39,8 @@ import su.kidoz.jetaprog.settings.SettingsService
  * Central registry for language features.
  */
 
+private val logger = KotlinLogging.logger {}
+
 public class LanguageRegistry(
     private val serverManager: LanguageServerManager,
     private val settingsService: SettingsService,
@@ -45,6 +49,27 @@ public class LanguageRegistry(
     private val lspServers = mutableMapOf<String, LspLanguageServer>()
     private val diagnosticsListeners = mutableListOf<SourcedDiagnosticsListener>()
     private val workspaceEditListeners = mutableListOf<WorkspaceEditListener>()
+    private val documentSyncListeners = mutableListOf<DocumentSyncListener>()
+
+    /**
+     * Subscribes [listener] to the document lifecycle the editor reports. Embedded
+     * servers use this to answer from the live buffer instead of the file on disk.
+     */
+    public fun addDocumentSyncListener(listener: DocumentSyncListener): Disposable {
+        documentSyncListeners.add(listener)
+        return Disposable { documentSyncListeners.remove(listener) }
+    }
+
+    private suspend fun forEachSyncListener(action: suspend (DocumentSyncListener) -> Unit) {
+        documentSyncListeners.toList().forEach { listener ->
+            try {
+                action(listener)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                logger.warn(e) { "Document sync listener failed: ${e.message}" }
+            }
+        }
+    }
 
     /**
      * Get or create a hybrid provider for a language.
@@ -275,6 +300,7 @@ public class LanguageRegistry(
         lspServers.values
             .filter { languageId in it.config.languageIds }
             .forEach { it.openDocument(uri, languageId, content) }
+        forEachSyncListener { it.documentOpened(uri, languageId, content) }
     }
 
     /**
@@ -288,6 +314,7 @@ public class LanguageRegistry(
         lspServers.values
             .filter { languageId in it.config.languageIds }
             .forEach { it.changeDocument(uri, content) }
+        forEachSyncListener { it.documentChanged(uri, languageId, content) }
     }
 
     /**
@@ -301,6 +328,7 @@ public class LanguageRegistry(
         lspServers.values
             .filter { languageId in it.config.languageIds }
             .forEach { it.saveDocument(uri, content) }
+        forEachSyncListener { it.documentSaved(uri, languageId, content) }
     }
 
     /**
@@ -313,6 +341,7 @@ public class LanguageRegistry(
         lspServers.values
             .filter { languageId in it.config.languageIds }
             .forEach { it.closeDocument(uri) }
+        forEachSyncListener { it.documentClosed(uri, languageId) }
     }
 
     // ========================================================================
