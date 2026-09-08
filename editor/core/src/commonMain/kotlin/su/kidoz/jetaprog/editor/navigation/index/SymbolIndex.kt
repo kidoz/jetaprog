@@ -37,6 +37,14 @@ public data class IndexedSymbol(
      */
     val nameLength: Int = name.length,
     /**
+     * Zero-based line on which the symbol name starts.
+     */
+    val line: Int = 0,
+    /**
+     * Zero-based column at which the symbol name starts on [line].
+     */
+    val column: Int = 0,
+    /**
      * The name of the containing symbol (e.g., class name for a method).
      */
     val containerName: String? = null,

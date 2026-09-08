@@ -204,8 +204,12 @@ public class IndexedNavigationService(
                                     target = declaration.toNavigationTarget(),
                                     usageKind = UsageKind.DEFINITION,
                                     contextLine = declaration.signature ?: declaration.name,
-                                    lineNumber = 1,
-                                    columnRange = MatchRange(0, declaration.nameLength - 1),
+                                    lineNumber = declaration.line + 1,
+                                    columnRange =
+                                        MatchRange(
+                                            declaration.column,
+                                            declaration.column + declaration.nameLength - 1,
+                                        ),
                                 )
                             },
                     )
@@ -439,7 +443,7 @@ public fun IndexedSymbol.toNavigationTarget(): NavigationTarget =
         qualifiedName = qualifiedName,
         kind = kind,
         filePath = filePath,
-        position = TextPosition(0, offset), // Line computed from offset
+        position = TextPosition(line, column),
         containerName = containerName,
         detail = signature,
         languageId = languageId,

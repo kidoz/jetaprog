@@ -169,7 +169,8 @@ public abstract class RegexSymbolExtractor(
                 val matcher = pattern.regex.findAll(line)
                 for (match in matcher) {
                     val name = match.groups[pattern.nameGroup]?.value ?: continue
-                    val symbolOffset = offset + (match.groups[pattern.nameGroup]?.range?.first ?: 0)
+                    val nameColumn = match.groups[pattern.nameGroup]?.range?.first ?: 0
+                    val symbolOffset = offset + nameColumn
 
                     // Track container scope
                     if (pattern.opensScope) {
@@ -200,6 +201,8 @@ public abstract class RegexSymbolExtractor(
                             filePath = filePath,
                             offset = symbolOffset,
                             nameLength = name.length,
+                            line = lineIndex,
+                            column = nameColumn,
                             containerName = containerName,
                             signature = signature,
                             languageId = languageId,
