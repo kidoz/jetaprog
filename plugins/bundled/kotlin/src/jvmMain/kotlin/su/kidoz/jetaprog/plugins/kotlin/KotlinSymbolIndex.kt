@@ -28,7 +28,10 @@ public class KotlinSymbolIndex {
 
             dir
                 .walkTopDown()
-                .filter { it.isFile && it.extension == "kt" }
+                // Generated sources under build/ and the like used to be indexed too, so Go to
+                // Class offered copies of every symbol and definitions could land in build output.
+                .onEnter { it == dir || !(it.name.startsWith(".") || it.name in EXCLUDED_DIRECTORIES) }
+                .filter { it.isFile && it.extension in KOTLIN_EXTENSIONS }
                 .forEach { file ->
                     indexFile(file.absolutePath)
                 }
@@ -40,7 +43,7 @@ public class KotlinSymbolIndex {
     public suspend fun indexFile(filePath: String): Unit =
         withContext(Dispatchers.IO) {
             val file = File(filePath)
-            if (!file.exists() || file.extension != "kt") return@withContext
+            if (!file.exists() || file.extension !in KOTLIN_EXTENSIONS) return@withContext
 
             val content = file.readText()
             val symbols = parseSymbols(content, filePath)
@@ -295,4 +298,13 @@ public class KotlinSymbolIndex {
             "internal" -> Visibility.INTERNAL
             else -> Visibility.PUBLIC
         }
+
+    public companion object {
+        /** Kotlin sources and scripts (`build.gradle.kts`, `*.main.kts`) are both indexed. */
+        public val KOTLIN_EXTENSIONS: Set<String> = setOf("kt", "kts")
+
+        /** Directories never walked: build output and dependency caches. */
+        public val EXCLUDED_DIRECTORIES: Set<String> =
+            setOf("build", "out", "dist", "node_modules", "target", "bin", "obj")
+    }
 }

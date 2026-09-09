@@ -79,38 +79,16 @@ public class DefaultNavigationService(
 ) : NavigationService {
     private val adapter = LspNavigationAdapter()
 
-    // File extensions to include in file search
-    private val sourceExtensions =
-        setOf(
-            "kt",
-            "kts",
-            "java",
-            "py",
-            "js",
-            "ts",
-            "tsx",
-            "jsx",
-            "rs",
-            "go",
-            "c",
-            "cpp",
-            "h",
-            "hpp",
-            "vala",
-            "vapi",
-            "xml",
-            "json",
-            "yaml",
-            "yml",
-            "toml",
-            "md",
-            "txt",
-            "gradle",
-            "properties",
-            "sh",
-            "bat",
-            "meson",
-        )
+    /**
+     * Extensions Go to File offers: everything a registered language definition claims,
+     * plus a few plain project files. A hardcoded list used to miss whole languages
+     * (C#, SQL, HTML, CSS, CMake) and common variants such as `.cc` or `.mts`.
+     */
+    private fun searchableExtensions(): Set<String> =
+        LanguageDefinitionRegistry
+            .all()
+            .flatMapTo(mutableSetOf()) { definition -> definition.extensions.map { it.removePrefix(".").lowercase() } }
+            .plus(PLAIN_SEARCHABLE_EXTENSIONS)
 
     // ========================================================================
     // Symbol Search
@@ -855,6 +833,7 @@ public class DefaultNavigationService(
         results: MutableList<NavigationSearchResult>,
         limit: Int,
     ) {
+        val searchable = searchableExtensions()
         if (results.size >= limit) return
 
         val entries = fileSystem.listDirectory(path).getOrNull() ?: return
@@ -886,7 +865,7 @@ public class DefaultNavigationService(
                 searchFilesRecursively(entry.path, query, results, limit)
             } else if (entry.isFile) {
                 val ext = fileSystem.extension(entry.path).lowercase()
-                if (ext !in sourceExtensions) continue
+                if (ext !in searchable) continue
 
                 val fileName = entry.name.lowercase()
                 if (fileName.contains(query)) {
@@ -1084,3 +1063,6 @@ private val CLASS_LIKE_KINDS =
         NavigationSymbolKind.OBJECT,
         NavigationSymbolKind.TRAIT,
     )
+
+/** Project files worth finding by name that no language definition claims. */
+private val PLAIN_SEARCHABLE_EXTENSIONS = setOf("txt", "gradle", "properties", "sh", "bat", "csproj", "sln", "vapi")
