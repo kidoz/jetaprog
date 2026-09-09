@@ -33,4 +33,19 @@ class IndexedNavigationServiceHistoryTest {
             assertEquals(listOf("/w/Older.kt", "/w/Recent.kt"), service.getRecentFiles(limit = 10).map { it.filePath })
             assertEquals("/w/Older.kt", service.goBack()?.filePath ?: service.getRecentLocations(1).single().filePath)
         }
+
+    @Test
+    fun backAndForwardAvailabilityFollowsTheStack() =
+        runTest {
+            val service = IndexedNavigationService(symbolIndex = InMemorySymbolIndex(), history = NavigationHistory())
+            assertEquals(false, service.canGoBack())
+
+            service.recordNavigation("/w/A.kt", TextPosition(0, 0), preview = null)
+            service.recordNavigation("/w/B.kt", TextPosition(3, 0), preview = null)
+            assertEquals(true, service.canGoBack())
+            assertEquals(false, service.canGoForward())
+
+            service.goBack()
+            assertEquals(true, service.canGoForward())
+        }
 }

@@ -95,6 +95,19 @@ class NavigationViewModelShortcutsTest {
         }
 
     @Test
+    fun refreshHistoryReflectsWhatTheServiceCanDo() =
+        runTest {
+            coEvery { navigationService.canGoBack() } returns true
+            coEvery { navigationService.canGoForward() } returns false
+            val viewModel = NavigationViewModel(navigationService)
+
+            viewModel.processIntent(NavigationIntent.RefreshHistory)
+
+            assertTrue(viewModel.state.value.canGoBack)
+            assertEquals(false, viewModel.state.value.canGoForward)
+        }
+
+    @Test
     fun typeDeclarationNavigatesToTheTypeOrReportsNone() =
         runTest {
             coEvery { navigationService.getTypeDefinition(file, TextPosition(3, 0)) } returns

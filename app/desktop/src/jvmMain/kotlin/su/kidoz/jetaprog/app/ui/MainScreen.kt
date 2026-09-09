@@ -384,6 +384,12 @@ private fun MainScreenContent(
 
     val editorState by session.editorViewModel.state.collectAsState()
     val editorSettings by session.editorViewModel.settings.collectAsState()
+    val navigationState by session.navigationViewModel.state.collectAsState()
+    // Visits are recorded by the editor, outside the navigation view model, so Back and
+    // Forward availability is re-read whenever the shown document changes.
+    LaunchedEffect(editorState.activeDocumentUri, editorState.activeTabIndex) {
+        session.navigationViewModel.processIntent(NavigationIntent.RefreshHistory)
+    }
     // Ctrl/Cmd+Click in the editor: same path as the Go to Declaration shortcut.
     val goToDeclaration: (String, TextPosition) -> Unit = { uri, position ->
         coroutineScope.launch {
@@ -681,6 +687,8 @@ private fun MainScreenContent(
             // Main toolbar (project chip + branch + search-everywhere + run configuration)
             MainToolbar(
                 projectName = currentProjectPath.substringAfterLast('/'),
+                canGoBack = navigationState.canGoBack,
+                canGoForward = navigationState.canGoForward,
                 onNavigateBack = {
                     coroutineScope.launch {
                         session.navigationViewModel.processIntent(NavigationIntent.GoBack)
@@ -1692,6 +1700,8 @@ private fun IntelliJMenuBar(
 @Suppress("LongParameterList")
 private fun MainToolbar(
     projectName: String,
+    canGoBack: Boolean,
+    canGoForward: Boolean,
     onNavigateBack: () -> Unit,
     onNavigateForward: () -> Unit,
     onSearchEverywhere: () -> Unit,
@@ -1726,21 +1736,31 @@ private fun MainToolbar(
             Icon(
                 imageVector = Icons.Filled.ChevronLeft,
                 contentDescription = "Navigate back",
-                tint = LocalIntelliJColors.current.iconDefault,
+                tint =
+                    if (canGoBack) {
+                        LocalIntelliJColors.current.iconDefault
+                    } else {
+                        LocalIntelliJColors.current.textDisabled
+                    },
                 modifier =
                     Modifier
                         .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                        .clickable(onClick = onNavigateBack)
+                        .clickable(enabled = canGoBack, onClick = onNavigateBack)
                         .size(Dimensions.iconLg.dp),
             )
             Icon(
                 imageVector = Icons.Filled.ChevronRight,
                 contentDescription = "Navigate forward",
-                tint = LocalIntelliJColors.current.iconDefault,
+                tint =
+                    if (canGoForward) {
+                        LocalIntelliJColors.current.iconDefault
+                    } else {
+                        LocalIntelliJColors.current.textDisabled
+                    },
                 modifier =
                     Modifier
                         .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                        .clickable(onClick = onNavigateForward)
+                        .clickable(enabled = canGoForward, onClick = onNavigateForward)
                         .size(Dimensions.iconLg.dp),
             )
             ToolbarDivider()

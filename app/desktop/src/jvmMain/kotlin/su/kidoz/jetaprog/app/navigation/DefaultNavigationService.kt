@@ -777,6 +777,10 @@ public class DefaultNavigationService(
 
     override suspend fun goForward(): NavigationHistoryEntry? = history.goForward()
 
+    override suspend fun canGoBack(): Boolean = history.canGoBack()
+
+    override suspend fun canGoForward(): Boolean = history.canGoForward()
+
     override suspend fun getLastEditLocation(): NavigationHistoryEntry? = history.getLastEditLocation()
 
     // ========================================================================

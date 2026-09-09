@@ -41,6 +41,10 @@ public data class NavigationState(
     val recentFilesTitle: String = "Recent Files",
     // Breadcrumbs
     val breadcrumbs: List<BreadcrumbItem> = emptyList(),
+    /** Whether Back has somewhere to go; drives the toolbar control's enabled state. */
+    val canGoBack: Boolean = false,
+    /** Whether Forward has somewhere to go; drives the toolbar control's enabled state. */
+    val canGoForward: Boolean = false,
 )
 
 /**
@@ -167,6 +171,9 @@ public sealed interface NavigationIntent {
 
     // History navigation
     public data object GoBack : NavigationIntent
+
+    /** Re-reads what Back and Forward can do; the editor records visits outside this view model. */
+    public data object RefreshHistory : NavigationIntent
 
     public data object GoForward : NavigationIntent
 

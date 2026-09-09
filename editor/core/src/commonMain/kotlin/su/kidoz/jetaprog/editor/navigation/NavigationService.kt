@@ -273,6 +273,12 @@ public interface NavigationService {
      */
     public suspend fun goForward(): NavigationHistoryEntry?
 
+    /** Whether [goBack] has somewhere to go, so the UI can disable the control otherwise. */
+    public suspend fun canGoBack(): Boolean = false
+
+    /** Whether [goForward] has somewhere to go, so the UI can disable the control otherwise. */
+    public suspend fun canGoForward(): Boolean = false
+
     /**
      * Get the last edit location.
      *

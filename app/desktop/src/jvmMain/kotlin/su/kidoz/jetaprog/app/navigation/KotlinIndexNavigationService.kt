@@ -424,6 +424,10 @@ public class KotlinIndexNavigationService(
 
     override suspend fun goForward(): NavigationHistoryEntry? = delegate.goForward()
 
+    override suspend fun canGoBack(): Boolean = delegate.canGoBack()
+
+    override suspend fun canGoForward(): Boolean = delegate.canGoForward()
+
     override suspend fun getLastEditLocation(): NavigationHistoryEntry? = delegate.getLastEditLocation()
 
     override suspend fun recordEdit(

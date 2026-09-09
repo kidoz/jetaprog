@@ -157,6 +157,10 @@ public class NavigationViewModel(
                 navigateToBreadcrumb(intent.item)
             }
 
+            is NavigationIntent.RefreshHistory -> {
+                refreshHistoryState()
+            }
+
             is NavigationIntent.GoBack -> {
                 goBack()
             }
@@ -554,6 +558,7 @@ public class NavigationViewModel(
         if (entry != null) {
             navigateTo(entry.filePath, entry.position.line, entry.position.column)
         }
+        refreshHistoryState()
     }
 
     private suspend fun goForward() {
@@ -561,6 +566,14 @@ public class NavigationViewModel(
         if (entry != null) {
             navigateTo(entry.filePath, entry.position.line, entry.position.column)
         }
+        refreshHistoryState()
+    }
+
+    private suspend fun refreshHistoryState() {
+        val service = navigationService ?: return
+        val canGoBack = service.canGoBack()
+        val canGoForward = service.canGoForward()
+        _state.update { it.copy(canGoBack = canGoBack, canGoForward = canGoForward) }
     }
 
     private suspend fun goToLastEditLocation() {
