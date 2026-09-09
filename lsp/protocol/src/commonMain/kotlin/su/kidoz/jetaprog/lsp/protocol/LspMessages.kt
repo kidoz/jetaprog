@@ -271,6 +271,7 @@ public data class ServerCapabilities(
     @Serializable(with = TextDocumentSyncSerializer::class)
     val textDocumentSync: TextDocumentSyncOptions? = null,
     val completionProvider: CompletionOptions? = null,
+    val signatureHelpProvider: SignatureHelpOptions? = null,
     // Each of these is `boolean | Options` in the specification; servers mix both forms.
     @Serializable(with = LspCapabilitySerializer::class)
     val hoverProvider: Boolean? = null,
@@ -316,6 +317,16 @@ public data class SaveOptions(
 public data class CompletionOptions(
     val triggerCharacters: List<String>? = null,
     val resolveProvider: Boolean? = null,
+)
+
+/**
+ * Signature help options a server advertises: which typed characters should ask for
+ * signature help, and which should refresh it while it is showing.
+ */
+@Serializable
+public data class SignatureHelpOptions(
+    val triggerCharacters: List<String>? = null,
+    val retriggerCharacters: List<String>? = null,
 )
 
 // ============================================================================

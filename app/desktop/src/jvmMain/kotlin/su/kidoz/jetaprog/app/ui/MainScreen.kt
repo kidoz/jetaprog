@@ -1062,14 +1062,6 @@ private fun MainScreenContent(
                                         onHoverDismiss = {
                                             session.editorViewModel.dispatch(EditorIntent.DismissHover)
                                         },
-                                        onSignatureHelpRequest = { triggerChar ->
-                                            session.editorViewModel.dispatch(
-                                                EditorIntent.RequestSignatureHelp(
-                                                    triggerCharacter = triggerChar,
-                                                    isRetrigger = false,
-                                                ),
-                                            )
-                                        },
                                         onSignatureHelpNextSignature = {
                                             session.editorViewModel.dispatch(EditorIntent.NextSignature)
                                         },

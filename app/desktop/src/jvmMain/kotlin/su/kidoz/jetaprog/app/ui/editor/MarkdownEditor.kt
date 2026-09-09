@@ -115,9 +115,6 @@ public fun MarkdownEditor(
                         onGoToDefinition = onGoToDefinition,
                         onHoverRequest = { onIntent(EditorIntent.RequestHover(it)) },
                         onHoverDismiss = { onIntent(EditorIntent.DismissHover) },
-                        onSignatureHelpRequest = {
-                            onIntent(EditorIntent.RequestSignatureHelp(triggerCharacter = it, isRetrigger = false))
-                        },
                         onSignatureHelpNextSignature = { onIntent(EditorIntent.NextSignature) },
                         onSignatureHelpPreviousSignature = { onIntent(EditorIntent.PreviousSignature) },
                         onSignatureHelpDismiss = { onIntent(EditorIntent.DismissSignatureHelp) },

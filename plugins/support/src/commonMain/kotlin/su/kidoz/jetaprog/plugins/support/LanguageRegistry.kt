@@ -100,7 +100,9 @@ public class LanguageRegistry(
         provider: CompletionProvider,
         priority: Int = 0,
         selector: DocumentSelector? = null,
-    ): Disposable = getOrCreateProvider(languageId).registerCompletionProvider(provider, priority, selector)
+        triggerCharacters: Set<Char> = emptySet(),
+    ): Disposable =
+        getOrCreateProvider(languageId).registerCompletionProvider(provider, priority, selector, triggerCharacters)
 
     /**
      * Register an in-process hover provider.
@@ -120,7 +122,25 @@ public class LanguageRegistry(
         provider: SignatureHelpProvider,
         priority: Int = 0,
         selector: DocumentSelector? = null,
-    ): Disposable = getOrCreateProvider(languageId).registerSignatureHelpProvider(provider, priority, selector)
+        triggerCharacters: Set<Char> = emptySet(),
+    ): Disposable =
+        getOrCreateProvider(languageId).registerSignatureHelpProvider(provider, priority, selector, triggerCharacters)
+
+    /**
+     * Typed characters that should start completion for [languageId]: what the plugins
+     * registered plus what the running language servers advertise.
+     */
+    public fun completionTriggerCharacters(languageId: String): Set<Char> =
+        providers[languageId]?.completionTriggerCharacters().orEmpty() +
+            lspServers.values.filter { languageId in it.config.languageIds }.flatMap { it.completionTriggerCharacters }
+
+    /** Typed characters that should request or refresh signature help for [languageId]. */
+    public fun signatureHelpTriggerCharacters(languageId: String): Set<Char> =
+        providers[languageId]?.signatureHelpTriggerCharacters().orEmpty() +
+            lspServers.values
+                .filter {
+                    languageId in it.config.languageIds
+                }.flatMap { it.signatureHelpTriggerCharacters }
 
     /**
      * Register an in-process definition provider.

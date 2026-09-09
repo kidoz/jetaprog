@@ -95,6 +95,8 @@ public data class RegisteredProvider<T>(
      * the language.
      */
     val selector: DocumentSelector? = null,
+    /** Typed characters that should invoke this provider, on top of the editor defaults. */
+    val triggerCharacters: Set<Char> = emptySet(),
 )
 
 /**
@@ -124,8 +126,9 @@ public class HybridLanguageProvider(
         provider: CompletionProvider,
         priority: Int = 0,
         selector: DocumentSelector? = null,
+        triggerCharacters: Set<Char> = emptySet(),
     ): Disposable {
-        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector)
+        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector, triggerCharacters)
         completionProviders.add(registered)
         completionProviders.sortByDescending { it.priority }
         return Disposable { completionProviders.remove(registered) }
@@ -152,12 +155,23 @@ public class HybridLanguageProvider(
         provider: SignatureHelpProvider,
         priority: Int = 0,
         selector: DocumentSelector? = null,
+        triggerCharacters: Set<Char> = emptySet(),
     ): Disposable {
-        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector)
+        val registered = RegisteredProvider(provider, ProviderSource.InProcess, priority, selector, triggerCharacters)
         signatureHelpProviders.add(registered)
         signatureHelpProviders.sortByDescending { it.priority }
         return Disposable { signatureHelpProviders.remove(registered) }
     }
+
+    /** Characters the in-process completion providers asked to be invoked on. */
+    public fun completionTriggerCharacters(): Set<Char> =
+        completionProviders.flatMapTo(mutableSetOf()) {
+            it.triggerCharacters
+        }
+
+    /** Characters the in-process signature help providers asked to be invoked on. */
+    public fun signatureHelpTriggerCharacters(): Set<Char> =
+        signatureHelpProviders.flatMapTo(mutableSetOf()) { it.triggerCharacters }
 
     /**
      * Register an in-process definition provider.

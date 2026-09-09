@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.setMain
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.completion.CompletionItem
 import su.kidoz.jetaprog.common.completion.CompletionList
+import su.kidoz.jetaprog.common.completion.CompletionTriggerKind
 import su.kidoz.jetaprog.common.completion.TextEditData
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
@@ -50,6 +51,8 @@ class EditorViewModelCompletionTest {
         every { settingsService.settings } returns MutableStateFlow(AllSettings())
         every { languageRegistry.onDiagnostics(any()) } returns Disposable { }
         every { languageRegistry.onWorkspaceEdit(any()) } returns Disposable { }
+        every { languageRegistry.completionTriggerCharacters(any()) } returns setOf('>')
+        every { languageRegistry.signatureHelpTriggerCharacters(any()) } returns setOf('<')
         coEvery { languageRegistry.provideCompletions(any(), any(), any()) } returns
             CompletionList(listOf(item("alpha"), item("alphabet"), item("beta")), isIncomplete = false)
     }
@@ -157,6 +160,53 @@ class EditorViewModelCompletionTest {
             val content = viewModel.state.first { it.content.contains("alpha") }.content
 
             assertEquals("import a\nalpha", content)
+            viewModel.dispose()
+        }
+
+    @Test
+    fun serverTriggerCharactersStartCompletionWithTheCharacterAsContext() =
+        runTest {
+            val viewModel = editorViewModel()
+
+            viewModel.dispatch(EditorIntent.CharacterTyped('>', prefix = ""))
+            viewModel.awaitCompletionItems()
+
+            coVerify(exactly = 1) {
+                languageRegistry.provideCompletions(
+                    any(),
+                    any(),
+                    match { it.triggerKind == CompletionTriggerKind.TriggerCharacter && it.triggerCharacter == '>' },
+                )
+            }
+            viewModel.dispose()
+        }
+
+    @Test
+    fun typedIdentifierCharactersStartCompletionOnlyFromTwoCharacters() =
+        runTest {
+            val viewModel = editorViewModel()
+
+            viewModel.dispatch(EditorIntent.CharacterTyped('a', prefix = "a"))
+            advanceUntilIdle()
+            coVerify(exactly = 0) { languageRegistry.provideCompletions(any(), any(), any()) }
+
+            viewModel.dispatch(EditorIntent.CharacterTyped('l', prefix = "al"))
+            advanceUntilIdle()
+            viewModel.awaitCompletionItems()
+            coVerify(exactly = 1) { languageRegistry.provideCompletions(any(), any(), any()) }
+            viewModel.dispose()
+        }
+
+    @Test
+    fun serverSignatureTriggerCharactersRequestSignatureHelp() =
+        runTest {
+            coEvery { languageRegistry.provideSignatureHelp(any(), any(), any()) } returns null
+            val viewModel = editorViewModel()
+
+            viewModel.dispatch(EditorIntent.CharacterTyped('<', prefix = ""))
+            advanceUntilIdle()
+
+            coVerify(timeout = 2_000, exactly = 1) { languageRegistry.provideSignatureHelp(any(), any(), any()) }
             viewModel.dispose()
         }
 

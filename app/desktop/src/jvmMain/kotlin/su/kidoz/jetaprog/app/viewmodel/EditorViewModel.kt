@@ -349,6 +349,10 @@ public class EditorViewModel(
             }
 
             // Completion intents
+            is EditorIntent.CharacterTyped -> {
+                characterTyped(intent.character, intent.prefix)
+            }
+
             is EditorIntent.RequestCompletion -> {
                 requestCompletion(
                     intent.triggerKind,
@@ -2004,6 +2008,43 @@ public class EditorViewModel(
     // Completion Methods
     // ========================================================================
 
+    /**
+     * Routes a typed character to completion and signature help. Trigger characters
+     * come from the language servers' capabilities and the plugins' registrations on
+     * top of the editor defaults, so C++ `->`, Go and Rust `::` or a path separator
+     * can start completion.
+     */
+    private fun characterTyped(
+        character: Char,
+        prefix: String,
+    ) {
+        val languageId = currentState.languageId.value
+        when {
+            character in completionTriggerCharacters(languageId) -> {
+                requestCompletion(CompletionTriggerKind.TriggerCharacter, character, prefix)
+            }
+
+            character.isLetterOrDigit() || character == '_' -> {
+                updateCompletionFilter(prefix)
+                if (prefix.length >= AUTO_COMPLETION_MIN_PREFIX) {
+                    requestCompletion(CompletionTriggerKind.Invoked, null, prefix, automatic = true)
+                }
+            }
+        }
+        val signatureHelpVisible = currentState.signatureHelpState.isVisible
+        if (character in signatureHelpTriggerCharacters(languageId)) {
+            requestSignatureHelp(character, isRetrigger = signatureHelpVisible)
+        } else if (character == ')' && signatureHelpVisible) {
+            dismissSignatureHelp()
+        }
+    }
+
+    private fun completionTriggerCharacters(languageId: String): Set<Char> =
+        DEFAULT_COMPLETION_TRIGGERS + languageRegistry?.completionTriggerCharacters(languageId).orEmpty()
+
+    private fun signatureHelpTriggerCharacters(languageId: String): Set<Char> =
+        DEFAULT_SIGNATURE_HELP_TRIGGERS + languageRegistry?.signatureHelpTriggerCharacters(languageId).orEmpty()
+
     private fun requestCompletion(
         triggerKind: CompletionTriggerKind,
         triggerCharacter: Char?,
@@ -3068,6 +3109,13 @@ public class EditorViewModel(
          * Manual invocations (Ctrl+Space) are not debounced.
          */
         const val COMPLETION_DEBOUNCE_MS = 150L
+
+        /** Identifier length from which typing starts completion on its own. */
+        const val AUTO_COMPLETION_MIN_PREFIX = 2
+
+        /** Trigger characters every language gets, whatever its providers say. */
+        val DEFAULT_COMPLETION_TRIGGERS: Set<Char> = setOf('.', ':', '@')
+        val DEFAULT_SIGNATURE_HELP_TRIGGERS: Set<Char> = setOf('(', ',')
 
         /** Upper bound on waiting for `completionItem/resolve` before accepting an item as is. */
         const val COMPLETION_RESOLVE_TIMEOUT_MS = 1_000L

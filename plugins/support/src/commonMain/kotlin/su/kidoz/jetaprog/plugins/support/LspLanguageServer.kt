@@ -301,6 +301,24 @@ public class LspLanguageServer(
             client.definition(params)?.map { it.toLocation() } ?: emptyList()
         }
 
+    /** Characters the server asked to have completion triggered on, from its capabilities. */
+    public val completionTriggerCharacters: Set<Char>
+        get() =
+            client.serverCapabilities
+                ?.completionProvider
+                ?.triggerCharacters
+                .toCharacterSet()
+
+    /** Characters that should request or refresh signature help, from the server's capabilities. */
+    public val signatureHelpTriggerCharacters: Set<Char>
+        get() {
+            val options = client.serverCapabilities?.signatureHelpProvider ?: return emptySet()
+            return options.triggerCharacters.toCharacterSet() + options.retriggerCharacters.toCharacterSet()
+        }
+
+    // Trigger characters are specified as strings; only single characters can be typed.
+    private fun List<String>?.toCharacterSet(): Set<Char> = orEmpty().mapNotNullTo(mutableSetOf()) { it.singleOrNull() }
+
     /** Structure of the open document at [uri] as the server sees it; empty when it has none. */
     public suspend fun documentSymbols(uri: String): List<LspDocumentSymbol> {
         if (!isRunning) return emptyList()

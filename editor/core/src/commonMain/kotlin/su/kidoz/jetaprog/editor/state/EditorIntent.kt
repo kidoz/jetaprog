@@ -312,6 +312,18 @@ public sealed interface EditorIntent : Intent {
     // Completion
 
     /**
+     * A single character was typed at the caret. The view model decides whether it
+     * starts completion or signature help, since it knows the servers' and plugins'
+     * trigger characters.
+     *
+     * @param prefix the identifier ending at the caret after the insert, or empty.
+     */
+    public data class CharacterTyped(
+        val character: Char,
+        val prefix: String,
+    ) : EditorIntent
+
+    /**
      * Request code completion.
      */
     public data class RequestCompletion(

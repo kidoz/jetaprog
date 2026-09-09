@@ -110,7 +110,6 @@ public fun CodeEditor(
     onGoToDefinition: (TextPosition) -> Unit = {},
     onHoverRequest: (TextPosition) -> Unit = {},
     onHoverDismiss: () -> Unit = {},
-    onSignatureHelpRequest: (Char?) -> Unit = {},
     onSignatureHelpNextSignature: () -> Unit = {},
     onSignatureHelpPreviousSignature: () -> Unit = {},
     onSignatureHelpDismiss: () -> Unit = {},
@@ -588,44 +587,19 @@ public fun CodeEditor(
 
                                     // Check for trigger characters to auto-trigger completion
                                     if (typedChar != null) {
-                                        // Completion triggers for special characters
-                                        if (typedChar in COMPLETION_TRIGGER_CHARACTERS) {
-                                            val prefix =
-                                                extractIdentifierPrefix(processed.text, processed.selection.end)
-                                            onCompletionRequest(
-                                                CompletionTriggerKind.TriggerCharacter,
+                                        // The view model decides what a typed character starts:
+                                        // it knows the servers' and plugins' trigger characters.
+                                        onIntent(
+                                            EditorIntent.CharacterTyped(
                                                 typedChar,
-                                                prefix,
-                                            )
-                                        } else if (typedChar.isLetterOrDigit() || typedChar == '_') {
-                                            // Auto-trigger completion when typing identifiers (after 2+ chars)
-                                            val prefix =
-                                                extractIdentifierPrefix(processed.text, processed.selection.end)
-                                            onCompletionFilterChange(prefix)
-                                            if (prefix.length >= MIN_AUTO_COMPLETION_LENGTH) {
-                                                // Marked automatic so the view model debounces it;
-                                                // an explicit Ctrl+Space is not delayed.
-                                                onIntent(
-                                                    EditorIntent.RequestCompletion(
-                                                        filterText = prefix,
-                                                        automatic = true,
-                                                    ),
-                                                )
-                                            }
-                                        }
-                                        // Signature help triggers
-                                        if (typedChar in SIGNATURE_HELP_TRIGGER_CHARACTERS) {
-                                            onSignatureHelpRequest(typedChar)
-                                        }
+                                                extractIdentifierPrefix(processed.text, processed.selection.end),
+                                            ),
+                                        )
                                     } else if (processed.text.length < oldText.length) {
                                         val prefix =
                                             extractIdentifierPrefix(processed.text, processed.selection.end)
                                         onCompletionFilterChange(prefix)
                                     }
-                                }
-                                // Dismiss signature help on closing paren (also fires on skip-over)
-                                if (typedChar == ')') {
-                                    onSignatureHelpDismiss()
                                 }
                             },
                             textStyle =
@@ -1081,21 +1055,6 @@ private fun computeInlineHints(
     }
     return hints
 }
-
-/**
- * Characters that auto-trigger completion.
- */
-private val COMPLETION_TRIGGER_CHARACTERS = setOf('.', ':', '@')
-
-/**
- * Characters that auto-trigger signature help.
- */
-private val SIGNATURE_HELP_TRIGGER_CHARACTERS = setOf('(', ',')
-
-/**
- * Minimum identifier length to auto-trigger completion.
- */
-private const val MIN_AUTO_COMPLETION_LENGTH = 2
 
 /** Frames to keep caret reveals muted after the text field gains focus. */
 private const val FOCUS_REVEAL_GRACE_FRAMES = 2

@@ -57,6 +57,7 @@ public class LanguageServiceImpl(
                     languageId = languageId,
                     provider = provider,
                     selector = selector,
+                    triggerCharacters = triggerCharacters.toSet(),
                 ),
             )
         }
@@ -97,6 +98,7 @@ public class LanguageServiceImpl(
                     languageId = languageId,
                     provider = provider,
                     selector = selector,
+                    triggerCharacters = (triggerCharacters + retriggerCharacters).toSet(),
                 ),
             )
         }
