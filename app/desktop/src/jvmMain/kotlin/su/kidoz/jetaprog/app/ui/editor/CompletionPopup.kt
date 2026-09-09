@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -148,6 +149,10 @@ public fun CompletionPopup(
                     }
                 }
 
+                // Documentation for the selected item, once the provider has supplied it.
+                state.selectedItem?.documentation?.takeIf { it.isNotBlank() }?.let { documentation ->
+                    CompletionDocumentation(documentation)
+                }
                 // Footer with keyboard hints
                 CompletionFooter()
             } else if (!state.isLoading) {
@@ -233,6 +238,36 @@ private fun CompletionItemRow(
         }
     }
 }
+
+/**
+ * Documentation of the selected item, rendered as plain text like the hover popup.
+ */
+@Composable
+private fun CompletionDocumentation(text: String) {
+    Column(modifier = Modifier.fillMaxWidth().background(LocalIntelliJColors.current.surfaceElevated)) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(Dimensions.dividerThickness.dp)
+                    .background(LocalIntelliJColors.current.divider),
+        )
+        Text(
+            text = text,
+            color = LocalIntelliJColors.current.textSecondary,
+            fontSize = 11.sp,
+            maxLines = DOCUMENTATION_MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = Dimensions.popupCompletionDocHeightMax.dp)
+                    .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
+        )
+    }
+}
+
+private const val DOCUMENTATION_MAX_LINES = 8
 
 /**
  * Footer with keyboard hints.

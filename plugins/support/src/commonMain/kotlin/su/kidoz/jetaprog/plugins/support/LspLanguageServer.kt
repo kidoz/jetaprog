@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.plugins.support
 
 import su.kidoz.jetaprog.common.Disposable
+import su.kidoz.jetaprog.common.completion.resolvedWith
 import su.kidoz.jetaprog.lsp.client.LspClient
 import su.kidoz.jetaprog.lsp.client.LspClientConfig
 import su.kidoz.jetaprog.lsp.client.WorkspaceEditCallback
@@ -26,6 +27,7 @@ import su.kidoz.jetaprog.lsp.protocol.TextDocumentItem
 import su.kidoz.jetaprog.lsp.protocol.TextDocumentPositionParams
 import su.kidoz.jetaprog.lsp.protocol.VersionedTextDocumentIdentifier
 import su.kidoz.jetaprog.lsp.protocol.WorkspaceSymbolParams
+import su.kidoz.jetaprog.plugins.api.language.CompletionItem
 import su.kidoz.jetaprog.plugins.api.language.CompletionList
 import su.kidoz.jetaprog.plugins.api.services.CodeActionProvider
 import su.kidoz.jetaprog.plugins.api.services.CompletionProvider
@@ -229,9 +231,22 @@ public class LspLanguageServer(
                         ),
                 )
 
-            client.completion(params)?.toCompletionList()
+            // Items carry a resolve handle only when the server offers to complete them lazily.
+            val resolvable = client.serverCapabilities?.completionProvider?.resolveProvider == true
+            client.completion(params)?.toCompletionList(providerId = config.name.takeIf { resolvable })
                 ?: CompletionList(emptyList(), false)
         }
+
+    /**
+     * Fills in the parts of [item] the server left for `completionItem/resolve`, or
+     * returns null when the item did not come from this server or it has nothing to add.
+     */
+    public suspend fun resolveCompletion(item: CompletionItem): CompletionItem? {
+        if (!isRunning || item.providerId != config.name) return null
+        val lspItem = item.toLspCompletionItem() ?: return null
+        val resolved = client.resolveCompletionItem(lspItem) ?: return null
+        return item.resolvedWith(resolved.toCompletionItem())
+    }
 
     /**
      * Create a hover provider backed by this LSP server.

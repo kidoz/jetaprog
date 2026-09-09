@@ -27,6 +27,7 @@ import su.kidoz.jetaprog.lsp.protocol.CodeActionLiteralSupport
 import su.kidoz.jetaprog.lsp.protocol.CodeActionParams
 import su.kidoz.jetaprog.lsp.protocol.CompletionClientCapabilities
 import su.kidoz.jetaprog.lsp.protocol.CompletionItemCapabilities
+import su.kidoz.jetaprog.lsp.protocol.CompletionItemResolveSupport
 import su.kidoz.jetaprog.lsp.protocol.CompletionParams
 import su.kidoz.jetaprog.lsp.protocol.DefinitionClientCapabilities
 import su.kidoz.jetaprog.lsp.protocol.DidChangeTextDocumentParams
@@ -46,6 +47,7 @@ import su.kidoz.jetaprog.lsp.protocol.JsonRpcRequest
 import su.kidoz.jetaprog.lsp.protocol.JsonRpcResponse
 import su.kidoz.jetaprog.lsp.protocol.LspCodeAction
 import su.kidoz.jetaprog.lsp.protocol.LspCodeActionKind
+import su.kidoz.jetaprog.lsp.protocol.LspCompletionItem
 import su.kidoz.jetaprog.lsp.protocol.LspCompletionList
 import su.kidoz.jetaprog.lsp.protocol.LspCompletionResultSerializer
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentHighlight
@@ -218,6 +220,10 @@ public class LspClient(
                                     documentationFormat = listOf("markdown", "plaintext"),
                                     deprecatedSupport = true,
                                     preselectSupport = true,
+                                    resolveSupport =
+                                        CompletionItemResolveSupport(
+                                            listOf("documentation", "detail", "additionalTextEdits"),
+                                        ),
                                 ),
                         ),
                     hover =
@@ -496,6 +502,18 @@ public class LspClient(
             params,
             CompletionParams.serializer(),
             LspCompletionResultSerializer,
+        )
+
+    /**
+     * Ask the server to fill in the lazily provided parts of a completion item
+     * (documentation, detail, additional edits). Returns null when the server has nothing.
+     */
+    public suspend fun resolveCompletionItem(item: LspCompletionItem): LspCompletionItem? =
+        sendRequest(
+            LspMethod.COMPLETION_RESOLVE,
+            item,
+            LspCompletionItem.serializer(),
+            LspCompletionItem.serializer(),
         )
 
     /**

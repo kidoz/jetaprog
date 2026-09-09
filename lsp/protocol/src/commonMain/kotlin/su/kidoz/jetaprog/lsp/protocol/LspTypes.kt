@@ -213,6 +213,7 @@ public enum class LspCompletionItemKind {
 @Serializable
 public data class LspCompletionItem(
     val label: String,
+    @Serializable(with = CompletionItemKindSerializer::class)
     val kind: LspCompletionItemKind? = null,
     val detail: String? = null,
     @Serializable(with = MarkupContentOrStringSerializer::class)

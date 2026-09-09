@@ -487,11 +487,13 @@ public object Dimensions {
 
     // Splitters
     public val splitterThickness: Int = 1
+    public val dividerThickness: Int = 1
     public val splitterHandleHitArea: Int = 9
 
     // Popups
     public val popupCompletionWidth: Int = 400
     public val popupCompletionMaxHeight: Int = 300
+    public val popupCompletionDocHeightMax: Int = 140
     public val popupHoverWidthMin: Int = 200
     public val popupHoverWidthMax: Int = 500
     public val popupHoverHeightMax: Int = 300

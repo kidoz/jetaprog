@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import su.kidoz.jetaprog.app.adapter.TextDocumentAdapter
 import su.kidoz.jetaprog.common.completion.CompletionContext
 import su.kidoz.jetaprog.common.completion.CompletionItem
@@ -139,6 +140,7 @@ public class EditorViewModel(
      */
     private var unfilteredCompletionItems: List<CompletionItem> = emptyList()
     private var completionJob: Job? = null
+    private var resolveJob: Job? = null
     private var hoverJob: Job? = null
     private var signatureHelpJob: Job? = null
     private var lintJob: Job? = null
@@ -2103,6 +2105,7 @@ public class EditorViewModel(
                             ),
                     )
                 }
+                resolveSelectedCompletion()
             }
     }
 
@@ -2151,10 +2154,12 @@ public class EditorViewModel(
         }
     }
 
-    private fun applyCompletion(
-        item: CompletionItem,
+    private suspend fun applyCompletion(
+        selected: CompletionItem,
         replaceSuffix: Boolean,
     ) {
+        // Servers such as jdtls and rust-analyzer deliver import edits only on resolve.
+        val item = resolveCompletionItem(selected) ?: selected
         val content = currentState.content
         val cursorPosition = currentState.cursor.position
 
@@ -2312,6 +2317,7 @@ public class EditorViewModel(
             val newIndex = (completionState.selectedIndex - 1).coerceAtLeast(0)
             copy(completionState = completionState.copy(selectedIndex = newIndex))
         }
+        resolveSelectedCompletion()
     }
 
     private fun completionMoveDown() {
@@ -2321,6 +2327,7 @@ public class EditorViewModel(
                     .coerceAtMost((completionState.items.size - 1).coerceAtLeast(0))
             copy(completionState = completionState.copy(selectedIndex = newIndex))
         }
+        resolveSelectedCompletion()
     }
 
     private fun selectCompletionItem(index: Int) {
@@ -2328,6 +2335,47 @@ public class EditorViewModel(
             val validIndex = index.coerceIn(0, (completionState.items.size - 1).coerceAtLeast(0))
             copy(completionState = completionState.copy(selectedIndex = validIndex))
         }
+        resolveSelectedCompletion()
+    }
+
+    /**
+     * Fetches the selected item's lazily supplied documentation so the popup can show
+     * it. The resolved item replaces the original in both the visible and the raw list,
+     * so later filtering keeps what was fetched.
+     */
+    private fun resolveSelectedCompletion() {
+        resolveJob?.cancel()
+        val item = currentState.completionState.selectedItem ?: return
+        if (item.resolveData == null) return
+        resolveJob =
+            viewModelScope.launch {
+                val resolved = resolveCompletionItem(item) ?: return@launch
+                unfilteredCompletionItems = unfilteredCompletionItems.map { if (it == item) resolved else it }
+                updateState {
+                    copy(
+                        completionState =
+                            completionState.copy(
+                                items =
+                                    completionState.items.map {
+                                        if (it ==
+                                            item
+                                        ) {
+                                            resolved
+                                        } else {
+                                            it
+                                        }
+                                    },
+                            ),
+                    )
+                }
+            }
+    }
+
+    /** [item] with its lazy parts filled in, or null when nothing was fetched in time. */
+    private suspend fun resolveCompletionItem(item: CompletionItem): CompletionItem? {
+        if (item.resolveData == null) return null
+        val registry = languageRegistry ?: return null
+        return withTimeoutOrNull(COMPLETION_RESOLVE_TIMEOUT_MS) { registry.resolveCompletion(item) }
     }
 
     private fun updateCompletionFilter(filterText: String) {
@@ -3020,6 +3068,9 @@ public class EditorViewModel(
          * Manual invocations (Ctrl+Space) are not debounced.
          */
         const val COMPLETION_DEBOUNCE_MS = 150L
+
+        /** Upper bound on waiting for `completionItem/resolve` before accepting an item as is. */
+        const val COMPLETION_RESOLVE_TIMEOUT_MS = 1_000L
 
         /**
          * Documents larger than this (in characters) are not syntax

@@ -140,6 +140,16 @@ public data class CompletionItemCapabilities(
     val documentationFormat: List<String>? = null,
     val deprecatedSupport: Boolean? = null,
     val preselectSupport: Boolean? = null,
+    /** Item properties the client is prepared to receive lazily via `completionItem/resolve`. */
+    val resolveSupport: CompletionItemResolveSupport? = null,
+)
+
+/**
+ * Properties a server may leave out of completion items and supply on resolve.
+ */
+@Serializable
+public data class CompletionItemResolveSupport(
+    val properties: List<String>,
 )
 
 @Serializable

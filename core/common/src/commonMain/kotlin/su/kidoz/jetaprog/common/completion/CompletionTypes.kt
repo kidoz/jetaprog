@@ -96,6 +96,16 @@ public data class CompletionItem(
      * Source of this completion item for attribution.
      */
     val source: CompletionSource = CompletionSource.Unknown,
+    /**
+     * Name of the provider that can complete this item lazily (a language server), or
+     * null when nothing needs resolving. See [resolveData].
+     */
+    val providerId: String? = null,
+    /**
+     * Opaque payload the provider needs to resolve documentation and extra edits on
+     * demand; null once resolved. Language servers hand back the item itself here.
+     */
+    val resolveData: String? = null,
 )
 
 /**

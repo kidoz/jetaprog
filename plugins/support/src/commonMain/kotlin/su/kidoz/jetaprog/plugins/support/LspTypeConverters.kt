@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.plugins.support
 
+import kotlinx.serialization.json.Json
 import su.kidoz.jetaprog.common.text.MarkedString
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
@@ -146,10 +147,19 @@ public fun CompletionItemKind.toLspCompletionItemKind(): LspCompletionItemKind =
         CompletionItemKind.TypeParameter -> LspCompletionItemKind.TypeParameter
     }
 
+/** Serializes items for `completionItem/resolve`, which must receive the item as sent. */
+private val resolveJson =
+    Json {
+        encodeDefaults = false
+        ignoreUnknownKeys = true
+    }
+
 /**
  * Convert LSP Completion Item to JetaProg CompletionItem.
+ *
+ * @param providerId name of the server that can resolve the item lazily, when it can.
  */
-public fun LspCompletionItem.toCompletionItem(): CompletionItem =
+public fun LspCompletionItem.toCompletionItem(providerId: String? = null): CompletionItem =
     CompletionItem(
         label = label,
         kind = kind?.toCompletionItemKind() ?: CompletionItemKind.Text,
@@ -165,7 +175,15 @@ public fun LspCompletionItem.toCompletionItem(): CompletionItem =
         range = textEdit?.insert?.toTextRange(),
         replaceRange = textEdit?.replace?.toTextRange(),
         additionalTextEdits = additionalTextEdits?.map { it.toTextEditData() } ?: emptyList(),
+        providerId = providerId,
+        resolveData = providerId?.let { resolveJson.encodeToString(LspCompletionItem.serializer(), this) },
     )
+
+/** Restores the item a server sent, for `completionItem/resolve`. */
+public fun CompletionItem.toLspCompletionItem(): LspCompletionItem? =
+    resolveData?.let { data ->
+        runCatching { resolveJson.decodeFromString(LspCompletionItem.serializer(), data) }.getOrNull()
+    }
 
 /**
  * Convert LSP Text Edit to JetaProg TextEditData.
@@ -179,9 +197,9 @@ public fun LspTextEdit.toTextEditData(): TextEditData =
 /**
  * Convert LSP Completion List to JetaProg CompletionList.
  */
-public fun LspCompletionList.toCompletionList(): CompletionList =
+public fun LspCompletionList.toCompletionList(providerId: String? = null): CompletionList =
     CompletionList(
-        items = items.map { it.toCompletionItem() },
+        items = items.map { it.toCompletionItem(providerId) },
         isIncomplete = isIncomplete,
     )
 

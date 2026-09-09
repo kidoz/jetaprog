@@ -254,3 +254,31 @@ public object LspCompletionResultSerializer : KSerializer<LspCompletionList> {
         output.encodeJsonElement(output.json.encodeToJsonElement(LspCompletionList.serializer(), value))
     }
 }
+
+/**
+ * Reads and writes [LspCompletionItemKind] as the number the protocol uses. The enum's
+ * generated serializer names each value by its number but writes it as a JSON string,
+ * which a strict server rejects when an item is sent back for `completionItem/resolve`.
+ * Unknown numbers (a newer specification) fall back to [LspCompletionItemKind.Text].
+ */
+internal object CompletionItemKindSerializer : KSerializer<LspCompletionItemKind> {
+    private val generated = LspCompletionItemKind.serializer()
+
+    override val descriptor: SerialDescriptor = generated.descriptor
+
+    override fun deserialize(decoder: Decoder): LspCompletionItemKind {
+        val input = decoder as? JsonDecoder ?: return generated.deserialize(decoder)
+        val name = (input.decodeJsonElement() as? JsonPrimitive)?.contentOrNull ?: return LspCompletionItemKind.Text
+        val index = generated.descriptor.getElementIndex(name)
+        return LspCompletionItemKind.entries.getOrNull(index) ?: LspCompletionItemKind.Text
+    }
+
+    override fun serialize(
+        encoder: Encoder,
+        value: LspCompletionItemKind,
+    ) {
+        val output = encoder as? JsonEncoder ?: return generated.serialize(encoder, value)
+        val number = generated.descriptor.getElementName(value.ordinal).toIntOrNull()
+        output.encodeJsonElement(if (number != null) JsonPrimitive(number) else JsonPrimitive(value.name))
+    }
+}

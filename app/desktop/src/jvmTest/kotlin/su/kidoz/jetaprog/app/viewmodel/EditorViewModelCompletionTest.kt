@@ -18,6 +18,9 @@ import kotlinx.coroutines.test.setMain
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.completion.CompletionItem
 import su.kidoz.jetaprog.common.completion.CompletionList
+import su.kidoz.jetaprog.common.completion.TextEditData
+import su.kidoz.jetaprog.common.text.TextPosition
+import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.plugins.support.LanguageRegistry
@@ -120,7 +123,47 @@ class EditorViewModelCompletionTest {
             viewModel.dispose()
         }
 
+    @Test
+    fun theSelectedItemIsResolvedForItsDocumentation() =
+        runTest {
+            coEvery { languageRegistry.provideCompletions(any(), any(), any()) } returns
+                CompletionList(listOf(lazyItem("alpha")), isIncomplete = false)
+            coEvery { languageRegistry.resolveCompletion(any()) } answers {
+                firstArg<CompletionItem>().copy(documentation = "Alpha docs", resolveData = null)
+            }
+            val viewModel = editorViewModel()
+
+            viewModel.dispatch(EditorIntent.RequestCompletion(filterText = "al"))
+            val documentation =
+                viewModel.state
+                    .first { it.completionState.selectedItem?.documentation != null }
+                    .completionState.selectedItem
+                    ?.documentation
+
+            assertEquals("Alpha docs", documentation)
+            viewModel.dispose()
+        }
+
+    @Test
+    fun acceptingAnUnresolvedItemFetchesItsExtraEditsFirst() =
+        runTest {
+            val importEdit = TextEditData(TextRange(TextPosition(0, 0), TextPosition(0, 0)), "import a\n")
+            coEvery { languageRegistry.resolveCompletion(any()) } answers {
+                firstArg<CompletionItem>().copy(additionalTextEdits = listOf(importEdit), resolveData = null)
+            }
+            val viewModel = editorViewModel()
+
+            viewModel.dispatch(EditorIntent.ApplyCompletion(lazyItem("alpha")))
+            val content = viewModel.state.first { it.content.contains("alpha") }.content
+
+            assertEquals("import a\nalpha", content)
+            viewModel.dispose()
+        }
+
     private fun item(label: String) = CompletionItem(label = label)
+
+    /** An item a language server offers to complete on request. */
+    private fun lazyItem(label: String) = CompletionItem(label = label, providerId = "server", resolveData = "{}")
 
     /** Providers run on a real background dispatcher, so results are awaited, not advanced to. */
     private suspend fun EditorViewModel.awaitCompletionItems(): List<CompletionItem> =

@@ -15,6 +15,7 @@ import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
 import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
 import su.kidoz.jetaprog.lsp.protocol.LspWorkspaceEdit
 import su.kidoz.jetaprog.lsp.protocol.WorkspaceFolder
+import su.kidoz.jetaprog.plugins.api.language.CompletionItem
 import su.kidoz.jetaprog.plugins.api.language.CompletionList
 import su.kidoz.jetaprog.plugins.api.language.DocumentSelector
 import su.kidoz.jetaprog.plugins.api.language.Hover
@@ -380,6 +381,21 @@ public class LanguageRegistry(
     // ========================================================================
     // Feature Queries
     // ========================================================================
+
+    /**
+     * Resolves the lazily supplied parts of [item] (documentation, detail, extra edits)
+     * through the server that produced it. Returns [item] itself when nothing applies.
+     */
+    public suspend fun resolveCompletion(item: CompletionItem): CompletionItem {
+        val server = item.providerId?.let { lspServers[it] } ?: return item
+        return try {
+            server.resolveCompletion(item) ?: item
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            logger.warn(e) { "${server.config.name} completionItem/resolve failed: ${e.message}" }
+            item
+        }
+    }
 
     /**
      * Get completions for a document position.

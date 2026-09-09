@@ -45,3 +45,15 @@ public fun CompletionItem.mergedWith(other: CompletionItem): CompletionItem {
 
 private val CompletionItem.hasServerData: Boolean
     get() = sortText != null || range != null
+
+/**
+ * Fills in what [resolved] supplies lazily (documentation, detail, extra edits) and
+ * marks this item as resolved so it is not asked for again.
+ */
+public fun CompletionItem.resolvedWith(resolved: CompletionItem): CompletionItem =
+    copy(
+        detail = resolved.detail ?: detail,
+        documentation = resolved.documentation ?: documentation,
+        additionalTextEdits = resolved.additionalTextEdits.ifEmpty { additionalTextEdits },
+        resolveData = null,
+    )
