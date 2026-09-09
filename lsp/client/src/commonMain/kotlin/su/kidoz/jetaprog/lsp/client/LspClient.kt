@@ -55,6 +55,7 @@ import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbolResultSerializer
 import su.kidoz.jetaprog.lsp.protocol.LspHover
 import su.kidoz.jetaprog.lsp.protocol.LspLocation
+import su.kidoz.jetaprog.lsp.protocol.LspLocationsResultSerializer
 import su.kidoz.jetaprog.lsp.protocol.LspMethod
 import su.kidoz.jetaprog.lsp.protocol.LspSignatureHelp
 import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
@@ -546,7 +547,7 @@ public class LspClient(
             LspMethod.DEFINITION,
             params,
             TextDocumentPositionParams.serializer(),
-            kotlinx.serialization.builtins.ListSerializer(LspLocation.serializer()),
+            LspLocationsResultSerializer,
         )
 
     /**
@@ -557,7 +558,7 @@ public class LspClient(
             LspMethod.TYPE_DEFINITION,
             params,
             TextDocumentPositionParams.serializer(),
-            kotlinx.serialization.builtins.ListSerializer(LspLocation.serializer()),
+            LspLocationsResultSerializer,
         )
 
     /**
@@ -568,7 +569,7 @@ public class LspClient(
             LspMethod.IMPLEMENTATION,
             params,
             TextDocumentPositionParams.serializer(),
-            kotlinx.serialization.builtins.ListSerializer(LspLocation.serializer()),
+            LspLocationsResultSerializer,
         )
 
     /**
@@ -579,7 +580,7 @@ public class LspClient(
             LspMethod.REFERENCES,
             params,
             ReferenceParams.serializer(),
-            kotlinx.serialization.builtins.ListSerializer(LspLocation.serializer()),
+            LspLocationsResultSerializer,
         )
 
     /**

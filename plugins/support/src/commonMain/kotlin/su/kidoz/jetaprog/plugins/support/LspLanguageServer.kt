@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.plugins.support
 
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.common.completion.resolvedWith
+import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.lsp.client.LspClient
 import su.kidoz.jetaprog.lsp.client.LspClientConfig
 import su.kidoz.jetaprog.lsp.client.WorkspaceEditCallback
@@ -17,6 +18,7 @@ import su.kidoz.jetaprog.lsp.protocol.DocumentFormattingParams
 import su.kidoz.jetaprog.lsp.protocol.DocumentSymbolParams
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
 import su.kidoz.jetaprog.lsp.protocol.LspFormattingOptions
+import su.kidoz.jetaprog.lsp.protocol.LspLocation
 import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
 import su.kidoz.jetaprog.lsp.protocol.ReferenceContext
 import su.kidoz.jetaprog.lsp.protocol.ReferenceParams
@@ -318,6 +320,29 @@ public class LspLanguageServer(
 
     // Trigger characters are specified as strings; only single characters can be typed.
     private fun List<String>?.toCharacterSet(): Set<Char> = orEmpty().mapNotNullTo(mutableSetOf()) { it.singleOrNull() }
+
+    /** Where the type of the symbol at [position] is declared, per the server; empty when unknown. */
+    public suspend fun typeDefinitionLocations(
+        uri: String,
+        position: TextPosition,
+    ): List<LspLocation> {
+        if (!isRunning) return emptyList()
+        return client.typeDefinition(positionParams(uri, position)).orEmpty()
+    }
+
+    /** Implementations of the symbol at [position], per the server; empty when unknown. */
+    public suspend fun implementationLocations(
+        uri: String,
+        position: TextPosition,
+    ): List<LspLocation> {
+        if (!isRunning) return emptyList()
+        return client.implementation(positionParams(uri, position)).orEmpty()
+    }
+
+    private fun positionParams(
+        uri: String,
+        position: TextPosition,
+    ) = TextDocumentPositionParams(textDocument = TextDocumentIdentifier(uri), position = position.toLspPosition())
 
     /** Structure of the open document at [uri] as the server sees it; empty when it has none. */
     public suspend fun documentSymbols(uri: String): List<LspDocumentSymbol> {

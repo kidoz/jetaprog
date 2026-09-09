@@ -11,11 +11,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
+import su.kidoz.jetaprog.editor.navigation.MatchRange
 import su.kidoz.jetaprog.editor.navigation.NavigationHistoryEntry
 import su.kidoz.jetaprog.editor.navigation.NavigationSearchResult
 import su.kidoz.jetaprog.editor.navigation.NavigationService
+import su.kidoz.jetaprog.editor.navigation.NavigationSymbolKind
+import su.kidoz.jetaprog.editor.navigation.NavigationTarget
 import su.kidoz.jetaprog.editor.navigation.StructureItem
+import su.kidoz.jetaprog.editor.navigation.UsageGroup
 import su.kidoz.jetaprog.editor.navigation.UsageInfo
+import su.kidoz.jetaprog.editor.navigation.UsageKind
 
 /**
  * ViewModel for navigation features.
@@ -106,6 +111,22 @@ public class NavigationViewModel(
 
             is NavigationIntent.GoToDeclaration -> {
                 goToDeclaration(intent.filePath, intent.line, intent.column)
+            }
+
+            is NavigationIntent.GoToTypeDeclaration -> {
+                goToTypeDeclaration(intent.filePath, intent.line, intent.column)
+            }
+
+            is NavigationIntent.GoToImplementation -> {
+                goToImplementation(intent.filePath, intent.line, intent.column)
+            }
+
+            is NavigationIntent.GoToNextMethod -> {
+                goToMethod(intent.filePath, intent.line, forward = true)
+            }
+
+            is NavigationIntent.GoToPreviousMethod -> {
+                goToMethod(intent.filePath, intent.line, forward = false)
             }
 
             is NavigationIntent.ShowRecentFiles -> {
@@ -420,6 +441,95 @@ public class NavigationViewModel(
         }
     }
 
+    private suspend fun goToTypeDeclaration(
+        filePath: String,
+        line: Int,
+        column: Int,
+    ) {
+        val target = navigationService?.getTypeDefinition(filePath, TextPosition(line, column))
+        if (target != null) {
+            navigateTo(target.filePath, target.position.line, target.position.column)
+        } else {
+            _effects.send(NavigationEffect.ShowNotification("No type declaration found"))
+        }
+    }
+
+    private suspend fun goToImplementation(
+        filePath: String,
+        line: Int,
+        column: Int,
+    ) {
+        val targets = navigationService?.getImplementations(filePath, TextPosition(line, column)).orEmpty()
+        when (targets.size) {
+            0 -> _effects.send(NavigationEffect.ShowNotification("No implementations found"))
+
+            1 -> targets.single().let { navigateTo(it.filePath, it.position.line, it.position.column) }
+
+            // Several candidates: let the user pick from the usages popup.
+            else -> showUsagesResult(targets.toUsagesResult())
+        }
+    }
+
+    private fun List<NavigationTarget>.toUsagesResult(): FindUsagesResult =
+        FindUsagesResult(
+            symbol = first(),
+            groups =
+                groupBy { it.filePath }.map { (path, targets) ->
+                    UsageGroup(
+                        filePath = path,
+                        fileName = path.substringAfterLast('/'),
+                        usages =
+                            targets.map { target ->
+                                UsageInfo(
+                                    target = target,
+                                    usageKind = UsageKind.DEFINITION,
+                                    contextLine = target.detail ?: target.name,
+                                    lineNumber = target.position.line + 1,
+                                    columnRange =
+                                        MatchRange(
+                                            target.position.column,
+                                            target.position.column + target.name.length - 1,
+                                        ),
+                                )
+                            },
+                    )
+                },
+            totalCount = size,
+        )
+
+    /**
+     * Moves to the next (or previous) function or method in the file, taken from its
+     * structure so every language with structure support gets Alt+Down / Alt+Up.
+     */
+    private suspend fun goToMethod(
+        filePath: String,
+        line: Int,
+        forward: Boolean,
+    ) {
+        val methods =
+            navigationService
+                ?.getFileStructure(filePath)
+                .orEmpty()
+                .flattenStructure()
+                .map { it.target }
+                .filter { it.kind in METHOD_KINDS }
+                .sortedWith(compareBy({ it.position.line }, { it.position.column }))
+        val target =
+            if (forward) {
+                methods.firstOrNull { it.position.line > line }
+            } else {
+                methods.lastOrNull { it.position.line < line }
+            }
+        if (target == null) {
+            _effects.send(NavigationEffect.ShowNotification(if (forward) "No next method" else "No previous method"))
+            return
+        }
+        navigateTo(target.filePath, target.position.line, target.position.column)
+    }
+
+    private fun List<StructureItem>.flattenStructure(): List<StructureItem> =
+        flatMap { listOf(it) + it.children.flattenStructure() }
+
     // Breadcrumbs
     private suspend fun updateBreadcrumbs(
         filePath: String,
@@ -472,6 +582,10 @@ public class NavigationViewModel(
     }
 
     private companion object {
+        /** Structure kinds Alt+Down / Alt+Up step through. */
+        val METHOD_KINDS =
+            setOf(NavigationSymbolKind.FUNCTION, NavigationSymbolKind.METHOD, NavigationSymbolKind.CONSTRUCTOR)
+
         /** Keystroke debounce before a search runs; a newer keystroke supersedes it. */
         const val SEARCH_DEBOUNCE_MS = 120L
 

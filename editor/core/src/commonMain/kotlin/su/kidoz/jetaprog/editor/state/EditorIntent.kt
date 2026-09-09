@@ -309,6 +309,12 @@ public sealed interface EditorIntent : Intent {
         val markers: Map<Int, LineChangeMarker>,
     ) : EditorIntent
 
+    /** Move the caret to the next diagnostic in the document, wrapping around. */
+    public data object GoToNextDiagnostic : EditorIntent
+
+    /** Move the caret to the previous diagnostic in the document, wrapping around. */
+    public data object GoToPreviousDiagnostic : EditorIntent
+
     // Completion
 
     /**

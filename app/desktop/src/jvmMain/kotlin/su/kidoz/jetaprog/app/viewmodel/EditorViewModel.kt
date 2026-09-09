@@ -349,6 +349,14 @@ public class EditorViewModel(
             }
 
             // Completion intents
+            is EditorIntent.GoToNextDiagnostic -> {
+                goToDiagnostic(forward = true)
+            }
+
+            is EditorIntent.GoToPreviousDiagnostic -> {
+                goToDiagnostic(forward = false)
+            }
+
             is EditorIntent.CharacterTyped -> {
                 characterTyped(intent.character, intent.prefix)
             }
@@ -2007,6 +2015,29 @@ public class EditorViewModel(
     // ========================================================================
     // Completion Methods
     // ========================================================================
+
+    /** Moves the caret to the next (or previous) diagnostic, wrapping around the document. */
+    private suspend fun goToDiagnostic(forward: Boolean) {
+        val starts =
+            currentState.diagnostics
+                .map { it.range.start }
+                .distinct()
+                .sortedWith(compareBy({ it.line }, { it.column }))
+        if (starts.isEmpty()) {
+            emitEffect(EditorEffect.ShowNotification("No problems in this file", NotificationType.INFO))
+            return
+        }
+        val caret = currentState.cursor.position
+        val target =
+            if (forward) {
+                starts.firstOrNull { it.line > caret.line || (it.line == caret.line && it.column > caret.column) }
+                    ?: starts.first()
+            } else {
+                starts.lastOrNull { it.line < caret.line || (it.line == caret.line && it.column < caret.column) }
+                    ?: starts.last()
+            }
+        moveCursor(target, synchronizeUi = true)
+    }
 
     /**
      * Routes a typed character to completion and signature help. Trigger characters

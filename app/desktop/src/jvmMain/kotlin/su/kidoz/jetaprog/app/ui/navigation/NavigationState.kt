@@ -117,6 +117,33 @@ public sealed interface NavigationIntent {
     ) : NavigationIntent
 
     // Recent files
+
+    /** Jump to where the type of the symbol at the caret is declared. */
+    public data class GoToTypeDeclaration(
+        val filePath: String,
+        val line: Int,
+        val column: Int,
+    ) : NavigationIntent
+
+    /** Jump to the implementation of the symbol at the caret, or list them when there are several. */
+    public data class GoToImplementation(
+        val filePath: String,
+        val line: Int,
+        val column: Int,
+    ) : NavigationIntent
+
+    /** Move to the next function or method declared after [line]. */
+    public data class GoToNextMethod(
+        val filePath: String,
+        val line: Int,
+    ) : NavigationIntent
+
+    /** Move to the last function or method declared before [line]. */
+    public data class GoToPreviousMethod(
+        val filePath: String,
+        val line: Int,
+    ) : NavigationIntent
+
     public data object ShowRecentFiles : NavigationIntent
 
     public data object ShowRecentLocations : NavigationIntent

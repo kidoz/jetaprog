@@ -806,6 +806,19 @@ public class ProjectSession(
             return true
         }
 
+        if (event.type == KeyEventType.KeyDown) {
+            when (keymapManager.findAction(event)) {
+                NavigationActions.NEXT_ERROR -> {
+                    editorViewModel.dispatch(EditorIntent.GoToNextDiagnostic)
+                    return true
+                }
+
+                NavigationActions.PREV_ERROR -> {
+                    editorViewModel.dispatch(EditorIntent.GoToPreviousDiagnostic)
+                    return true
+                }
+            }
+        }
         val editorState = editorViewModel.state.value
         val cursor = editorState.cursor.position
         return handleNavigationKeyEvent(

@@ -107,3 +107,46 @@ private fun JsonObject.toSymbolInformation(json: kotlinx.serialization.json.Json
         containerName = this["containerName"]?.jsonPrimitive?.contentOrNull,
     )
 }
+
+/**
+ * Reads a definition-family result, declared as `Location | Location[] | LocationLink[]`.
+ * Servers that see `linkSupport` (rust-analyzer, clangd) answer with links, whose target
+ * selection range is where the caret should land.
+ */
+public object LspLocationsResultSerializer : KSerializer<List<LspLocation>> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("LocationsResult")
+
+    override fun deserialize(decoder: Decoder): List<LspLocation> {
+        val input = decoder as? JsonDecoder ?: error("Locations are only decoded from JSON")
+        return when (val element = input.decodeJsonElement()) {
+            is JsonArray -> element.mapNotNull { (it as? JsonObject)?.toLocation(input.json) }
+            is JsonObject -> listOfNotNull(element.toLocation(input.json))
+            else -> emptyList()
+        }
+    }
+
+    override fun serialize(
+        encoder: Encoder,
+        value: List<LspLocation>,
+    ) {
+        val output = encoder as? JsonEncoder ?: error("Locations are only encoded to JSON")
+        output.encodeJsonElement(output.json.encodeToJsonElement(ListSerializer(LspLocation.serializer()), value))
+    }
+
+    private fun JsonObject.toLocation(json: kotlinx.serialization.json.Json): LspLocation? {
+        if (containsKey(
+                "uri",
+            )
+        ) {
+            return runCatching { json.decodeFromJsonElement(LspLocation.serializer(), this) }.getOrNull()
+        }
+        val targetUri = this["targetUri"]?.jsonPrimitive?.contentOrNull ?: return null
+        val range = (this["targetSelectionRange"] ?: this["targetRange"]) ?: return null
+        return runCatching {
+            LspLocation(
+                targetUri,
+                json.decodeFromJsonElement(LspRange.serializer(), range),
+            )
+        }.getOrNull()
+    }
+}

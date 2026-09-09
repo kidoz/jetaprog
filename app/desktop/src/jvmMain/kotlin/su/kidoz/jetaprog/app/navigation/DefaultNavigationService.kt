@@ -252,16 +252,9 @@ public class DefaultNavigationService(
             }
         }
 
-        // Fall back to external LSP client
-        val client = lspClient ?: return null
-
-        val params =
-            TextDocumentPositionParams(
-                textDocument = TextDocumentIdentifier(pathToUri(filePath)),
-                position = LspPosition(position.line, position.column),
-            )
-
-        val locations = client.typeDefinition(params) ?: return null
+        // External language servers registered through the registry.
+        val registry = languageRegistryProvider() ?: return null
+        val locations = registry.provideTypeDefinitionLocations(languageId, pathToUri(filePath), position)
         return locations.firstOrNull()?.let { adapter.toNavigationTarget(it) }
     }
 
@@ -283,16 +276,9 @@ public class DefaultNavigationService(
             }
         }
 
-        // Fall back to external LSP client
-        val client = lspClient ?: return emptyList()
-
-        val params =
-            TextDocumentPositionParams(
-                textDocument = TextDocumentIdentifier(pathToUri(filePath)),
-                position = LspPosition(position.line, position.column),
-            )
-
-        val locations = client.implementation(params) ?: return emptyList()
+        // External language servers registered through the registry.
+        val registry = languageRegistryProvider() ?: return emptyList()
+        val locations = registry.provideImplementationLocations(languageId, pathToUri(filePath), position)
         return locations.map { adapter.toNavigationTarget(it) }
     }
 

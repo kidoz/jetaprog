@@ -278,6 +278,34 @@ public fun handleNavigationKeyEvent(
             return true
         }
 
+        NavigationActions.GOTO_TYPE_DECLARATION -> {
+            scope.launch {
+                viewModel.processIntent(
+                    NavigationIntent.GoToTypeDeclaration(currentFilePath, currentLine, currentColumn),
+                )
+            }
+            return true
+        }
+
+        NavigationActions.GOTO_IMPLEMENTATION -> {
+            scope.launch {
+                viewModel.processIntent(
+                    NavigationIntent.GoToImplementation(currentFilePath, currentLine, currentColumn),
+                )
+            }
+            return true
+        }
+
+        NavigationActions.NEXT_METHOD -> {
+            scope.launch { viewModel.processIntent(NavigationIntent.GoToNextMethod(currentFilePath, currentLine)) }
+            return true
+        }
+
+        NavigationActions.PREV_METHOD -> {
+            scope.launch { viewModel.processIntent(NavigationIntent.GoToPreviousMethod(currentFilePath, currentLine)) }
+            return true
+        }
+
         else -> {
             return false
         }

@@ -12,6 +12,7 @@ import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.lsp.client.LspClientConfig
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
+import su.kidoz.jetaprog.lsp.protocol.LspLocation
 import su.kidoz.jetaprog.lsp.protocol.LspSymbolInformation
 import su.kidoz.jetaprog.lsp.protocol.LspWorkspaceEdit
 import su.kidoz.jetaprog.lsp.protocol.WorkspaceFolder
@@ -300,10 +301,32 @@ public class LanguageRegistry(
     public suspend fun provideDocumentSymbols(
         languageId: String,
         uri: String,
-    ): List<LspDocumentSymbol> {
+    ): List<LspDocumentSymbol> = firstNonEmptyFromServers(languageId, "documentSymbol") { documentSymbols(uri) }
+
+    /** Where the type of the symbol at [position] in [uri] is declared, from external servers. */
+    public suspend fun provideTypeDefinitionLocations(
+        languageId: String,
+        uri: String,
+        position: TextPosition,
+    ): List<LspLocation> =
+        firstNonEmptyFromServers(languageId, "typeDefinition") { typeDefinitionLocations(uri, position) }
+
+    /** Implementations of the symbol at [position] in [uri], from external servers. */
+    public suspend fun provideImplementationLocations(
+        languageId: String,
+        uri: String,
+        position: TextPosition,
+    ): List<LspLocation> =
+        firstNonEmptyFromServers(languageId, "implementation") { implementationLocations(uri, position) }
+
+    private suspend fun <T> firstNonEmptyFromServers(
+        languageId: String,
+        feature: String,
+        query: suspend LspLanguageServer.() -> List<T>,
+    ): List<T> {
         for (server in lspServers.values.filter { languageId in it.config.languageIds }) {
-            val symbols = server.querySafely("documentSymbol") { documentSymbols(uri) }
-            if (symbols.isNotEmpty()) return symbols
+            val result = server.querySafely(feature, query)
+            if (result.isNotEmpty()) return result
         }
         return emptyList()
     }
