@@ -133,6 +133,9 @@ class CloneRepositoryDialogUiTest {
             }
         }
         runOnIdle { viewModel.dispatch(CloneRepositoryIntent.Show) }
+        // The intent runs on the main dispatcher, which Compose's idle check does not
+        // cover; without this wait the dialog is sometimes asserted before it exists.
+        waitUntil(timeoutMillis = 5_000L) { viewModel.state.value.isVisible }
         waitForIdle()
         return viewModel
     }
