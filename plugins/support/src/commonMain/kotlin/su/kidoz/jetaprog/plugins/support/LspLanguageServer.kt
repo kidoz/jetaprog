@@ -16,6 +16,7 @@ import su.kidoz.jetaprog.lsp.protocol.DidOpenTextDocumentParams
 import su.kidoz.jetaprog.lsp.protocol.DidSaveTextDocumentParams
 import su.kidoz.jetaprog.lsp.protocol.DocumentFormattingParams
 import su.kidoz.jetaprog.lsp.protocol.DocumentSymbolParams
+import su.kidoz.jetaprog.lsp.protocol.IncrementalTextChange
 import su.kidoz.jetaprog.lsp.protocol.LspDocumentSymbol
 import su.kidoz.jetaprog.lsp.protocol.LspFormattingOptions
 import su.kidoz.jetaprog.lsp.protocol.LspLocation
@@ -75,6 +76,9 @@ public class LspLanguageServer(
     private val client: LspClient,
 ) : Disposable {
     private val documentVersions = mutableMapOf<String, Int>()
+
+    /** Last text sent per document, so a change can be sent as the edited span only. */
+    private val documentContents = mutableMapOf<String, String>()
     private val documentDiagnostics = mutableMapOf<String, List<su.kidoz.jetaprog.lsp.protocol.LspDiagnostic>>()
     private var diagnosticsListener: DiagnosticsListener? = null
 
@@ -142,6 +146,7 @@ public class LspLanguageServer(
     ) {
         val version = 1
         documentVersions[uri] = version
+        documentContents[uri] = content
 
         client.didOpen(
             DidOpenTextDocumentParams(
@@ -165,6 +170,18 @@ public class LspLanguageServer(
     ) {
         val version = (documentVersions[uri] ?: 0) + 1
         documentVersions[uri] = version
+        val previous = documentContents.put(uri, content)
+
+        // Servers that negotiated incremental sync get the edited span only; the whole
+        // document was sent on every keystroke before, which large files made costly.
+        val incremental =
+            previous != null && client.serverCapabilities?.textDocumentSync?.change == TEXT_DOCUMENT_SYNC_INCREMENTAL
+        val change =
+            if (incremental) {
+                IncrementalTextChange.between(previous, content)
+            } else {
+                TextDocumentContentChangeEvent(text = content)
+            }
 
         client.didChange(
             DidChangeTextDocumentParams(
@@ -173,10 +190,7 @@ public class LspLanguageServer(
                         uri = uri,
                         version = version,
                     ),
-                contentChanges =
-                    listOf(
-                        TextDocumentContentChangeEvent(text = content),
-                    ),
+                contentChanges = listOf(change),
             ),
         )
     }
@@ -201,6 +215,7 @@ public class LspLanguageServer(
      */
     public suspend fun closeDocument(uri: String) {
         documentVersions.remove(uri)
+        documentContents.remove(uri)
         client.didClose(
             DidCloseTextDocumentParams(
                 textDocument = TextDocumentIdentifier(uri = uri),
@@ -453,3 +468,6 @@ public expect class LanguageServerManager() {
      */
     public suspend fun stopAll()
 }
+
+/** `TextDocumentSyncKind.Incremental`: the server accepts range-based change events. */
+private const val TEXT_DOCUMENT_SYNC_INCREMENTAL = 2
