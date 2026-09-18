@@ -366,10 +366,18 @@ public fun CodeEditor(
                                 var lastHoverPosition: TextPosition? = null
                                 var cachedText = ""
                                 var cachedLines = listOf("")
+                                var swallowRelease = false
                                 awaitPointerEventScope {
                                     while (true) {
                                         val event = awaitPointerEvent(PointerEventPass.Initial)
                                         when (event.type) {
+                                            PointerEventType.Release -> {
+                                                if (swallowRelease) {
+                                                    swallowRelease = false
+                                                    event.changes.forEach { it.consume() }
+                                                }
+                                            }
+
                                             PointerEventType.Move -> {
                                                 if (event.buttons.isPrimaryPressed) continue
                                                 val pointer =
@@ -404,8 +412,11 @@ public fun CodeEditor(
                                             }
 
                                             // Ctrl+Click (Cmd+Click on macOS) jumps to the
-                                            // declaration under the pointer. The press still
-                                            // reaches the text field, so the caret lands there too.
+                                            // declaration under the pointer. The click is consumed
+                                            // here so the text field never sees it: it used to place
+                                            // the caret on release, and when the declaration resolved
+                                            // instantly the editor had already scrolled, so the caret
+                                            // landed on whatever line was under the pointer by then.
                                             PointerEventType.Press -> {
                                                 val modifiers = event.keyboardModifiers
                                                 if (!modifiers.isCtrlPressed && !modifiers.isMetaPressed) continue
@@ -420,6 +431,8 @@ public fun CodeEditor(
                                                         lineHeightPx = lineHeightPxF,
                                                         charWidthPx = charWidthPx,
                                                     ) ?: continue
+                                                event.changes.forEach { it.consume() }
+                                                swallowRelease = true
                                                 onGoToDefinition(position)
                                             }
                                         }

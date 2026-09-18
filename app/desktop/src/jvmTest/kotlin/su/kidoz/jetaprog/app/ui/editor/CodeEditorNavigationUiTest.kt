@@ -2,6 +2,8 @@ package su.kidoz.jetaprog.app.ui.editor
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
@@ -9,6 +11,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.test.withKeyDown
+import androidx.compose.ui.text.TextRange
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.state.EditorState
@@ -42,9 +45,15 @@ class CodeEditorNavigationUiTest {
             }
 
             val field = onNode(hasSetTextAction())
+
+            fun selection(): TextRange? =
+                field.fetchSemanticsNode().config.getOrNull(SemanticsProperties.TextSelectionRange)
+
             field.performMouseInput { click(Offset(right - 40f, yForLine(line = 2))) }
             waitForIdle()
             assertTrue(requested.isEmpty(), "a plain click must not navigate")
+            val afterPlainClick = selection()
+            assertTrue((afterPlainClick?.start ?: 0) > 0, "a plain click places the caret under the pointer")
 
             field.performKeyInput {
                 withKeyDown(Key.CtrlLeft) {
@@ -55,5 +64,8 @@ class CodeEditorNavigationUiTest {
 
             assertEquals(1, requested.size, "one modifier click should request one declaration")
             assertEquals(7, requested.single().line)
+            // Navigation alone positions the caret; the text field must not also place it on
+            // release, which lands on the wrong line once the editor has scrolled to the target.
+            assertEquals(afterPlainClick, selection(), "a modifier click must not move the caret itself")
         }
 }
