@@ -52,7 +52,7 @@ public class KotlinSymbolIndex {
                 // Remove old symbols from this file
                 symbolsByFile[filePath]?.forEach { symbol ->
                     symbolsByName[symbol.name]?.remove(symbol)
-                    symbolsByFqName.remove(symbol.fqName)
+                    if (symbolsByFqName[symbol.fqName] == symbol) symbolsByFqName.remove(symbol.fqName)
                 }
 
                 // Add new symbols
@@ -75,7 +75,7 @@ public class KotlinSymbolIndex {
                     list.remove(symbol)
                     if (list.isEmpty()) symbolsByName.remove(symbol.name)
                 }
-                symbolsByFqName.remove(symbol.fqName)
+                if (symbolsByFqName[symbol.fqName] == symbol) symbolsByFqName.remove(symbol.fqName)
             }
         }
 
@@ -145,159 +145,208 @@ public class KotlinSymbolIndex {
         filePath: String,
     ): List<KotlinSymbol> {
         val symbols = mutableListOf<KotlinSymbol>()
-        val lines = content.lines()
-
         var packageName = ""
-        var currentClass: String? = null
+        val scopes = ArrayDeque<Scope>()
+        var pending: PendingClass? = null
         var braceDepth = 0
 
-        // Patterns for parsing
-        val packagePattern = Regex("""^package\s+([\w.]+)""")
-        val classPattern =
-            Regex(
-                """^(\s*)(public\s+|private\s+|internal\s+|protected\s+)?(abstract\s+|open\s+|sealed\s+|data\s+|inline\s+|value\s+)*(class|interface|object|enum\s+class|annotation\s+class)\s+(\w+)""",
-            )
-        val funPattern =
-            Regex(
-                """^(\s*)(public\s+|private\s+|internal\s+|protected\s+)?(suspend\s+|inline\s+|operator\s+|infix\s+)*(fun\s+)(<[^>]+>\s+)?(\w+\.)?(\w+)\s*\(""",
-            )
-        val propPattern =
-            Regex(
-                """^(\s*)(public\s+|private\s+|internal\s+|protected\s+)?(val|var)\s+(<[^>]+>\s+)?(\w+\.)?(\w+)\s*[:=]""",
-            )
+        fun classPath(): List<String> = scopes.filter { it.isClass }.map { it.name }
 
-        lines.forEachIndexed { lineIndex, line ->
-            // Track brace depth for class scope
-            braceDepth += line.count { it == '{' } - line.count { it == '}' }
-            if (braceDepth <= 0) {
-                currentClass = null
-                braceDepth = 0
+        fun fqNameOf(
+            name: String,
+            parents: List<String>,
+        ): String =
+            buildString {
+                if (packageName.isNotEmpty()) append("$packageName.")
+                parents.forEach { append("$it.") }
+                append(name)
             }
 
-            // Package
-            packagePattern.find(line)?.let { match ->
-                packageName = match.groupValues[1]
+        fun addClass(
+            name: String,
+            kind: SymbolKind,
+            visibility: Visibility,
+            nameRange: TextRange,
+        ) {
+            symbols +=
+                KotlinSymbol(
+                    name = name,
+                    fqName = fqNameOf(name, classPath()),
+                    kind = kind,
+                    filePath = filePath,
+                    range = nameRange,
+                    nameRange = nameRange,
+                    parent = scopes.lastOrNull { it.isClass }?.name,
+                    visibility = visibility,
+                )
+        }
+
+        content.split('\n').forEachIndexed { lineIndex, line ->
+            val trimmed = line.trimStart()
+            if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) {
+                return@forEachIndexed
             }
+            val code = codeOnly(line)
+            val depthBefore = braceDepth
+            braceDepth = maxOf(0, braceDepth + code.count { it == '{' } - code.count { it == '}' })
+            while (scopes.isNotEmpty() && braceDepth < scopes.last().depthInside) scopes.removeLast()
+            if (pending?.let { braceDepth < it.depth } == true) pending = null
 
-            // Class/Interface/Object
-            classPattern.find(line)?.let { match ->
-                val visibilityStr = match.groupValues[2].trim()
-                val kindStr = match.groupValues[4].trim()
-                val name = match.groupValues[5]
+            val indent = line.length - trimmed.length
+            val insideFunction = scopes.lastOrNull()?.isClass == false
 
-                val visibility = parseVisibility(visibilityStr)
+            packagePattern.find(code)?.let { packageName = it.groupValues[1] }
+
+            val companion = companionPattern.find(code)
+            val declaration = companion ?: classPattern.find(code)
+            if (declaration != null) {
+                val header = pending
+                if (header != null && indent <= header.indent) pending = null
+                val modifiers = declaration.groupValues[2]
+                val keyword = declaration.groupValues[3]
+                val nameGroup = declaration.groups[4]
+                val name = nameGroup?.value ?: DEFAULT_COMPANION_NAME
+                val nameRange =
+                    nameGroup?.range?.let { lineRange(lineIndex, it) } ?: lineRange(lineIndex, declaration.range)
                 val kind =
                     when {
-                        kindStr == "interface" -> SymbolKind.INTERFACE
-                        kindStr == "object" -> SymbolKind.OBJECT
-                        kindStr.startsWith("enum") -> SymbolKind.ENUM
-                        kindStr.startsWith("annotation") -> SymbolKind.ANNOTATION
+                        companion != null -> SymbolKind.COMPANION_OBJECT
+                        "enum " in modifiers -> SymbolKind.ENUM
+                        "annotation " in modifiers -> SymbolKind.ANNOTATION
+                        keyword == "interface" -> SymbolKind.INTERFACE
+                        keyword == "object" -> SymbolKind.OBJECT
                         else -> SymbolKind.CLASS
                     }
-
-                val fqName = if (packageName.isNotEmpty()) "$packageName.$name" else name
-                val nameStart = line.indexOf(name, match.range.first)
-                val position = TextPosition(lineIndex, nameStart)
-                val endPosition = TextPosition(lineIndex, nameStart + name.length)
-
-                symbols.add(
-                    KotlinSymbol(
-                        name = name,
-                        fqName = fqName,
-                        kind = kind,
-                        filePath = filePath,
-                        range = TextRange(position, endPosition),
-                        nameRange = TextRange(position, endPosition),
-                        visibility = visibility,
-                    ),
-                )
-
-                currentClass = name
+                addClass(name, kind, parseVisibility(modifiers), nameRange)
+                // `class Point(val x: Int, val y: Int)`: constructor properties on the header line.
+                constructorPropPattern.findAll(code, declaration.range.last + 1).forEach { property ->
+                    val propertyName = property.groups[2] ?: return@forEach
+                    val propertyRange = lineRange(lineIndex, propertyName.range)
+                    symbols +=
+                        KotlinSymbol(
+                            name = propertyName.value,
+                            fqName = fqNameOf(propertyName.value, classPath() + name),
+                            kind = SymbolKind.PROPERTY,
+                            filePath = filePath,
+                            range = propertyRange,
+                            nameRange = propertyRange,
+                            parent = name,
+                            visibility = parseVisibility(property.groupValues[1]),
+                        )
+                }
+                when {
+                    braceDepth > depthBefore -> scopes.addLast(Scope(name, depthBefore + 1, isClass = true))
+                    braceDepth == depthBefore && '{' !in code -> pending = PendingClass(name, indent, braceDepth)
+                }
+                return@forEachIndexed
             }
 
-            // Function
-            funPattern.find(line)?.let { match ->
-                val visibilityStr = match.groupValues[2].trim()
-                val receiverType = match.groupValues[6].trimEnd('.')
-                val name = match.groupValues[7]
-
-                val visibility = parseVisibility(visibilityStr)
-                val isExtension = receiverType.isNotEmpty()
-                val parent = currentClass ?: receiverType.takeIf { it.isNotEmpty() }
-
-                val fqName =
-                    buildString {
-                        if (packageName.isNotEmpty()) append("$packageName.")
-                        if (currentClass != null) append("$currentClass.")
-                        append(name)
+            val header = pending
+            if (header != null) {
+                when {
+                    // A line back at the header's indentation that is not its closing `)`
+                    // means the class had no body (or the body was on one line).
+                    indent <= header.indent && trimmed.isNotEmpty() && !trimmed.startsWith(')') -> {
+                        pending = null
                     }
 
-                val nameStart = line.indexOf(name, match.range.first)
-                val position = TextPosition(lineIndex, nameStart)
-                val endPosition = TextPosition(lineIndex, nameStart + name.length)
+                    // The header that started a few lines up has just opened its body.
+                    braceDepth > depthBefore -> {
+                        scopes.addLast(Scope(header.name, depthBefore + 1, isClass = true))
+                        pending = null
+                    }
+                }
+            }
 
-                symbols.add(
+            initPattern.find(code)?.let {
+                if (braceDepth > depthBefore) scopes.addLast(Scope("init", depthBefore + 1, isClass = false))
+                return@forEachIndexed
+            }
+
+            if (insideFunction) return@forEachIndexed
+
+            funPattern.find(code)?.let { match ->
+                val modifiers = match.groupValues[2]
+                val receiverType = match.groupValues[3]
+                val nameGroup = match.groups[4] ?: return@let
+                val name = nameGroup.value.trim('`')
+                val parents = classPath() + listOfNotNull(pending?.name)
+                val nameRange = lineRange(lineIndex, nameGroup.range)
+                symbols +=
                     KotlinSymbol(
                         name = name,
-                        fqName = fqName,
+                        fqName = fqNameOf(name, parents),
                         kind = SymbolKind.FUNCTION,
                         filePath = filePath,
-                        range = TextRange(position, endPosition),
-                        nameRange = TextRange(position, endPosition),
-                        parent = parent,
-                        visibility = visibility,
-                        isExtension = isExtension,
-                    ),
-                )
+                        range = nameRange,
+                        nameRange = nameRange,
+                        parent = parents.lastOrNull() ?: receiverType.takeIf { it.isNotEmpty() },
+                        visibility = parseVisibility(modifiers),
+                        isExtension = receiverType.isNotEmpty(),
+                    )
+                if (braceDepth > depthBefore) scopes.addLast(Scope(name, depthBefore + 1, isClass = false))
+                return@forEachIndexed
             }
 
-            // Property
-            propPattern.find(line)?.let { match ->
-                val visibilityStr = match.groupValues[2].trim()
-                val receiverType = match.groupValues[5].trimEnd('.')
-                val name = match.groupValues[6]
-
-                val visibility = parseVisibility(visibilityStr)
-                val isExtension = receiverType.isNotEmpty()
-                val parent = currentClass ?: receiverType.takeIf { it.isNotEmpty() }
-
-                val fqName =
-                    buildString {
-                        if (packageName.isNotEmpty()) append("$packageName.")
-                        if (currentClass != null) append("$currentClass.")
-                        append(name)
-                    }
-
-                val nameStart = line.indexOf(name, match.range.first)
-                val position = TextPosition(lineIndex, nameStart)
-                val endPosition = TextPosition(lineIndex, nameStart + name.length)
-
-                symbols.add(
+            propPattern.find(code)?.let { match ->
+                val modifiers = match.groupValues[2]
+                val receiverType = match.groupValues[3]
+                val nameGroup = match.groups[4] ?: return@let
+                val name = nameGroup.value.trim('`')
+                // Properties declared in a pending class header are its constructor properties.
+                val parents = classPath() + listOfNotNull(pending?.name)
+                val nameRange = lineRange(lineIndex, nameGroup.range)
+                symbols +=
                     KotlinSymbol(
                         name = name,
-                        fqName = fqName,
+                        fqName = fqNameOf(name, parents),
                         kind = SymbolKind.PROPERTY,
                         filePath = filePath,
-                        range = TextRange(position, endPosition),
-                        nameRange = TextRange(position, endPosition),
-                        parent = parent,
-                        visibility = visibility,
-                        isExtension = isExtension,
-                    ),
-                )
+                        range = nameRange,
+                        nameRange = nameRange,
+                        parent = parents.lastOrNull() ?: receiverType.takeIf { it.isNotEmpty() },
+                        visibility = parseVisibility(modifiers),
+                        isExtension = receiverType.isNotEmpty(),
+                    )
             }
         }
 
         return symbols
     }
 
-    private fun parseVisibility(str: String): Visibility =
-        when (str) {
-            "private" -> Visibility.PRIVATE
-            "protected" -> Visibility.PROTECTED
-            "internal" -> Visibility.INTERNAL
+    private fun lineRange(
+        lineIndex: Int,
+        range: IntRange,
+    ): TextRange = TextRange(TextPosition(lineIndex, range.first), TextPosition(lineIndex, range.last + 1))
+
+    /** [line] with string and character literals blanked and the line comment removed. */
+    private fun codeOnly(line: String): String =
+        line
+            .replace(stringLiteral, "\"\"")
+            .replace(charLiteral, "''")
+            .substringBefore("//")
+
+    private fun parseVisibility(modifiers: String): Visibility =
+        when {
+            "private " in modifiers -> Visibility.PRIVATE
+            "protected " in modifiers -> Visibility.PROTECTED
+            "internal " in modifiers -> Visibility.INTERNAL
             else -> Visibility.PUBLIC
         }
+
+    /** A brace-delimited scope; members declared inside a non-class scope are locals and skipped. */
+    private data class Scope(
+        val name: String,
+        val depthInside: Int,
+        val isClass: Boolean,
+    )
+
+    /** A class header without a body yet: `class Foo(` spanning several lines. */
+    private data class PendingClass(
+        val name: String,
+        val indent: Int,
+        val depth: Int,
+    )
 
     public companion object {
         /** Kotlin sources and scripts (`build.gradle.kts`, `*.main.kts`) are both indexed. */
@@ -306,5 +355,34 @@ public class KotlinSymbolIndex {
         /** Directories never walked: build output and dependency caches. */
         public val EXCLUDED_DIRECTORIES: Set<String> =
             setOf("build", "out", "dist", "node_modules", "target", "bin", "obj")
+
+        private const val DEFAULT_COMPANION_NAME = "Companion"
+
+        private const val ANNOTATIONS = """((?:@[\w.]+(?:\([^)]*\))?\s+)*)"""
+
+        /**
+         * Every declaration modifier Kotlin allows, in any order. The old patterns
+         * accepted only visibility plus a handful of others, so `override fun`,
+         * `@Composable fun`, `const val`, `expect class` and friends were invisible
+         * to Go to Symbol, structure, auto-import and semantic context nomination.
+         */
+        private const val MODIFIERS =
+            """((?:(?:public|private|internal|protected|abstract|open|final|sealed|data|inline|value|inner|enum|""" +
+                """annotation|expect|actual|override|suspend|operator|infix|tailrec|external|const|lateinit|fun|""" +
+                """vararg|noinline|crossinline)\s+)*)"""
+
+        private const val RECEIVER = """(?:([\w.]+(?:<[^(]*>)?\??)\.)?"""
+        private const val NAME = """(\w+|`[^`]+`)"""
+
+        private val packagePattern = Regex("""^package\s+([\w.]+)""")
+        private val companionPattern = Regex("""^\s*$ANNOTATIONS$MODIFIERS(companion\s+object)\b(?:\s+(\w+))?""")
+        private val classPattern = Regex("""^\s*$ANNOTATIONS$MODIFIERS(class|interface|object)\s+(\w+)""")
+        private val funPattern = Regex("""^\s*$ANNOTATIONS${MODIFIERS}fun\s+(?:<[^>]*>\s+)?$RECEIVER$NAME\s*\(""")
+        private val propPattern =
+            Regex("""^\s*$ANNOTATIONS$MODIFIERS(?:val|var)\s+(?:<[^>]*>\s+)?$RECEIVER$NAME\s*(?::|=|by\s|$)""")
+        private val initPattern = Regex("""^\s*init\s*\{""")
+        private val constructorPropPattern = Regex("""$MODIFIERS(?:val|var)\s+(\w+)\s*:""")
+        private val stringLiteral = Regex(""""(?:[^"\\]|\\.)*"""")
+        private val charLiteral = Regex("""'(?:[^'\\]|\\.)'""")
     }
 }
