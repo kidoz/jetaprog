@@ -85,6 +85,7 @@ import su.kidoz.jetaprog.editor.navigation.index.GoSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.InMemorySymbolIndex
 import su.kidoz.jetaprog.editor.navigation.index.IndexedNavigationService
 import su.kidoz.jetaprog.editor.navigation.index.JavaSymbolExtractor
+import su.kidoz.jetaprog.editor.navigation.index.PrologSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.SqlSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.SymbolIndexer
 import su.kidoz.jetaprog.editor.navigation.index.TypeScriptSymbolExtractor
@@ -269,6 +270,7 @@ public class ProjectSession(
             registerExtractor(GoSymbolExtractor())
             registerExtractor(CSharpSymbolExtractor())
             registerExtractor(SqlSymbolExtractor())
+            registerExtractor(PrologSymbolExtractor())
         }
 
     private val workspaceSymbolIndexService = WorkspaceSymbolIndexService(workspaceSymbolIndexer)
@@ -734,7 +736,7 @@ public class ProjectSession(
         sessionScope.launch { kotlinSymbolIndex.indexDirectory(projectPath) }
 
         // Build the generic workspace symbol index for the other extractor-backed
-        // languages (Java, TypeScript/JavaScript, Go) — their LSP-free fallback.
+        // languages (Java, TypeScript/JavaScript, Go, C#, SQL, Prolog) — their LSP-free fallback.
         sessionScope.launch { workspaceSymbolIndexService.indexWorkspace(projectPath) }
 
         // Keep editor gutter VCS markers in sync with the active document and git state
