@@ -103,7 +103,20 @@ public class KotlinSemanticAnalyzer(
     private val classpathProvider: (String?) -> List<String> = { emptyList() },
 ) : Disposable {
     private val lock = Any()
-    private var session: Session? = null
+
+    /**
+     * Compiler environments keyed by classpath hash. Classpaths are resolved per
+     * module, so a single slot rebuilt the environment (JDK and jar indexing)
+     * every time analysis alternated between two modules.
+     */
+    private val sessions =
+        object : LinkedHashMap<Int, Session>(MAX_SESSIONS, LOAD_FACTOR, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<Int, Session>): Boolean {
+                if (size <= MAX_SESSIONS) return false
+                eldest.value.close()
+                return true
+            }
+        }
 
     private val diagnosticsCache = lruCache<String, List<KotlinSemanticDiagnostic>>(CACHE_SIZE)
     private val completionCache = lruCache<String, List<KotlinDeclaration>>(CACHE_SIZE)
@@ -333,10 +346,8 @@ public class KotlinSemanticAnalyzer(
 
     private fun session(classpath: List<String>): Session {
         val key = classpath.hashCode()
-        val existing = session
-        if (existing != null && existing.classpathKey == key) return existing
-        existing?.close()
-        return Session.create(classpath, key).also { session = it }
+        sessions[key]?.let { return it }
+        return Session.create(classpath, key).also { sessions[key] = it }
     }
 
     private fun findReceiver(
@@ -387,8 +398,8 @@ public class KotlinSemanticAnalyzer(
 
     override fun dispose() {
         synchronized(lock) {
-            session?.close()
-            session = null
+            sessions.values.forEach { it.close() }
+            sessions.clear()
             diagnosticsCache.clear()
             completionCache.clear()
         }
@@ -458,6 +469,7 @@ public class KotlinSemanticAnalyzer(
 
     private companion object {
         private const val CACHE_SIZE = 32
+        private const val MAX_SESSIONS = 3
         private const val LOAD_FACTOR = 0.75f
 
         private fun <K, V> lruCache(maxSize: Int): MutableMap<K, V> =
