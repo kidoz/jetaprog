@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.app.navigation
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.navigation.index.FileContentProvider
@@ -30,9 +31,13 @@ public class WorkspaceSymbolIndexService(
 
             root
                 .walkTopDown()
-                .onEnter { dir -> !dir.name.startsWith(".") && dir.name !in EXCLUDED_DIRECTORIES }
+                .onEnter { dir -> dir == root || (!dir.name.startsWith(".") && dir.name !in EXCLUDED_DIRECTORIES) }
                 .filter { it.isFile && it.length() <= MAX_INDEXED_FILE_BYTES && indexer.canIndex(it.path) }
-                .forEach { file -> indexSafely(file) }
+                .forEach { file ->
+                    // Closing the project cancels the scope; stop the walk instead of finishing it.
+                    ensureActive()
+                    indexSafely(file)
+                }
         }
 
     /**
@@ -64,6 +69,21 @@ public class WorkspaceSymbolIndexService(
 
         /** Files larger than this are skipped to keep indexing fast. */
         public const val MAX_INDEXED_FILE_BYTES: Long = 1_000_000L
+
+        /**
+         * Whether [path] lies under a directory the workspace walk skips (hidden
+         * directories, build output, dependency caches) relative to [rootPath].
+         * Single-file re-indexing applies the same rule, so saving a file under
+         * `build/` no longer adds its symbols to the index.
+         */
+        public fun isExcluded(
+            rootPath: String,
+            path: String,
+        ): Boolean {
+            val relative = path.removePrefix(rootPath).trimStart('/', '\\')
+            val directories = relative.split('/', '\\').dropLast(1)
+            return directories.any { it.startsWith(".") || it in EXCLUDED_DIRECTORIES }
+        }
     }
 }
 

@@ -183,18 +183,28 @@ public class JvmFileSystem : FileSystem {
             val watchedPath = Paths.get(path)
 
             fun registerPath(p: Path) {
-                p.register(
-                    watchService,
-                    StandardWatchEventKinds.ENTRY_CREATE,
-                    StandardWatchEventKinds.ENTRY_MODIFY,
-                    StandardWatchEventKinds.ENTRY_DELETE,
-                )
+                runCatching {
+                    p.register(
+                        watchService,
+                        StandardWatchEventKinds.ENTRY_CREATE,
+                        StandardWatchEventKinds.ENTRY_MODIFY,
+                        StandardWatchEventKinds.ENTRY_DELETE,
+                    )
+                }
             }
 
-            registerPath(watchedPath)
-            if (recursive && Files.isDirectory(watchedPath)) {
-                Files.walk(watchedPath).filter { Files.isDirectory(it) }.forEach { registerPath(it) }
+            fun registerTree(root: Path) {
+                registerPath(root)
+                if (recursive && Files.isDirectory(root)) {
+                    runCatching {
+                        Files.walk(root).use { paths ->
+                            paths.filter { Files.isDirectory(it) && it != root }.forEach { registerPath(it) }
+                        }
+                    }
+                }
             }
+
+            registerTree(watchedPath)
 
             val thread =
                 Thread {
@@ -214,11 +224,17 @@ public class JvmFileSystem : FileSystem {
                                         StandardWatchEventKinds.ENTRY_DELETE -> FileSystemEventType.DELETED
                                         else -> continue
                                     }
+                                val isDirectory = Files.isDirectory(eventPath)
+                                // Watch keys were registered once at start-up, so files inside
+                                // directories created later never produced events.
+                                if (recursive && isDirectory && eventType == FileSystemEventType.CREATED) {
+                                    registerTree(eventPath)
+                                }
                                 trySend(
                                     FileSystemEvent(
                                         type = eventType,
                                         path = eventPath.toString(),
-                                        isDirectory = Files.isDirectory(eventPath),
+                                        isDirectory = isDirectory,
                                     ),
                                 )
                             }

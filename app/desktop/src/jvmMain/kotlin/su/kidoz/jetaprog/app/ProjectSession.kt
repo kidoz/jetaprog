@@ -10,16 +10,17 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -761,6 +762,7 @@ public class ProjectSession(
      * each index ignores files it does not understand.
      */
     public fun reindexFile(path: String) {
+        if (WorkspaceSymbolIndexService.isExcluded(projectPath, path)) return
         sessionScope.launch { kotlinSymbolIndex.indexFile(path) }
         sessionScope.launch { workspaceSymbolIndexService.indexFile(path) }
     }
@@ -861,31 +863,36 @@ public class ProjectSession(
 
     /**
      * Watches the project tree for file events (editor saves, external edits,
-     * branch switches) and refreshes the Git state — the panel, branch chip
-     * and editor gutters then update themselves without a manual reload.
-     * Refreshes are debounced and skipped while an operation is in flight.
+     * branch switches): every event re-indexes its file, and the Git state — the
+     * panel, branch chip and editor gutters — refreshes once a burst has settled.
+     *
+     * The two must not share one `collectLatest`: it cancelled the in-flight
+     * re-index whenever the next event arrived, so a checkout or build silently
+     * dropped index updates for every file but the last.
      */
-    private suspend fun observeProjectFileEvents() {
-        fileSystem
-            .watch(projectPath, recursive = true)
-            .collectLatest { event ->
-                reindexChangedFile(event)
-                delay(PROJECT_WATCH_REFRESH_DEBOUNCE_MS)
-                gitViewModel.refreshIfIdle()
-            }
-    }
+    private suspend fun observeProjectFileEvents() =
+        coroutineScope {
+            var gitRefresh: Job? = null
+            fileSystem
+                .watch(projectPath, recursive = true)
+                .collect { event ->
+                    reindexChangedFile(event)
+                    gitRefresh?.cancel()
+                    gitRefresh =
+                        launch {
+                            delay(PROJECT_WATCH_REFRESH_DEBOUNCE_MS)
+                            gitViewModel.refreshIfIdle()
+                        }
+                }
+        }
 
     /**
-     * Updates the symbol indexes for a single changed file — cheap, so it runs
-     * per event while the git refresh below stays debounced. Deleted files are
-     * dropped from both indexes.
+     * Updates the symbol indexes for a single changed file. Deleted files are
+     * dropped from both indexes; each index ignores files it does not understand.
      */
     private suspend fun reindexChangedFile(event: FileSystemEvent) {
         val path = event.path
-        val segments = path.substringAfter(projectPath).split('/')
-        if (segments.any { it.startsWith(".") || it in WorkspaceSymbolIndexService.EXCLUDED_DIRECTORIES }) {
-            return
-        }
+        if (event.isDirectory || WorkspaceSymbolIndexService.isExcluded(projectPath, path)) return
         when (event.type) {
             FileSystemEventType.DELETED -> {
                 workspaceSymbolIndexService.indexFile(path)
@@ -894,9 +901,7 @@ public class ProjectSession(
 
             else -> {
                 workspaceSymbolIndexService.indexFile(path)
-                if (path.endsWith(".kt")) {
-                    kotlinSymbolIndex.indexFile(path)
-                }
+                kotlinSymbolIndex.indexFile(path)
             }
         }
     }
