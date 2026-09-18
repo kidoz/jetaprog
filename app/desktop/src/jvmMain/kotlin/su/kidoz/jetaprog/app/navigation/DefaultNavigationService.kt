@@ -188,16 +188,14 @@ public class DefaultNavigationService(
                     position = LspPosition(position.line, position.column),
                 )
             val locations = server.definition(params)
-            if (locations.isNotEmpty()) {
-                return adapter.toNavigationTarget(locations.first())
-            }
+            locations.firstNotNullOfOrNull { adapter.toNavigationTarget(it) }?.let { return it }
         }
 
         // Ask the language registry next: it aggregates native providers and external
         // LSP servers behind the hybrid per-language routing rules.
         registryLocations(filePath, position) { document, pos ->
             provideDefinition(document, pos)
-        }.firstOrNull()?.let { return adapter.toNavigationTarget(it) }
+        }.firstNotNullOfOrNull { adapter.toNavigationTarget(it) }?.let { return it }
 
         // Fall back to external LSP client
         val client = lspClient ?: return null
@@ -209,7 +207,7 @@ public class DefaultNavigationService(
             )
 
         val locations = client.definition(params) ?: return null
-        return locations.firstOrNull()?.let { adapter.toNavigationTarget(it) }
+        return locations.firstNotNullOfOrNull { adapter.toNavigationTarget(it) }
     }
 
     override suspend fun getTypeDefinition(
@@ -225,15 +223,13 @@ public class DefaultNavigationService(
                     position = LspPosition(position.line, position.column),
                 )
             val locations = server.typeDefinition(params)
-            if (locations.isNotEmpty()) {
-                return adapter.toNavigationTarget(locations.first())
-            }
+            locations.firstNotNullOfOrNull { adapter.toNavigationTarget(it) }?.let { return it }
         }
 
         // External language servers registered through the registry.
         val registry = languageRegistryProvider() ?: return null
         val locations = registry.provideTypeDefinitionLocations(languageId, pathToUri(filePath), position)
-        return locations.firstOrNull()?.let { adapter.toNavigationTarget(it) }
+        return locations.firstNotNullOfOrNull { adapter.toNavigationTarget(it) }
     }
 
     override suspend fun getImplementations(
@@ -249,15 +245,13 @@ public class DefaultNavigationService(
                     position = LspPosition(position.line, position.column),
                 )
             val locations = server.implementation(params)
-            if (locations.isNotEmpty()) {
-                return locations.map { adapter.toNavigationTarget(it) }
-            }
+            adapter.toNavigationTargets(locations).takeIf { it.isNotEmpty() }?.let { return it }
         }
 
         // External language servers registered through the registry.
         val registry = languageRegistryProvider() ?: return emptyList()
         val locations = registry.provideImplementationLocations(languageId, pathToUri(filePath), position)
-        return locations.map { adapter.toNavigationTarget(it) }
+        return adapter.toNavigationTargets(locations)
     }
 
     override suspend fun getSuperSymbol(

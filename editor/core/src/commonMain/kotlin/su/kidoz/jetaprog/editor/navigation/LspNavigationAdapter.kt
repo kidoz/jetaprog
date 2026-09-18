@@ -12,13 +12,17 @@ import su.kidoz.jetaprog.lsp.protocol.LspSymbolKind
 public class LspNavigationAdapter {
     /**
      * Convert an LSP location to a NavigationTarget.
+     *
+     * Returns null for locations the editor cannot open: library schemes such as
+     * `jdt://` or `jar:` used to be passed through as if they were paths and ended
+     * in a "Failed to open file" error.
      */
     public fun toNavigationTarget(
         location: LspLocation,
         name: String? = null,
         kind: NavigationSymbolKind = NavigationSymbolKind.UNKNOWN,
-    ): NavigationTarget {
-        val filePath = uriToPath(location.uri)
+    ): NavigationTarget? {
+        val filePath = uriToPath(location.uri) ?: return null
         val fileName = filePath.substringAfterLast('/')
 
         return NavigationTarget(
@@ -40,10 +44,10 @@ public class LspNavigationAdapter {
     }
 
     /**
-     * Convert a list of LSP locations to NavigationTargets.
+     * Convert a list of LSP locations to NavigationTargets, dropping those without a file path.
      */
     public fun toNavigationTargets(locations: List<LspLocation>): List<NavigationTarget> =
-        locations.map { toNavigationTarget(it) }
+        locations.mapNotNull { toNavigationTarget(it) }
 
     /**
      * Convert LSP document symbols to StructureItems.
@@ -88,7 +92,10 @@ public class LspNavigationAdapter {
         symbol: NavigationTarget,
         locations: List<LspLocation>,
     ): FindUsagesResult {
-        val usagesByFile = locations.groupBy { uriToPath(it.uri) }
+        val usagesByFile =
+            locations
+                .mapNotNull { location -> uriToPath(location.uri)?.let { path -> path to location } }
+                .groupBy({ it.first }, { it.second })
 
         val groups =
             usagesByFile.map { (filePath, fileLocations) ->
@@ -96,9 +103,10 @@ public class LspNavigationAdapter {
                     filePath = filePath,
                     fileName = filePath.substringAfterLast('/'),
                     usages =
-                        fileLocations.map { location ->
+                        fileLocations.mapNotNull { location ->
+                            val target = toNavigationTarget(location) ?: return@mapNotNull null
                             UsageInfo(
-                                target = toNavigationTarget(location),
+                                target = target,
                                 usageKind = UsageKind.UNKNOWN,
                                 contextLine = "", // Would need file content to populate
                                 lineNumber = location.range.start.line + 1,
@@ -172,7 +180,7 @@ public class LspNavigationAdapter {
     public fun toLspSymbolKind(kind: LspSymbolKind): NavigationSymbolKind = mapSymbolKind(kind)
 
     /**
-     * Convert file:// URI to path.
+     * Path for a `file://` URI; null for any other scheme (`jdt://`, `jar:`, `zipfile:`).
      */
-    private fun uriToPath(uri: String): String = uri.removePrefix("file://")
+    private fun uriToPath(uri: String): String? = uri.takeIf { it.startsWith("file://") }?.removePrefix("file://")
 }
