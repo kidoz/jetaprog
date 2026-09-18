@@ -183,8 +183,10 @@ public class KotlinPlugin(
         // Register Kotlin syntax diagnostics (parser-backed)
         context.lint.registerProvider(KotlinSyntaxLintProvider(analyzer)).also { context.subscriptions.add(it) }
 
-        // Register Kotlin semantic diagnostics (classpath-aware)
-        context.lint.registerProvider(KotlinSemanticLintProvider(semantics)).also { context.subscriptions.add(it) }
+        // Register Kotlin semantic diagnostics (classpath-aware, with index-nominated project sources)
+        context.lint
+            .registerProvider(KotlinSemanticLintProvider(semantics, KotlinContextNominator(service.index)))
+            .also { context.subscriptions.add(it) }
 
         logger.info { "Kotlin plugin activated" }
     }

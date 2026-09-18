@@ -81,6 +81,8 @@ public data class KotlinSemanticDiagnostic(
     val endOffset: Int,
     /** The diagnostic severity. */
     val severity: KotlinDiagnosticSeverity,
+    /** The compiler's diagnostic factory name, e.g. `UNRESOLVED_REFERENCE`. */
+    val factoryName: String = "",
 )
 
 /**
@@ -114,14 +116,18 @@ public class KotlinSemanticAnalyzer(
 
     /**
      * Analyzes [text] and returns its semantic diagnostics.
+     *
+     * [contextFiles] are on-disk sources analyzed alongside [text] so references
+     * into them resolve; only diagnostics located in [text] are returned.
      */
     public fun diagnostics(
         text: String,
         filePath: String? = null,
+        contextFiles: List<String> = emptyList(),
     ): List<KotlinSemanticDiagnostic> =
         synchronized(lock) {
-            diagnosticsCache.getOrPut(cacheKey(text, filePath)) {
-                withAnalysis(text, filePath = filePath) { file, _, bindingContext ->
+            diagnosticsCache.getOrPut("${contextFiles.hashCode()}:${cacheKey(text, filePath)}") {
+                withAnalysis(text, contextFiles, filePath) { file, _, bindingContext ->
                     bindingContext.diagnostics
                         .all()
                         .filter { it.psiElement.containingFile == file }
@@ -370,6 +376,7 @@ public class KotlinSemanticAnalyzer(
             startOffset = start,
             endOffset = range.endOffset.coerceIn(start + 1, maxOf(start + 1, textLength)),
             severity = mappedSeverity,
+            factoryName = factory.name,
         )
     }
 

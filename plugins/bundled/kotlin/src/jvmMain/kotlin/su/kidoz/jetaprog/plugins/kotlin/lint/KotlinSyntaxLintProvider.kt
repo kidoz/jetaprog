@@ -9,9 +9,11 @@ import su.kidoz.jetaprog.lint.model.LintRuleDescriptor
 import su.kidoz.jetaprog.lint.model.LintRuleId
 import su.kidoz.jetaprog.lint.model.LintSeverity
 import su.kidoz.jetaprog.lint.provider.AbstractLintProvider
+import su.kidoz.jetaprog.plugins.kotlin.KotlinContextNominator
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinDiagnosticSeverity
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinPsiAnalyzer
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
+import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticDiagnostic
 
 /**
  * Reports Kotlin parser syntax errors as lint diagnostics.
@@ -110,29 +112,59 @@ public class KotlinSyntaxLintProvider(
  * classpath-aware frontend analysis.
  *
  * No diagnostics are produced until the classpath is available, to avoid false
- * "unresolved" reports during project import.
+ * "unresolved" reports during project import. The classpath holds jars only, so
+ * the file is analyzed together with the project sources the [nominator] picks
+ * for it; unresolved references to names the index knows but that fell outside
+ * that set are dropped rather than shown as errors.
  */
 public class KotlinSemanticRule(
     private val analyzer: KotlinSemanticAnalyzer,
+    private val nominator: KotlinContextNominator? = null,
 ) : AbstractLintRule(DESCRIPTOR) {
     override suspend fun check(context: LintContext): List<LintResult> {
         val filePath = context.uri.removePrefix("file://")
         if (!analyzer.isReady(filePath)) return emptyList()
-        return analyzer.diagnostics(context.content, filePath).map { diagnostic ->
-            createResult(
-                message = diagnostic.message,
-                range = context.rangeFromOffsets(diagnostic.startOffset, diagnostic.endOffset),
-                severity =
-                    when (diagnostic.severity) {
-                        KotlinDiagnosticSeverity.ERROR -> LintSeverity.ERROR
-                        KotlinDiagnosticSeverity.WARNING -> LintSeverity.WARNING
-                        KotlinDiagnosticSeverity.INFO -> LintSeverity.INFO
-                    },
-            )
-        }
+        val contextFiles = nominator?.nominate(context.content, filePath, MAX_CONTEXT_FILES).orEmpty()
+        return analyzer
+            .diagnostics(context.content, filePath, contextFiles)
+            .filterNot { diagnostic -> isKnownProjectSymbol(diagnostic, context.content) }
+            .map { diagnostic ->
+                createResult(
+                    message = diagnostic.message,
+                    range = context.rangeFromOffsets(diagnostic.startOffset, diagnostic.endOffset),
+                    severity =
+                        when (diagnostic.severity) {
+                            KotlinDiagnosticSeverity.ERROR -> LintSeverity.ERROR
+                            KotlinDiagnosticSeverity.WARNING -> LintSeverity.WARNING
+                            KotlinDiagnosticSeverity.INFO -> LintSeverity.INFO
+                        },
+                )
+            }
+    }
+
+    private suspend fun isKnownProjectSymbol(
+        diagnostic: KotlinSemanticDiagnostic,
+        content: String,
+    ): Boolean {
+        val index = nominator ?: return false
+        if (diagnostic.factoryName !in UNRESOLVED_FACTORIES) return false
+        val name =
+            content
+                .substring(
+                    diagnostic.startOffset.coerceIn(0, content.length),
+                    diagnostic.endOffset.coerceIn(0, content.length),
+                ).substringAfterLast('.')
+                .trim()
+        return name.isNotEmpty() && index.declares(name)
     }
 
     private companion object {
+        /** Cap on index-nominated context files analyzed with each document. */
+        const val MAX_CONTEXT_FILES = 16
+
+        val UNRESOLVED_FACTORIES =
+            setOf("UNRESOLVED_REFERENCE", "UNRESOLVED_REFERENCE_WRONG_RECEIVER", "UNRESOLVED_IMPORT")
+
         private val DESCRIPTOR =
             LintRuleDescriptor(
                 id = LintRuleId.of("kotlin", "semantic"),
@@ -150,12 +182,13 @@ public class KotlinSemanticRule(
  */
 public class KotlinSemanticLintProvider(
     analyzer: KotlinSemanticAnalyzer,
+    nominator: KotlinContextNominator? = null,
 ) : AbstractLintProvider(
         id = "kotlin-semantic",
         name = "Kotlin Semantics",
         languages = listOf("kotlin"),
     ) {
     init {
-        registerRule(KotlinSemanticRule(analyzer))
+        registerRule(KotlinSemanticRule(analyzer, nominator))
     }
 }
