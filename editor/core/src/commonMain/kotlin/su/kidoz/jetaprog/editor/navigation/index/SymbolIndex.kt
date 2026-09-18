@@ -135,6 +135,11 @@ public interface SymbolIndex {
     public suspend fun getFileSymbols(filePath: String): List<IndexedSymbol>
 
     /**
+     * Paths of every file that currently contributes symbols to the index.
+     */
+    public suspend fun getIndexedFiles(): List<String>
+
+    /**
      * Index symbols for a file.
      *
      * @param filePath The file path

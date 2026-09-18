@@ -144,6 +144,11 @@ public class InMemorySymbolIndex(
                 .orEmpty()
         }
 
+    override suspend fun getIndexedFiles(): List<String> =
+        synchronized(lock) {
+            fileToSymbols.keys.toList()
+        }
+
     override fun indexFile(
         filePath: String,
         symbols: List<IndexedSymbol>,

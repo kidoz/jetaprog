@@ -247,15 +247,17 @@ public class ProjectSession(
      */
     private val workspaceSymbolIndex =
         InMemorySymbolIndex(
+            // The index stores plain paths while tabs expose file:// URIs; compare like with like.
             openFilesProvider = {
                 editorViewModel.state.value.tabs
-                    .map { it.uri.toString() }
+                    .map { it.uri.value.removePrefix("file://") }
                     .toSet()
             },
             activeFileProvider = {
                 editorViewModel.state.value.activeTab
                     ?.uri
-                    ?.toString()
+                    ?.value
+                    ?.removePrefix("file://")
             },
         )
 

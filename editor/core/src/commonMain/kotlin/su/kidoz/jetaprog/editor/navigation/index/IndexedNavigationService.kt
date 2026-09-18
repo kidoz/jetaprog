@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.editor.navigation.index
 
+import su.kidoz.jetaprog.common.text.CamelHumpMatcher
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.navigation.BreadcrumbItem
 import su.kidoz.jetaprog.editor.navigation.FindUsagesResult
@@ -67,25 +68,25 @@ public class IndexedNavigationService(
     ): List<NavigationSearchResult> {
         lspDelegate?.searchFiles(query, scope, limit)?.takeIf { it.isNotEmpty() }?.let { return it }
 
-        // For file search, we search by file path rather than symbol name
-        val matches = symbolIndex.findByPattern(query, scope, limit * 3)
-
-        // Deduplicate by file path and return file targets
-        return matches
-            .map { it.symbol.filePath }
-            .distinct()
+        // Fallback: match indexed file names. This used to match symbol names and hand
+        // back their files, so a file name that was not also a symbol found nothing.
+        val matcher = CamelHumpMatcher(query)
+        return symbolIndex
+            .getIndexedFiles()
+            .mapNotNull { path -> matcher.matchingScore(path.substringAfterLast('/'))?.let { score -> path to score } }
+            .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
             .take(limit)
-            .mapIndexed { index, filePath ->
+            .map { (path, score) ->
                 NavigationSearchResult(
                     target =
                         NavigationTarget(
-                            name = filePath.substringAfterLast('/'),
-                            qualifiedName = filePath,
+                            name = path.substringAfterLast('/'),
+                            qualifiedName = path,
                             kind = NavigationSymbolKind.FILE,
-                            filePath = filePath,
+                            filePath = path,
                             position = TextPosition(0, 0),
                         ),
-                    score = limit - index,
+                    score = score,
                 )
             }
     }
@@ -140,8 +141,14 @@ public class IndexedNavigationService(
         // Try LSP first for accurate semantic navigation
         lspDelegate?.getDefinition(filePath, position)?.let { return it }
 
-        // Fallback: Try to find symbol at position from index
-        return findSymbolAtPosition(filePath, position)?.toNavigationTarget()
+        // Fallback: the caret sits on a declaration the index knows
+        findSymbolAtPosition(filePath, position)?.let { return it.toNavigationTarget() }
+
+        // Fallback: the caret sits on a use. The index records no references, so resolve
+        // by name and prefer the declaration closest to the current file.
+        val word = wordAt(filePath, position) ?: return null
+        return closestDeclaration(symbolIndex.findByName(word).filter { it.name == word }, filePath)
+            ?.toNavigationTarget()
     }
 
     override suspend fun getTypeDefinition(
@@ -187,35 +194,66 @@ public class IndexedNavigationService(
     ): FindUsagesResult? {
         lspDelegate?.findUsages(filePath, position, scope)?.let { return it }
 
-        // Fallback: textual references to the symbol name across indexed declarations
-        val symbol = findSymbolAtPosition(filePath, position) ?: return null
-        val declarations = symbolIndex.findByName(symbol.name)
-        if (declarations.isEmpty()) return null
-        val groups =
-            declarations
-                .groupBy { it.filePath }
-                .map { (path, symbols) ->
-                    UsageGroup(
-                        filePath = path,
-                        fileName = path.substringAfterLast('/'),
-                        usages =
-                            symbols.map { declaration ->
-                                UsageInfo(
-                                    target = declaration.toNavigationTarget(),
-                                    usageKind = UsageKind.DEFINITION,
-                                    contextLine = declaration.signature ?: declaration.name,
-                                    lineNumber = declaration.line + 1,
-                                    columnRange =
-                                        MatchRange(
-                                            declaration.column,
-                                            declaration.column + declaration.nameLength - 1,
-                                        ),
-                                )
-                            },
-                    )
+        // Fallback: whole-word occurrences across the indexed files. This used to list
+        // every same-named declaration and call them usages.
+        val provider = fileContentProvider ?: return null
+        val word = findSymbolAtPosition(filePath, position)?.name ?: wordAt(filePath, position) ?: return null
+        val declarations = symbolIndex.findByName(word).filter { it.name == word }
+        val declarationOffsets = declarations.map { it.filePath to it.offset }.toSet()
+        val symbol =
+            closestDeclaration(declarations, filePath)?.toNavigationTarget()
+                ?: NavigationTarget(
+                    name = word,
+                    qualifiedName = word,
+                    kind = NavigationSymbolKind.UNKNOWN,
+                    filePath = filePath,
+                    position = position,
+                )
+        val pattern = Regex("(?<![A-Za-z0-9_])" + Regex.escape(word) + "(?![A-Za-z0-9_])")
+        val files = listOf(filePath) + symbolIndex.getIndexedFiles().filter { it != filePath }.sorted()
+
+        var remaining = MAX_FALLBACK_USAGES
+        val groups = mutableListOf<UsageGroup>()
+        for (path in files) {
+            if (remaining <= 0) break
+            val content = provider.getContent(path) ?: continue
+            val usages = mutableListOf<UsageInfo>()
+            var lineStart = 0
+            for ((lineIndex, line) in content.split('\n').withIndex()) {
+                for (match in pattern.findAll(line)) {
+                    if (remaining <= 0) break
+                    val column = match.range.first
+                    usages +=
+                        UsageInfo(
+                            target =
+                                NavigationTarget(
+                                    name = word,
+                                    qualifiedName = word,
+                                    kind = NavigationSymbolKind.UNKNOWN,
+                                    filePath = path,
+                                    position = TextPosition(lineIndex, column),
+                                ),
+                            usageKind =
+                                if ((path to lineStart + column) in declarationOffsets) {
+                                    UsageKind.DEFINITION
+                                } else {
+                                    UsageKind.UNKNOWN
+                                },
+                            contextLine = line.trim(),
+                            lineNumber = lineIndex + 1,
+                            columnRange = MatchRange(column, match.range.last),
+                        )
+                    remaining--
                 }
+                lineStart += line.length + 1
+            }
+            if (usages.isNotEmpty()) {
+                groups += UsageGroup(filePath = path, fileName = path.substringAfterLast('/'), usages = usages)
+            }
+        }
+        if (groups.isEmpty()) return null
         return FindUsagesResult(
-            symbol = symbol.toNavigationTarget(),
+            symbol = symbol,
             groups = groups,
             totalCount = groups.sumOf { it.usages.size },
         )
@@ -352,6 +390,41 @@ public class IndexedNavigationService(
         }
     }
 
+    /** The identifier under the caret, read from the live buffer or disk. */
+    private fun wordAt(
+        filePath: String,
+        position: TextPosition,
+    ): String? {
+        val content = fileContentProvider?.getContent(filePath) ?: return null
+        val line = content.split('\n').getOrNull(position.line) ?: return null
+        var start = position.column.coerceIn(0, line.length)
+        var end = start
+        while (start > 0 && line[start - 1].isWordChar()) start--
+        while (end < line.length && line[end].isWordChar()) end++
+        return line.substring(start, end).takeIf { it.isNotEmpty() }
+    }
+
+    private fun Char.isWordChar(): Boolean = isLetterOrDigit() || this == '_'
+
+    /**
+     * Among same-named declarations, the one most likely meant from [filePath]:
+     * same file, then same directory, then same file extension, then path order.
+     */
+    private fun closestDeclaration(
+        candidates: List<IndexedSymbol>,
+        filePath: String,
+    ): IndexedSymbol? {
+        val directory = filePath.substringBeforeLast('/', "")
+        val extension = filePath.substringAfterLast('.', "")
+        return candidates.minWithOrNull(
+            compareBy<IndexedSymbol> { it.filePath != filePath }
+                .thenBy { it.filePath.substringBeforeLast('/', "") != directory }
+                .thenBy { it.filePath.substringAfterLast('.', "") != extension }
+                .thenBy { it.filePath }
+                .thenBy { it.offset },
+        )
+    }
+
     private fun buildStructureTree(symbols: List<IndexedSymbol>): List<StructureItem> {
         // Group symbols by container
         val topLevel = mutableListOf<StructureItem>()
@@ -440,6 +513,11 @@ public class IndexedNavigationService(
             children = children,
             depth = depth,
         )
+
+    private companion object {
+        /** Cap on textual matches returned by the index-backed Find Usages fallback. */
+        const val MAX_FALLBACK_USAGES = 500
+    }
 }
 
 /**
