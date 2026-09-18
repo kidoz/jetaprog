@@ -3,7 +3,6 @@ package su.kidoz.jetaprog.plugins.kotlin.server
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.text.TextPosition
-import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.lsp.protocol.CallHierarchyIncomingCallsParams
 import su.kidoz.jetaprog.lsp.protocol.CallHierarchyOutgoingCallsParams
 import su.kidoz.jetaprog.lsp.protocol.CallHierarchyPrepareParams
@@ -53,6 +52,8 @@ import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbol
 import su.kidoz.jetaprog.plugins.kotlin.KotlinSymbolIndex
 import su.kidoz.jetaprog.plugins.kotlin.SymbolKind
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
+import su.kidoz.jetaprog.plugins.support.toLspRange
+import su.kidoz.jetaprog.plugins.support.toTextPosition
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -419,12 +420,6 @@ public class KotlinEmbeddedServer(
     private fun uriToPath(uri: String): String? = uri.takeIf { it.startsWith("file://") }?.removePrefix("file://")
 
     private fun pathToUri(path: String): String = if (path.startsWith("file://")) path else "file://$path"
-
-    private fun TextPosition.toLspPosition(): LspPosition = LspPosition(line, column)
-
-    private fun LspPosition.toTextPosition(): TextPosition = TextPosition(line, character)
-
-    private fun TextRange.toLspRange(): LspRange = LspRange(start.toLspPosition(), end.toLspPosition())
 
     private fun KotlinSymbol.toDocumentSymbol(children: List<LspDocumentSymbol> = emptyList()): LspDocumentSymbol =
         LspDocumentSymbol(
