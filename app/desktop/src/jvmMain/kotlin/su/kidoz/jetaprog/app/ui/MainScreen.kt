@@ -86,6 +86,11 @@ import su.kidoz.jetaprog.app.ui.dialogs.clone.CloneRepositoryDialog
 import su.kidoz.jetaprog.app.ui.dialogs.clone.CloneRepositoryEffect
 import su.kidoz.jetaprog.app.ui.dialogs.clone.CloneRepositoryIntent
 import su.kidoz.jetaprog.app.ui.dialogs.configuration.RunConfigurationDialog
+import su.kidoz.jetaprog.app.ui.dialogs.filepicker.FilePickerEffect
+import su.kidoz.jetaprog.app.ui.dialogs.filepicker.FilePickerHost
+import su.kidoz.jetaprog.app.ui.dialogs.filepicker.FilePickerIntent
+import su.kidoz.jetaprog.app.ui.dialogs.filepicker.FilePickerPurpose
+import su.kidoz.jetaprog.app.ui.dialogs.filepicker.FilePickerRequest
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectDialog
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectEffect
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectIntent
@@ -139,7 +144,6 @@ import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.io.File
-import javax.swing.JFileChooser
 
 /** Activity-bar items that render a panel in the left tool window. */
 private val SIDEBAR_PANEL_ITEMS =
@@ -204,31 +208,29 @@ public fun MainScreen(app: JetaProgApplication) {
         }
     }
 
+    // Every browse action goes through the IDE's own file picker; the picked
+    // path comes back as a FilePickerEffect, routed by purpose below.
+    val showFilePicker: (FilePickerRequest) -> Unit = { request ->
+        app.filePickerViewModel.dispatch(FilePickerIntent.Show(request))
+    }
+
     // Directory picker for new project location
     val browseLocation: () -> Unit = {
-        val chooser =
-            JFileChooser().apply {
-                fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                dialogTitle = "Select Project Location"
-                currentDirectory = File(app.newProjectViewModel.state.value.projectLocation)
-            }
-        if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-            app.newProjectViewModel.dispatch(
-                NewProjectIntent.LocationSelected(chooser.selectedFile.absolutePath),
-            )
-        }
+        showFilePicker(FilePickerRequest.newProjectLocation(app.newProjectViewModel.state.value.projectLocation))
     }
 
     // Open an existing project from the Welcome Hub via a directory picker.
     val openProjectFromWelcome: () -> Unit = {
-        val chooser =
-            JFileChooser().apply {
-                fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                dialogTitle = "Open Project"
-                currentDirectory = File(System.getProperty("user.home"))
+        showFilePicker(FilePickerRequest.openProject(System.getProperty("user.home").orEmpty()))
+    }
+
+    // Route the file picker's result to whoever asked for it. This is the only
+    // collector: effects are delivered once, so a second one would steal them.
+    LaunchedEffect(app) {
+        app.filePickerViewModel.effects.collect { effect ->
+            when (effect) {
+                is FilePickerEffect.Picked -> handlePickedPath(app, effect)
             }
-        if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-            coroutineScope.launch { app.openProject(chooser.selectedFile.absolutePath) }
         }
     }
 
@@ -283,21 +285,11 @@ public fun MainScreen(app: JetaProgApplication) {
             CloneRepositoryDialog(
                 viewModel = app.cloneRepositoryViewModel,
                 onBrowseDestination = {
-                    val chooser =
-                        JFileChooser().apply {
-                            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                            dialogTitle = "Select Destination Directory"
-                            currentDirectory =
-                                File(
-                                    app.cloneRepositoryViewModel.state.value.destinationDirectory
-                                        .ifEmpty { System.getProperty("user.home") },
-                                )
-                        }
-                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                        app.cloneRepositoryViewModel.dispatch(
-                            CloneRepositoryIntent.SetDestinationDirectory(chooser.selectedFile.absolutePath),
-                        )
-                    }
+                    showFilePicker(
+                        FilePickerRequest.cloneDestination(
+                            app.cloneRepositoryViewModel.state.value.destinationDirectory,
+                        ),
+                    )
                 },
             )
             // New Project is reachable from the Welcome Hub, so its dialog lives here too.
@@ -305,6 +297,8 @@ public fun MainScreen(app: JetaProgApplication) {
                 viewModel = app.newProjectViewModel,
                 onBrowseLocation = browseLocation,
             )
+            // Above the dialogs that open it.
+            FilePickerHost(viewModel = app.filePickerViewModel)
             LaunchedEffect(app.cloneRepositoryViewModel) {
                 app.cloneRepositoryViewModel.effects.collect { effect ->
                     when (effect) {
@@ -331,6 +325,38 @@ public fun MainScreen(app: JetaProgApplication) {
         browseLocation = browseLocation,
         coroutineScope = coroutineScope,
     )
+}
+
+/** Hands a path chosen in the file picker to the feature that asked for it. */
+private suspend fun handlePickedPath(
+    app: JetaProgApplication,
+    picked: FilePickerEffect.Picked,
+) {
+    when (picked.purpose) {
+        FilePickerPurpose.OPEN_PROJECT -> {
+            app.openProject(picked.path)
+        }
+
+        FilePickerPurpose.NEW_PROJECT_LOCATION -> {
+            app.newProjectViewModel.dispatch(NewProjectIntent.LocationSelected(picked.path))
+        }
+
+        FilePickerPurpose.CLONE_DESTINATION -> {
+            app.cloneRepositoryViewModel.dispatch(CloneRepositoryIntent.SetDestinationDirectory(picked.path))
+        }
+
+        FilePickerPurpose.OPEN_FILE -> {
+            app.session.value
+                ?.editorViewModel
+                ?.dispatch(EditorIntent.OpenFile(picked.path))
+        }
+
+        FilePickerPurpose.SAVE_FILE_AS -> {
+            app.session.value
+                ?.editorViewModel
+                ?.dispatch(EditorIntent.SaveAs(picked.path))
+        }
+    }
 }
 
 /**
@@ -590,43 +616,31 @@ private fun MainScreenContent(
         }
     }
 
+    val showFilePicker: (FilePickerRequest) -> Unit = { request ->
+        app.filePickerViewModel.dispatch(FilePickerIntent.Show(request))
+    }
+
     // Open existing project
     val openProject: () -> Unit = {
-        val chooser =
-            JFileChooser().apply {
-                fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                dialogTitle = "Open Project"
-                currentDirectory = File(currentProjectPath).parentFile
-            }
-        if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-            coroutineScope.launch { app.openProject(chooser.selectedFile.absolutePath) }
-        }
+        showFilePicker(FilePickerRequest.openProject(File(currentProjectPath).parent.orEmpty()))
     }
 
     // Open single file
     val openFile: () -> Unit = {
-        val chooser =
-            JFileChooser().apply {
-                fileSelectionMode = JFileChooser.FILES_ONLY
-                dialogTitle = "Open File"
-                currentDirectory = File(currentProjectPath)
-            }
-        if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-            session.editorViewModel.dispatch(EditorIntent.OpenFile(chooser.selectedFile.absolutePath))
-        }
+        showFilePicker(FilePickerRequest.openFile(currentProjectPath))
     }
     val saveFileAs: () -> Unit = {
-        val activePath = editorState.activeDocumentUri?.value?.removePrefix("file://")
-        val chooser =
-            JFileChooser().apply {
-                fileSelectionMode = JFileChooser.FILES_ONLY
-                dialogTitle = "Save File As"
-                currentDirectory = activePath?.let(::File)?.parentFile ?: File(currentProjectPath)
-                activePath?.let(::File)?.name?.let { selectedFile = File(currentDirectory, it) }
-            }
-        if (chooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) {
-            session.editorViewModel.dispatch(EditorIntent.SaveAs(chooser.selectedFile.absolutePath))
-        }
+        val activeFile =
+            editorState.activeDocumentUri
+                ?.value
+                ?.removePrefix("file://")
+                ?.let(::File)
+        showFilePicker(
+            FilePickerRequest.saveFileAs(
+                initialDirectory = activeFile?.parent ?: currentProjectPath,
+                suggestedFileName = activeFile?.name.orEmpty(),
+            ),
+        )
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -1415,6 +1429,8 @@ private fun MainScreenContent(
         // Plugin modal requests (input box, quick pick) and the toast overlay —
         // last children so they sit above everything except modals.
         PluginDialogHost(requestQueue = app.pluginDialogRequests)
+        // Above the dialogs that open it (New Project, Clone Repository).
+        FilePickerHost(viewModel = app.filePickerViewModel)
         NotificationOverlay(center = notificationCenter)
     }
 }

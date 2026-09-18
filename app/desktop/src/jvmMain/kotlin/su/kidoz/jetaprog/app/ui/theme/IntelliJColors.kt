@@ -511,6 +511,9 @@ public object Dimensions {
     public val dialogSettingsHeight: Int = 650
     public val dialogSettingsNavWidth: Int = 220
     public val dialogMinWidth: Int = 480
+    public val dialogFilePickerWidth: Int = 780
+    public val dialogFilePickerListHeight: Int = 380
+    public val dialogFilePickerPlacesWidth: Int = 160
 
     // Notifications
     public val notificationWidth: Int = 360

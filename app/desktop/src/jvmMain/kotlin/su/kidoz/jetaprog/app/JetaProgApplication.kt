@@ -18,6 +18,7 @@ import su.kidoz.jetaprog.app.keymap.KeymapManager
 import su.kidoz.jetaprog.app.mcp.registerIdeTools
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.plugin.PluginDialogRequests
+import su.kidoz.jetaprog.app.ui.dialogs.filepicker.FilePickerViewModel
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeIntent
 import su.kidoz.jetaprog.app.ui.welcome.WelcomeViewModel
 import su.kidoz.jetaprog.app.viewmodel.CloneRepositoryViewModel
@@ -147,6 +148,12 @@ public class JetaProgApplication {
      * The new project view model (global).
      */
     public val newProjectViewModel: NewProjectViewModel = NewProjectViewModel(fileSystem)
+
+    /**
+     * The IDE's own file picker, shared by every browse action (open project,
+     * open file, save as, project location, clone destination).
+     */
+    public val filePickerViewModel: FilePickerViewModel = FilePickerViewModel(fileSystem)
 
     /**
      * IDE-scoped persistence for the Welcome Hub's recent-projects list.
@@ -280,6 +287,7 @@ public class JetaProgApplication {
         mcpServer.stop()
         welcomeViewModel.dispose()
         newProjectViewModel.dispose()
+        filePickerViewModel.dispose()
         settingsViewModel.dispose()
         databaseCredentialStore.dispose()
     }
