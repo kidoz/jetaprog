@@ -300,6 +300,11 @@ public fun MainScreen(app: JetaProgApplication) {
                     }
                 },
             )
+            // New Project is reachable from the Welcome Hub, so its dialog lives here too.
+            NewProjectDialog(
+                viewModel = app.newProjectViewModel,
+                onBrowseLocation = browseLocation,
+            )
             LaunchedEffect(app.cloneRepositoryViewModel) {
                 app.cloneRepositoryViewModel.effects.collect { effect ->
                     when (effect) {
