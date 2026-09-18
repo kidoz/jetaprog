@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=JetaProg
+GenericName=Integrated Development Environment
+Comment=Modern cross-platform IDE with an embedded MCP server
+Exec=jetaprog
+Icon=jetaprog
+Terminal=false
+Categories=Development;IDE;
+Keywords=ide;kotlin;editor;lsp;mcp;
+StartupNotify=true
+StartupWMClass=su-kidoz-jetaprog-app-MainKt

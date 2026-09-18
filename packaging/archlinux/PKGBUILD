@@ -1,0 +1,88 @@
+# Maintainer: Aleksandr Pavlov <ckidoz@gmail.com>
+
+_pkgname=jetaprog
+pkgname=jetaprog-git
+pkgver=1.0.0.r265.gb96755a
+pkgrel=1
+pkgdesc="Modern cross-platform IDE built with Kotlin and Compose Multiplatform, with an embedded MCP server"
+arch=('x86_64')
+url="https://github.com/kidoz/jetaprog"
+license=('MIT')
+# The application image bundles its own jlink-ed Java runtime, so no Java
+# package is needed at run time - only the native libraries that runtime,
+# Skiko and pty4j link against.
+depends=(
+  'alsa-lib'
+  'fontconfig'
+  'freetype2'
+  'glibc'
+  'hicolor-icon-theme'
+  'libglvnd'
+  'libstdc++'
+  'libx11'
+  'libxext'
+  'libxi'
+  'libxrender'
+  'libxtst'
+)
+# The build targets Java 26 and needs a full JDK (jlink + jpackage).
+makedepends=('git' 'java-environment=26')
+optdepends=(
+  'git: version control integration'
+  'gradle: Gradle projects without a wrapper'
+  'rust: Cargo build support and Rust tooling'
+  'rust-analyzer: Rust language server'
+  'meson: Meson build support'
+  'clang: C/C++ language server (clangd)'
+  'gopls: Go language server'
+  'typescript-language-server: JavaScript/TypeScript language server'
+  'pyright: Python language server'
+  'ruff: Python linting and formatting'
+  'uv: Python project runner'
+  'python-poetry: Python project runner'
+  'dotnet-sdk: .NET build support'
+)
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+# The app image is a prebuilt JVM runtime plus jars; there is nothing to
+# produce a useful debug package from.
+options=('!debug')
+source=("$_pkgname::git+$url.git"
+        "$_pkgname.desktop")
+sha256sums=('SKIP'
+            '15b2a5123629d5dac1f8810374c7c8bcd952e1d472930d7e5a6f7b5fc0d3002d')
+
+pkgver() {
+  cd "$_pkgname"
+  local _ver
+  _ver=$(sed -n 's/^version = "\([0-9.]*\).*/\1/p' build.gradle.kts)
+  printf '%s.r%s.g%s' "${_ver:-0}" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+build() {
+  cd "$_pkgname"
+
+  export JAVA_HOME=/usr/lib/jvm/java-26-openjdk
+  # Keep Gradle's caches inside $srcdir instead of the packager's home.
+  export GRADLE_USER_HOME="$srcdir/gradle-home"
+
+  # Never let the Foojay resolver download a JDK: use the one from makedepends.
+  ./gradlew --no-daemon --console=plain \
+    -Porg.gradle.java.installations.auto-download=false \
+    :app:desktop:createReleaseDistributable
+}
+
+package() {
+  cd "$_pkgname"
+  local _image=app/desktop/build/compose/binaries/main-release/app/JetaProg
+
+  install -d "$pkgdir/opt/$_pkgname" "$pkgdir/usr/bin"
+  cp -a "$_image/." "$pkgdir/opt/$_pkgname/"
+  ln -s "/opt/$_pkgname/bin/JetaProg" "$pkgdir/usr/bin/$_pkgname"
+
+  install -Dm644 "$srcdir/$_pkgname.desktop" \
+    "$pkgdir/usr/share/applications/$_pkgname.desktop"
+  install -Dm644 app/desktop/src/jvmMain/resources/icon.png \
+    "$pkgdir/usr/share/icons/hicolor/512x512/apps/$_pkgname.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
