@@ -691,6 +691,7 @@ public class ProjectSession(
                 KotlinPlugin(
                     classpathProvider = { kotlinClasspathResolver?.workspaceClasspath().orEmpty() },
                     sharedSemanticAnalyzer = kotlinSemanticAnalyzer,
+                    sharedSymbolIndex = kotlinSymbolIndex,
                 ),
                 KotlinMultiplatformPlugin(),
                 CPlugin(),

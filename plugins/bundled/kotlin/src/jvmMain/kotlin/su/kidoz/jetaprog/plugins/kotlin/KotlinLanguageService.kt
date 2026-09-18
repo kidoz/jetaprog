@@ -13,26 +13,41 @@ import su.kidoz.jetaprog.plugins.api.language.Hover
 
 /**
  * Language service for Kotlin providing IDE features.
+ *
+ * When the host supplies a [sharedIndex] it also owns indexing (initial walk and
+ * per-file updates), so this service only reads from it. The plugin used to build
+ * a private second copy of the index at activation that nothing ever refreshed,
+ * so completion and hover served project-open-time data for the whole session.
  */
-public class KotlinLanguageService : Disposable {
-    private val symbolIndex = KotlinSymbolIndex()
+public class KotlinLanguageService(
+    sharedIndex: KotlinSymbolIndex? = null,
+) : Disposable {
+    private val ownsIndex = sharedIndex == null
+    private val symbolIndex = sharedIndex ?: KotlinSymbolIndex()
     private val navigationProvider = KotlinNavigationProvider(symbolIndex)
+
+    /** The symbol index this service reads from (shared with the host when one was supplied). */
+    public val index: KotlinSymbolIndex get() = symbolIndex
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
-     * Initializes the service with a project root.
+     * Initializes the service with a project root. Walks the project only when this
+     * service owns its index; a shared index is populated by the host.
      */
     public fun initialize(projectRoot: String) {
+        if (!ownsIndex) return
         scope.launch {
             symbolIndex.indexDirectory(projectRoot)
         }
     }
 
     /**
-     * Re-indexes a file after changes.
+     * Re-indexes a file after changes. A no-op for a shared index, which the host keeps
+     * up to date.
      */
     public fun onFileChanged(filePath: String) {
+        if (!ownsIndex) return
         scope.launch {
             symbolIndex.indexFile(filePath)
         }

@@ -38,6 +38,7 @@ private val logger = KotlinLogging.logger {}
 public class KotlinPlugin(
     private val classpathProvider: () -> List<String> = { emptyList() },
     private val sharedSemanticAnalyzer: KotlinSemanticAnalyzer? = null,
+    private val sharedSymbolIndex: KotlinSymbolIndex? = null,
 ) : BasePlugin(
         manifest =
             PluginManifest(
@@ -80,8 +81,9 @@ public class KotlinPlugin(
                 ),
             ).also { context.subscriptions.add(it) }
 
-        // Initialize the Kotlin language service
-        val service = KotlinLanguageService()
+        // Initialize the Kotlin language service over the host's symbol index when
+        // one is provided, so completion and hover see the same live index as navigation.
+        val service = KotlinLanguageService(sharedSymbolIndex)
         service.initialize(workspacePath)
         kotlinLanguageService = service
 
