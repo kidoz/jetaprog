@@ -35,14 +35,16 @@ import su.kidoz.jetaprog.plugins.api.services.TextEdit
 import su.kidoz.jetaprog.plugins.api.services.WorkspaceEdit
 
 /**
- * Convert LSP Position to JetaProg TextPosition.
+ * Convert LSP Position to JetaProg TextPosition. Both are zero-based, so the
+ * line and character carry over unchanged.
  */
-public fun LspPosition.toTextPosition(): TextPosition = TextPosition(line + 1, character + 1)
+public fun LspPosition.toTextPosition(): TextPosition = TextPosition(line, character)
 
 /**
- * Convert JetaProg TextPosition to LSP Position.
+ * Convert JetaProg TextPosition to LSP Position. Both are zero-based, so the
+ * line and column carry over unchanged.
  */
-public fun TextPosition.toLspPosition(): LspPosition = LspPosition(line - 1, column - 1)
+public fun TextPosition.toLspPosition(): LspPosition = LspPosition(line, column)
 
 /**
  * Convert LSP Range to JetaProg TextRange.
