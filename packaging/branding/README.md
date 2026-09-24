@@ -10,10 +10,10 @@ desktop icons. The slash and J are paths, so the logo needs no installed fonts.
 
 | Asset | Use |
 |---|---|
-| `logo.svg` | GitHub README and scalable artwork |
+| `logo.svg` | Scalable artwork |
 | `github-avatar.png` | 512 × 512 opaque avatar, safe for circular cropping |
 | `github-social-preview.png` | 1280 × 640 repository social preview |
-| `readme-banner.png` | Optional transparent icon-and-name banner, readable on light and dark pages |
+| `readme-banner.png` | Transparent icon-and-name README banner, readable on light and dark pages |
 | `../../app/desktop/src/jvmMain/resources/icon.png` | 1024 × 1024 desktop window, welcome hub, and Linux icon |
 | `../archlinux/jetaprog.png` | 512 × 512 Arch Linux package icon for the hicolor theme |
 | `../../app/desktop/src/jvmMain/resources/icon.ico` | Windows installer icon, 16–256 px representations |
@@ -29,9 +29,9 @@ The exporter requires Python 3, librsvg (`rsvg-convert`), and ImageMagick (`magi
 It uses the bundled JetBrains Mono font for the social preview and README banner.
 These are export tools only; application builds use the checked-in assets.
 
-The README displays the vector logo automatically. `readme-banner.png` is an
-alternative header: it draws the name in the light theme's `accent` (`#2D7DD2`), the
-one palette color that stays readable on both light and dark pages, so IDE previews
-and other Markdown viewers that ignore GitHub's theme still show it. The avatar and
+The repository README uses `readme-banner.png` as its header, so re-exporting updates
+it automatically. The banner draws the name in the light theme's `accent` (`#2D7DD2`),
+the one palette color that stays readable on both light and dark pages, so IDE
+previews and other Markdown viewers that ignore GitHub's theme still show it. The avatar and
 social preview are upload-ready files; updating these GitHub account/repository
 settings is a separate step from changing the repository files.

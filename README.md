@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="packaging/branding/logo.svg" alt="JetaProg logo" width="112" height="112">
+  <img src="packaging/branding/readme-banner.png" alt="JetaProg" width="360">
 </p>
-
-# JetaProg
 
 A modern, extensible, cross-platform IDE built with Kotlin and Compose Multiplatform —
 inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Code, with an
