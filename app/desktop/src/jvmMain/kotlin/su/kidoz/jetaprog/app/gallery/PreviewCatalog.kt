@@ -22,6 +22,7 @@ import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.IntelliJStatusBar
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
+import su.kidoz.jetaprog.app.ui.components.JetaProgLogo
 import su.kidoz.jetaprog.app.ui.panels.RunOutputPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
@@ -40,6 +41,27 @@ import su.kidoz.jetaprog.configuration.RunOutputType
 @Composable
 private fun GalleryPreview() {
     JetaProgTheme { ComponentGallery() }
+}
+
+@Preview
+@Composable
+private fun BrandDarkPreview() {
+    BrandPreview(darkTheme = true)
+}
+
+@Preview
+@Composable
+private fun BrandLightPreview() {
+    BrandPreview(darkTheme = false)
+}
+
+@Composable
+private fun BrandPreview(darkTheme: Boolean) {
+    JetaProgTheme(darkTheme = darkTheme) {
+        Column(Modifier.background(LocalIntelliJColors.current.background).padding(Spacing.lg.dp)) {
+            JetaProgLogo()
+        }
+    }
 }
 
 @Preview

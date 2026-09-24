@@ -431,6 +431,9 @@ public object Dimensions {
     /** Default width of the project tool window. */
     public val projectPanelWidth: Int = 264
 
+    /** Brand artwork canvas, including the icon's transparent safe area. */
+    public val brandIconSize: Int = 32
+
     // Welcome hub
     public val welcomeRailWidth: Int = 230
     public val welcomeRailItemHeight: Int = 34

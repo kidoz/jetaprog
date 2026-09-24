@@ -33,8 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
@@ -47,8 +45,8 @@ import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.runBlocking
-import org.jetbrains.skia.Image
 import su.kidoz.jetaprog.app.ui.MainScreen
+import su.kidoz.jetaprog.app.ui.components.rememberJetaProgIcon
 import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
@@ -66,18 +64,7 @@ import kotlin.math.roundToInt
 public fun main(): Unit =
     application {
         val windowState = rememberWindowState()
-        val iconPainter =
-            remember {
-                val iconBytes =
-                    Thread
-                        .currentThread()
-                        .contextClassLoader
-                        .getResourceAsStream("icon.png")
-                        ?.readBytes()
-                iconBytes?.let {
-                    BitmapPainter(Image.makeFromEncoded(it).toComposeImageBitmap())
-                }
-            }
+        val iconPainter = rememberJetaProgIcon()
 
         val app = remember { JetaProgApplication() }
         var showExitConfirmation by remember { mutableStateOf(false) }

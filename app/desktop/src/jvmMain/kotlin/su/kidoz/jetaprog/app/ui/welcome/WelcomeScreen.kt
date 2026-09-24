@@ -46,7 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -63,6 +62,7 @@ import su.kidoz.jetaprog.app.plugin.BundledPluginCatalog
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.IntelliJCheckbox
+import su.kidoz.jetaprog.app.ui.components.JetaProgLogo
 import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
@@ -214,29 +214,7 @@ private fun WelcomeRail(
 @Composable
 private fun BrandHeader() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier =
-                Modifier
-                    .size(26.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(
-                                LocalIntelliJColors.current.brandGradientStart,
-                                LocalIntelliJColors.current.brandGradientEnd,
-                            ),
-                        ),
-                    ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "J",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = JetaProgFonts.jetBrainsMono,
-            )
-        }
+        JetaProgLogo(contentDescription = null)
         Spacer(Modifier.width(Spacing.sm.dp))
         Column {
             Text(

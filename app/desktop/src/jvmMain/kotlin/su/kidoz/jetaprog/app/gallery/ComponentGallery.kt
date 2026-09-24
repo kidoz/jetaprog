@@ -37,6 +37,7 @@ import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.IntelliJStatusBar
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
+import su.kidoz.jetaprog.app.ui.components.JetaProgLogo
 import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.panels.Avatar
@@ -106,11 +107,19 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
     ) {
         Text(
             text = "JetaProg Component Gallery",
-            color = Color.White,
+            color = LocalIntelliJColors.current.textPrimary,
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = JetaProgFonts.codeFont,
         )
+
+        GallerySection("Brand · JetaProgLogo") {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp)) {
+                JetaProgLogo(modifier = Modifier.size(Dimensions.iconMd.dp))
+                JetaProgLogo()
+                JetaProgLogo(modifier = Modifier.size(Dimensions.activityBarWidth.dp))
+            }
+        }
 
         GallerySection("Buttons · IntelliJButton") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp)) {
