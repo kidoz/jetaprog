@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export desktop and GitHub branding from the vector master.
+"""Export desktop, Linux package, and GitHub branding from the vector master.
 
 Requires Python 3, librsvg's rsvg-convert, and ImageMagick's magick.
 Run from any directory: python3 tools/export_brand_assets.py
@@ -15,6 +15,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 BRANDING = REPO / "packaging/branding"
 RESOURCES = REPO / "app/desktop/src/jvmMain/resources"
+ARCHLINUX = REPO / "packaging/archlinux"
 SOURCE = BRANDING / "logo.svg"
 BACKGROUND = "#1A1B1E"  # IntelliJColors.background
 TEXT = "#D7DBE0"  # IntelliJColors.editorIdentifier
@@ -40,6 +41,8 @@ def main() -> None:
             run("rsvg-convert", "-w", str(size), "-h", str(size), "-o", output, SOURCE)
             images[size] = output
         shutil.copyfile(images[1024], RESOURCES / "icon.png")
+        # The PKGBUILD installs this into the hicolor theme's 512x512 directory.
+        shutil.copyfile(images[512], ARCHLINUX / "jetaprog.png")
 
         # Modern ICNS PNG representations, including Retina variants.
         entries = (
@@ -69,7 +72,7 @@ def main() -> None:
             "-annotate", "+428+420", "Cross-platform IDE  /  Built-in MCP",
             "-strip", BRANDING / "github-social-preview.png")
 
-    print("Exported PNG, ICO, ICNS, GitHub avatar, and social preview from logo.svg.")
+    print("Exported PNG, ICO, ICNS, Arch Linux icon, GitHub avatar, and social preview from logo.svg.")
 
 
 if __name__ == "__main__":

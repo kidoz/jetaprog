@@ -14,6 +14,7 @@ desktop icons. The slash and J are paths, so the logo needs no installed fonts.
 | `github-avatar.png` | 512 × 512 opaque avatar, safe for circular cropping |
 | `github-social-preview.png` | 1280 × 640 repository social preview |
 | `../../app/desktop/src/jvmMain/resources/icon.png` | 1024 × 1024 desktop window, welcome hub, and Linux icon |
+| `../archlinux/jetaprog.png` | 512 × 512 Arch Linux package icon for the hicolor theme |
 | `../../app/desktop/src/jvmMain/resources/icon.ico` | Windows installer icon, 16–256 px representations |
 | `../../app/desktop/src/jvmMain/resources/icon.icns` | macOS icon, standard and Retina representations through 1024 px |
 
