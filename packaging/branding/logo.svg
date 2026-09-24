@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>JetaProg</title>
+  <desc>A steel-blue geometric J and a light code slash on a charcoal tile.</desc>
+  <rect x="32" y="32" width="448" height="448" rx="100" fill="#1A1B1E"/>
+  <path d="M256 128H384V304C384 354 354 384 304 384H208C158 384 128 354 128 304H192C192 316 200 320 212 320H300C312 320 320 312 320 300V192H256V128Z" fill="#5B9BD5"/>
+  <path d="M144 256L192 128H232L184 256H144Z" fill="#D7DBE0"/>
+</svg>

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="packaging/branding/logo.svg" alt="JetaProg logo" width="112" height="112">
+</p>
+
 # JetaProg
 
 A modern, extensible, cross-platform IDE built with Kotlin and Compose Multiplatform —

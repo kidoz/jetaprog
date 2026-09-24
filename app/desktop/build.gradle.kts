@@ -113,7 +113,7 @@ compose.desktop {
                 iconFile.set(project.file("src/jvmMain/resources/icon.icns"))
             }
             windows {
-                iconFile.set(project.file("src/jvmMain/resources/icon.png"))
+                iconFile.set(project.file("src/jvmMain/resources/icon.ico"))
                 menuGroup = "JetaProg"
             }
             linux {
