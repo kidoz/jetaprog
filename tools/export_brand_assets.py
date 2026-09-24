@@ -21,6 +21,7 @@ BACKGROUND = "#1A1B1E"  # IntelliJColors.background
 TEXT = "#D7DBE0"  # IntelliJColors.editorIdentifier
 SECONDARY = "#9D9D9D"  # IntelliJColors.textSecondary
 ACCENT = "#5B9BD5"  # IntelliJColors.accent
+LIGHT_ACCENT = "#2D7DD2"  # IntelliJLightColors.accent, >= 3.9:1 on light and dark pages
 
 
 def run(*args: str | Path) -> None:
@@ -36,7 +37,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="jetaprog-brand-") as directory:
         temporary = Path(directory)
         images = {}
-        for size in (16, 32, 64, 128, 256, 512, 1024):
+        for size in (16, 32, 64, 128, 160, 256, 512, 1024):
             output = temporary / f"icon-{size}.png"
             run("rsvg-convert", "-w", str(size), "-h", str(size), "-o", output, SOURCE)
             images[size] = output
@@ -72,7 +73,18 @@ def main() -> None:
             "-annotate", "+428+420", "Cross-platform IDE  /  Built-in MCP",
             "-strip", BRANDING / "github-social-preview.png")
 
-    print("Exported PNG, ICO, ICNS, Arch Linux icon, GitHub avatar, and social preview from logo.svg.")
+        # Compact README wordmark on a transparent canvas. One name color that reads on
+        # any page background, since not every Markdown viewer follows the page theme.
+        # +size keeps the spacer's -size off the label.
+        run("magick", images[160], "(", "-size", "36x1", "xc:none", ")",
+            "(", "+size", "-background", "none", "-fill", LIGHT_ACCENT,
+            "-font", RESOURCES / "fonts/JetBrainsMono-Bold.ttf", "-pointsize", "112",
+            "label:JetaProg", ")",
+            "-background", "none", "-gravity", "center", "+append",
+            "-strip", BRANDING / "readme-banner.png")
+
+    print("Exported PNG, ICO, ICNS, Arch Linux icon, GitHub avatar, social preview, "
+          "and README banner from logo.svg.")
 
 
 if __name__ == "__main__":
