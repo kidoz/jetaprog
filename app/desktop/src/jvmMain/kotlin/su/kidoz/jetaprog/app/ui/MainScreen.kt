@@ -33,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,7 +59,10 @@ import su.kidoz.jetaprog.app.ProjectSession
 import su.kidoz.jetaprog.app.database.DatabaseEffect
 import su.kidoz.jetaprog.app.gradle.GradleSyncState
 import su.kidoz.jetaprog.app.keymap.NavigationActions
+import su.kidoz.jetaprog.app.notification.Notification
+import su.kidoz.jetaprog.app.notification.NotificationAction
 import su.kidoz.jetaprog.app.notification.NotificationCenter
+import su.kidoz.jetaprog.app.notification.NotificationSeverity
 import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
 import su.kidoz.jetaprog.app.ui.agent.AgentToolWindow
 import su.kidoz.jetaprog.app.ui.command.CommandPaletteHost
@@ -415,9 +419,21 @@ private fun MainScreenContent(
     var editorConfirmation by remember(session) { mutableStateOf<EditorEffect.ShowConfirmation?>(null) }
     var showCloseProjectConfirmation by remember(session) { mutableStateOf(false) }
 
-    LaunchedEffect(gradleSyncState) {
-        val failure = gradleSyncState as? GradleSyncState.Failed ?: return@LaunchedEffect
-        notificationCenter.error(title = "Gradle sync failed", message = failure.message)
+    DisposableEffect(gradleSyncState, session) {
+        val failure = gradleSyncState as? GradleSyncState.Failed
+        val notificationId =
+            failure?.let {
+                notificationCenter.push(
+                    Notification(
+                        severity = NotificationSeverity.ERROR,
+                        title = "Gradle sync failed",
+                        message = it.message,
+                        actions = listOf(NotificationAction("Retry sync", session::syncGradleProject)),
+                        autoDismissMs = null,
+                    ),
+                )
+            }
+        onDispose { notificationId?.let(notificationCenter::dismiss) }
     }
 
     LaunchedEffect(selectedActivityItem) {
