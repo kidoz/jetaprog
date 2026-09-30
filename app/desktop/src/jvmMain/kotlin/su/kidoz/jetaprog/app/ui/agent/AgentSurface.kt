@@ -128,7 +128,7 @@ public fun AgentToolWindow(
 }
 
 @Composable
-private fun AgentSurfaceContent(
+internal fun AgentSurfaceContent(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
     showRail: Boolean,
@@ -137,6 +137,7 @@ private fun AgentSurfaceContent(
     LaunchedEffect(Unit) { dispatch(AgentIntent.EnsureConnected) }
     Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
         AgentHeader(state, dispatch)
+        if (state.connection == AgentConnection.ERROR) AgentConnectionError(state, dispatch)
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 if (state.turns.isEmpty()) {
@@ -149,6 +150,31 @@ private fun AgentSurfaceContent(
         }
         AgentPresenceBar(state, dispatch)
         AgentComposer(state, dispatch)
+    }
+}
+
+@Composable
+private fun AgentConnectionError(
+    state: AgentUiState,
+    dispatch: (AgentIntent) -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(LocalIntelliJColors.current.surface)
+                .padding(Spacing.md.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp),
+    ) {
+        Text(
+            text =
+                "Could not connect to the agent. Check the agent command and sign-in, then retry. " +
+                    state.error.orEmpty(),
+            color = LocalIntelliJColors.current.textSecondary,
+            modifier = Modifier.weight(1f),
+        )
+        IntelliJButton("Retry", onClick = { dispatch(AgentIntent.EnsureConnected) })
     }
 }
 
@@ -455,7 +481,7 @@ private fun BlockView(
 @Composable
 private fun EmptyState(dispatch: (AgentIntent) -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(Spacing.xl.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.xl.dp),
         verticalArrangement = Arrangement.spacedBy(Spacing.md.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -865,10 +891,10 @@ private fun PermissionToggle(
 
 private fun subtitleFor(state: AgentUiState): String =
     when (state.connection) {
-        AgentConnection.CONNECTED -> "MCP · connected to workspace"
-        AgentConnection.CONNECTING -> "MCP · connecting…"
-        AgentConnection.ERROR -> state.error ?: "MCP · disconnected"
-        AgentConnection.DISCONNECTED -> "MCP · idle"
+        AgentConnection.CONNECTED -> "Agent · connected"
+        AgentConnection.CONNECTING -> "Agent · connecting…"
+        AgentConnection.ERROR -> "Agent · connection failed"
+        AgentConnection.DISCONNECTED -> "Agent · idle"
     }
 
 @Composable

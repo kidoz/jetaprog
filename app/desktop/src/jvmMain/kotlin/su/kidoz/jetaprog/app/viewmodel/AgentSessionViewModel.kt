@@ -1,8 +1,10 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -216,23 +220,34 @@ public class AgentSessionViewModel(
     // Connection
     // ------------------------------------------------------------------------
 
-    private suspend fun ensureConnected(): Boolean {
-        if (client != null && _state.value.connection == AgentConnection.CONNECTED) return true
-        if (agentCommand.isBlank()) {
-            _state.update { it.copy(connection = AgentConnection.ERROR, error = "No agent command configured") }
-            return false
-        }
-        _state.update { it.copy(connection = AgentConnection.CONNECTING, error = null) }
-        return try {
-            openConnection()
-            true
-        } catch (e: Exception) {
-            _state.update {
-                it.copy(connection = AgentConnection.ERROR, error = e.message ?: "Failed to connect to agent")
+    private val connectionMutex = Mutex()
+    private var sessionUpdatesJob: Job? = null
+
+    private suspend fun ensureConnected(): Boolean =
+        connectionMutex.withLock {
+            if (client != null && _state.value.connection == AgentConnection.CONNECTED) return true
+            if (agentCommand.isBlank()) {
+                _state.update { it.copy(connection = AgentConnection.ERROR, error = "No agent command configured") }
+                return false
             }
-            false
+            _state.update { it.copy(connection = AgentConnection.CONNECTING, error = null) }
+            try {
+                openConnection()
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                sessionUpdatesJob?.cancel()
+                // Keep the connection failure visible even if shutting down the transport also fails.
+                runCatching { client?.close() }
+                client = null
+                sessionId = null
+                _state.update {
+                    it.copy(connection = AgentConnection.ERROR, error = e.message ?: "Failed to connect to agent")
+                }
+                false
+            }
         }
-    }
 
     private suspend fun openConnection() {
         val stdioTransport =
@@ -258,9 +273,10 @@ public class AgentSessionViewModel(
             )
         client = acpClient
 
-        scope.launch {
-            acpClient.sessionUpdates.collect { notification -> applyUpdate(notification.update) }
-        }
+        sessionUpdatesJob =
+            scope.launch {
+                acpClient.sessionUpdates.collect { notification -> applyUpdate(notification.update) }
+            }
 
         val initialize = acpClient.initialize()
         // Hand the agent the IDE's own MCP endpoint so the in-panel agent sees the same
