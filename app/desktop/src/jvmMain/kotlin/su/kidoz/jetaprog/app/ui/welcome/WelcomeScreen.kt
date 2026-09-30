@@ -8,7 +8,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -18,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -362,43 +363,64 @@ private fun MainPane(
 }
 
 @Composable
-private fun ActionBar(
+internal fun ActionBar(
     query: String,
     onIntent: (WelcomeIntent) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
-    ) {
-        SearchField(
-            query = query,
-            onQueryChange = { onIntent(WelcomeIntent.Search(it)) },
-            modifier = Modifier.widthIn(max = 360.dp).weight(1f, fill = false),
-        )
-        Spacer(Modifier.weight(1f))
-        IntelliJButton(
-            text = "New Project",
-            onClick = { onIntent(WelcomeIntent.NewProject) },
-            style = ButtonStyle.PRIMARY,
-            icon = Icons.Filled.Add,
-            modifier = Modifier.height(Dimensions.inputHeight.dp),
-        )
-        IntelliJButton(
-            text = "Open",
-            onClick = { onIntent(WelcomeIntent.OpenProject) },
-            style = ButtonStyle.SECONDARY,
-            icon = Icons.Filled.FolderOpen,
-            modifier = Modifier.height(Dimensions.inputHeight.dp),
-        )
-        IntelliJButton(
-            text = "Clone Repository",
-            onClick = { onIntent(WelcomeIntent.Clone) },
-            style = ButtonStyle.SECONDARY,
-            icon = Icons.Filled.AccountTree,
-            modifier = Modifier.height(Dimensions.inputHeight.dp),
-        )
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        if (maxWidth >= Dimensions.welcomeActionsBreakpoint.dp) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
+            ) {
+                SearchField(
+                    query = query,
+                    onQueryChange = { onIntent(WelcomeIntent.Search(it)) },
+                    modifier = Modifier.weight(1f),
+                )
+                WelcomeActions(onIntent)
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md.dp)) {
+                SearchField(
+                    query = query,
+                    onQueryChange = { onIntent(WelcomeIntent.Search(it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+                ) {
+                    WelcomeActions(onIntent)
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun WelcomeActions(onIntent: (WelcomeIntent) -> Unit) {
+    IntelliJButton(
+        text = "New Project",
+        onClick = { onIntent(WelcomeIntent.NewProject) },
+        style = ButtonStyle.PRIMARY,
+        icon = Icons.Filled.Add,
+        modifier = Modifier.height(Dimensions.inputHeight.dp),
+    )
+    IntelliJButton(
+        text = "Open",
+        onClick = { onIntent(WelcomeIntent.OpenProject) },
+        style = ButtonStyle.SECONDARY,
+        icon = Icons.Filled.FolderOpen,
+        modifier = Modifier.height(Dimensions.inputHeight.dp),
+    )
+    IntelliJButton(
+        text = "Clone Repository",
+        onClick = { onIntent(WelcomeIntent.Clone) },
+        style = ButtonStyle.SECONDARY,
+        icon = Icons.Filled.AccountTree,
+        modifier = Modifier.height(Dimensions.inputHeight.dp),
+    )
 }
 
 @Composable

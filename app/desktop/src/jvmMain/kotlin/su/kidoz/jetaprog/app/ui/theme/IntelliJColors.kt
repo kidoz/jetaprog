@@ -442,6 +442,10 @@ public object Dimensions {
     @Suppress("MayBeConst")
     public val toolbarBranchWidth: Int = 140
 
+    /** Available welcome content width needed for search and actions on one row. */
+    @Suppress("MayBeConst")
+    public val welcomeActionsBreakpoint: Int = 900
+
     // Welcome hub
     public val welcomeRailWidth: Int = 230
     public val welcomeRailItemHeight: Int = 34
