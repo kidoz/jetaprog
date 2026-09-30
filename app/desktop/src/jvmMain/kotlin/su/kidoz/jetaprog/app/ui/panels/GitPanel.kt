@@ -514,7 +514,7 @@ private fun DirectoryRow(
 }
 
 @Composable
-private fun CommitArea(
+internal fun CommitArea(
     commitMessage: String,
     amendMode: Boolean,
     isBusy: Boolean,
@@ -563,17 +563,18 @@ private fun CommitArea(
             maxLines = 4,
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp), modifier = Modifier.fillMaxWidth()) {
             IntelliJButton(
                 text = "Commit",
                 onClick = onCommit,
                 style = ButtonStyle.PRIMARY,
                 enabled = canCommit,
                 icon = Icons.Default.Check,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
             IntelliJButton(
                 text = "Commit and Push",
+                modifier = Modifier.fillMaxWidth(),
                 onClick = onCommitAndPush,
                 style = ButtonStyle.SECONDARY,
                 enabled = canCommit,
