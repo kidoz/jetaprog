@@ -77,6 +77,8 @@ public data class FileSystemCapability(
 public data class AgentCapabilities(
     /** Whether the agent supports loading previously created sessions. */
     val loadSession: Boolean = false,
+    /** Optional MCP transports accepted by the agent. */
+    val mcpCapabilities: McpCapabilities = McpCapabilities(),
     /** Prompt content types the agent accepts. */
     val promptCapabilities: PromptCapabilities = PromptCapabilities(),
 )
@@ -114,4 +116,13 @@ public data class AuthMethod(
 public data class AuthenticateRequest(
     /** The identifier of the chosen [AuthMethod]. */
     val methodId: String,
+)
+
+/** Optional MCP transports advertised during ACP initialization. */
+@Serializable
+public data class McpCapabilities(
+    /** Whether streamable HTTP server configurations are accepted. */
+    val http: Boolean = false,
+    /** Whether legacy SSE server configurations are accepted. */
+    val sse: Boolean = false,
 )

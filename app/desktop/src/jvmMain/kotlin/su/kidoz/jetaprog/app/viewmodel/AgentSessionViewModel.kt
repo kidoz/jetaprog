@@ -23,8 +23,8 @@ import su.kidoz.jetaprog.acp.protocol.AcpError
 import su.kidoz.jetaprog.acp.protocol.AcpRequestException
 import su.kidoz.jetaprog.acp.protocol.ClientCapabilities
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
-import su.kidoz.jetaprog.acp.protocol.EnvVariable
 import su.kidoz.jetaprog.acp.protocol.FileSystemCapability
+import su.kidoz.jetaprog.acp.protocol.HttpHeader
 import su.kidoz.jetaprog.acp.protocol.Implementation
 import su.kidoz.jetaprog.acp.protocol.McpServer
 import su.kidoz.jetaprog.acp.protocol.PermissionOptionKind
@@ -265,7 +265,11 @@ public class AgentSessionViewModel(
         val initialize = acpClient.initialize()
         // Hand the agent the IDE's own MCP endpoint so the in-panel agent sees the same
         // workspace tools (diagnostics, git status, project context) as an external CLI.
-        val session = acpClient.newSession(cwd = projectPath, mcpServers = ideMcpServers())
+        val session =
+            acpClient.newSession(
+                cwd = projectPath,
+                mcpServers = ideMcpServers(initialize.agentCapabilities.mcpCapabilities.http),
+            )
         sessionId = session.sessionId
         _state.update {
             it.copy(
@@ -898,16 +902,16 @@ public class AgentSessionViewModel(
      * Empty when the server is not running, in which case the agent falls back to
      * plain file access.
      */
-    private fun ideMcpServers(): List<McpServer> {
+    private fun ideMcpServers(supportsHttp: Boolean): List<McpServer> {
+        if (!supportsHttp) return emptyList()
         val endpoint = ideMcpEndpoint() ?: return emptyList()
         return listOf(
-            McpServer(
+            McpServer.Http(
                 name = IDE_MCP_SERVER_NAME,
-                command = endpoint.url,
-                args = emptyList(),
-                env =
+                url = endpoint.url,
+                headers =
                     endpoint.authToken
-                        ?.let { listOf(EnvVariable(name = "AUTHORIZATION", value = "Bearer $it")) }
+                        ?.let { listOf(HttpHeader(name = "Authorization", value = "Bearer $it")) }
                         .orEmpty(),
             ),
         )

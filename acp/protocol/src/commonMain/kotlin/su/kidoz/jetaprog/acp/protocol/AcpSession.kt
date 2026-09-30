@@ -5,21 +5,6 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
- * Configuration of an MCP server the agent should connect to for the session.
- */
-@Serializable
-public data class McpServer(
-    /** A unique name for the server. */
-    val name: String,
-    /** The executable to launch. */
-    val command: String,
-    /** Arguments passed to the executable. */
-    val args: List<String> = emptyList(),
-    /** Environment variables for the server process. */
-    val env: List<EnvVariable> = emptyList(),
-)
-
-/**
  * A single environment variable, used by MCP servers and terminals.
  */
 @Serializable
