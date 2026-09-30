@@ -533,6 +533,15 @@ public object Dimensions {
     public val dialogFilePickerPlacesWidth: Int = 160
 
     // Notifications
+
+    /** Maximum dimensions of the scrollable notification details dialog. */
+    @Suppress("MayBeConst")
+    public val notificationDetailsWidth: Int = 520
+
+    /** Maximum scrollable error-details height. */
+    @Suppress("MayBeConst")
+    public val notificationDetailsHeight: Int = 320
+
     public val notificationWidth: Int = 360
     public val notificationStripeWidth: Int = 3
     public val notificationStackPadding: Int = 12

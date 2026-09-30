@@ -1434,7 +1434,10 @@ private fun MainScreenContent(
         PluginDialogHost(requestQueue = app.pluginDialogRequests)
         // Above the dialogs that open it (New Project, Clone Repository).
         FilePickerHost(viewModel = app.filePickerViewModel)
-        NotificationOverlay(center = notificationCenter)
+        NotificationOverlay(
+            center = notificationCenter,
+            modifier = Modifier.padding(bottom = Dimensions.statusBarHeight.dp),
+        )
     }
 }
 

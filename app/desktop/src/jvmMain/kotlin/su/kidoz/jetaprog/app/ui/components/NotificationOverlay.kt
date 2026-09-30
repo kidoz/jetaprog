@@ -15,11 +15,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -33,7 +36,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,12 +46,15 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import su.kidoz.jetaprog.app.notification.Notification
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.notification.NotificationSeverity
+import su.kidoz.jetaprog.app.ui.dialogs.DialogContainer
+import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.Elevation
 import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
@@ -63,11 +71,15 @@ private const val MAX_VISIBLE_TOASTS = 3
  * auto-dismisses each notification after its [Notification.autoDismissMs].
  */
 @Composable
-public fun NotificationOverlay(center: NotificationCenter) {
+public fun NotificationOverlay(
+    center: NotificationCenter,
+    modifier: Modifier = Modifier,
+) {
+    var details by remember { mutableStateOf<Notification?>(null) }
     val notifications by center.notifications.collectAsState()
     val visible = notifications.takeLast(MAX_VISIBLE_TOASTS)
 
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
         Column(
             modifier = Modifier.padding(Dimensions.notificationStackPadding.dp),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
@@ -77,8 +89,30 @@ public fun NotificationOverlay(center: NotificationCenter) {
                 key(notification.id) {
                     NotificationToast(
                         notification = notification,
+                        onDetails = { details = notification },
                         onDismiss = { center.dismiss(notification.id) },
                     )
+                }
+            }
+        }
+    }
+    details?.let { notification ->
+        DialogOverlay(isVisible = true, onDismiss = { details = null }) {
+            DialogContainer(modifier = Modifier.width(Dimensions.notificationDetailsWidth.dp)) {
+                Column(
+                    modifier = Modifier.padding(Spacing.lg.dp),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md.dp),
+                ) {
+                    Text(notification.title, color = LocalIntelliJColors.current.textPrimary)
+                    Text(
+                        notification.message.orEmpty(),
+                        color = LocalIntelliJColors.current.textSecondary,
+                        modifier =
+                            Modifier
+                                .heightIn(max = Dimensions.notificationDetailsHeight.dp)
+                                .verticalScroll(rememberScrollState()),
+                    )
+                    IntelliJButton("Close", onClick = { details = null })
                 }
             }
         }
@@ -88,6 +122,7 @@ public fun NotificationOverlay(center: NotificationCenter) {
 @Composable
 private fun NotificationToast(
     notification: Notification,
+    onDetails: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     notification.autoDismissMs?.let { ms ->
@@ -152,9 +187,14 @@ private fun NotificationToast(
                 notification.message?.let {
                     Text(
                         text = it,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
                         color = LocalIntelliJColors.current.textSecondary,
                         fontSize = 12.sp,
                     )
+                }
+                if (notification.message != null) {
+                    NotificationActionLink(label = "Show details", onClick = onDetails)
                 }
                 if (notification.actions.isNotEmpty()) {
                     Spacer(modifier = Modifier.size(Spacing.xxs.dp))
