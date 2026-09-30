@@ -434,6 +434,14 @@ public object Dimensions {
     /** Brand artwork canvas, including the icon's transparent safe area. */
     public val brandIconSize: Int = 32
 
+    /** Width below which the main toolbar uses an icon-only search trigger. */
+    @Suppress("MayBeConst")
+    public val compactToolbarBreakpoint: Int = 1100
+
+    /** Maximum branch-chip width; leaves room for toolbar actions on narrow windows. */
+    @Suppress("MayBeConst")
+    public val toolbarBranchWidth: Int = 140
+
     // Welcome hub
     public val welcomeRailWidth: Int = 230
     public val welcomeRailItemHeight: Int = 34

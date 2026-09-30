@@ -107,7 +107,14 @@ public fun BranchSelector(
                 tint = LocalIntelliJColors.current.success,
                 modifier = Modifier.size(15.dp),
             )
-            Text(text = branchName, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp, maxLines = 1)
+            Text(
+                text = branchName,
+                color = LocalIntelliJColors.current.textPrimary,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
             Icon(
                 imageVector = Icons.Filled.ExpandMore,
                 contentDescription = null,

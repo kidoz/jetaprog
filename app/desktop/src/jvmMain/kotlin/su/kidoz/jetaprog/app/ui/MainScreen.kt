@@ -3,11 +3,13 @@ package su.kidoz.jetaprog.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -1698,7 +1701,7 @@ private fun IntelliJMenuBar(
  */
 @Composable
 @Suppress("LongParameterList")
-private fun MainToolbar(
+internal fun MainToolbar(
     projectName: String,
     canGoBack: Boolean,
     canGoForward: Boolean,
@@ -1722,88 +1725,109 @@ private fun MainToolbar(
     onEditConfigurations: () -> Unit,
     onCreateRecommended: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(Dimensions.mainToolbarHeightFilled.dp)
-                    .background(LocalIntelliJColors.current.background)
-                    .padding(horizontal = Spacing.sm.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.ChevronLeft,
-                contentDescription = "Navigate back",
-                tint =
-                    if (canGoBack) {
-                        LocalIntelliJColors.current.iconDefault
-                    } else {
-                        LocalIntelliJColors.current.textDisabled
-                    },
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val compact = maxWidth < Dimensions.compactToolbarBreakpoint.dp
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
                 modifier =
                     Modifier
-                        .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                        .clickable(enabled = canGoBack, onClick = onNavigateBack)
-                        .size(Dimensions.iconLg.dp),
-            )
-            Icon(
-                imageVector = Icons.Filled.ChevronRight,
-                contentDescription = "Navigate forward",
-                tint =
-                    if (canGoForward) {
-                        LocalIntelliJColors.current.iconDefault
-                    } else {
-                        LocalIntelliJColors.current.textDisabled
-                    },
-                modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                        .clickable(enabled = canGoForward, onClick = onNavigateForward)
-                        .size(Dimensions.iconLg.dp),
-            )
-            ToolbarDivider()
-            ToolbarChip(
-                icon = Icons.Filled.Folder,
-                iconTint = LocalIntelliJColors.current.iconFolder,
-                label = projectName,
-            )
-            if (!branchName.isNullOrBlank()) {
-                BranchSelector(
-                    branchName = branchName,
-                    branches = branches,
-                    onCheckoutBranch = onCheckoutBranch,
-                    onCreateBranch = onCreateBranch,
-                    onDeleteBranch = onDeleteBranch,
-                    onRenameBranch = onRenameBranch,
-                )
+                        .fillMaxWidth()
+                        .height(Dimensions.mainToolbarHeightFilled.dp)
+                        .background(LocalIntelliJColors.current.background)
+                        .padding(horizontal = Spacing.sm.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ChevronLeft,
+                        contentDescription = "Navigate back",
+                        tint =
+                            if (canGoBack) {
+                                LocalIntelliJColors.current.iconDefault
+                            } else {
+                                LocalIntelliJColors.current.textDisabled
+                            },
+                        modifier =
+                            Modifier
+                                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                                .clickable(enabled = canGoBack, onClick = onNavigateBack)
+                                .size(Dimensions.iconLg.dp),
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = "Navigate forward",
+                        tint =
+                            if (canGoForward) {
+                                LocalIntelliJColors.current.iconDefault
+                            } else {
+                                LocalIntelliJColors.current.textDisabled
+                            },
+                        modifier =
+                            Modifier
+                                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                                .clickable(enabled = canGoForward, onClick = onNavigateForward)
+                                .size(Dimensions.iconLg.dp),
+                    )
+                    ToolbarDivider()
+                    if (!compact) {
+                        ToolbarChip(
+                            icon = Icons.Filled.Folder,
+                            iconTint = LocalIntelliJColors.current.iconFolder,
+                            label = projectName,
+                        )
+                    }
+                    if (!branchName.isNullOrBlank()) {
+                        BranchSelector(
+                            modifier = Modifier.widthIn(max = Dimensions.toolbarBranchWidth.dp),
+                            branchName = branchName,
+                            branches = branches,
+                            onCheckoutBranch = onCheckoutBranch,
+                            onCreateBranch = onCreateBranch,
+                            onDeleteBranch = onDeleteBranch,
+                            onRenameBranch = onRenameBranch,
+                        )
+                        ToolbarDivider()
+                        ToolbarAction(
+                            icon = Icons.Filled.South,
+                            label = "Update",
+                            onClick = onUpdate,
+                            showLabel = !compact,
+                        )
+                        ToolbarAction(
+                            icon = Icons.Filled.North,
+                            label = "Push",
+                            badge = ahead,
+                            onClick = onPush,
+                            showLabel = !compact,
+                        )
+                    }
+                }
+                SearchEverywhereField(onClick = onSearchEverywhere, compact = compact)
                 ToolbarDivider()
-                ToolbarAction(icon = Icons.Filled.South, label = "Update", onClick = onUpdate)
-                ToolbarAction(icon = Icons.Filled.North, label = "Push", badge = ahead, onClick = onPush)
+                RunConfigurationSelector(
+                    state = configurationState,
+                    onSelect = onSelectConfiguration,
+                    onRun = onRunConfiguration,
+                    onDebug = onDebugConfiguration,
+                    onStop = onStopConfiguration,
+                    onEditConfigurations = onEditConfigurations,
+                    onCreateRecommended = onCreateRecommended,
+                )
             }
-            androidx.compose.foundation.layout
-                .Spacer(modifier = Modifier.weight(1f))
-            SearchEverywhereField(onClick = onSearchEverywhere)
-            ToolbarDivider()
-            RunConfigurationSelector(
-                state = configurationState,
-                onSelect = onSelectConfiguration,
-                onRun = onRunConfiguration,
-                onDebug = onDebugConfiguration,
-                onStop = onStopConfiguration,
-                onEditConfigurations = onEditConfigurations,
-                onCreateRecommended = onCreateRecommended,
+            // 1 dp bottom border to separate the toolbar from the editor area.
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(Dimensions.splitterThickness.dp)
+                        .background(LocalIntelliJColors.current.divider),
             )
         }
-        // 1 dp bottom border to separate the toolbar from the editor area.
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(Dimensions.splitterThickness.dp)
-                    .background(LocalIntelliJColors.current.divider),
-        )
     }
 }
 
@@ -1862,6 +1886,7 @@ private fun ToolbarAction(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
+    showLabel: Boolean = true,
     badge: Int = 0,
 ) {
     Row(
@@ -1876,11 +1901,13 @@ private fun ToolbarAction(
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = if (showLabel) null else label,
             tint = LocalIntelliJColors.current.textSecondary,
             modifier = Modifier.size(16.dp),
         )
-        Text(text = label, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+        if (showLabel) {
+            Text(text = label, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+        }
         if (badge > 0) {
             Box(
                 modifier =
@@ -1903,12 +1930,15 @@ private fun ToolbarAction(
 
 /** The "Search Everywhere" entry point shown on the right of the toolbar. */
 @Composable
-private fun SearchEverywhereField(onClick: () -> Unit) {
+private fun SearchEverywhereField(
+    onClick: () -> Unit,
+    compact: Boolean = false,
+) {
     Row(
         modifier =
             Modifier
                 .height(Dimensions.chipHeight.dp)
-                .widthIn(min = Dimensions.searchEverywhereWidth.dp)
+                .widthIn(min = if (compact) Dimensions.chipHeight.dp else Dimensions.searchEverywhereWidth.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
                 .clickable(onClick = onClick)
                 .background(LocalIntelliJColors.current.inputBackground)
@@ -1922,23 +1952,25 @@ private fun SearchEverywhereField(onClick: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.Filled.Search,
-            contentDescription = null,
+            contentDescription = "Search Everywhere",
             tint = LocalIntelliJColors.current.textMuted,
             modifier = Modifier.size(Dimensions.iconMd.dp),
         )
-        Text(
-            text = "Search Everywhere",
-            color = LocalIntelliJColors.current.textMuted,
-            fontSize = 12.sp,
-        )
-        Box(
-            modifier =
-                Modifier
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(LocalIntelliJColors.current.surfaceContainer)
-                    .padding(horizontal = 5.dp, vertical = 1.dp),
-        ) {
-            Text(text = "⇧⇧", color = LocalIntelliJColors.current.iconDefault, fontSize = 10.sp)
+        if (!compact) {
+            Text(
+                text = "Search Everywhere",
+                color = LocalIntelliJColors.current.textMuted,
+                fontSize = 12.sp,
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(LocalIntelliJColors.current.surfaceContainer)
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+            ) {
+                Text(text = "⇧⇧", color = LocalIntelliJColors.current.iconDefault, fontSize = 10.sp)
+            }
         }
     }
 }
