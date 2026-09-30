@@ -93,6 +93,7 @@ public fun SearchPopup(
     onDismiss: () -> Unit,
     onModeChange: (SearchMode) -> Unit,
     modifier: Modifier = Modifier,
+    projectPath: String = "",
     showTabs: Boolean = false,
     canShowMore: Boolean = false,
     onExpand: () -> Unit = {},
@@ -213,6 +214,7 @@ public fun SearchPopup(
                         itemsIndexed(results) { index, result ->
                             SearchResultItem(
                                 result = result,
+                                projectPath = projectPath,
                                 isSelected = index == selectedIndex,
                                 onClick = { onResultSelect(result) },
                             )
@@ -363,6 +365,7 @@ private fun SearchInput(
 @Composable
 private fun SearchResultItem(
     result: NavigationSearchResult,
+    projectPath: String,
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -406,7 +409,8 @@ private fun SearchResultItem(
 
             // File path
             Text(
-                text = result.target.filePath.substringAfterLast('/'),
+                text = searchResultPath(result.target.filePath, projectPath),
+                modifier = Modifier.weight(1f),
                 color = LocalIntelliJColors.current.textSecondary,
                 fontSize = 11.sp,
                 maxLines = 1,
@@ -599,4 +603,14 @@ private fun ShowMoreRow(
             fontSize = 12.sp,
         )
     }
+}
+
+/** Keeps module directories visible so equal filenames can be distinguished. */
+internal fun searchResultPath(
+    filePath: String,
+    projectPath: String,
+): String {
+    val normalized = filePath.replace('\\', '/')
+    val root = projectPath.replace('\\', '/').trimEnd('/')
+    return if (root.isEmpty()) normalized else normalized.removePrefix("$root/")
 }

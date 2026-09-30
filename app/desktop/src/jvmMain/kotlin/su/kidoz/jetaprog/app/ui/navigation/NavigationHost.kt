@@ -58,6 +58,7 @@ public fun NavigationHost(
         mode = state.searchMode,
         query = state.searchQuery,
         results = state.searchResults,
+        projectPath = projectPath,
         showTabs = state.searchTabsVisible,
         canShowMore = state.canShowMoreResults,
         onExpand = {
