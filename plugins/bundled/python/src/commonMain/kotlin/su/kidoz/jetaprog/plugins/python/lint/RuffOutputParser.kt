@@ -275,7 +275,8 @@ public data class RuffDiagnostic(
     val endLocation: RuffLocation,
     val fix: RuffFix? = null,
     val url: String? = null,
-    val noqa_row: Int? = null,
+    @SerialName("noqa_row")
+    val noqaRow: Int? = null,
 ) {
     /**
      * Convert to LintResult.
