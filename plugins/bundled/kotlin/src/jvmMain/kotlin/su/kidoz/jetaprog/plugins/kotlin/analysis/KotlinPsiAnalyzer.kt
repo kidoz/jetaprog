@@ -1,6 +1,8 @@
 package su.kidoz.jetaprog.plugins.kotlin.analysis
 
+import org.jetbrains.kotlin.CoreEnvironmentDeprecation
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
+import org.jetbrains.kotlin.cli.create
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
@@ -62,14 +64,12 @@ public class KotlinPsiAnalyzer : Disposable {
     private val parentDisposable = Disposer.newDisposable("KotlinPsiAnalyzer")
     private val lock = Any()
 
-    // KotlinCoreEnvironment is the K1 PSI entry point; intentional until the K2
-    // Analysis API is wired in (see module note in build.gradle.kts).
-    @OptIn(CompilerConfiguration.Internals::class, org.jetbrains.kotlin.K1Deprecation::class)
+    // KotlinCoreEnvironment remains the PSI entry point until the K2 Analysis API is wired in.
+    @OptIn(CoreEnvironmentDeprecation::class)
     private val environment: KotlinCoreEnvironment by lazy {
         val configuration =
-            CompilerConfiguration().apply {
+            CompilerConfiguration.create(messageCollector = MessageCollector.NONE).apply {
                 put(CommonConfigurationKeys.MODULE_NAME, "jetaprog-kotlin-analysis")
-                put(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY, MessageCollector.NONE)
             }
         KotlinCoreEnvironment.createForProduction(
             parentDisposable,

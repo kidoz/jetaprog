@@ -3,18 +3,6 @@ plugins {
 }
 
 kotlin {
-    // Override allWarningsAsErrors for this module due to K1 API deprecation warning
-    // The K1 API is required for PSI-based analysis until K2 Analysis API is publicly available
-    jvm {
-        compilations.all {
-            compileTaskProvider.configure {
-                compilerOptions {
-                    allWarningsAsErrors.set(false)
-                }
-            }
-        }
-    }
-
     sourceSets {
         commonMain {
             dependencies {

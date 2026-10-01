@@ -1,7 +1,10 @@
 package su.kidoz.jetaprog.plugins.kotlin.analysis
 
+import org.jetbrains.kotlin.CoreEnvironmentDeprecation
+import org.jetbrains.kotlin.K1Deprecation
 import org.jetbrains.kotlin.cli.common.config.addKotlinSourceRoot
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
+import org.jetbrains.kotlin.cli.create
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.cli.jvm.compiler.NoScopeRecordCliBindingTrace
@@ -99,6 +102,7 @@ public data class KotlinSemanticDiagnostic(
  * results are cached by content, so repeated requests skip analysis entirely.
  * Access is serialized.
  */
+@OptIn(K1Deprecation::class)
 public class KotlinSemanticAnalyzer(
     private val classpathProvider: (String?) -> List<String> = { emptyList() },
 ) : Disposable {
@@ -441,7 +445,7 @@ public class KotlinSemanticAnalyzer(
         }
 
         companion object {
-            @OptIn(CompilerConfiguration.Internals::class, org.jetbrains.kotlin.K1Deprecation::class)
+            @OptIn(CoreEnvironmentDeprecation::class)
             fun create(
                 classpath: List<String>,
                 classpathKey: Int,
@@ -449,9 +453,8 @@ public class KotlinSemanticAnalyzer(
                 val disposable = Disposer.newDisposable("KotlinSemanticSession")
                 val sourceDir = Files.createTempDirectory("jetaprog-semantics").toFile()
                 val configuration =
-                    CompilerConfiguration().apply {
+                    CompilerConfiguration.create(messageCollector = MessageCollector.NONE).apply {
                         put(CommonConfigurationKeys.MODULE_NAME, "jetaprog-kotlin-semantics")
-                        put(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY, MessageCollector.NONE)
                         configureJdkHomeFromSystemProperty()
                         addJvmClasspathRoots(classpath.map(::File).filter { it.exists() })
                         addKotlinSourceRoot(sourceDir.absolutePath)
