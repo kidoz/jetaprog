@@ -101,6 +101,17 @@ compose.desktop {
         }
 
         nativeDistributions {
+            // Include modules used by the tooling APIs and dynamically loaded plugins.
+            // Keep this list aligned with :app:desktop:suggestRuntimeModules.
+            modules(
+                "java.instrument",
+                "java.management",
+                "java.naming",
+                "java.scripting",
+                "java.sql",
+                "jdk.compiler",
+                "jdk.unsupported",
+            )
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "JetaProg"
             packageVersion = "1.0.0"
