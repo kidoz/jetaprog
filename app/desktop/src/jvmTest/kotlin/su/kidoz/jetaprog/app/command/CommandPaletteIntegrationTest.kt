@@ -1,8 +1,5 @@
 package su.kidoz.jetaprog.app.command
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
 import su.kidoz.jetaprog.plugins.cfamily.CPlugin
 import su.kidoz.jetaprog.plugins.cfamily.CppPlugin
@@ -21,43 +18,33 @@ import kotlin.test.assertTrue
 class CommandPaletteIntegrationTest {
     @Test
     fun paletteListsCommandsDeclaredByTheCAndCppPlugins() {
-        val scope = CoroutineScope(SupervisorJob())
-        try {
-            val commandService = CommandServiceImpl()
-            val registry = ContributionRegistryImpl(commandService, scope)
-            val manifests = listOf(CPlugin().manifest, CppPlugin().manifest)
+        val commandService = CommandServiceImpl()
+        val registry = ContributionRegistryImpl(commandService)
+        val manifests = listOf(CPlugin().manifest, CppPlugin().manifest)
 
-            manifests.forEach { registry.registerContributions(it) { } }
+        manifests.forEach { registry.registerContributions(it) { } }
 
-            val catalog = CommandCatalog.build(commandService.getCommands(), manifests)
-            val names = catalog.map { it.displayName }
+        val catalog = CommandCatalog.build(commandService.getCommands(), manifests)
+        val names = catalog.map { it.displayName }
 
-            assertContains(names, "C++: Build")
-            assertContains(names, "C++: Configure")
-            assertContains(names, "C: Build")
-            assertContains(names, "C: Write .clangd Config")
-        } finally {
-            scope.cancel()
-        }
+        assertContains(names, "C++: Build")
+        assertContains(names, "C++: Configure")
+        assertContains(names, "C: Build")
+        assertContains(names, "C: Write .clangd Config")
     }
 
     @Test
     fun typingTheLanguageNarrowsToThatPluginsCommands() {
-        val scope = CoroutineScope(SupervisorJob())
-        try {
-            val commandService = CommandServiceImpl()
-            val registry = ContributionRegistryImpl(commandService, scope)
-            val manifests = listOf(CPlugin().manifest, CppPlugin().manifest)
-            manifests.forEach { registry.registerContributions(it) { } }
+        val commandService = CommandServiceImpl()
+        val registry = ContributionRegistryImpl(commandService)
+        val manifests = listOf(CPlugin().manifest, CppPlugin().manifest)
+        manifests.forEach { registry.registerContributions(it) { } }
 
-            val catalog = CommandCatalog.build(commandService.getCommands(), manifests)
-            val results = CommandCatalog.filter(catalog, "C++")
+        val catalog = CommandCatalog.build(commandService.getCommands(), manifests)
+        val results = CommandCatalog.filter(catalog, "C++")
 
-            assertTrue(results.isNotEmpty())
-            assertTrue(results.all { it.id.startsWith("cpp.") }, "leaked non-C++ commands: $results")
-        } finally {
-            scope.cancel()
-        }
+        assertTrue(results.isNotEmpty())
+        assertTrue(results.all { it.id.startsWith("cpp.") }, "leaked non-C++ commands: $results")
     }
 
     @Test

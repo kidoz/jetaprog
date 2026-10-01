@@ -360,8 +360,9 @@ public class HybridLanguageProvider(
                         allIncomplete = true
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
@@ -388,8 +389,9 @@ public class HybridLanguageProvider(
                 if (result != null) {
                     return result
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
@@ -415,8 +417,9 @@ public class HybridLanguageProvider(
                 if (result != null) {
                     return result
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
@@ -440,8 +443,9 @@ public class HybridLanguageProvider(
                 if (result.isNotEmpty()) {
                     return result
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
@@ -466,8 +470,9 @@ public class HybridLanguageProvider(
                 if (result.isNotEmpty()) {
                     return result
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
@@ -491,8 +496,9 @@ public class HybridLanguageProvider(
                 if (result.isNotEmpty()) {
                     return result
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }
@@ -517,8 +523,9 @@ public class HybridLanguageProvider(
                 if (result.isNotEmpty()) {
                     return result
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 logger.warn(e) { "Language provider failed: ${e.message}" }
                 // Continue to next provider
             }

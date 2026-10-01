@@ -18,7 +18,6 @@ import su.kidoz.jetaprog.plugins.api.services.LanguageService
 import su.kidoz.jetaprog.plugins.api.services.ReferencesProvider
 import su.kidoz.jetaprog.plugins.api.services.SignatureHelpProvider
 import su.kidoz.jetaprog.plugins.support.LanguageRegistry
-import su.kidoz.jetaprog.plugins.support.LanguageServerManager
 import su.kidoz.jetaprog.plugins.support.LspServerConfig
 
 /**
@@ -28,7 +27,6 @@ import su.kidoz.jetaprog.plugins.support.LspServerConfig
  */
 public class LanguageServiceImpl(
     private val languageRegistry: LanguageRegistry,
-    private val languageServerManager: LanguageServerManager,
     private val workspacePath: String,
 ) : LanguageService {
     private val diagnosticCollections = mutableListOf<DiagnosticCollectionImpl>()

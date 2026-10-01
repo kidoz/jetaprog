@@ -57,7 +57,6 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJDropdown
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
 import su.kidoz.jetaprog.app.ui.components.PopupListRow
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.configuration.CargoProfileType
@@ -1759,8 +1758,8 @@ private fun CargoSettingsEditor(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 IntelliJTextField(
-                    value = settings.package_ ?: "",
-                    onValueChange = { onSettingsChange(settings.copy(package_ = it.ifBlank { null })) },
+                    value = settings.packageName ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(packageName = it.ifBlank { null })) },
                     label = "Package:",
                     placeholder = "Whole workspace by default",
                     modifier = Modifier.fillMaxWidth(),
@@ -1841,8 +1840,8 @@ private fun CargoSettingsEditor(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 IntelliJTextField(
-                    value = settings.package_ ?: "",
-                    onValueChange = { onSettingsChange(settings.copy(package_ = it.ifBlank { null })) },
+                    value = settings.packageName ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(packageName = it.ifBlank { null })) },
                     label = "Package:",
                     placeholder = "Whole workspace by default",
                     modifier = Modifier.fillMaxWidth(),
@@ -1891,8 +1890,8 @@ private fun CargoSettingsEditor(
                     )
                 }
                 IntelliJTextField(
-                    value = settings.package_ ?: "",
-                    onValueChange = { onSettingsChange(settings.copy(package_ = it.ifBlank { null })) },
+                    value = settings.packageName ?: "",
+                    onValueChange = { onSettingsChange(settings.copy(packageName = it.ifBlank { null })) },
                     label = "Package:",
                     placeholder = "Whole workspace by default",
                     modifier = Modifier.fillMaxWidth(),

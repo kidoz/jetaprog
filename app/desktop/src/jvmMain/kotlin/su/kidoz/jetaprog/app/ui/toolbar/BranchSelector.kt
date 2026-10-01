@@ -53,7 +53,6 @@ import androidx.compose.ui.window.PopupProperties
 import su.kidoz.jetaprog.app.ui.components.popupChrome
 import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.vcs.GitBranch

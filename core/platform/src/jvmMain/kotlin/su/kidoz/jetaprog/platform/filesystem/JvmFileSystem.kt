@@ -152,13 +152,11 @@ public class JvmFileSystem : FileSystem {
     ): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val options =
-                    if (overwrite) {
-                        arrayOf(StandardCopyOption.REPLACE_EXISTING)
-                    } else {
-                        emptyArray()
-                    }
-                Files.copy(Paths.get(source), Paths.get(destination), *options)
+                if (overwrite) {
+                    Files.copy(Paths.get(source), Paths.get(destination), StandardCopyOption.REPLACE_EXISTING)
+                } else {
+                    Files.copy(Paths.get(source), Paths.get(destination))
+                }
                 Unit
             }
         }

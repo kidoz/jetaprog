@@ -1,7 +1,6 @@
 package su.kidoz.jetaprog.plugins.runtime.activation
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.CoroutineScope
 import su.kidoz.jetaprog.common.DisposableCollection
 import su.kidoz.jetaprog.plugins.api.PluginManifest
 import su.kidoz.jetaprog.plugins.api.services.CommandService
@@ -27,7 +26,6 @@ private data class PluginContributions(
  */
 public class ContributionRegistryImpl(
     private val commandService: CommandService,
-    private val scope: CoroutineScope,
 ) : ContributionRegistry {
     private val contributions = ConcurrentHashMap<String, PluginContributions>()
 
@@ -60,6 +58,8 @@ public class ContributionRegistryImpl(
                     // However, we need to be careful about recursion. The plugin's real handler
                     // should have replaced this stub by now.
                     if (pluginContributions.activated) {
+                        // CommandService exposes a vararg API; this boundary must adapt the handler list.
+                        @Suppress("SpreadOperator")
                         commandService.executeCommand(commandId, *args.toTypedArray())
                     } else {
                         logger.warn { "Plugin '$pluginId' activation did not complete for command '$commandId'" }

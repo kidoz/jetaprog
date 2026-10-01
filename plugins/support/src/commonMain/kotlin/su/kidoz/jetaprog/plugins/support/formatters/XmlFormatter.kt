@@ -59,8 +59,6 @@ public class XmlFormatter : CodeFormatter {
         val result = StringBuilder()
         var indentLevel = 0
         var inTag = false
-        var inComment = false
-        var inCData = false
         var tagContent = StringBuilder()
         var i = 0
 

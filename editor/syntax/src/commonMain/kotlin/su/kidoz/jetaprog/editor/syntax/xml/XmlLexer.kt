@@ -216,7 +216,6 @@ public class XmlLexer : Lexer {
     ): Triple<Token, LexerState, Int> {
         val tokens = mutableListOf<Token>()
         var length = 1 // <
-        var totalLength = 1
 
         // Get tag name
         while (pos + length < text.length &&

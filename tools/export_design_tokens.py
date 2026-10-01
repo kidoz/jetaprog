@@ -19,7 +19,7 @@ THEME = REPO / "app/desktop/src/jvmMain/kotlin/su/kidoz/jetaprog/app/ui/theme/In
 OUT = REPO / "DESIGN_TOKENS.generated.md"
 
 COLOR_RE = re.compile(r"public (?:override )?val (\w+): Color = Color\(0x([0-9A-Fa-f]{8})\)")
-INT_RE = re.compile(r"public val (\w+): Int = (\d+)")
+INT_RE = re.compile(r"public (?:const )?val (\w+): Int = (\d+)")
 
 
 def block(text: str, start_marker: str) -> str:

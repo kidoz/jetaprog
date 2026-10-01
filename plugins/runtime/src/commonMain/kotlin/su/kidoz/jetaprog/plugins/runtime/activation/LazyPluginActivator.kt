@@ -116,8 +116,8 @@ public class LazyPluginActivator(
         }
 
         // Register contributions (stub commands) before plugin activates
-        contributionRegistry.registerContributions(manifest) { commandId ->
-            activatePluginOnCommand(pluginId, commandId)
+        contributionRegistry.registerContributions(manifest) {
+            activateIfPending(pluginId)
         }
 
         // Register for lazy activation
@@ -126,16 +126,6 @@ public class LazyPluginActivator(
         }
 
         return false
-    }
-
-    /**
-     * Handles a command invocation that should trigger plugin activation.
-     */
-    private suspend fun activatePluginOnCommand(
-        pluginId: String,
-        commandId: String,
-    ) {
-        activateIfPending(pluginId)
     }
 
     /**

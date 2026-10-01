@@ -30,7 +30,6 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.dialogs.DialogContainer
 import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 

@@ -69,7 +69,6 @@ import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
 import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.dialogs.IntelliJDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -98,7 +97,7 @@ public fun DebugSidePanel(
 
 @Composable
 private fun DebugStateChip(status: DebugStatus) {
-    val (label, dot, text, bg) =
+    val colors =
         when (status) {
             DebugStatus.PAUSED -> {
                 StateChipColors(
@@ -132,13 +131,13 @@ private fun DebugStateChip(status: DebugStatus) {
             Modifier
                 .clip(
                     RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
-                ).background(bg)
+                ).background(colors.bg)
                 .padding(horizontal = 7.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 1.dp),
     ) {
-        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(dot))
-        Text(label, color = text, fontSize = 10.sp)
+        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(colors.dot))
+        Text(colors.label, color = colors.text, fontSize = 10.sp)
     }
 }
 

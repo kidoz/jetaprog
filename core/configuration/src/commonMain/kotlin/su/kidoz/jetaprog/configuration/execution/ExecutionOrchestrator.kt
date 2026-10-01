@@ -7,7 +7,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.Disposable
-import su.kidoz.jetaprog.configuration.BeforeLaunchTask
 import su.kidoz.jetaprog.configuration.CargoProfileType
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.DockerBuildSettings
@@ -118,7 +117,7 @@ public class ExecutionOrchestrator(
                         ),
                     )
 
-                    val result = executeBeforeLaunchTask(task, workspacePath, session)
+                    val result = taskExecutor.execute(task, workspacePath)
 
                     val success = result is TaskResult.Success
 
@@ -177,16 +176,6 @@ public class ExecutionOrchestrator(
         } finally {
             cleanup(session.id)
         }
-    }
-
-    private suspend fun executeBeforeLaunchTask(
-        task: BeforeLaunchTask,
-        workspacePath: String,
-        session: ExecutionSession,
-    ): TaskResult {
-        // Handle RunConfiguration tasks specially (they need ConfigurationManager)
-        // For now, we delegate to TaskExecutor for all other tasks
-        return taskExecutor.execute(task, workspacePath)
     }
 
     private suspend fun executeMainConfiguration(
@@ -485,7 +474,7 @@ public class ExecutionOrchestrator(
                 if (settings.features.isNotEmpty()) add("--features=${settings.features.joinToString(",")}")
                 if (settings.allFeatures) add("--all-features")
                 if (settings.noDefaultFeatures) add("--no-default-features")
-                settings.package_?.let { add("--package=$it") }
+                settings.packageName?.let { add("--package=$it") }
             }
 
         return ProcessConfig(
@@ -529,7 +518,7 @@ public class ExecutionOrchestrator(
                 add("cargo")
                 add("test")
                 if (settings.profile == CargoProfileType.RELEASE) add("--release")
-                settings.package_?.let { add("--package=$it") }
+                settings.packageName?.let { add("--package=$it") }
                 if (settings.lib) add("--lib")
                 if (settings.doc) add("--doc")
                 settings.testName?.let { add(it) }
@@ -556,7 +545,7 @@ public class ExecutionOrchestrator(
                 add("cargo")
                 add("clippy")
                 if (settings.fix) add("--fix")
-                settings.package_?.let { add("--package=$it") }
+                settings.packageName?.let { add("--package=$it") }
                 if (settings.allTargets) add("--all-targets")
                 if (settings.denyWarnings) {
                     add("--")

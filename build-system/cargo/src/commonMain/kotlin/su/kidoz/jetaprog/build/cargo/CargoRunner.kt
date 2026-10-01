@@ -26,7 +26,7 @@ public interface CargoRunner {
      * @param features Features to enable.
      * @param allFeatures Enable all features.
      * @param noDefaultFeatures Disable default features.
-     * @param package_ Specific package to build in a workspace.
+     * @param packageName Specific package to build in a workspace.
      * @return A flow of build output.
      */
     public suspend fun build(
@@ -36,7 +36,7 @@ public interface CargoRunner {
         features: List<String> = emptyList(),
         allFeatures: Boolean = false,
         noDefaultFeatures: Boolean = false,
-        package_: String? = null,
+        packageName: String? = null,
     ): Result<Flow<CargoOutput>>
 
     /**
@@ -69,7 +69,7 @@ public interface CargoRunner {
      * @param project The Cargo project.
      * @param testName Specific test to run (supports patterns).
      * @param profile Build profile.
-     * @param package_ Specific package to test in a workspace.
+     * @param packageName Specific package to test in a workspace.
      * @param lib Only run library tests.
      * @param bins Only run binary tests.
      * @param tests Only run integration tests.
@@ -82,7 +82,7 @@ public interface CargoRunner {
         project: CargoProject,
         testName: String? = null,
         profile: CargoProfile = CargoProfile.DEBUG,
-        package_: String? = null,
+        packageName: String? = null,
         lib: Boolean = false,
         bins: Boolean = false,
         tests: Boolean = false,
@@ -97,13 +97,13 @@ public interface CargoRunner {
      * Equivalent to: `cargo check`
      *
      * @param project The Cargo project.
-     * @param package_ Specific package to check in a workspace.
+     * @param packageName Specific package to check in a workspace.
      * @param allTargets Check all targets.
      * @return A flow of check output.
      */
     public suspend fun check(
         project: CargoProject,
-        package_: String? = null,
+        packageName: String? = null,
         allTargets: Boolean = false,
     ): Result<Flow<CargoOutput>>
 
@@ -114,7 +114,7 @@ public interface CargoRunner {
      *
      * @param project The Cargo project.
      * @param fix Automatically apply suggestions.
-     * @param package_ Specific package to lint.
+     * @param packageName Specific package to lint.
      * @param allTargets Check all targets.
      * @param denyWarnings Treat warnings as errors.
      * @return A flow of clippy output.
@@ -122,7 +122,7 @@ public interface CargoRunner {
     public suspend fun clippy(
         project: CargoProject,
         fix: Boolean = false,
-        package_: String? = null,
+        packageName: String? = null,
         allTargets: Boolean = false,
         denyWarnings: Boolean = false,
     ): Result<Flow<CargoOutput>>
@@ -134,13 +134,13 @@ public interface CargoRunner {
      *
      * @param project The Cargo project.
      * @param check Only check formatting without modifying files.
-     * @param package_ Specific package to format.
+     * @param packageName Specific package to format.
      * @return A flow of format output.
      */
     public suspend fun fmt(
         project: CargoProject,
         check: Boolean = false,
-        package_: String? = null,
+        packageName: String? = null,
     ): Result<Flow<CargoOutput>>
 
     /**
@@ -151,14 +151,14 @@ public interface CargoRunner {
      * @param project The Cargo project.
      * @param open Open in browser after building.
      * @param noDeps Don't build documentation for dependencies.
-     * @param package_ Specific package to document.
+     * @param packageName Specific package to document.
      * @return A flow of doc output.
      */
     public suspend fun doc(
         project: CargoProject,
         open: Boolean = false,
         noDeps: Boolean = false,
-        package_: String? = null,
+        packageName: String? = null,
     ): Result<Flow<CargoOutput>>
 
     /**
@@ -167,13 +167,13 @@ public interface CargoRunner {
      * Equivalent to: `cargo clean`
      *
      * @param project The Cargo project.
-     * @param package_ Specific package to clean.
+     * @param packageName Specific package to clean.
      * @param profile Profile to clean (debug, release).
      * @return A flow of clean output.
      */
     public suspend fun clean(
         project: CargoProject,
-        package_: String? = null,
+        packageName: String? = null,
         profile: CargoProfile? = null,
     ): Result<Flow<CargoOutput>>
 
@@ -295,14 +295,14 @@ public interface CargoRunner {
      * Equivalent to: `cargo tree`
      *
      * @param project The Cargo project.
-     * @param package_ Focus on specific package.
+     * @param packageName Focus on specific package.
      * @param invert Show reverse dependencies.
      * @param duplicates Only show duplicated dependencies.
      * @return A flow of output.
      */
     public suspend fun tree(
         project: CargoProject,
-        package_: String? = null,
+        packageName: String? = null,
         invert: Boolean = false,
         duplicates: Boolean = false,
     ): Result<Flow<CargoOutput>>
@@ -314,13 +314,13 @@ public interface CargoRunner {
      *
      * @param project The Cargo project.
      * @param benchName Specific benchmark to run.
-     * @param package_ Specific package.
+     * @param packageName Specific package.
      * @return A flow of output.
      */
     public suspend fun bench(
         project: CargoProject,
         benchName: String? = null,
-        package_: String? = null,
+        packageName: String? = null,
     ): Result<Flow<CargoOutput>>
 
     /**

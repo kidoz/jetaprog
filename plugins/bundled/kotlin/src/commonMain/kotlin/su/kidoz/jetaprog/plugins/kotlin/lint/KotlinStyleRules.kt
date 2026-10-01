@@ -145,7 +145,6 @@ public class NamingConventionRule :
     ) {
     private val classPattern = Regex("""\b(?:class|interface|object|enum)\s+([a-zA-Z_][a-zA-Z0-9_]*)""")
     private val funPattern = Regex("""\bfun\s+([a-zA-Z_][a-zA-Z0-9_]*)""")
-    private val valVarPattern = Regex("""\b(?:val|var)\s+([a-zA-Z_][a-zA-Z0-9_]*)""")
     private val constPattern = Regex("""\bconst\s+val\s+([a-zA-Z_][a-zA-Z0-9_]*)""")
 
     override suspend fun check(context: LintContext): List<LintResult> {

@@ -108,7 +108,7 @@ public class DefaultGitService(
                 add("--")
                 add(path)
             }
-        return run(*args.toTypedArray()).mapCatching { result ->
+        return run(args).mapCatching { result ->
             if (!result.isSuccess) error(result.stderr.ifBlank { "git diff failed" })
             result.stdout
         }
@@ -124,11 +124,11 @@ public class DefaultGitService(
     ): Result<String> {
         val args =
             if (amend) {
-                arrayOf("commit", "--amend", "-m", message)
+                listOf("commit", "--amend", "-m", message)
             } else {
-                arrayOf("commit", "-m", message)
+                listOf("commit", "-m", message)
             }
-        return run(*args).mapCatching { result ->
+        return run(args).mapCatching { result ->
             if (!result.isSuccess) error(result.stderr.ifBlank { result.stdout.ifBlank { "git commit failed" } })
             result.stdout
         }
@@ -189,7 +189,7 @@ public class DefaultGitService(
         if (paths.isEmpty()) return Result.success(Unit)
         // Tracked paths: restore working tree (and index) to HEAD. Untracked
         // paths fail `checkout HEAD --`, so clean them afterwards instead.
-        run("checkout", "HEAD", "--", *paths.toTypedArray())
+        run(listOf("checkout", "HEAD", "--") + paths)
         return mutate("clean", paths, "-f", "-q")
     }
 
@@ -227,14 +227,16 @@ public class DefaultGitService(
                 add("--")
                 addAll(paths)
             }
-        return run(*args.toTypedArray()).mapCatching { result ->
+        return run(args).mapCatching { result ->
             if (!result.isSuccess) error(result.stderr.ifBlank { "git $command failed" })
         }
     }
 
-    private suspend fun run(vararg args: String) =
+    private suspend fun run(vararg args: String) = run(args.asList())
+
+    private suspend fun run(args: List<String>) =
         processExecutor.execute(
-            command = listOf("git", *args),
+            command = listOf("git") + args,
             workingDirectory = repositoryPath,
         )
 }

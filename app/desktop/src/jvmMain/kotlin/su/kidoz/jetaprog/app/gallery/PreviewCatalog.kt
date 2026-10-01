@@ -25,7 +25,6 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.components.JetaProgLogo
 import su.kidoz.jetaprog.app.ui.panels.RunOutputPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -36,19 +35,25 @@ import su.kidoz.jetaprog.configuration.RunOutputType
  * IDE-native `@Preview` catalog. Open this file in the IDE and use the preview
  * gutter to render components without launching the app — a lightweight
  * complement to the runnable [ComponentGallery].
+ * Entry point used by the IDE preview renderer.
  */
+@Suppress("UnusedPrivateMember")
 @Preview
 @Composable
 private fun GalleryPreview() {
     JetaProgTheme { ComponentGallery() }
 }
 
+// Entry point used by the IDE preview renderer.
+@Suppress("UnusedPrivateMember")
 @Preview
 @Composable
 private fun BrandDarkPreview() {
     BrandPreview(darkTheme = true)
 }
 
+// Entry point used by the IDE preview renderer.
+@Suppress("UnusedPrivateMember")
 @Preview
 @Composable
 private fun BrandLightPreview() {
@@ -64,6 +69,8 @@ private fun BrandPreview(darkTheme: Boolean) {
     }
 }
 
+// Entry point used by the IDE preview renderer.
+@Suppress("UnusedPrivateMember")
 @Preview
 @Composable
 private fun ButtonsPreview() {
@@ -80,6 +87,8 @@ private fun ButtonsPreview() {
     }
 }
 
+// Entry point used by the IDE preview renderer.
+@Suppress("UnusedPrivateMember")
 @Preview
 @Composable
 private fun TextFieldsPreview() {
@@ -106,6 +115,8 @@ private fun TextFieldsPreview() {
     }
 }
 
+// Entry point used by the IDE preview renderer.
+@Suppress("UnusedPrivateMember")
 @Preview
 @Composable
 private fun StatusBarPreview() {
@@ -123,6 +134,8 @@ private fun StatusBarPreview() {
     }
 }
 
+// Entry point used by the IDE preview renderer.
+@Suppress("UnusedPrivateMember")
 @Preview
 @Composable
 private fun RunOutputPreview() {

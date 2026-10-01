@@ -48,22 +48,22 @@ public object GradleDiagnosticsParser {
      */
     public fun parseLine(line: String): GradleDiagnostic? {
         kotlinErrorPattern.matchEntire(line)?.let { match ->
-            val (severityChar, filePath, lineNum, colNum, message) = match.destructured
+            val groups = match.groupValues
             val severity =
-                when (severityChar) {
+                when (groups[1]) {
                     "e" -> GradleDiagnosticSeverity.ERROR
                     "w" -> GradleDiagnosticSeverity.WARNING
                     else -> GradleDiagnosticSeverity.INFO
                 }
             return GradleDiagnostic(
                 severity = severity,
-                filePath = filePath,
+                filePath = groups[2],
                 position =
                     TextPosition(
-                        line = lineNum.toIntOrNull()?.minus(1) ?: 0,
-                        column = colNum.toIntOrNull()?.minus(1) ?: 0,
+                        line = groups[3].toIntOrNull()?.minus(1) ?: 0,
+                        column = groups[4].toIntOrNull()?.minus(1) ?: 0,
                     ),
-                message = message,
+                message = groups[5],
             )
         }
         return null

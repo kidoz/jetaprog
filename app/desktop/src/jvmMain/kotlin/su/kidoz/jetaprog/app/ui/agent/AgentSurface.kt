@@ -31,16 +31,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -58,7 +54,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -75,12 +70,10 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
 import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
-import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.dialogs.DialogContainer
 import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
 import su.kidoz.jetaprog.app.ui.panels.FileBadge
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
@@ -638,33 +631,6 @@ private fun AgentComposer(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun ComposerChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier =
-            Modifier
-                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .background(LocalIntelliJColors.current.background)
-                .border(1.dp, LocalIntelliJColors.current.divider, RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 1.dp),
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = LocalIntelliJColors.current.textSecondary,
-            modifier = Modifier.size(Dimensions.iconSm.dp),
-        )
-        Text(label, color = LocalIntelliJColors.current.textSecondary, fontSize = 11.sp)
     }
 }
 

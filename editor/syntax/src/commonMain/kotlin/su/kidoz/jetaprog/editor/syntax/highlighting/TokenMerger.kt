@@ -108,7 +108,6 @@ public object TokenMerger {
                 // Check character overlap on the same line
                 // Note: baseToken.start is absolute, semantic.startChar is line-relative
                 // This works when comparing tokens on the same line
-                val baseEndInLine = baseToken.start + baseToken.length
 
                 // Simplified overlap check - assumes tokens on same line have comparable positions
                 // In practice, we'd need line offset information for precise matching

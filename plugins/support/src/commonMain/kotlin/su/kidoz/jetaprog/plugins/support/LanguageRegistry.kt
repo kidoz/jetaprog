@@ -68,8 +68,9 @@ public class LanguageRegistry(
         documentSyncListeners.toList().forEach { listener ->
             try {
                 action(listener)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 logger.warn(e) { "Document sync listener failed: ${e.message}" }
             }
         }
@@ -341,8 +342,9 @@ public class LanguageRegistry(
     ): List<T> =
         try {
             query()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
             logger.warn(e) { "${config.name} $feature failed: ${e.message}" }
             emptyList()
         }
@@ -433,8 +435,9 @@ public class LanguageRegistry(
         val server = item.providerId?.let { lspServers[it] } ?: return item
         return try {
             server.resolveCompletion(item) ?: item
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
             logger.warn(e) { "${server.config.name} completionItem/resolve failed: ${e.message}" }
             item
         }

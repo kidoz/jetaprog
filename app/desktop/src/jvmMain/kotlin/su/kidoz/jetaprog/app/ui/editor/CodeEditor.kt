@@ -30,7 +30,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,7 +69,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.IntelliJPalette
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
@@ -346,7 +344,6 @@ public fun CodeEditor(
                         lineCount = state.lineCount,
                         currentLine = state.currentLine,
                         scrollState = verticalScrollState,
-                        theme = effectiveSyntaxTheme,
                         modifier = Modifier.fillMaxHeight(),
                         breakpointLines = debug?.breakpointLines ?: emptySet(),
                         executionLine = debug?.executionLine,

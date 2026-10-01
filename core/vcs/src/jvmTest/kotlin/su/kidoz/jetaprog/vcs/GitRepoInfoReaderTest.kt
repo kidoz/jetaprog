@@ -3,7 +3,6 @@ package su.kidoz.jetaprog.vcs
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -16,9 +15,6 @@ import kotlin.test.assertTrue
  */
 class GitRepoInfoReaderTest {
     private val repoDir: File = Files.createTempDirectory("jetaprog-gitinfo").toFile()
-
-    private val gitDir: File
-        get() = File(repoDir, ".git")
 
     @AfterTest
     fun tearDown() {

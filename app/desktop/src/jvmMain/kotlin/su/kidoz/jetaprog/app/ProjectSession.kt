@@ -474,7 +474,7 @@ public class ProjectSession(
     }
 
     private val contributionRegistry: ContributionRegistryImpl by lazy {
-        ContributionRegistryImpl(commandService, sessionScope)
+        ContributionRegistryImpl(commandService)
     }
 
     private val lintService: LintServiceImpl by lazy {
@@ -496,7 +496,7 @@ public class ProjectSession(
         ServiceContainer(
             workspace = workspaceService,
             editor = editorService,
-            languages = LanguageServiceImpl(languageRegistry, languageServerManager, projectPath),
+            languages = LanguageServiceImpl(languageRegistry, projectPath),
             commands = commandService,
             notifications = NotificationServiceImpl(NotificationCenterBridge(notificationCenter, pluginDialogRequests)),
             terminal = TerminalServiceImpl(processExecutor, projectPath),

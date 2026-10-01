@@ -56,7 +56,6 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJCheckbox
 import su.kidoz.jetaprog.app.ui.components.ToolWindowButton
 import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing

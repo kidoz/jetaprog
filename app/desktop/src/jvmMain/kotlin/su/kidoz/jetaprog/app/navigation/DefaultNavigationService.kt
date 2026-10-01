@@ -1020,31 +1020,6 @@ public class DefaultNavigationService(
 
         return score
     }
-
-    /**
-     * Count how many CamelCase parts match the query.
-     * For example, "FileSystem" matches "FS" with 2 matches.
-     */
-    private fun matchCamelCase(
-        text: String,
-        query: String,
-    ): Int {
-        val upperChars = text.filter { it.isUpperCase() }
-        val lowerQuery = query.lowercase()
-        var matches = 0
-        var queryIndex = 0
-
-        for (char in upperChars) {
-            if (queryIndex < lowerQuery.length &&
-                char.lowercaseChar() == lowerQuery[queryIndex]
-            ) {
-                matches++
-                queryIndex++
-            }
-        }
-
-        return if (queryIndex == lowerQuery.length) matches else 0
-    }
 }
 
 /** Kinds Go to Class offers; everything else is left to Go to Symbol. */

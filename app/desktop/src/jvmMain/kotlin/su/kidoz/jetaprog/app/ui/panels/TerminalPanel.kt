@@ -83,7 +83,6 @@ import su.kidoz.jetaprog.app.terminal.focusChanged
 import su.kidoz.jetaprog.app.terminal.paste
 import su.kidoz.jetaprog.app.terminal.terminalCellWidth
 import su.kidoz.jetaprog.app.terminal.toTerminalInput
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing

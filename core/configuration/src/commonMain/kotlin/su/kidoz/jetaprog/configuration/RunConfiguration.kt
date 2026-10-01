@@ -343,7 +343,8 @@ public sealed interface ConfigurationSettings {
         /** Disable default features. */
         val noDefaultFeatures: Boolean = false,
         /** Specific package in workspace. */
-        val package_: String? = null,
+        @SerialName("package_")
+        val packageName: String? = null,
         /** Environment variables. */
         val environment: Map<String, String> = emptyMap(),
         /** Working directory. */
@@ -383,7 +384,8 @@ public sealed interface ConfigurationSettings {
         /** Build profile. */
         val profile: CargoProfileType = CargoProfileType.DEBUG,
         /** Specific package in workspace. */
-        val package_: String? = null,
+        @SerialName("package_")
+        val packageName: String? = null,
         /** Only run library tests. */
         val lib: Boolean = false,
         /** Only run doc tests. */
@@ -407,7 +409,8 @@ public sealed interface ConfigurationSettings {
         /** Automatically apply suggestions. */
         val fix: Boolean = false,
         /** Specific package in workspace. */
-        val package_: String? = null,
+        @SerialName("package_")
+        val packageName: String? = null,
         /** Check all targets. */
         val allTargets: Boolean = true,
         /** Treat warnings as errors. */

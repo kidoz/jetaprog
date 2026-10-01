@@ -53,11 +53,6 @@ public class ProjectCreator(
 
             createGitignore(config)
 
-            // Initialize Git repository if requested
-            if (config.initGit) {
-                initGitRepository(config)
-            }
-
             Result.success(config.projectPath)
         } catch (error: CancellationException) {
             if (projectDirectoryCreated) rollback(config.projectPath, error)
@@ -507,7 +502,6 @@ public class ProjectCreator(
         createDirectory("$projectPath/src")
 
         // meson.build
-        val valaVersion = config.sdkVersion.ifEmpty { "0.56" }
         writeFile(
             "$projectPath/meson.build",
             """
@@ -732,12 +726,6 @@ public class ProjectCreator(
             }
 
         writeFile("${config.projectPath}/.gitignore", content)
-    }
-
-    private suspend fun initGitRepository(config: ProjectConfig) {
-        // Create empty .git marker - actual git init would require process execution
-        // For now, we just ensure the .gitignore is created
-        // In a full implementation, we would use ProcessExecutor to run 'git init'
     }
 
     private suspend fun writeFile(

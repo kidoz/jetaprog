@@ -27,7 +27,6 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJDropdown
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingRow
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingSection
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.model.PluginUpdatePolicy
@@ -85,7 +84,6 @@ public fun PluginsPanel(
             // Bundled plugins (hardcoded for now)
             BundledPluginCatalog.plugins.forEach { plugin ->
                 PluginRow(
-                    id = plugin.id,
                     name = plugin.name,
                     description = plugin.description,
                     version = plugin.version,
@@ -115,7 +113,6 @@ public fun PluginsPanel(
 
 @Composable
 private fun PluginRow(
-    id: String,
     name: String,
     description: String,
     version: String,

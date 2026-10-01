@@ -68,8 +68,7 @@ public class KotlinLanguageService(
     public suspend fun findReferences(
         filePath: String,
         position: TextPosition,
-        projectRoot: String,
-    ): List<SymbolLocation> = navigationProvider.findReferences(filePath, position, projectRoot)
+    ): List<SymbolLocation> = navigationProvider.findReferences(filePath, position)
 
     /**
      * Gets the file outline.
@@ -146,7 +145,6 @@ public class KotlinLanguageService(
      * Gets completion items at a position.
      */
     public suspend fun getCompletions(
-        filePath: String,
         position: TextPosition,
         fileContent: String,
     ): List<CompletionItem> {

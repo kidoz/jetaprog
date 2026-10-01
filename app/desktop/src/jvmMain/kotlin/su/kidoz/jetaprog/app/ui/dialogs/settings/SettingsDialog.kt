@@ -47,7 +47,6 @@ import su.kidoz.jetaprog.app.ui.dialogs.settings.panels.PluginsPanel
 import su.kidoz.jetaprog.app.ui.dialogs.settings.panels.ToolsPanel
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.Elevation
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.SettingsCategory

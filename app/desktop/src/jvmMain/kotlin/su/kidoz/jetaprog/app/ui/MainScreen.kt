@@ -61,7 +61,6 @@ import su.kidoz.jetaprog.app.gradle.GradleSyncState
 import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.notification.Notification
 import su.kidoz.jetaprog.app.notification.NotificationAction
-import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.notification.NotificationSeverity
 import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
 import su.kidoz.jetaprog.app.ui.agent.AgentToolWindow
@@ -126,7 +125,6 @@ import su.kidoz.jetaprog.app.ui.panels.TestResultsPanel
 import su.kidoz.jetaprog.app.ui.panels.VcsMainArea
 import su.kidoz.jetaprog.app.ui.plugin.PluginDialogHost
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.ui.toolbar.BranchSelector
@@ -1423,13 +1421,8 @@ private fun MainScreenContent(
         )
 
         // Navigation popups (search, file structure, usages, quick definition)
-        val activeTab = editorState.activeTab
         NavigationHost(
             viewModel = session.navigationViewModel,
-            currentFilePath = activeTab?.uri?.value?.removePrefix("file://") ?: "",
-            currentFileName = activeTab?.name ?: "",
-            currentLine = editorState.currentLine,
-            currentColumn = editorState.currentColumn,
             onNavigate = { filePath, line, column ->
                 session.editorViewModel.dispatch(
                     EditorIntent.NavigateTo(path = filePath, position = TextPosition(line, column)),

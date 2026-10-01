@@ -31,7 +31,7 @@ public class JvmCargoRunner(
         features: List<String>,
         allFeatures: Boolean,
         noDefaultFeatures: Boolean,
-        package_: String?,
+        packageName: String?,
     ): Result<Flow<CargoOutput>> =
         runCommand(project) {
             add("build")
@@ -40,7 +40,7 @@ public class JvmCargoRunner(
             if (features.isNotEmpty()) add("--features=${features.joinToString(",")}")
             if (allFeatures) add("--all-features")
             if (noDefaultFeatures) add("--no-default-features")
-            package_?.let { add("--package=$it") }
+            packageName?.let { add("--package=$it") }
         }
 
     override suspend fun run(
@@ -67,7 +67,7 @@ public class JvmCargoRunner(
         project: CargoProject,
         testName: String?,
         profile: CargoProfile,
-        package_: String?,
+        packageName: String?,
         lib: Boolean,
         bins: Boolean,
         tests: Boolean,
@@ -78,7 +78,7 @@ public class JvmCargoRunner(
         runCommand(project) {
             add("test")
             profile.flag?.let { add(it) }
-            package_?.let { add("--package=$it") }
+            packageName?.let { add("--package=$it") }
             if (lib) add("--lib")
             if (bins) add("--bins")
             if (tests) add("--tests")
@@ -93,26 +93,26 @@ public class JvmCargoRunner(
 
     override suspend fun check(
         project: CargoProject,
-        package_: String?,
+        packageName: String?,
         allTargets: Boolean,
     ): Result<Flow<CargoOutput>> =
         runCommand(project) {
             add("check")
-            package_?.let { add("--package=$it") }
+            packageName?.let { add("--package=$it") }
             if (allTargets) add("--all-targets")
         }
 
     override suspend fun clippy(
         project: CargoProject,
         fix: Boolean,
-        package_: String?,
+        packageName: String?,
         allTargets: Boolean,
         denyWarnings: Boolean,
     ): Result<Flow<CargoOutput>> =
         runCommand(project) {
             add("clippy")
             if (fix) add("--fix")
-            package_?.let { add("--package=$it") }
+            packageName?.let { add("--package=$it") }
             if (allTargets) add("--all-targets")
             if (denyWarnings) {
                 add("--")
@@ -124,35 +124,35 @@ public class JvmCargoRunner(
     override suspend fun fmt(
         project: CargoProject,
         check: Boolean,
-        package_: String?,
+        packageName: String?,
     ): Result<Flow<CargoOutput>> =
         runCommand(project) {
             add("fmt")
             if (check) add("--check")
-            package_?.let { add("--package=$it") }
+            packageName?.let { add("--package=$it") }
         }
 
     override suspend fun doc(
         project: CargoProject,
         open: Boolean,
         noDeps: Boolean,
-        package_: String?,
+        packageName: String?,
     ): Result<Flow<CargoOutput>> =
         runCommand(project) {
             add("doc")
             if (open) add("--open")
             if (noDeps) add("--no-deps")
-            package_?.let { add("--package=$it") }
+            packageName?.let { add("--package=$it") }
         }
 
     override suspend fun clean(
         project: CargoProject,
-        package_: String?,
+        packageName: String?,
         profile: CargoProfile?,
     ): Result<Flow<CargoOutput>> =
         runCommand(project) {
             add("clean")
-            package_?.let { add("--package=$it") }
+            packageName?.let { add("--package=$it") }
             profile?.flag?.let { add(it) }
         }
 
@@ -241,13 +241,13 @@ public class JvmCargoRunner(
 
     override suspend fun tree(
         project: CargoProject,
-        package_: String?,
+        packageName: String?,
         invert: Boolean,
         duplicates: Boolean,
     ): Result<Flow<CargoOutput>> =
         runCommand(project) {
             add("tree")
-            package_?.let { add("--package=$it") }
+            packageName?.let { add("--package=$it") }
             if (invert) add("--invert")
             if (duplicates) add("--duplicates")
         }
@@ -255,11 +255,11 @@ public class JvmCargoRunner(
     override suspend fun bench(
         project: CargoProject,
         benchName: String?,
-        package_: String?,
+        packageName: String?,
     ): Result<Flow<CargoOutput>> =
         runCommand(project) {
             add("bench")
-            package_?.let { add("--package=$it") }
+            packageName?.let { add("--package=$it") }
             benchName?.let { add(it) }
         }
 

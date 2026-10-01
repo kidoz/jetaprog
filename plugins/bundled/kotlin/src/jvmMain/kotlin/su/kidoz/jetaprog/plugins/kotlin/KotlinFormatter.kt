@@ -119,7 +119,7 @@ public class KotlinFormatter : CodeFormatter {
                     // Preserve original indentation in raw strings
                     originalLine
                 } else {
-                    indent.repeat(indentLevel) + formatLineContent(trimmedLine, options)
+                    indent.repeat(indentLevel) + formatLineContent(trimmedLine)
                 }
 
             // Trim trailing whitespace
@@ -145,10 +145,7 @@ public class KotlinFormatter : CodeFormatter {
         return result.joinToString("\n")
     }
 
-    private fun formatLineContent(
-        line: String,
-        options: FormattingOptions,
-    ): String {
+    private fun formatLineContent(line: String): String {
         var result = line
 
         // Normalize spacing around operators

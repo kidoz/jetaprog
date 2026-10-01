@@ -4,7 +4,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -25,7 +24,6 @@ import su.kidoz.jetaprog.configuration.ConfigurationType
 import su.kidoz.jetaprog.configuration.DockerBuildSettings
 import su.kidoz.jetaprog.configuration.DockerComposeSettings
 import su.kidoz.jetaprog.configuration.DockerRunSettings
-import su.kidoz.jetaprog.configuration.DotNetConfigurationType
 import su.kidoz.jetaprog.configuration.GoCommand
 import su.kidoz.jetaprog.configuration.JavaBuildTool
 import su.kidoz.jetaprog.configuration.JavaCommand
@@ -874,7 +872,7 @@ public class ConfigurationViewModel(
                 if (settings.features.isNotEmpty()) add("--features=${settings.features.joinToString(",")}")
                 if (settings.allFeatures) add("--all-features")
                 if (settings.noDefaultFeatures) add("--no-default-features")
-                settings.package_?.let { add("--package=$it") }
+                settings.packageName?.let { add("--package=$it") }
             }
 
         return processExecutor
@@ -914,7 +912,7 @@ public class ConfigurationViewModel(
                 add("cargo")
                 add("test")
                 if (settings.profile == CargoProfileType.RELEASE) add("--release")
-                settings.package_?.let { add("--package=$it") }
+                settings.packageName?.let { add("--package=$it") }
                 if (settings.lib) add("--lib")
                 if (settings.doc) add("--doc")
                 settings.testName?.let { add(it) }
@@ -939,7 +937,7 @@ public class ConfigurationViewModel(
                 add("cargo")
                 add("clippy")
                 if (settings.fix) add("--fix")
-                settings.package_?.let { add("--package=$it") }
+                settings.packageName?.let { add("--package=$it") }
                 if (settings.allTargets) add("--all-targets")
                 if (settings.denyWarnings) {
                     add("--")
@@ -1836,15 +1834,6 @@ public class ConfigurationViewModel(
                 ),
             )
         }
-    }
-
-    /**
-     * Get the output flow for a running configuration.
-     * Returns null if no configuration is running.
-     */
-    public fun getRunningOutput(): Flow<su.kidoz.jetaprog.build.gradle.GradleOutput>? {
-        // For now, only Gradle output is supported
-        return null // Would need to track the flow from execution
     }
 }
 

@@ -31,7 +31,6 @@ import su.kidoz.jetaprog.app.ui.dialogs.settings.EditingMcpServer
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingRow
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingSection
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.model.McpServerConfig
@@ -112,7 +111,6 @@ public fun ToolsPanel(
             // Server list
             settings.mcpServers.forEach { (id, server) ->
                 McpServerRow(
-                    id = id,
                     server = server,
                     onEdit = { onIntent(SettingsIntent.EditMcpServer(id)) },
                     onRemove = { onIntent(SettingsIntent.RemoveMcpServer(id)) },
@@ -169,7 +167,6 @@ public fun ToolsPanel(
 
 @Composable
 private fun McpServerRow(
-    id: String,
     server: McpServerConfig,
     onEdit: () -> Unit,
     onRemove: () -> Unit,

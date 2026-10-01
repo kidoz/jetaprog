@@ -2,7 +2,6 @@ package su.kidoz.jetaprog.app.ui.dialogs.settings.panels
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -42,7 +41,6 @@ import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.keymap.ACTION_DISPLAY_NAMES
 import su.kidoz.jetaprog.app.keymap.ASSIGNABLE_KEYS
 import su.kidoz.jetaprog.app.keymap.KeyboardShortcut
-import su.kidoz.jetaprog.app.keymap.toSpec
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
 import su.kidoz.jetaprog.app.ui.theme.Dimensions

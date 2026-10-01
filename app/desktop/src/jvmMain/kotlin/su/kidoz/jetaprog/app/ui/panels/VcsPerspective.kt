@@ -38,20 +38,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import su.kidoz.jetaprog.app.ui.editor.toSpanStyle
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.GitViewModel
 import su.kidoz.jetaprog.editor.syntax.highlighting.DarkSyntaxTheme
 import su.kidoz.jetaprog.editor.syntax.highlighting.LightSyntaxTheme
-import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
 import su.kidoz.jetaprog.vcs.GitChange
 import su.kidoz.jetaprog.vcs.GitCommit
 

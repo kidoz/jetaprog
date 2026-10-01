@@ -223,7 +223,7 @@ public class DefaultLintEngine : LintEngine {
             val newContent = firstLine.substring(0, startCol) + fix.newText + lastLine.substring(endCol)
 
             // Remove lines in range and insert new content
-            for (i in startLine..endLine.coerceAtMost(lines.lastIndex)) {
+            repeat((endLine.coerceAtMost(lines.lastIndex) - startLine + 1).coerceAtLeast(0)) {
                 lines.removeAt(startLine)
             }
 

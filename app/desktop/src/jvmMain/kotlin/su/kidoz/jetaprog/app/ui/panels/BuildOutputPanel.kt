@@ -73,7 +73,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing

@@ -138,13 +138,9 @@ public class TomcatManager(
      * Start a Tomcat instance.
      *
      * @param settings The Tomcat configuration.
-     * @param workspacePath The workspace path.
      * @return The started Tomcat instance.
      */
-    public suspend fun start(
-        settings: TomcatLocalSettings,
-        workspacePath: String,
-    ): Result<TomcatInstance> {
+    public suspend fun start(settings: TomcatLocalSettings): Result<TomcatInstance> {
         check(!disposed) { "TomcatManager has been disposed" }
 
         val tomcatHome = File(settings.tomcatHome)
@@ -248,10 +244,23 @@ public class TomcatManager(
         }
 
         return when (source) {
-            is DeploymentSource.WarFile -> deployWarFile(webappsDir, source)
-            is DeploymentSource.ExplodedWar -> deployExplodedWar(webappsDir, source, instance)
-            is DeploymentSource.GradleArtifact -> deployGradleArtifact(webappsDir, source)
-            is DeploymentSource.MavenArtifact -> deployMavenArtifact(webappsDir, source)
+            is DeploymentSource.WarFile -> {
+                deployWarFile(webappsDir, source)
+            }
+
+            is DeploymentSource.ExplodedWar -> {
+                deployExplodedWar(webappsDir, source, instance)
+            }
+
+            is DeploymentSource.GradleArtifact -> {
+                Result.failure(
+                    UnsupportedOperationException("Gradle artifact deployment requires running Gradle task first"),
+                )
+            }
+
+            is DeploymentSource.MavenArtifact -> {
+                Result.failure(UnsupportedOperationException("Maven artifact deployment requires running Maven first"))
+            }
         }
     }
 
@@ -300,9 +309,7 @@ public class TomcatManager(
     ): Result<Unit> =
         runCatching {
             val sourceFile = File(source.path)
-            if (!sourceFile.exists()) {
-                throw IllegalArgumentException("WAR file not found: ${source.path}")
-            }
+            require(sourceFile.exists()) { "WAR file not found: ${source.path}" }
             sourceFile.copyTo(File(webappsDir, sourceFile.name), overwrite = true)
         }
 
@@ -313,8 +320,8 @@ public class TomcatManager(
     ): Result<Unit> =
         runCatching {
             val sourceDir = File(source.path)
-            if (!sourceDir.exists() || !sourceDir.isDirectory) {
-                throw IllegalArgumentException("Exploded WAR directory not found: ${source.path}")
+            require(sourceDir.exists() && sourceDir.isDirectory) {
+                "Exploded WAR directory not found: ${source.path}"
             }
 
             val contextPath = instance.settings.contextPath
@@ -323,22 +330,6 @@ public class TomcatManager(
 
             sourceDir.copyRecursively(targetDir, overwrite = true)
         }
-
-    private fun deployGradleArtifact(
-        webappsDir: File,
-        source: DeploymentSource.GradleArtifact,
-    ): Result<Unit> =
-        Result.failure(
-            UnsupportedOperationException("Gradle artifact deployment requires running Gradle task first"),
-        )
-
-    private fun deployMavenArtifact(
-        webappsDir: File,
-        source: DeploymentSource.MavenArtifact,
-    ): Result<Unit> =
-        Result.failure(
-            UnsupportedOperationException("Maven artifact deployment requires running Maven first"),
-        )
 
     private fun generateInstanceId(): String {
         val chars = "0123456789abcdef"

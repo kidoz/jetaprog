@@ -396,166 +396,163 @@ public object IntelliJColors : IntelliJPalette {
 
 /**
  * Spacing constants for consistent layout.
+ * Keep the shared camelCase design-token API for compile-time constants.
  */
+@Suppress("ktlint:standard:property-naming")
 public object Spacing {
-    public val xxs: Int = 2
-    public val xs: Int = 4
-    public val sm: Int = 8
-    public val md: Int = 12
-    public val lg: Int = 16
-    public val xl: Int = 24
-    public val xxl: Int = 32
+    public const val xxs: Int = 2
+    public const val xs: Int = 4
+    public const val sm: Int = 8
+    public const val md: Int = 12
+    public const val lg: Int = 16
+    public const val xl: Int = 24
+    public const val xxl: Int = 32
 }
 
 /**
  * Common dimensions for UI components. All values are dp.
  */
-@Suppress("MagicNumber")
+@Suppress("MagicNumber", "ktlint:standard:property-naming")
 public object Dimensions {
     // Shell
-    public val activityBarWidth: Int = 48
-    public val titleBarHeight: Int = 30
-    public val statusBarHeight: Int = 24
-    public val menuBarHeight: Int = 32
-    public val mainToolbarHeight: Int = 32
+    public const val activityBarWidth: Int = 48
+    public const val titleBarHeight: Int = 30
+    public const val statusBarHeight: Int = 24
+    public const val menuBarHeight: Int = 32
+    public const val mainToolbarHeight: Int = 32
 
     /** Taller toolbar used when filled with chips and the Search Everywhere field. */
-    public val mainToolbarHeightFilled: Int = 36
+    public const val mainToolbarHeightFilled: Int = 36
 
     /** Minimum width of the Search Everywhere field in the toolbar. */
-    public val searchEverywhereWidth: Int = 190
+    public const val searchEverywhereWidth: Int = 190
 
     /** Default width of menu-bar / dropdown menus. */
-    public val menuWidth: Int = 260
+    public const val menuWidth: Int = 260
 
     /** Default width of the project tool window. */
-    public val projectPanelWidth: Int = 264
+    public const val projectPanelWidth: Int = 264
 
     /** Brand artwork canvas, including the icon's transparent safe area. */
-    public val brandIconSize: Int = 32
+    public const val brandIconSize: Int = 32
 
     /** Width below which the main toolbar uses an icon-only search trigger. */
-    @Suppress("MayBeConst")
-    public val compactToolbarBreakpoint: Int = 1100
+    public const val compactToolbarBreakpoint: Int = 1100
 
     /** Maximum branch-chip width; leaves room for toolbar actions on narrow windows. */
-    @Suppress("MayBeConst")
-    public val toolbarBranchWidth: Int = 140
+    public const val toolbarBranchWidth: Int = 140
 
     /** Available welcome content width needed for search and actions on one row. */
-    @Suppress("MayBeConst")
-    public val welcomeActionsBreakpoint: Int = 900
+    public const val welcomeActionsBreakpoint: Int = 900
 
     // Welcome hub
-    public val welcomeRailWidth: Int = 230
-    public val welcomeRailItemHeight: Int = 34
-    public val welcomeRecentRowHeight: Int = 60
+    public const val welcomeRailWidth: Int = 230
+    public const val welcomeRailItemHeight: Int = 34
+    public const val welcomeRecentRowHeight: Int = 60
 
     // Tool windows
-    public val toolWindowHeaderHeight: Int = 24
-    public val toolWindowDefaultWidth: Int = 280
-    public val toolWindowMinWidth: Int = 180
-    public val toolWindowMaxWidth: Int = 640
-    public val toolWindowDefaultBottomHeight: Int = 240
-    public val toolWindowMinBottomHeight: Int = 80
+    public const val toolWindowHeaderHeight: Int = 24
+    public const val toolWindowDefaultWidth: Int = 280
+    public const val toolWindowMinWidth: Int = 180
+    public const val toolWindowMaxWidth: Int = 640
+    public const val toolWindowDefaultBottomHeight: Int = 240
+    public const val toolWindowMinBottomHeight: Int = 80
 
     // Database tools
-    public val databaseConnectionListHeight: Int = 120
-    public val databaseSchemaRowHeight: Int = 24
-    public val databaseQueryEditorHeight: Int = 72
-    public val databaseResultCellWidth: Int = 180
-    public val databaseResultHeaderHeight: Int = 42
-    public val databaseResultRowHeight: Int = 26
-    public val databaseConnectionDialogMinWidth: Int = 520
-    public val databaseConnectionDialogMaxWidth: Int = 620
-    public val databasePortFieldWidth: Int = 110
+    public const val databaseConnectionListHeight: Int = 120
+    public const val databaseSchemaRowHeight: Int = 24
+    public const val databaseQueryEditorHeight: Int = 72
+    public const val databaseResultCellWidth: Int = 180
+    public const val databaseResultHeaderHeight: Int = 42
+    public const val databaseResultRowHeight: Int = 26
+    public const val databaseConnectionDialogMinWidth: Int = 520
+    public const val databaseConnectionDialogMaxWidth: Int = 620
+    public const val databasePortFieldWidth: Int = 110
 
     // Git tools
-    public val gitChangesHeaderHeight: Int = 26
-    public val gitChangeRowHeight: Int = 24
+    public const val gitChangesHeaderHeight: Int = 26
+    public const val gitChangeRowHeight: Int = 24
 
     // Editor area
-    public val tabHeight: Int = 32
-    public val panelHeaderHeight: Int = 32
-    public val breadcrumbsHeight: Int = 24
-    public val editorGuideWidth: Int = 1
-    public val editorMinimapWidth: Int = 80
-    public val lineHeightCode: Int = 21
+    public const val tabHeight: Int = 32
+    public const val panelHeaderHeight: Int = 32
+    public const val breadcrumbsHeight: Int = 24
+    public const val editorGuideWidth: Int = 1
+    public const val editorMinimapWidth: Int = 80
+    public const val lineHeightCode: Int = 21
 
     // Controls
-    public val buttonHeight: Int = 32
-    public val inputHeight: Int = 36
-    public val chipHeight: Int = 26
-    public val treeNodeHeight: Int = 28
-    public val toolbarIcon: Int = 24
+    public const val buttonHeight: Int = 32
+    public const val inputHeight: Int = 36
+    public const val chipHeight: Int = 26
+    public const val treeNodeHeight: Int = 28
+    public const val toolbarIcon: Int = 24
 
     // Icons
-    public val iconXs: Int = 12
-    public val iconSm: Int = 14
-    public val iconMd: Int = 16
-    public val iconLg: Int = 18
+    public const val iconXs: Int = 12
+    public const val iconSm: Int = 14
+    public const val iconMd: Int = 16
+    public const val iconLg: Int = 18
 
     // Corners
-    public val cornerRadius: Int = 6
-    public val cornerRadiusSmall: Int = 4
-    public val cornerRadiusLarge: Int = 8
+    public const val cornerRadius: Int = 6
+    public const val cornerRadiusSmall: Int = 4
+    public const val cornerRadiusLarge: Int = 8
 
     // Splitters
-    public val splitterThickness: Int = 1
-    public val dividerThickness: Int = 1
-    public val splitterHandleHitArea: Int = 9
+    public const val splitterThickness: Int = 1
+    public const val dividerThickness: Int = 1
+    public const val splitterHandleHitArea: Int = 9
 
     // Popups
-    public val popupCompletionWidth: Int = 400
-    public val popupCompletionMaxHeight: Int = 300
-    public val popupCompletionDocHeightMax: Int = 140
-    public val popupHoverWidthMin: Int = 200
-    public val popupHoverWidthMax: Int = 500
-    public val popupHoverHeightMax: Int = 300
-    public val popupSearchWidth: Int = 600
-    public val popupSearchHeight: Int = 480
-    public val popupListWidth: Int = 500
-    public val popupUsagesWidth: Int = 700
-    public val popupListMaxHeight: Int = 400
-    public val popupRowHeight: Int = 28
-    public val popupRowHeightCompact: Int = 24
+    public const val popupCompletionWidth: Int = 400
+    public const val popupCompletionMaxHeight: Int = 300
+    public const val popupCompletionDocHeightMax: Int = 140
+    public const val popupHoverWidthMin: Int = 200
+    public const val popupHoverWidthMax: Int = 500
+    public const val popupHoverHeightMax: Int = 300
+    public const val popupSearchWidth: Int = 600
+    public const val popupSearchHeight: Int = 480
+    public const val popupListWidth: Int = 500
+    public const val popupUsagesWidth: Int = 700
+    public const val popupListMaxHeight: Int = 400
+    public const val popupRowHeight: Int = 28
+    public const val popupRowHeightCompact: Int = 24
 
     // Selection
-    public val selectionAccentWidth: Int = 2
+    public const val selectionAccentWidth: Int = 2
 
     // Dialogs
-    public val dialogSettingsWidth: Int = 900
-    public val dialogSettingsHeight: Int = 650
-    public val dialogSettingsNavWidth: Int = 220
-    public val dialogMinWidth: Int = 480
-    public val dialogFilePickerWidth: Int = 780
-    public val dialogFilePickerListHeight: Int = 380
-    public val dialogFilePickerPlacesWidth: Int = 160
+    public const val dialogSettingsWidth: Int = 900
+    public const val dialogSettingsHeight: Int = 650
+    public const val dialogSettingsNavWidth: Int = 220
+    public const val dialogMinWidth: Int = 480
+    public const val dialogFilePickerWidth: Int = 780
+    public const val dialogFilePickerListHeight: Int = 380
+    public const val dialogFilePickerPlacesWidth: Int = 160
 
     // Notifications
 
     /** Maximum dimensions of the scrollable notification details dialog. */
-    @Suppress("MayBeConst")
-    public val notificationDetailsWidth: Int = 520
+    public const val notificationDetailsWidth: Int = 520
 
     /** Maximum scrollable error-details height. */
-    @Suppress("MayBeConst")
-    public val notificationDetailsHeight: Int = 320
+    public const val notificationDetailsHeight: Int = 320
 
-    public val notificationWidth: Int = 360
-    public val notificationStripeWidth: Int = 3
-    public val notificationStackPadding: Int = 12
+    public const val notificationWidth: Int = 360
+    public const val notificationStripeWidth: Int = 3
+    public const val notificationStackPadding: Int = 12
 }
 
 /**
  * Elevation tokens — translated to shadow dp by the renderer.
  */
-@Suppress("MagicNumber")
+@Suppress("MagicNumber", "ktlint:standard:property-naming")
 public object Elevation {
-    public val flat: Int = 0
-    public val toolbar: Int = 1
-    public val popup: Int = 8
-    public val dialog: Int = 16
+    public const val flat: Int = 0
+    public const val toolbar: Int = 1
+    public const val popup: Int = 8
+    public const val dialog: Int = 16
 }
 
 /**

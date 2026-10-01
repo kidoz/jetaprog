@@ -20,7 +20,6 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.dialogs.settings.SettingsIntent
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingRow
 import su.kidoz.jetaprog.app.ui.dialogs.settings.controls.SettingSection
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.settings.model.EditorSettings

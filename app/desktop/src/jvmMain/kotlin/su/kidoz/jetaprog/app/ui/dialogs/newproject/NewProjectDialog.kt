@@ -37,7 +37,6 @@ import su.kidoz.jetaprog.app.ui.components.IntelliJDropdown
 import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.dialogs.DialogContainer
 import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.viewmodel.NewProjectViewModel
 
@@ -71,7 +70,6 @@ public fun NewProjectDialog(
             // Step indicator
             StepIndicator(
                 currentStep = state.currentStep,
-                totalSteps = state.totalSteps,
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -154,10 +152,7 @@ public fun NewProjectDialog(
 }
 
 @Composable
-private fun StepIndicator(
-    currentStep: Int,
-    totalSteps: Int,
-) {
+private fun StepIndicator(currentStep: Int) {
     val stepLabels = listOf("Project", "Package", "Options")
 
     Row(

@@ -80,7 +80,7 @@ public class TomlLexer : Lexer {
             char.isWhitespace() -> consumeWhitespace(text, pos, line, baseOffset)
             char == '#' -> consumeComment(text, pos, line, baseOffset)
             char == '[' -> consumeTableHeader(text, pos, line, baseOffset)
-            text.startsWith("\"\"\"", pos) -> consumeMultilineString(text, pos, line, baseOffset, '"')
+            text.startsWith("\"\"\"", pos) -> consumeMultilineString(text, pos, line, baseOffset)
             text.startsWith("'''", pos) -> consumeMultilineLiteralString(text, pos, line, baseOffset)
             char == '"' -> consumeString(text, pos, line, baseOffset)
             char == '\'' -> consumeLiteralString(text, pos, line, baseOffset)
@@ -211,7 +211,6 @@ public class TomlLexer : Lexer {
         pos: Int,
         line: Int,
         baseOffset: Int,
-        quote: Char,
     ): Triple<Token, LexerState, Int> {
         var length = 3 // """
         val endPattern = "\"\"\""

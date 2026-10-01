@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.build.cargo
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -41,7 +42,8 @@ public data class CargoProject(
  */
 @Serializable
 public data class CargoManifest(
-    val package_: CargoPackage? = null,
+    @SerialName("package_")
+    val packageName: CargoPackage? = null,
     val dependencies: Map<String, CargoDependency> = emptyMap(),
     val devDependencies: Map<String, CargoDependency> = emptyMap(),
     val buildDependencies: Map<String, CargoDependency> = emptyMap(),
@@ -64,7 +66,8 @@ public data class CargoPackage(
     val repository: String? = null,
     val keywords: List<String> = emptyList(),
     val categories: List<String> = emptyList(),
-    val rust_version: String? = null,
+    @SerialName("rust_version")
+    val rustVersion: String? = null,
 )
 
 /**
@@ -80,7 +83,8 @@ public data class CargoDependency(
     val rev: String? = null,
     val features: List<String> = emptyList(),
     val optional: Boolean = false,
-    val default_features: Boolean = true,
+    @SerialName("default_features")
+    val defaultFeatures: Boolean = true,
 )
 
 /**
@@ -99,7 +103,8 @@ public data class CargoBinary(
 public data class CargoLibrary(
     val name: String? = null,
     val path: String? = null,
-    val crate_type: List<String> = listOf("lib"),
+    @SerialName("crate_type")
+    val crateType: List<String> = listOf("lib"),
 )
 
 /**

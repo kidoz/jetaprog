@@ -15,13 +15,9 @@ public object DiagnosticConverter {
      * Convert a lint result to an editor diagnostic.
      *
      * @param result The lint result to convert.
-     * @param fileUri The URI of the file containing the result.
      * @return The converted diagnostic.
      */
-    public fun toDiagnostic(
-        result: LintResult,
-        fileUri: String? = null,
-    ): Diagnostic =
+    public fun toDiagnostic(result: LintResult): Diagnostic =
         Diagnostic(
             range = result.range,
             message = result.message,
@@ -45,13 +41,9 @@ public object DiagnosticConverter {
      * Convert multiple lint results to diagnostics.
      *
      * @param results The lint results to convert.
-     * @param fileUri The URI of the file containing the results.
      * @return The converted diagnostics.
      */
-    public fun toDiagnostics(
-        results: List<LintResult>,
-        fileUri: String? = null,
-    ): List<Diagnostic> = results.map { toDiagnostic(it, fileUri) }
+    public fun toDiagnostics(results: List<LintResult>): List<Diagnostic> = results.map { toDiagnostic(it) }
 
     /**
      * Convert lint severity to diagnostic severity.

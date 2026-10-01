@@ -17,8 +17,7 @@ public class KotlinCompletionProvider(
         position: su.kidoz.jetaprog.common.text.TextPosition,
         context: CompletionContext,
     ): CompletionList {
-        val filePath = document.uri.value.removePrefix("file://")
-        val items = languageService.getCompletions(filePath, position, document.getText())
+        val items = languageService.getCompletions(position, document.getText())
         return CompletionList(items = items, isIncomplete = false)
     }
 }

@@ -72,13 +72,11 @@ public class KotlinNavigationProvider(
      *
      * @param filePath The file containing the symbol.
      * @param position The position of the symbol.
-     * @param projectRoot The project root to search in.
      * @return List of locations where the symbol is referenced.
      */
     public suspend fun findReferences(
         filePath: String,
         position: TextPosition,
-        projectRoot: String,
     ): List<SymbolLocation> {
         // Get the symbol at position
         val symbol = symbolIndex.getSymbolAt(filePath, position) ?: return emptyList()

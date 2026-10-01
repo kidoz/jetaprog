@@ -97,7 +97,7 @@ class CloneRepositoryDialogUiTest {
             coEvery { process.waitFor() } returns 0
 
             val viewModel = shownViewModel()
-            val taken = File(tempDir, "taken").apply { mkdirs() }
+            File(tempDir, "taken").mkdirs()
             // Drive the form through intents: the field-input wiring itself is
             // covered by projectNameDerivesFromUrlOnScreen.
             runOnIdle {
@@ -138,13 +138,6 @@ class CloneRepositoryDialogUiTest {
         waitUntil(timeoutMillis = 5_000L) { viewModel.state.value.isVisible }
         waitForIdle()
         return viewModel
-    }
-
-    /** The URL field is the first editable field in the dialog (waits for it). */
-    private fun androidx.compose.ui.test.ComposeUiTest.urlField() {
-        waitUntil(timeoutMillis = 5_000L) {
-            onAllNodes(hasSetTextAction(), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-        }
     }
 
     private fun androidx.compose.ui.test.ComposeUiTest.urlFieldInput() =

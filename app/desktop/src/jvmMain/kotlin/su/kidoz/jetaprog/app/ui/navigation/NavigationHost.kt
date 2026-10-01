@@ -21,10 +21,6 @@ import su.kidoz.jetaprog.app.notification.NotificationCenter
 @Composable
 public fun NavigationHost(
     viewModel: NavigationViewModel,
-    currentFilePath: String,
-    currentFileName: String,
-    currentLine: Int,
-    currentColumn: Int,
     onNavigate: (filePath: String, line: Int, column: Int) -> Unit,
     notificationCenter: NotificationCenter,
     modifier: Modifier = Modifier,

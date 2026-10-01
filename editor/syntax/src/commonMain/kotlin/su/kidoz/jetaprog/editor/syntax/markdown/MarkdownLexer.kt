@@ -58,9 +58,7 @@ public class MarkdownLexer : Lexer {
 
         // Check for code block start
         if (text.trimStart().startsWith("```")) {
-            val indent = text.length - text.trimStart().length
             val codeBlockStart = text.indexOf("```")
-            val langEnd = text.length
 
             // Entire line is code block delimiter
             tokens.add(Token(TokenType.STRING, startOffset, text.length, lineNumber))

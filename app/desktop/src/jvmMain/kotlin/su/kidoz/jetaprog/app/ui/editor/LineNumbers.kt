@@ -35,12 +35,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.editor.state.LineChangeMarker
-import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxColor
-import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
 import kotlin.math.roundToInt
 
 /**
@@ -60,7 +57,6 @@ public fun LineNumbers(
     lineCount: Int,
     currentLine: Int,
     scrollState: ScrollState,
-    theme: SyntaxTheme,
     modifier: Modifier = Modifier,
     foldRegions: List<FoldRegion> = emptyList(),
     onToggleFold: (FoldRegion) -> Unit = {},

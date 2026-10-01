@@ -13,7 +13,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import su.kidoz.jetaprog.app.adapter.TextDocumentAdapter
 import su.kidoz.jetaprog.common.completion.CompletionContext
 import su.kidoz.jetaprog.common.completion.CompletionItem
-import su.kidoz.jetaprog.common.completion.CompletionItemKind
 import su.kidoz.jetaprog.common.completion.CompletionList
 import su.kidoz.jetaprog.common.completion.CompletionTriggerKind
 import su.kidoz.jetaprog.common.mvi.MviViewModel

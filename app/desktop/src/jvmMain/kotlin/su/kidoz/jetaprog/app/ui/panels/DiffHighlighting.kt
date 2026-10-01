@@ -1,14 +1,11 @@
 package su.kidoz.jetaprog.app.ui.panels
 
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
-import su.kidoz.jetaprog.app.ui.editor.toComposeColor
 import su.kidoz.jetaprog.app.ui.editor.toSpanStyle
 import su.kidoz.jetaprog.editor.syntax.BuiltinLexers
 import su.kidoz.jetaprog.editor.syntax.LexerRegistry
-import su.kidoz.jetaprog.editor.syntax.TokenType
 import su.kidoz.jetaprog.editor.syntax.highlighting.SyntaxTheme
 
 /** Tokens per line above which word-level diffing is skipped. */

@@ -57,7 +57,6 @@ import su.kidoz.jetaprog.app.ui.dialogs.DialogContainer
 import su.kidoz.jetaprog.app.ui.dialogs.DialogOverlay
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.Elevation
-import su.kidoz.jetaprog.app.ui.theme.IntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 

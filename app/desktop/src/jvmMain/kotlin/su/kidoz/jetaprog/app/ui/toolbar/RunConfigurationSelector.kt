@@ -446,7 +446,7 @@ private fun RunConfiguration.subtitle(): String? =
         }
 
         is ConfigurationSettings.CargoBuild -> {
-            s.package_ ?: s.profile.displayName
+            s.packageName ?: s.profile.displayName
         }
 
         is ConfigurationSettings.CargoRun -> {
