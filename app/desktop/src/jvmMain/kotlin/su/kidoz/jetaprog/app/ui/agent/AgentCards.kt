@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -418,21 +419,26 @@ private fun DecisionPill(decision: DiffDecision) {
     }
 }
 
-/** An approval (permission gate) card with approve/deny actions. */
+/**
+ * An approval card. Each [Block.Approval.choices] entry is one outcome, sent back with its option id.
+ *
+ * @param block The permission gate to show.
+ * @param onSelect Called with the ACP option id of the button the user picked.
+ */
 @Composable
 internal fun ApprovalCard(
     block: Block.Approval,
-    onApprove: () -> Unit,
-    onDeny: () -> Unit,
+    onSelect: (optionId: String) -> Unit,
 ) {
     val shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp)
+    val colors = LocalIntelliJColors.current
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(LocalIntelliJColors.current.warning.copy(alpha = 0.06f))
-                .border(1.dp, LocalIntelliJColors.current.approvalBorder, shape),
+                .background(colors.warning.copy(alpha = 0.06f))
+                .border(1.dp, colors.approvalBorder, shape),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
@@ -442,36 +448,63 @@ internal fun ApprovalCard(
             Icon(
                 Icons.Default.Security,
                 contentDescription = null,
-                tint = LocalIntelliJColors.current.warning,
+                tint = colors.warning,
                 modifier = Modifier.size(Dimensions.iconLg.dp),
             )
-            Text(block.title, color = LocalIntelliJColors.current.approvalText, fontSize = 12.5.sp)
+            Text(block.title, color = colors.approvalText, fontSize = 12.5.sp)
             Spacer(Modifier.weight(1f))
             Text(
                 text = if (block.resolved) "resolved" else "requires approval",
-                color = LocalIntelliJColors.current.textMuted,
+                color = colors.textMuted,
                 fontSize = 10.sp,
             )
         }
         block.command?.let {
             Box(modifier = Modifier.padding(horizontal = Spacing.md.dp)) { CodeBlock("$ $it") }
         }
-        if (!block.resolved) {
-            Row(
+        if (!block.resolved && block.choices.isNotEmpty()) {
+            FlowRow(
                 modifier = Modifier.fillMaxWidth().padding(Spacing.md.dp),
-                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
-                GradientButton("Approve & run", Icons.Default.PlayArrow, onApprove)
-                PillButton(
-                    text = "Deny",
-                    icon = null,
-                    background = LocalIntelliJColors.current.buttonBackground,
-                    foreground = LocalIntelliJColors.current.textPrimary,
-                    onClick = onDeny,
-                    bordered = true,
-                )
+                block.choices.forEach { choice -> ApprovalChoiceButton(choice) { onSelect(choice.optionId) } }
             }
+        }
+    }
+}
+
+@Composable
+private fun ApprovalChoiceButton(
+    choice: ApprovalChoice,
+    onClick: () -> Unit,
+) {
+    val colors = LocalIntelliJColors.current
+    when (choice.role) {
+        ApprovalChoiceRole.ALLOW_ONCE -> {
+            GradientButton(choice.label, Icons.Default.PlayArrow, onClick)
+        }
+
+        ApprovalChoiceRole.ALLOW_ALWAYS -> {
+            PillButton(
+                text = choice.label,
+                icon = null,
+                background = colors.warning.copy(alpha = 0.16f),
+                foreground = colors.warning,
+                onClick = onClick,
+                bordered = true,
+            )
+        }
+
+        ApprovalChoiceRole.REJECT -> {
+            PillButton(
+                text = choice.label,
+                icon = null,
+                background = colors.buttonBackground,
+                foreground = colors.textPrimary,
+                onClick = onClick,
+                bordered = true,
+            )
         }
     }
 }

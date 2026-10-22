@@ -179,6 +179,69 @@ class AgentSessionSurfaceUiTest {
     }
 
     @Test
+    fun approvalCardOffersEachAllowAndReject() {
+        for (dark in listOf(true, false)) {
+            val intents = mutableListOf<AgentIntent>()
+            runComposeUiTest {
+                setContent {
+                    JetaProgTheme(darkTheme = dark) {
+                        Box(Modifier.size(480.dp, 640.dp)) {
+                            AgentSurfaceContent(
+                                state = approvalState(resolved = false),
+                                dispatch = { intents += it },
+                                showRail = false,
+                            )
+                        }
+                    }
+                }
+                onNodeWithText("requires approval").assertIsDisplayed()
+                onNodeWithText("\$ gradle test").assertIsDisplayed()
+                onNodeWithText("Allow once").assertIsDisplayed()
+                onNodeWithText("Allow always").assertIsDisplayed()
+                onNodeWithText("Reject once").assertIsDisplayed()
+                onNodeWithText("Reject always").assertIsDisplayed()
+                onNodeWithText("Approve & run").assertDoesNotExist()
+                onNode(hasSetTextAction()).assertIsDisplayed()
+                onNodeWithText("Allow once").performClick()
+                onNodeWithText("Allow always").performClick()
+                onNodeWithText("Reject once").performClick()
+                onNodeWithText("Reject always").performClick()
+                if (dark) onRoot().saveUiArtifacts("agent-approval-choices")
+            }
+            assertEquals(
+                listOf(
+                    AgentIntent.EnsureConnected,
+                    AgentIntent.SelectApproval("call-1", "once"),
+                    AgentIntent.SelectApproval("call-1", "always"),
+                    AgentIntent.SelectApproval("call-1", "reject-once"),
+                    AgentIntent.SelectApproval("call-1", "reject-always"),
+                ),
+                intents,
+            )
+        }
+    }
+
+    @Test
+    fun resolvedApprovalHidesItsChoices() {
+        runComposeUiTest {
+            setContent {
+                JetaProgTheme {
+                    Box(Modifier.size(480.dp, 320.dp)) {
+                        AgentSurfaceContent(
+                            state = approvalState(resolved = true),
+                            dispatch = {},
+                            showRail = false,
+                        )
+                    }
+                }
+            }
+            onNodeWithText("resolved").assertIsDisplayed()
+            onNodeWithText("Allow once").assertDoesNotExist()
+            onNodeWithText("Allow always").assertDoesNotExist()
+        }
+    }
+
+    @Test
     fun restoreIsHiddenWhileATurnIsStreaming() {
         runComposeUiTest {
             setContent {
@@ -241,6 +304,40 @@ class AgentSessionSurfaceUiTest {
         }
         return intents
     }
+
+    private fun approvalState(resolved: Boolean): AgentUiState =
+        AgentUiState(
+            connection = AgentConnection.CONNECTED,
+            isStreaming = true,
+            turns =
+                listOf(
+                    Turn.User(id = "user", text = "Run the tests", timeLabel = "now"),
+                    Turn.Agent(
+                        id = "agent",
+                        timeLabel = "now",
+                        blocks =
+                            listOf(
+                                Block.Approval(
+                                    id = "call-1",
+                                    title = "Run command",
+                                    command = "gradle test",
+                                    resolved = resolved,
+                                    choices =
+                                        listOf(
+                                            ApprovalChoice("once", "Allow once", ApprovalChoiceRole.ALLOW_ONCE),
+                                            ApprovalChoice("always", "Allow always", ApprovalChoiceRole.ALLOW_ALWAYS),
+                                            ApprovalChoice("reject-once", "Reject once", ApprovalChoiceRole.REJECT),
+                                            ApprovalChoice(
+                                                "reject-always",
+                                                "Reject always",
+                                                ApprovalChoiceRole.REJECT,
+                                            ),
+                                        ),
+                                ),
+                            ),
+                    ),
+                ),
+        )
 
     private fun checkpointState(streaming: Boolean): AgentUiState =
         AgentUiState(

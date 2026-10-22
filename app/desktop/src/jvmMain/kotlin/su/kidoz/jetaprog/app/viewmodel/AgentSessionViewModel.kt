@@ -37,6 +37,7 @@ import su.kidoz.jetaprog.acp.protocol.FileSystemCapability
 import su.kidoz.jetaprog.acp.protocol.HttpHeader
 import su.kidoz.jetaprog.acp.protocol.Implementation
 import su.kidoz.jetaprog.acp.protocol.McpServer
+import su.kidoz.jetaprog.acp.protocol.PermissionOption
 import su.kidoz.jetaprog.acp.protocol.PermissionOptionKind
 import su.kidoz.jetaprog.acp.protocol.PermissionOutcome
 import su.kidoz.jetaprog.acp.protocol.PermissionToolCall
@@ -70,6 +71,8 @@ import su.kidoz.jetaprog.app.ui.agent.AgentCommand
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
+import su.kidoz.jetaprog.app.ui.agent.ApprovalChoice
+import su.kidoz.jetaprog.app.ui.agent.ApprovalChoiceRole
 import su.kidoz.jetaprog.app.ui.agent.Block
 import su.kidoz.jetaprog.app.ui.agent.ComposerAttachment
 import su.kidoz.jetaprog.app.ui.agent.DiffDecision
@@ -292,12 +295,8 @@ public class AgentSessionViewModel(
                 decideAll(accept = false)
             }
 
-            is AgentIntent.Approve -> {
-                resolveApproval(intent.callId, approve = true)
-            }
-
-            is AgentIntent.Deny -> {
-                resolveApproval(intent.callId, approve = false)
+            is AgentIntent.SelectApproval -> {
+                resolveApproval(intent.callId, intent.optionId)
             }
 
             is AgentIntent.SetPermission -> {
@@ -1470,13 +1469,19 @@ public class AgentSessionViewModel(
             .flatMap { turn -> (turn as? Turn.Agent)?.blocks.orEmpty() }
             .filterIsInstance<Block.Diff>()
 
+    /**
+     * Completes the pending permission for [callId] with [optionId].
+     *
+     * An id the card did not offer, and a missing card, complete as cancelled so the
+     * agent request cannot stay open.
+     */
     private fun resolveApproval(
         callId: String,
-        approve: Boolean,
+        optionId: String,
     ) {
         val pending = pendingApprovals.remove(callId) ?: return
-        val optionId = if (approve) pending.allowOptionId else pending.rejectOptionId
-        val outcome = if (optionId != null) PermissionOutcome.Selected(optionId) else PermissionOutcome.Cancelled
+        val known = pending.choices.any { it.optionId == optionId }
+        val outcome = if (known) PermissionOutcome.Selected(optionId) else PermissionOutcome.Cancelled
         pending.deferred.complete(RequestPermissionResponse(outcome))
         mutateBlock(callId) { block ->
             if (block is Block.Approval) block.copy(resolved = true) else block
@@ -1647,9 +1652,10 @@ public class AgentSessionViewModel(
         if (_state.value.turns.none { it is Turn.Agent }) return false
         val deferred = CompletableDeferred<RequestPermissionResponse>()
         val callId = "$prefix:$detail:${seq++}"
-        pendingApprovals[callId] = PendingApproval(deferred, ALLOW_OPTION_ID, REJECT_OPTION_ID)
+        val choices = directApprovalChoices()
+        pendingApprovals[callId] = PendingApproval(deferred, choices)
         mutateAgentTurn { blocks ->
-            blocks + Block.Approval(callId, title, detail)
+            blocks + Block.Approval(callId, title, detail, choices = choices)
         }
         val outcome = deferred.await().outcome
         return outcome is PermissionOutcome.Selected && outcome.optionId == ALLOW_OPTION_ID
@@ -1679,13 +1685,20 @@ public class AgentSessionViewModel(
             PermissionPolicy.ASK -> {
                 val deferred = CompletableDeferred<RequestPermissionResponse>()
                 val callId = request.toolCall.toolCallId
-                pendingApprovals[callId] = PendingApproval(deferred, allow, reject)
+                val choices = approvalChoices(request.options)
+                pendingApprovals[callId] = PendingApproval(deferred, choices)
                 mutateAgentTurn { blocks ->
-                    blocks + Block.Approval(callId, request.toolCall.title ?: "Tool call", commandFor(request.toolCall))
+                    blocks +
+                        Block.Approval(
+                            id = callId,
+                            title = request.toolCall.title ?: "Tool call",
+                            command = commandFor(request.toolCall),
+                            choices = choices,
+                        )
                 }
                 val response = deferred.await()
                 val selected = (response.outcome as? PermissionOutcome.Selected)?.optionId
-                if (kind == PermissionKind.EDIT && selected != null && selected == allow) {
+                if (kind == PermissionKind.EDIT && optionAllowsEdit(request.options, selected)) {
                     recordApprovedEdit(request.toolCall)
                 }
                 response
@@ -2086,6 +2099,62 @@ public class AgentSessionViewModel(
         fun outcomeFor(optionId: String?): PermissionOutcome =
             if (optionId != null) PermissionOutcome.Selected(optionId) else PermissionOutcome.Cancelled
 
+        /** Buttons for an IDE-raised file read or write. These ids are not ACP kinds. */
+        fun directApprovalChoices(): List<ApprovalChoice> =
+            listOf(
+                ApprovalChoice(ALLOW_OPTION_ID, "Approve & run", ApprovalChoiceRole.ALLOW_ONCE),
+                ApprovalChoice(REJECT_OPTION_ID, "Deny", ApprovalChoiceRole.REJECT),
+            )
+
+        /**
+         * One button per allow and reject kind the agent actually offered.
+         *
+         * Allow once stays the primary action when both allows are present. A single
+         * reject stays labeled Deny. Both reject kinds stay separate so each id can be sent.
+         */
+        fun approvalChoices(options: List<PermissionOption>): List<ApprovalChoice> {
+            val allowOnce = options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ONCE }
+            val allowAlways = options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ALWAYS }
+            val rejectOnce = options.firstOrNull { it.kind == PermissionOptionKind.REJECT_ONCE }
+            val rejectAlways = options.firstOrNull { it.kind == PermissionOptionKind.REJECT_ALWAYS }
+            val bothRejects = rejectOnce != null && rejectAlways != null
+            return buildList {
+                if (allowOnce != null) {
+                    add(ApprovalChoice(allowOnce.optionId, "Allow once", ApprovalChoiceRole.ALLOW_ONCE))
+                }
+                if (allowAlways != null) {
+                    add(ApprovalChoice(allowAlways.optionId, "Allow always", ApprovalChoiceRole.ALLOW_ALWAYS))
+                }
+                if (rejectOnce != null) {
+                    add(
+                        ApprovalChoice(
+                            rejectOnce.optionId,
+                            if (bothRejects) "Reject once" else "Deny",
+                            ApprovalChoiceRole.REJECT,
+                        ),
+                    )
+                }
+                if (rejectAlways != null) {
+                    add(
+                        ApprovalChoice(
+                            rejectAlways.optionId,
+                            if (bothRejects) "Reject always" else "Deny",
+                            ApprovalChoiceRole.REJECT,
+                        ),
+                    )
+                }
+            }
+        }
+
+        /** True when [optionId] is an allow-once or allow-always option on this request. */
+        fun optionAllowsEdit(
+            options: List<PermissionOption>,
+            optionId: String?,
+        ): Boolean {
+            val kind = options.firstOrNull { it.optionId == optionId }?.kind
+            return kind == PermissionOptionKind.ALLOW_ONCE || kind == PermissionOptionKind.ALLOW_ALWAYS
+        }
+
         fun commandFor(toolCall: PermissionToolCall): String? =
             stringField(toolCall.rawInput, "command", "cmd") ?: toolCall.title
 
@@ -2147,8 +2216,7 @@ public class AgentSessionViewModel(
 
     private data class PendingApproval(
         val deferred: CompletableDeferred<RequestPermissionResponse>,
-        val allowOptionId: String?,
-        val rejectOptionId: String?,
+        val choices: List<ApprovalChoice>,
     )
 
     private data class TurnClaim(

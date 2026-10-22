@@ -378,6 +378,7 @@ public sealed interface Block {
      * @property title What the agent wants to do.
      * @property command The command or detail to show, if any.
      * @property resolved Whether the user has already decided.
+     * @property choices The outcomes the user can pick. Each one keeps the option id to send back.
      */
     @Immutable
     public data class Approval(
@@ -385,8 +386,37 @@ public sealed interface Block {
         val title: String,
         val command: String?,
         val resolved: Boolean = false,
+        val choices: List<ApprovalChoice> = emptyList(),
     ) : Block
 }
+
+/**
+ * How an approval choice is drawn.
+ */
+public enum class ApprovalChoiceRole {
+    /** Allow this single request. Drawn as the primary action. */
+    ALLOW_ONCE,
+
+    /** Allow this request and later ones of the same kind. */
+    ALLOW_ALWAYS,
+
+    /** Decline the request. */
+    REJECT,
+}
+
+/**
+ * One button on an approval card.
+ *
+ * @property optionId The ACP option id sent when the user picks this button.
+ * @property label The button text.
+ * @property role How the button is drawn.
+ */
+@Immutable
+public data class ApprovalChoice(
+    val optionId: String,
+    val label: String,
+    val role: ApprovalChoiceRole,
+)
 
 /** One conversation turn. */
 public sealed interface Turn {
@@ -639,14 +669,17 @@ public sealed interface AgentIntent {
     /** Revert all pending diffs in the current turn. */
     public data object RevertAll : AgentIntent
 
-    /** Approve the gated tool call with the given call id. */
-    public data class Approve(
+    /**
+     * Pick one offered outcome for the approval card [callId].
+     *
+     * An option id the card did not offer completes the request as cancelled.
+     *
+     * @property callId The approval block id, matching the tool call id.
+     * @property optionId The ACP option id of the chosen outcome.
+     */
+    public data class SelectApproval(
         val callId: String,
-    ) : AgentIntent
-
-    /** Deny the gated tool call with the given call id. */
-    public data class Deny(
-        val callId: String,
+        val optionId: String,
     ) : AgentIntent
 
     /** Change a permission kind's policy. */

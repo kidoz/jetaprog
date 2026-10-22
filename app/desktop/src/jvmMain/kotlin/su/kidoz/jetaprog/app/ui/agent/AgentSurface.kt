@@ -547,11 +547,9 @@ private fun BlockView(
         }
 
         is Block.Approval -> {
-            ApprovalCard(
-                block = block,
-                onApprove = { dispatch(AgentIntent.Approve(block.id)) },
-                onDeny = { dispatch(AgentIntent.Deny(block.id)) },
-            )
+            ApprovalCard(block) { optionId ->
+                dispatch(AgentIntent.SelectApproval(block.id, optionId))
+            }
         }
     }
 }
