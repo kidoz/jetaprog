@@ -39,6 +39,7 @@ import su.kidoz.jetaprog.acp.protocol.ReadTextFileRequest
 import su.kidoz.jetaprog.acp.protocol.ReadTextFileResponse
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionResponse
+import su.kidoz.jetaprog.acp.protocol.SessionModelState
 import su.kidoz.jetaprog.acp.protocol.SessionUpdate
 import su.kidoz.jetaprog.acp.protocol.ToolCallContent
 import su.kidoz.jetaprog.acp.protocol.ToolCallStatus
@@ -52,6 +53,7 @@ import su.kidoz.jetaprog.app.agent.AgentPrefs
 import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 import su.kidoz.jetaprog.app.agent.FileSnapshot
+import su.kidoz.jetaprog.app.agent.toModelOption
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
@@ -59,6 +61,7 @@ import su.kidoz.jetaprog.app.ui.agent.Block
 import su.kidoz.jetaprog.app.ui.agent.DiffDecision
 import su.kidoz.jetaprog.app.ui.agent.DiffLine
 import su.kidoz.jetaprog.app.ui.agent.DiffLineKind
+import su.kidoz.jetaprog.app.ui.agent.ModelOption
 import su.kidoz.jetaprog.app.ui.agent.PermissionKind
 import su.kidoz.jetaprog.app.ui.agent.PermissionPolicy
 import su.kidoz.jetaprog.app.ui.agent.Presence
@@ -127,17 +130,23 @@ public class AgentSessionViewModel(
     /** Runs process teardown off the UI thread after [dispose]. */
     private val shutdownScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** The model the user selected, persisted across sessions and agents. */
+    private var preferredModelId: String? = null
+
+    /** Completes once the on-disk preferences have been applied. */
+    private val prefsLoaded = CompletableDeferred<AgentPrefs>()
+
     init {
         scope.launch {
             val prefs = prefsStore.load()
+            preferredModelId = prefs.modelId
             _state.update {
                 it.copy(
                     permissions = prefs.permissions,
-                    model = prefs.model,
-                    effort = prefs.effort,
                     docked = prefs.docked,
                 )
             }
+            prefsLoaded.complete(prefs)
         }
     }
 
@@ -214,8 +223,7 @@ public class AgentSessionViewModel(
             }
 
             is AgentIntent.SetModel -> {
-                _state.update { it.copy(model = intent.model, effort = intent.effort) }
-                persist()
+                setModel(intent.modelId)
             }
 
             AgentIntent.ExpandToPerspective -> {
@@ -272,6 +280,7 @@ public class AgentSessionViewModel(
         val openClient = client
         client = null
         sessionId = null
+        clearSessionModels()
         if (openClient != null) runCatching { openClient.close() }
     }
 
@@ -324,6 +333,7 @@ public class AgentSessionViewModel(
                 )
             } ?: throw IllegalStateException("The agent did not create a session")
         sessionId = session.sessionId
+        applySessionModels(session.models)
         _state.update {
             it.copy(
                 connection = AgentConnection.CONNECTED,
@@ -331,6 +341,7 @@ public class AgentSessionViewModel(
                 error = null,
             )
         }
+        applyPreferredModel(acpClient, session.sessionId)
     }
 
     /** Returns the active session, creating one after a chat reset or restore. */
@@ -351,6 +362,8 @@ public class AgentSessionViewModel(
                     )
                 } ?: throw IllegalStateException("The agent did not create a session")
             sessionId = session.sessionId
+            applySessionModels(session.models)
+            applyPreferredModel(acpClient, session.sessionId)
             session.sessionId
         } catch (e: CancellationException) {
             throw e
@@ -573,6 +586,7 @@ public class AgentSessionViewModel(
         archiveConversation()
         fileSnapshots.clear()
         sessionId = null
+        clearSessionModels()
         recordId = null
         _state.update {
             it.copy(turns = emptyList(), isStreaming = false, presence = null, error = null)
@@ -596,6 +610,7 @@ public class AgentSessionViewModel(
         }
         fileSnapshots.clear()
         sessionId = null
+        clearSessionModels()
         recordId = null
         _state.update {
             it.copy(
@@ -626,7 +641,7 @@ public class AgentSessionViewModel(
         // Drop updates while loading so the replayed history cannot duplicate the
         // restored transcript.
         sessionId = null
-        val restoredSession =
+        val loadedSession =
             if (acpClient != null &&
                 acpClient.isOpen &&
                 record.agentSessionId != null &&
@@ -645,12 +660,13 @@ public class AgentSessionViewModel(
                                         ?.http == true,
                                 ),
                         )
-                    }.isSuccess
-                } ?: false
+                    }.getOrNull()
+                }
             } else {
-                false
+                null
             }
-        sessionId = if (restoredSession) record.agentSessionId else null
+        sessionId = if (loadedSession != null) record.agentSessionId else null
+        applySessionModels(loadedSession?.models)
         recordId = record.id
 
         var counter = 0
@@ -1157,8 +1173,96 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
 
     private suspend fun persist() {
+        // Never overwrite the stored model with null before the initial load
+        // has populated the preference.
+        prefsLoaded.await()
         val st = _state.value
-        prefsStore.save(AgentPrefs(st.permissions, st.model, st.effort, st.docked))
+        prefsStore.save(AgentPrefs(st.permissions, preferredModelId ?: st.model?.id, st.docked))
+    }
+
+    /**
+     * Selects [modelId] for the active session and remembers it for future
+     * sessions. The ACP call is authoritative; state changes only after the
+     * agent accepts it.
+     */
+    private suspend fun setModel(modelId: String) {
+        val option = _state.value.availableModels.firstOrNull { it.id == modelId } ?: return
+        val acpClient = client
+        val activeSession = sessionId
+        if (acpClient == null || activeSession == null || !acpClient.isOpen) {
+            preferredModelId = modelId
+            _state.update { it.copy(model = option, error = null) }
+            persist()
+            return
+        }
+
+        val applied =
+            try {
+                withTimeoutOrNull(MODEL_SELECT_TIMEOUT_MS) {
+                    acpClient.setModel(activeSession, modelId)
+                    true
+                } ?: false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(error = e.message ?: "Could not select ${option.displayName}") }
+                return
+            }
+        if (!applied) {
+            _state.update { it.copy(error = "The agent did not confirm the model change") }
+            return
+        }
+        preferredModelId = modelId
+        _state.update { it.copy(model = option, error = null) }
+        persist()
+    }
+
+    /** Applies the model state reported by the agent's session response. */
+    private fun applySessionModels(sessionModels: SessionModelState?) {
+        if (sessionModels == null) {
+            clearSessionModels()
+            return
+        }
+        val options = sessionModels.availableModels.map { it.toModelOption() }
+        val current =
+            options.firstOrNull { it.id == sessionModels.currentModelId }
+                ?: ModelOption(
+                    id = sessionModels.currentModelId,
+                    displayName = sessionModels.currentModelId,
+                    shortName = sessionModels.currentModelId,
+                )
+        _state.update { it.copy(availableModels = options, model = current) }
+    }
+
+    /** Selects the persisted model when the agent offers it. */
+    private suspend fun applyPreferredModel(
+        acpClient: AcpClient,
+        activeSession: String,
+    ) {
+        val preferred = preferredModelId ?: prefsLoaded.await().modelId ?: return
+        preferredModelId = preferred
+        val option = _state.value.availableModels.firstOrNull { it.id == preferred } ?: return
+        if (_state.value.model?.id == preferred) return
+        val applied =
+            try {
+                withTimeoutOrNull(MODEL_SELECT_TIMEOUT_MS) {
+                    acpClient.setModel(activeSession, preferred)
+                    true
+                } ?: false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+        if (applied) {
+            _state.update { it.copy(model = option) }
+        }
+        // Otherwise keep the agent's current model when it rejects the preference.
+    }
+
+    /** Clears the session-scoped model list, keeping the user's preference. */
+    private fun clearSessionModels() {
+        _state.update { it.copy(availableModels = emptyList(), model = null) }
     }
 
     private fun mutateAgentTurn(transform: (List<Block>) -> List<Block>) {
@@ -1209,6 +1313,9 @@ public class AgentSessionViewModel(
 
         /** How long a stopped turn waits for the agent before it is abandoned. */
         private const val STOP_GRACE_PERIOD_MS = 5_000L
+
+        /** How long a `session/set_model` request may take. */
+        private const val MODEL_SELECT_TIMEOUT_MS = 15_000L
 
         /** Name the agent sees for the IDE's embedded MCP server. */
         private const val IDE_MCP_SERVER_NAME = "jetaprog"

@@ -29,6 +29,9 @@ public object AcpMethod {
     /** Switches the active mode of a session. */
     public const val SESSION_SET_MODE: String = "session/set_mode"
 
+    /** Selects the model for a session. Unstable in ACP 1. */
+    public const val SESSION_SET_MODEL: String = "session/set_model"
+
     /** Notification: requests cancellation of the in-flight turn. */
     public const val SESSION_CANCEL: String = "session/cancel"
 

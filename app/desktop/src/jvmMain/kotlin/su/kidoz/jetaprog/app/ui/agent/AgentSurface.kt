@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -224,7 +225,7 @@ private fun AgentHeader(
                 )
                 Text(subtitleFor(state), color = subtitleColor(state), fontSize = 10.sp)
             }
-            ModelEffortChip(state)
+            ModelChip(state)
             Spacer(Modifier.weight(1f))
             HeaderIcon(Icons.Default.History, "History") { dispatch(AgentIntent.ShowHistory) }
             HeaderIcon(Icons.Default.Add, "New chat") { dispatch(AgentIntent.NewChat) }
@@ -316,7 +317,8 @@ private fun HeaderIcon(
 }
 
 @Composable
-private fun ModelEffortChip(state: AgentUiState) {
+private fun ModelChip(state: AgentUiState) {
+    val model = state.model ?: return
     Row(
         modifier =
             Modifier
@@ -331,9 +333,7 @@ private fun ModelEffortChip(state: AgentUiState) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
     ) {
         GradientDot()
-        Text(state.model.shortName, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
-        Text("·", color = LocalIntelliJColors.current.textMuted, fontSize = 11.sp)
-        Text(state.effort.label, color = LocalIntelliJColors.current.agentEffortText, fontSize = 11.sp)
+        Text(model.shortName, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
     }
 }
 
@@ -647,7 +647,9 @@ private fun AgentComposer(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
                 Spacer(Modifier.weight(1f))
-                ModelPickerChip(state, dispatch)
+                if (state.availableModels.isNotEmpty()) {
+                    ModelPickerChip(state, dispatch)
+                }
                 SendButton(
                     enabled = input.isNotBlank() && state.connection != AgentConnection.CONNECTING,
                     onClick = send,
@@ -662,6 +664,7 @@ private fun ModelPickerChip(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
 ) {
+    val model = state.model ?: return
     var open by remember { mutableStateOf(false) }
     var anchorHeightPx by remember { mutableStateOf(0) }
     Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
@@ -680,7 +683,7 @@ private fun ModelPickerChip(
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
         ) {
             GradientDot(diameter = 7)
-            Text(state.model.shortName, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
+            Text(model.shortName, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
             Icon(
                 Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
@@ -698,25 +701,23 @@ private fun ModelPickerChip(
                 Column(
                     modifier =
                         Modifier
-                            .width(180.dp)
+                            .width(Dimensions.menuWidth.dp)
                             .popupChrome(Dimensions.cornerRadius.dp)
+                            .heightIn(max = Dimensions.popupListMaxHeight.dp)
+                            .verticalScroll(rememberScrollState())
                             .padding(vertical = Spacing.xs.dp),
                 ) {
-                    AGENT_MODELS.forEach { model ->
-                        PopupListRow(selected = false, height = Dimensions.popupRowHeightCompact.dp, onClick = {
-                            dispatch(AgentIntent.SetModel(model, state.effort))
-                            open = false
-                        }) {
-                            Text(model.displayName, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
-                        }
-                    }
-                    Effort.entries.forEach { effort ->
-                        PopupListRow(selected = false, height = Dimensions.popupRowHeightCompact.dp, onClick = {
-                            dispatch(AgentIntent.SetModel(state.model, effort))
-                            open = false
-                        }) {
+                    state.availableModels.forEach { option ->
+                        PopupListRow(
+                            selected = option.id == model.id,
+                            height = Dimensions.popupRowHeightCompact.dp,
+                            onClick = {
+                                dispatch(AgentIntent.SetModel(option.id))
+                                open = false
+                            },
+                        ) {
                             Text(
-                                "Effort: ${effort.label}",
+                                option.displayName,
                                 color = LocalIntelliJColors.current.textPrimary,
                                 fontSize = 12.sp,
                             )

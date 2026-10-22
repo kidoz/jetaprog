@@ -34,6 +34,7 @@ import su.kidoz.jetaprog.acp.protocol.ReleaseTerminalRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionRequest
 import su.kidoz.jetaprog.acp.protocol.SessionNotification
 import su.kidoz.jetaprog.acp.protocol.SetSessionModeRequest
+import su.kidoz.jetaprog.acp.protocol.SetSessionModelRequest
 import su.kidoz.jetaprog.acp.protocol.TerminalOutputRequest
 import su.kidoz.jetaprog.acp.protocol.WaitForTerminalExitRequest
 import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
@@ -161,6 +162,21 @@ public class AcpClient(
         connection.sendRequest(
             AcpMethod.SESSION_SET_MODE,
             encode(SetSessionModeRequest.serializer(), SetSessionModeRequest(sessionId, modeId)),
+        )
+    }
+
+    /**
+     * Selects the model for [sessionId].
+     *
+     * `session/set_model` is marked unstable in ACP, so agents may reject it.
+     */
+    public suspend fun setModel(
+        sessionId: String,
+        modelId: String,
+    ) {
+        connection.sendRequest(
+            AcpMethod.SESSION_SET_MODEL,
+            encode(SetSessionModelRequest.serializer(), SetSessionModelRequest(sessionId, modelId)),
         )
     }
 

@@ -66,26 +66,11 @@ public enum class PermissionPolicy {
     NEVER,
 }
 
-/** Reasoning-effort preference shown on the model chip. */
-public enum class Effort(
-    /** Short display label. */
-    public val label: String,
-) {
-    /** Minimal reasoning. */
-    LOW("Low"),
-
-    /** Balanced reasoning. */
-    MEDIUM("Medium"),
-
-    /** Maximum reasoning. */
-    HIGH("High"),
-}
-
 /**
- * A selectable model preference.
+ * A selectable model reported by the connected agent.
  *
- * @property id Stable identifier.
- * @property displayName Full name shown in the perspective header.
+ * @property id Stable identifier passed to `session/set_model`.
+ * @property displayName Full name shown in the picker.
  * @property shortName Compact name shown in the composer / docked header.
  */
 @Immutable
@@ -94,14 +79,6 @@ public data class ModelOption(
     val displayName: String,
     val shortName: String,
 )
-
-/** The models offered in the model picker. */
-public val AGENT_MODELS: List<ModelOption> =
-    listOf(
-        ModelOption("claude-opus-4-8", "Claude Opus 4.8", "Opus 4.8"),
-        ModelOption("claude-sonnet-4-6", "Claude Sonnet 4.6", "Sonnet 4.6"),
-        ModelOption("claude-haiku-4-5", "Claude Haiku 4.5", "Haiku 4.5"),
-    )
 
 /** The kind of a single rendered diff line. */
 public enum class DiffLineKind {
@@ -302,8 +279,8 @@ public data class Presence(
  * @property isStreaming Whether a turn is currently in flight.
  * @property presence Live presence while acting, or null.
  * @property permissions Per-kind authorization policies.
- * @property model The selected model preference.
- * @property effort The selected effort preference.
+ * @property availableModels Models reported by the connected agent, if any.
+ * @property model The model currently active in the agent's session, if known.
  * @property docked Whether the surface is docked beside the editor (vs full perspective).
  * @property error The most recent error message, if any.
  * @property composerInput The current text in the composer input field.
@@ -321,8 +298,8 @@ public data class AgentUiState(
             PermissionKind.EDIT to PermissionPolicy.ASK,
             PermissionKind.RUN to PermissionPolicy.ASK,
         ),
-    val model: ModelOption = AGENT_MODELS.first(),
-    val effort: Effort = Effort.HIGH,
+    val availableModels: List<ModelOption> = emptyList(),
+    val model: ModelOption? = null,
     val docked: Boolean = false,
     val error: String? = null,
     val composerInput: String = "",
@@ -427,10 +404,9 @@ public sealed interface AgentIntent {
         val policy: PermissionPolicy,
     ) : AgentIntent
 
-    /** Change the selected model and effort. */
+    /** Select the agent-reported model with [modelId]. */
     public data class SetModel(
-        val model: ModelOption,
-        val effort: Effort,
+        val modelId: String,
     ) : AgentIntent
 
     /** Expand the docked surface to the full perspective. */

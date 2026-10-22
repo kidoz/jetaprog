@@ -35,6 +35,8 @@ public data class NewSessionRequest(
 public data class NewSessionResponse(
     /** The newly created session identifier. */
     val sessionId: String,
+    /** The models available to the session, when the agent reports them. */
+    val models: SessionModelState? = null,
     /** The initial mode state, when the agent supports modes. */
     val modes: SessionModeState? = null,
 )
@@ -57,8 +59,47 @@ public data class LoadSessionRequest(
  */
 @Serializable
 public data class LoadSessionResponse(
+    /** The models available to the session, when the agent reports them. */
+    val models: SessionModelState? = null,
     /** The current mode state, when the agent supports modes. */
     val modes: SessionModeState? = null,
+)
+
+/**
+ * A model the agent can use for a session.
+ *
+ * Marked unstable in ACP; agents that do not report models leave the picker empty.
+ */
+@Serializable
+public data class ModelInfo(
+    /** Stable identifier passed to `session/set_model`. */
+    val modelId: String,
+    /** Human-readable name. */
+    val name: String,
+    /** Optional description of the model. */
+    val description: String? = null,
+)
+
+/**
+ * The available models and the one currently active for a session.
+ */
+@Serializable
+public data class SessionModelState(
+    /** The models the agent can use. */
+    val availableModels: List<ModelInfo> = emptyList(),
+    /** The identifier of the currently active model. */
+    val currentModelId: String,
+)
+
+/**
+ * Parameters of the `session/set_model` request.
+ */
+@Serializable
+public data class SetSessionModelRequest(
+    /** The session whose model should change. */
+    val sessionId: String,
+    /** The identifier of the model to activate. */
+    val modelId: String,
 )
 
 /**
