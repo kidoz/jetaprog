@@ -4,8 +4,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -87,6 +90,13 @@ public class GitViewModel(
     /** The observable panel state. */
     public val state: StateFlow<GitState> = _state.asStateFlow()
 
+    private val _diffFocus = MutableSharedFlow<String>(extraBufferCapacity = 1)
+
+    /**
+     * Emits a repository-relative path when the version-control diff should take the editor area.
+     */
+    public val diffFocus: SharedFlow<String> = _diffFocus.asSharedFlow()
+
     init {
         refresh()
     }
@@ -160,6 +170,37 @@ public class GitViewModel(
         service
             .log(LOG_LIMIT)
             .onSuccess { log -> _state.update { it.copy(commitLog = log) } }
+    }
+
+    /**
+     * Shows the working-tree diff for [relativePath] in the version-control perspective.
+     *
+     * The unstaged change wins when the file is both staged and unstaged. When Git
+     * has no change for the path, [GitState.error] names it and the diff stays unselected.
+     */
+    public fun openWorkingTreeDiff(relativePath: String) {
+        val normalized = relativePath.replace('\\', '/').trimStart('/')
+        _diffFocus.tryEmit(normalized)
+        scope.launch {
+            service
+                .status()
+                .onSuccess { status ->
+                    val match = matchingGitChange(status.changes, normalized)
+                    _state.update {
+                        it.copy(
+                            isRepository = true,
+                            isBusy = false,
+                            branch = status.branch ?: it.branch,
+                            ahead = status.ahead,
+                            behind = status.behind,
+                            staged = status.staged,
+                            unstaged = status.unstaged,
+                            error = if (match == null) "No Git diff for $normalized" else null,
+                        )
+                    }
+                    if (match != null) select(match)
+                }.onFailure { error -> fail(error) }
+        }
     }
 
     /** Selects a change and loads its diff. */
@@ -391,4 +432,32 @@ public class GitViewModel(
     private companion object {
         const val LOG_LIMIT = 50
     }
+}
+
+/**
+ * Repository-relative path of [absolutePath] inside [projectPath].
+ *
+ * The Git diff viewer addresses files this way. A path outside the project is
+ * returned unchanged.
+ */
+internal fun repositoryRelativePath(
+    projectPath: String,
+    absolutePath: String,
+): String {
+    val root = projectPath.trimEnd('/', '\\').replace('\\', '/')
+    val full = absolutePath.replace('\\', '/')
+    if (!full.startsWith("$root/")) return full.trimStart('/')
+    return full.removePrefix("$root/")
+}
+
+/**
+ * Prefers the unstaged working-tree change when a path is both staged and unstaged.
+ */
+internal fun matchingGitChange(
+    changes: List<GitChange>,
+    relativePath: String,
+): GitChange? {
+    val normalized = relativePath.replace('\\', '/').trimStart('/')
+    val same = changes.filter { it.path.replace('\\', '/') == normalized }
+    return same.firstOrNull { !it.staged } ?: same.firstOrNull()
 }

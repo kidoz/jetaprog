@@ -30,6 +30,11 @@ internal class AgentFileSnapshots {
         snapshots.getOrPut(path) { ArrayDeque() }.addLast(snapshot)
     }
 
+    /** Drops every snapshot for [path]. A checkpoint restore owns the file after this. */
+    fun drop(path: String) {
+        snapshots.remove(path)
+    }
+
     /** Removes and returns the most recent snapshot for [path], if any. */
     fun pop(path: String): FileSnapshot? {
         val queue = snapshots[path] ?: return null

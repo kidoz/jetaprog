@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Build
@@ -51,6 +52,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -262,12 +265,17 @@ internal fun CodeBlock(
     )
 }
 
-/** A proposed-diff card with an inline hunk and accept/reject actions. */
+/**
+ * A proposed-diff card with a short hunk, accept/reject actions, and a link to the IDE diff.
+ *
+ * The hunk is capped, so [onOpen] is how a large change is reviewed.
+ */
 @Composable
 internal fun ProposedDiffCard(
     block: Block.Diff,
     onAccept: () -> Unit,
     onReject: () -> Unit,
+    onOpen: () -> Unit,
 ) {
     val shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp)
     Column(
@@ -308,12 +316,12 @@ internal fun ProposedDiffCard(
         Column(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs.dp)) {
             block.lines.forEach { DiffLineRow(it) }
         }
-        if (block.decision == DiffDecision.PROPOSED) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(Spacing.md.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
-            ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(Spacing.md.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+        ) {
+            if (block.decision == DiffDecision.PROPOSED) {
                 PillButton(
                     "Accept",
                     Icons.Default.Check,
@@ -330,7 +338,17 @@ internal fun ProposedDiffCard(
                     iconTint = LocalIntelliJColors.current.diffRemovedText,
                     bordered = true,
                 )
-                Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.weight(1f))
+            Box(Modifier.semantics { contentDescription = "Open in diff" }) {
+                PillButton(
+                    text = "Open",
+                    icon = Icons.AutoMirrored.Filled.OpenInNew,
+                    background = LocalIntelliJColors.current.buttonBackground,
+                    foreground = LocalIntelliJColors.current.textPrimary,
+                    onClick = onOpen,
+                    bordered = true,
+                )
             }
         }
     }

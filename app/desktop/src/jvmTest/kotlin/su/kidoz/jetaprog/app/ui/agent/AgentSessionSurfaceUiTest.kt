@@ -146,6 +146,57 @@ class AgentSessionSurfaceUiTest {
     }
 
     @Test
+    fun checkpointRestoreAndOpenDiffAreShown() {
+        for (dark in listOf(true, false)) {
+            val intents = mutableListOf<AgentIntent>()
+            runComposeUiTest {
+                setContent {
+                    JetaProgTheme(darkTheme = dark) {
+                        Box(Modifier.size(480.dp, 640.dp)) {
+                            AgentSurfaceContent(
+                                state = checkpointState(streaming = false),
+                                dispatch = { intents += it },
+                                showRail = false,
+                            )
+                        }
+                    }
+                }
+                onNodeWithText("Restore").assertIsDisplayed()
+                onNodeWithText("Open").assertIsDisplayed()
+                onNodeWithText("Restore").performClick()
+                onNodeWithText("Open").performClick()
+                if (dark) onRoot().saveUiArtifacts("agent-checkpoint-diff")
+            }
+            assertEquals(
+                listOf(
+                    AgentIntent.EnsureConnected,
+                    AgentIntent.RestoreCheckpoint("user"),
+                    AgentIntent.OpenDiff("d1"),
+                ),
+                intents,
+            )
+        }
+    }
+
+    @Test
+    fun restoreIsHiddenWhileATurnIsStreaming() {
+        runComposeUiTest {
+            setContent {
+                JetaProgTheme {
+                    Box(Modifier.size(480.dp, 320.dp)) {
+                        AgentSurfaceContent(
+                            state = checkpointState(streaming = true),
+                            dispatch = {},
+                            showRail = false,
+                        )
+                    }
+                }
+            }
+            onNodeWithText("Restore").assertDoesNotExist()
+        }
+    }
+
+    @Test
     fun enterSendsShiftEnterDoesNotAndCtrlEnterSteers() {
         val enter = composerKeys { pressKey(Key.Enter) }
         assertTrue(enter.contains(AgentIntent.Send("hello")), enter.toString())
@@ -190,6 +241,34 @@ class AgentSessionSurfaceUiTest {
         }
         return intents
     }
+
+    private fun checkpointState(streaming: Boolean): AgentUiState =
+        AgentUiState(
+            connection = AgentConnection.CONNECTED,
+            isStreaming = streaming,
+            turns =
+                listOf(
+                    Turn.User(id = "user", text = "Build it", timeLabel = "now", canRestore = true),
+                    Turn.Agent(
+                        id = "agent",
+                        timeLabel = "now",
+                        blocks =
+                            listOf(
+                                Block.Diff(
+                                    id = "d1",
+                                    fileName = "Reader.kt",
+                                    path = "src",
+                                    added = 1,
+                                    removed = 0,
+                                    lines = listOf(DiffLine(1, '+', "val x = 1", DiffLineKind.ADDED)),
+                                    decision = DiffDecision.PROPOSED,
+                                    absolutePath = "/proj/src/Reader.kt",
+                                    oldText = "",
+                                ),
+                            ),
+                    ),
+                ),
+        )
 
     private fun composerState(): AgentUiState =
         AgentUiState(

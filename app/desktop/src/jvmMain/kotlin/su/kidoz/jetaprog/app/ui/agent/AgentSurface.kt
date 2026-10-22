@@ -65,6 +65,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -401,7 +403,7 @@ private fun Conversation(
                             .padding(horizontal = Spacing.xl.dp - 2.dp),
                 ) {
                     when (turn) {
-                        is Turn.User -> UserTurnView(turn)
+                        is Turn.User -> UserTurnView(turn, state.isStreaming, dispatch)
                         is Turn.Agent -> AgentTurnView(turn, dispatch)
                     }
                 }
@@ -411,7 +413,11 @@ private fun Conversation(
 }
 
 @Composable
-private fun UserTurnView(turn: Turn.User) {
+private fun UserTurnView(
+    turn: Turn.User,
+    streaming: Boolean,
+    dispatch: (AgentIntent) -> Unit,
+) {
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
         Box(
             modifier = Modifier.size(24.dp).clip(CircleShape).background(LocalIntelliJColors.current.accentMuted),
@@ -421,6 +427,7 @@ private fun UserTurnView(turn: Turn.User) {
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs.dp)) {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
@@ -431,8 +438,23 @@ private fun UserTurnView(turn: Turn.User) {
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(turn.timeLabel, color = LocalIntelliJColors.current.textMuted, fontSize = 11.sp)
+                if (turn.canRestore && !streaming) {
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "Restore",
+                        color = LocalIntelliJColors.current.accent,
+                        fontSize = 11.sp,
+                        modifier =
+                            Modifier
+                                .semantics { contentDescription = "Restore checkpoint" }
+                                .clickable { dispatch(AgentIntent.RestoreCheckpoint(turn.id)) },
+                    )
+                }
             }
             Text(turn.text, color = LocalIntelliJColors.current.textPrimary, fontSize = 13.sp)
+            turn.restoreNotice?.let { notice ->
+                Text(notice, color = LocalIntelliJColors.current.textMuted, fontSize = 11.sp)
+            }
             if (turn.context.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp)) {
                     turn.context.forEach { ContextChip(it) }
@@ -520,6 +542,7 @@ private fun BlockView(
                 block = block,
                 onAccept = { dispatch(AgentIntent.AcceptDiff(block.id)) },
                 onReject = { dispatch(AgentIntent.RejectDiff(block.id)) },
+                onOpen = { dispatch(AgentIntent.OpenDiff(block.id)) },
             )
         }
 

@@ -437,6 +437,11 @@ private fun MainScreenContent(
     LaunchedEffect(selectedActivityItem) {
         session.panelLayout.update { it.copy(sidebarItem = selectedActivityItem?.name) }
     }
+    LaunchedEffect(session) {
+        session.gitViewModel.diffFocus.collect {
+            onSelectedActivityItemChange(ActivityBarItem.VCS)
+        }
+    }
 
     // Unified bottom tool window (Terminal / Build / Problems). null = hidden.
     var selectedBottomTab by remember(session) {

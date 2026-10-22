@@ -64,6 +64,7 @@ import su.kidoz.jetaprog.app.viewmodel.IdeMcpEndpoint
 import su.kidoz.jetaprog.app.viewmodel.TerminalViewModel
 import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
 import su.kidoz.jetaprog.app.viewmodel.editorSnippet
+import su.kidoz.jetaprog.app.viewmodel.repositoryRelativePath
 import su.kidoz.jetaprog.build.gradle.execution.JvmGradleExecutionService
 import su.kidoz.jetaprog.build.gradle.importer.GradleClasspathResolver
 import su.kidoz.jetaprog.build.gradle.importer.GradleImportModel
@@ -80,6 +81,7 @@ import su.kidoz.jetaprog.dap.service.DebugService
 import su.kidoz.jetaprog.database.DatabaseProfileStore
 import su.kidoz.jetaprog.database.JvmDatabaseExecutionService
 import su.kidoz.jetaprog.database.SessionDatabaseCredentialStore
+import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.navigation.NavigationHistory
 import su.kidoz.jetaprog.editor.navigation.NavigationService
 import su.kidoz.jetaprog.editor.navigation.SearchScope
@@ -613,6 +615,18 @@ public class ProjectSession(
                         val label = path.substringAfterLast('/').substringAfterLast('\\').ifBlank { result.target.name }
                         MentionMatch(label = label, path = path)
                     }
+            },
+            openInIdeDiff = { absolutePath ->
+                gitViewModel.openWorkingTreeDiff(repositoryRelativePath(projectPath, absolutePath))
+            },
+            isEditorDirty = { absolutePath ->
+                val uri = DocumentUri.file(absolutePath)
+                editorViewModel.state.value.tabs
+                    .any { it.uri == uri && it.isDirty }
+            },
+            onWorkspaceFilesChanged = { paths ->
+                paths.forEach { path -> editorViewModel.dispatch(EditorIntent.ReloadFile(path)) }
+                gitViewModel.refreshIfIdle()
             },
         )
 

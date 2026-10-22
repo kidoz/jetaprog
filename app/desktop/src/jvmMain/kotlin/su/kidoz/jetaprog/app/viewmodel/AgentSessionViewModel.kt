@@ -58,10 +58,13 @@ import su.kidoz.jetaprog.app.agent.AgentFileSnapshots
 import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
 import su.kidoz.jetaprog.app.agent.AgentHistoryRole
 import su.kidoz.jetaprog.app.agent.AgentHistoryStore
+import su.kidoz.jetaprog.app.agent.AgentMessageCheckpoints
 import su.kidoz.jetaprog.app.agent.AgentPrefs
 import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.agent.CheckpointSkip
 import su.kidoz.jetaprog.app.agent.FileSnapshot
+import su.kidoz.jetaprog.app.agent.checkpointNotice
 import su.kidoz.jetaprog.app.agent.toModelOption
 import su.kidoz.jetaprog.app.ui.agent.AgentCommand
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
@@ -112,6 +115,10 @@ import java.util.UUID
  * @param transportFactory launches the configured agent transport; injectable for protocol testing.
  * @param editorContext reads the active editor file and selection when the user attaches context.
  * @param mentionSearch finds project files for an `@` query. Blank queries are not passed.
+ * @param openInIdeDiff opens an absolute project path in the version-control diff viewer.
+ * @param isEditorDirty reports an unsaved editor buffer for an absolute path. Those files are skipped
+ *   by a checkpoint restore.
+ * @param onWorkspaceFilesChanged tells the editor and Git panel that these absolute paths were rewritten.
  */
 public class AgentSessionViewModel(
     private val projectPath: String,
@@ -123,6 +130,9 @@ public class AgentSessionViewModel(
     },
     private val editorContext: () -> EditorSnippet? = { null },
     private val mentionSearch: suspend (String) -> List<MentionMatch> = { emptyList() },
+    private val openInIdeDiff: (String) -> Unit = {},
+    private val isEditorDirty: (String) -> Boolean = { false },
+    private val onWorkspaceFilesChanged: (List<String>) -> Unit = {},
 ) : Disposable,
     AcpClientHandler {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -170,8 +180,11 @@ public class AgentSessionViewModel(
     /** Ends a stopped turn if the agent never answers the cancellation. */
     private var stopFallbackJob: Job? = null
 
-    /** Pre-write file contents used to revert agent edits. */
+    /** Pre-write file contents used to revert a single agent edit. */
     private val fileSnapshots = AgentFileSnapshots()
+
+    /** File baselines taken at each user message. Not persisted. */
+    private val checkpoints = AgentMessageCheckpoints()
 
     /** Paths whose edit permission was already granted for an upcoming write. */
     private val approvedEditPaths = mutableMapOf<String, Int>()
@@ -261,6 +274,14 @@ public class AgentSessionViewModel(
 
             is AgentIntent.RejectDiff -> {
                 decideDiff(intent.blockId, accept = false)
+            }
+
+            is AgentIntent.OpenDiff -> {
+                openDiff(intent.blockId)
+            }
+
+            is AgentIntent.RestoreCheckpoint -> {
+                restoreCheckpoint(intent.turnId)
             }
 
             AgentIntent.AcceptAll -> {
@@ -432,7 +453,7 @@ public class AgentSessionViewModel(
             if (_state.value.restoration is SessionRestoration.TranscriptOnly) {
                 // A fresh agent context must have its own transcript and saved record.
                 recordId = null
-                fileSnapshots.clear()
+                clearFileMemory()
                 _state.update { it.copy(turns = emptyList(), restoration = null) }
             }
             applySessionModels(session.models)
@@ -548,11 +569,13 @@ public class AgentSessionViewModel(
             val activeSession = ensureSession(acpClient) ?: return null
             val generation = ++turnGeneration
             if (clearComposer) mentionGeneration++
+            val userId = nextId("usr")
+            checkpoints.begin(userId)
             _state.update {
                 it.copy(
                     turns =
                         it.turns +
-                            Turn.User(nextId("usr"), text, "now", attachments.map(::chipLabel)) +
+                            Turn.User(userId, text, "now", attachments.map(::chipLabel)) +
                             Turn.Agent(nextId("agt"), "now", emptyList()),
                     isStreaming = true,
                     error = null,
@@ -883,7 +906,7 @@ public class AgentSessionViewModel(
             runCatching { acpClient.cancel(previousSession) }
         }
         archiveConversation()
-        fileSnapshots.clear()
+        clearFileMemory()
         sessionId = null
         conversationSessionId = null
         clearSessionSurface()
@@ -914,7 +937,7 @@ public class AgentSessionViewModel(
         if (wasStreaming && acpClient != null && previousSession != null) {
             runCatching { acpClient.cancel(previousSession) }
         }
-        fileSnapshots.clear()
+        clearFileMemory()
         sessionId = null
         conversationSessionId = null
         clearSessionSurface()
@@ -941,7 +964,7 @@ public class AgentSessionViewModel(
         val previousSession = sessionId
         val wasStreaming = _state.value.isStreaming
         invalidateTurn()
-        fileSnapshots.clear()
+        clearFileMemory()
         _state.update { it.copy(isStreaming = false, presence = null) }
         if (wasStreaming && acpClient != null && previousSession != null) {
             runCatching { acpClient.cancel(previousSession) }
@@ -1142,6 +1165,7 @@ public class AgentSessionViewModel(
                     )
                 }.joinToString("\n")
         val toolStatus = toolStatusOf(status)
+        var createdExecute = false
         mutateAgentTurn { blocks ->
             val stopped = stopStreaming(blocks)
             val index = stopped.indexOfFirst { it is Block.Tool && it.id == id }
@@ -1157,6 +1181,7 @@ public class AgentSessionViewModel(
                             )
                     }
                 } else {
+                    if (kind == ToolKind.EXECUTE) createdExecute = true
                     stopped +
                         Block.Tool(
                             id = id,
@@ -1171,6 +1196,10 @@ public class AgentSessionViewModel(
             content.filter { it.type == "diff" }.foldIndexed(updated) { index, acc, diff ->
                 upsertDiff(acc, id, index, diff)
             }
+        }
+        if (createdExecute) {
+            checkpoints.noteCommand()
+            publishCheckpointFlags()
         }
         updatePresence(kind, toolStatus, location)
     }
@@ -1285,7 +1314,133 @@ public class AgentSessionViewModel(
             }
             return
         }
+        checkpoints.noteDisk(path, snapshot)
         setDiffsDecision(diff, DiffDecision.REJECTED)
+    }
+
+    /**
+     * Opens [blockId] in the version-control diff. The path must stay inside the project.
+     */
+    private fun openDiff(blockId: String) {
+        val diff = allDiffs().firstOrNull { it.id == blockId } ?: return
+        val path = runCatching { pathGuard.resolve(diff.absolutePath) }.getOrNull()
+        if (path == null) {
+            _state.update { it.copy(error = "Cannot open ${diff.fileName}: the path is outside the project") }
+            return
+        }
+        openInIdeDiff(path)
+    }
+
+    /**
+     * Restores files to the checkpoint on [turnId] and leaves every message in place.
+     */
+    private suspend fun restoreCheckpoint(turnId: String) {
+        if (_state.value.isStreaming) {
+            _state.update { it.copy(error = "Wait until the agent finishes before restoring files.") }
+            return
+        }
+        val paths = checkpoints.candidatePaths(turnId) ?: return
+        val current = mutableMapOf<String, FileSnapshot?>()
+        paths.forEach { path -> current[path] = currentSnapshot(path) }
+        val plan = checkpoints.plan(turnId, current, isEditorDirty) ?: return
+        val restored = mutableListOf<String>()
+        val restoredPaths = mutableListOf<String>()
+        val skipped = plan.skipped.map { (path, reason) -> fileName(path) to reason }.toMutableList()
+        plan.restore.forEach { (path, snapshot) ->
+            val result =
+                if (snapshot.existed) {
+                    fileSystem.writeText(path, snapshot.content.orEmpty())
+                } else {
+                    fileSystem.delete(path)
+                }
+            result
+                .onSuccess {
+                    checkpoints.noteDisk(path, snapshot)
+                    fileSnapshots.drop(path)
+                    restored += fileName(path)
+                    restoredPaths += path
+                }.onFailure {
+                    skipped += fileName(path) to CheckpointSkip.FAILED
+                }
+        }
+        markDiffsRestored(turnId, restoredPaths.toSet())
+        val notice = checkpointNotice(restored, skipped, plan.commandsRan).ifBlank { null }
+        _state.update { st ->
+            st.copy(
+                error = null,
+                turns =
+                    st.turns.map { turn ->
+                        if (turn is Turn.User && turn.id == turnId) turn.copy(restoreNotice = notice) else turn
+                    },
+            )
+        }
+        if (restoredPaths.isNotEmpty()) onWorkspaceFilesChanged(restoredPaths)
+    }
+
+    /** The file as it is on disk, or null when the read fails. */
+    private suspend fun currentSnapshot(path: String): FileSnapshot? {
+        if (!fileSystem.exists(path)) return FileSnapshot(existed = false, content = null)
+        return fileSystem.readText(path).fold(
+            onSuccess = { FileSnapshot(existed = true, content = it) },
+            onFailure = { null },
+        )
+    }
+
+    /** Marks diffs for [paths] that follow [turnId] as reverted. The transcript stays. */
+    private fun markDiffsRestored(
+        turnId: String,
+        paths: Set<String>,
+    ) {
+        if (paths.isEmpty()) return
+        val start = _state.value.turns.indexOfFirst { it.id == turnId }
+        if (start < 0) return
+        _state.update { st ->
+            st.copy(
+                turns =
+                    st.turns.mapIndexed { index, turn ->
+                        if (index <= start || turn !is Turn.Agent) {
+                            turn
+                        } else {
+                            turn.copy(
+                                blocks =
+                                    turn.blocks.map { block ->
+                                        if (block is Block.Diff && resolvedPath(block.absolutePath) in paths) {
+                                            block.copy(decision = DiffDecision.REJECTED)
+                                        } else {
+                                            block
+                                        }
+                                    },
+                            )
+                        }
+                    },
+            )
+        }
+    }
+
+    private fun resolvedPath(path: String): String? = runCatching { pathGuard.resolve(path) }.getOrNull()
+
+    private fun fileName(path: String): String = path.substringAfterLast('/').substringAfterLast('\\')
+
+    /** Shows Restore on every user message whose checkpoint can still roll files back. */
+    private fun publishCheckpointFlags() {
+        val ids = checkpoints.restorableTurnIds()
+        _state.update { st ->
+            st.copy(
+                turns =
+                    st.turns.map { turn ->
+                        if (turn is Turn.User && checkpoints.has(turn.id) && turn.canRestore != (turn.id in ids)) {
+                            turn.copy(canRestore = turn.id in ids)
+                        } else {
+                            turn
+                        }
+                    },
+            )
+        }
+    }
+
+    private fun clearFileMemory() {
+        fileSnapshots.clear()
+        checkpoints.clear()
     }
 
     private suspend fun decideAll(accept: Boolean) {
@@ -1409,12 +1564,14 @@ public class AgentSessionViewModel(
                 message = "The user denied writing ${File(path).name}",
             )
         }
-        captureSnapshot(path)
+        val before = captureSnapshot(path)
         fileSystem.writeText(path, request.content).getOrElse { error ->
             // The write did not happen, so the snapshot must not outlive it.
             fileSnapshots.pop(path)
             throw error
         }
+        checkpoints.noteWrite(path, before, request.content)
+        publishCheckpointFlags()
     }
 
     /**
@@ -1434,7 +1591,7 @@ public class AgentSessionViewModel(
      * Saves the current contents of [path] before an agent write so a rejected
      * diff can restore the whole file rather than a single hunk.
      */
-    private suspend fun captureSnapshot(path: String) {
+    private suspend fun captureSnapshot(path: String): FileSnapshot {
         val existed = fileSystem.exists(path)
         val content =
             if (existed) {
@@ -1447,7 +1604,9 @@ public class AgentSessionViewModel(
             } else {
                 null
             }
-        fileSnapshots.push(path, FileSnapshot(existed, content))
+        val snapshot = FileSnapshot(existed, content)
+        fileSnapshots.push(path, snapshot)
+        return snapshot
     }
 
     /**
@@ -1559,7 +1718,7 @@ public class AgentSessionViewModel(
         client = null
         sessionId = null
         invalidateTurn()
-        fileSnapshots.clear()
+        clearFileMemory()
         if (openClient != null) {
             shutdownScope.launch { runCatching { openClient.close() } }
         }

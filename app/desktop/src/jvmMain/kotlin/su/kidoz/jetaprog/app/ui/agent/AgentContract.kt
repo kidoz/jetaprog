@@ -399,6 +399,8 @@ public sealed interface Turn {
      * @property text The message text.
      * @property timeLabel A relative time label.
      * @property context Names of any attached context files.
+     * @property canRestore Whether this message has a file checkpoint that can be restored.
+     * @property restoreNotice What the last restore of this message changed or skipped.
      */
     @Immutable
     public data class User(
@@ -406,6 +408,8 @@ public sealed interface Turn {
         val text: String,
         val timeLabel: String,
         val context: List<String> = emptyList(),
+        val canRestore: Boolean = false,
+        val restoreNotice: String? = null,
     ) : Turn
 
     /**
@@ -607,6 +611,26 @@ public sealed interface AgentIntent {
     /** Reject (and revert) the proposed diff with the given block id. */
     public data class RejectDiff(
         val blockId: String,
+    ) : AgentIntent
+
+    /**
+     * Open the diff with [blockId] in the IDE's version-control diff viewer.
+     *
+     * The inline card stays a short summary. The viewer shows the working tree against HEAD.
+     */
+    public data class OpenDiff(
+        val blockId: String,
+    ) : AgentIntent
+
+    /**
+     * Roll project files back to their state at the user message [turnId].
+     *
+     * The transcript stays. Files edited by hand after the agent wrote them, files
+     * whose contents cannot be read, and files a command changed are left in place.
+     * The turn's restore notice names what was restored and what was skipped.
+     */
+    public data class RestoreCheckpoint(
+        val turnId: String,
     ) : AgentIntent
 
     /** Accept all pending diffs in the current turn. */
