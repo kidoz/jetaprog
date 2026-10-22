@@ -134,14 +134,23 @@ internal fun AgentSurfaceContent(
         if (state.connection == AgentConnection.ERROR) {
             AgentConnectionError(state, dispatch)
         } else if (state.error != null) {
-            AgentRunError(state.error.orEmpty())
+            AgentStatusMessage(state.error.orEmpty())
         }
+        state.restoration?.let { AgentRestorationNotice(it) }
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                if (state.turns.isEmpty()) {
-                    EmptyState(dispatch)
-                } else {
-                    Conversation(state, dispatch)
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                if (state.plan.isNotEmpty()) {
+                    PlanCard(
+                        steps = state.plan,
+                        modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
+                    )
+                }
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    if (state.turns.isEmpty()) {
+                        EmptyState(dispatch)
+                    } else {
+                        Conversation(state, dispatch)
+                    }
                 }
             }
             if (showRail) SessionChangesRail(state, dispatch)
@@ -177,7 +186,7 @@ private fun AgentConnectionError(
 }
 
 @Composable
-private fun AgentRunError(message: String) {
+private fun AgentStatusMessage(message: String) {
     Row(
         modifier =
             Modifier
@@ -193,6 +202,25 @@ private fun AgentRunError(message: String) {
             modifier = Modifier.weight(1f),
         )
     }
+}
+
+@Composable
+internal fun AgentRestorationNotice(restoration: SessionRestoration) {
+    val message =
+        when (restoration) {
+            SessionRestoration.Loading -> {
+                "Restoring conversation…"
+            }
+
+            SessionRestoration.Resumed -> {
+                "Conversation resumed. The agent has the previous context."
+            }
+
+            is SessionRestoration.TranscriptOnly -> {
+                "Transcript only. ${restoration.reason} Your next message starts a new chat."
+            }
+        }
+    AgentStatusMessage(message)
 }
 
 @Composable
@@ -602,7 +630,7 @@ private fun AgentComposer(
 ) {
     val input = state.composerInput
     val send: () -> Unit = {
-        if (input.isNotBlank()) {
+        if (input.isNotBlank() && state.restoration != SessionRestoration.Loading) {
             dispatch(AgentIntent.Send(input.trim()))
         }
     }
@@ -621,6 +649,7 @@ private fun AgentComposer(
                     ).padding(Spacing.md.dp),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
+            SlashCommandMenu(input, state.commands, dispatch)
             Box(modifier = Modifier.fillMaxWidth().height(38.dp)) {
                 if (input.isEmpty()) {
                     Text(
@@ -646,14 +675,122 @@ private fun AgentComposer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
+                if (state.mode != null) {
+                    ModePickerChip(state, dispatch)
+                }
                 Spacer(Modifier.weight(1f))
                 if (state.availableModels.isNotEmpty()) {
                     ModelPickerChip(state, dispatch)
                 }
                 SendButton(
-                    enabled = input.isNotBlank() && state.connection != AgentConnection.CONNECTING,
+                    enabled =
+                        input.isNotBlank() && state.connection != AgentConnection.CONNECTING &&
+                            state.restoration != SessionRestoration.Loading,
                     onClick = send,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlashCommandMenu(
+    input: String,
+    commands: List<AgentCommand>,
+    dispatch: (AgentIntent) -> Unit,
+) {
+    val query = slashCommandQuery(input) ?: return
+    val matches = commands.filter { it.name.startsWith(query, ignoreCase = true) }
+    if (matches.isEmpty()) return
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = Dimensions.popupListMaxHeight.dp)
+                .verticalScroll(rememberScrollState()),
+    ) {
+        matches.forEach { command ->
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(Dimensions.popupRowHeightCompact.dp)
+                        .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
+                        .clickable { dispatch(AgentIntent.SetComposerInput("/${command.name} ")) }
+                        .padding(horizontal = Spacing.sm.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+            ) {
+                Text(
+                    text = "/${command.name}",
+                    color = LocalIntelliJColors.current.textPrimary,
+                    fontSize = 12.sp,
+                )
+                val description = command.description
+                if (!description.isNullOrBlank()) {
+                    Text(
+                        text = description,
+                        color = LocalIntelliJColors.current.textMuted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModePickerChip(
+    state: AgentUiState,
+    dispatch: (AgentIntent) -> Unit,
+) {
+    val mode = state.mode ?: return
+    var open by remember { mutableStateOf(false) }
+    var anchorHeightPx by remember { mutableStateOf(0) }
+    val canSwitch = state.availableModes.size > 1
+    Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
+        Row(
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                    .background(LocalIntelliJColors.current.background)
+                    .border(
+                        1.dp,
+                        LocalIntelliJColors.current.agentCardBorder,
+                        RoundedCornerShape(Dimensions.cornerRadius.dp),
+                    ).clickable(enabled = canSwitch) { open = true }
+                    .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
+        ) {
+            Text(mode.name, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
+            if (canSwitch) {
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Session mode",
+                    tint = LocalIntelliJColors.current.textMuted,
+                    modifier = Modifier.size(Dimensions.iconSm.dp),
+                )
+            }
+        }
+        PopupChromeMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            offsetY = anchorHeightPx,
+        ) {
+            state.availableModes.forEach { option ->
+                PopupListRow(
+                    selected = option.id == mode.id,
+                    height = Dimensions.popupRowHeightCompact.dp,
+                    onClick = {
+                        dispatch(AgentIntent.SetMode(option.id))
+                        open = false
+                    },
+                ) {
+                    Text(option.name, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+                }
             }
         }
     }

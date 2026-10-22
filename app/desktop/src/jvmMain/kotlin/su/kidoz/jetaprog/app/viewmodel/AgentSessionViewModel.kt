@@ -5,8 +5,10 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -26,6 +29,8 @@ import su.kidoz.jetaprog.acp.client.StdioAcpTransport
 import su.kidoz.jetaprog.acp.client.StdioAgentConfig
 import su.kidoz.jetaprog.acp.protocol.AcpError
 import su.kidoz.jetaprog.acp.protocol.AcpRequestException
+import su.kidoz.jetaprog.acp.protocol.AcpTransport
+import su.kidoz.jetaprog.acp.protocol.AvailableCommand
 import su.kidoz.jetaprog.acp.protocol.ClientCapabilities
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
 import su.kidoz.jetaprog.acp.protocol.FileSystemCapability
@@ -35,10 +40,13 @@ import su.kidoz.jetaprog.acp.protocol.McpServer
 import su.kidoz.jetaprog.acp.protocol.PermissionOptionKind
 import su.kidoz.jetaprog.acp.protocol.PermissionOutcome
 import su.kidoz.jetaprog.acp.protocol.PermissionToolCall
+import su.kidoz.jetaprog.acp.protocol.PlanEntry
 import su.kidoz.jetaprog.acp.protocol.ReadTextFileRequest
 import su.kidoz.jetaprog.acp.protocol.ReadTextFileResponse
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionResponse
+import su.kidoz.jetaprog.acp.protocol.SessionMode
+import su.kidoz.jetaprog.acp.protocol.SessionModeState
 import su.kidoz.jetaprog.acp.protocol.SessionModelState
 import su.kidoz.jetaprog.acp.protocol.SessionNotification
 import su.kidoz.jetaprog.acp.protocol.SessionUpdate
@@ -55,6 +63,7 @@ import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 import su.kidoz.jetaprog.app.agent.FileSnapshot
 import su.kidoz.jetaprog.app.agent.toModelOption
+import su.kidoz.jetaprog.app.ui.agent.AgentCommand
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
@@ -62,10 +71,14 @@ import su.kidoz.jetaprog.app.ui.agent.Block
 import su.kidoz.jetaprog.app.ui.agent.DiffDecision
 import su.kidoz.jetaprog.app.ui.agent.DiffLine
 import su.kidoz.jetaprog.app.ui.agent.DiffLineKind
+import su.kidoz.jetaprog.app.ui.agent.ModeOption
 import su.kidoz.jetaprog.app.ui.agent.ModelOption
 import su.kidoz.jetaprog.app.ui.agent.PermissionKind
 import su.kidoz.jetaprog.app.ui.agent.PermissionPolicy
+import su.kidoz.jetaprog.app.ui.agent.PlanStep
+import su.kidoz.jetaprog.app.ui.agent.PlanStepStatus
 import su.kidoz.jetaprog.app.ui.agent.Presence
+import su.kidoz.jetaprog.app.ui.agent.SessionRestoration
 import su.kidoz.jetaprog.app.ui.agent.ToolStatus
 import su.kidoz.jetaprog.app.ui.agent.Turn
 import su.kidoz.jetaprog.common.Disposable
@@ -88,12 +101,16 @@ import java.util.UUID
  * @param ideMcpEndpoint supplies the IDE's embedded MCP server so the agent can use the
  *   IDE's own tools; returns null when the server is not running.
  * @param defaultAgentCommand the command used to launch the agent process.
+ * @param transportFactory launches the configured agent transport; injectable for protocol testing.
  */
 public class AgentSessionViewModel(
     private val projectPath: String,
     private val fileSystem: FileSystem,
     private val ideMcpEndpoint: () -> IdeMcpEndpoint? = { null },
     defaultAgentCommand: String = DEFAULT_CLAUDE_CODE_COMMAND,
+    private val transportFactory: suspend (StdioAgentConfig) -> AcpTransport = { config ->
+        StdioAcpTransport(config).also { it.start() }
+    },
 ) : Disposable,
     AcpClientHandler {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -109,7 +126,17 @@ public class AgentSessionViewModel(
 
     private var client: AcpClient? = null
     private var sessionId: String? = null
+
+    /**
+     * Plan, mode, and commands that arrived before [sessionId] was known.
+     * Flushed once `session/new` returns that session.
+     */
+    private var pendingSurface: PendingSurface? = null
+
+    /** The transcript's agent session, retained when its connection closes. */
+    private var conversationSessionId: String? = null
     private var recordId: String? = null
+    private var sessionChangeJob: Job? = null
     private var seq = 0
     private val pendingApprovals = mutableMapOf<String, PendingApproval>()
 
@@ -153,13 +180,22 @@ public class AgentSessionViewModel(
 
     /** Dispatches a user [intent]. */
     public fun dispatch(intent: AgentIntent) {
-        scope.launch { handle(intent) }
+        if (intent is AgentIntent.RestoreSession || intent == AgentIntent.NewChat) {
+            sessionChangeJob?.cancel()
+            sessionChangeJob = scope.launch { sendMutex.withLock { handle(intent) } }
+        } else {
+            scope.launch { handle(intent) }
+        }
     }
 
     private suspend fun handle(intent: AgentIntent) {
         when (intent) {
             AgentIntent.EnsureConnected -> {
-                ensureConnected()
+                sendMutex.withLock {
+                    if (ensureConnected() && _state.value.restoration !is SessionRestoration.TranscriptOnly) {
+                        client?.let { ensureSession(it) }
+                    }
+                }
             }
 
             is AgentIntent.Send -> {
@@ -227,6 +263,10 @@ public class AgentSessionViewModel(
                 setModel(intent.modelId)
             }
 
+            is AgentIntent.SetMode -> {
+                setMode(intent.modeId)
+            }
+
             AgentIntent.ExpandToPerspective -> {
                 _state.update { it.copy(docked = false) }
                 persist()
@@ -263,6 +303,8 @@ public class AgentSessionViewModel(
                 openConnection()
                 true
             } catch (e: CancellationException) {
+                withContext(NonCancellable) { resetConnection() }
+                _state.update { it.copy(connection = AgentConnection.DISCONNECTED) }
                 throw e
             } catch (e: Exception) {
                 // Keep the connection failure visible even if shutting down the transport also fails.
@@ -278,19 +320,18 @@ public class AgentSessionViewModel(
         val openClient = client
         client = null
         sessionId = null
-        clearSessionModels()
+        clearSessionSurface()
         if (openClient != null) runCatching { openClient.close() }
     }
 
     private suspend fun openConnection() {
         val stdioTransport =
-            StdioAcpTransport(
+            transportFactory(
                 StdioAgentConfig(
                     command = agentCommand.split(Regex("\\s+")),
                     workingDirectory = projectPath,
                 ),
             )
-        stdioTransport.start()
 
         val acpClient =
             AcpClient(
@@ -309,17 +350,6 @@ public class AgentSessionViewModel(
         val initialize =
             withTimeoutOrNull(CONNECT_TIMEOUT_MS) { acpClient.initialize() }
                 ?: throw IllegalStateException("The agent did not respond to initialize")
-        // Hand the agent the IDE's own MCP endpoint so the in-panel agent sees the same
-        // workspace tools (diagnostics, git status, project context) as an external CLI.
-        val session =
-            withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
-                acpClient.newSession(
-                    cwd = projectPath,
-                    mcpServers = ideMcpServers(initialize.agentCapabilities.mcpCapabilities.http),
-                )
-            } ?: throw IllegalStateException("The agent did not create a session")
-        sessionId = session.sessionId
-        applySessionModels(session.models)
         _state.update {
             it.copy(
                 connection = AgentConnection.CONNECTED,
@@ -327,12 +357,16 @@ public class AgentSessionViewModel(
                 error = null,
             )
         }
-        applyPreferredModel(acpClient, session.sessionId)
     }
 
     /** Returns the active session, creating one after a chat reset or restore. */
     private suspend fun ensureSession(acpClient: AcpClient): String? {
         sessionId?.let { return it }
+        if (_state.value.turns.isNotEmpty() && _state.value.restoration !is SessionRestoration.TranscriptOnly) {
+            val record = conversationRecord()
+            if (record != null) restoreAgentSession(acpClient, record)
+            return sessionId
+        }
         return try {
             val session =
                 withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
@@ -348,7 +382,16 @@ public class AgentSessionViewModel(
                     )
                 } ?: throw IllegalStateException("The agent did not create a session")
             sessionId = session.sessionId
+            conversationSessionId = session.sessionId
+            if (_state.value.restoration is SessionRestoration.TranscriptOnly) {
+                // A fresh agent context must have its own transcript and saved record.
+                recordId = null
+                fileSnapshots.clear()
+                _state.update { it.copy(turns = emptyList(), restoration = null) }
+            }
             applySessionModels(session.models)
+            applySessionModes(session.modes)
+            flushPendingSurface(session.sessionId, applyMode = session.modes == null)
             applyPreferredModel(acpClient, session.sessionId)
             session.sessionId
         } catch (e: CancellationException) {
@@ -497,8 +540,9 @@ public class AgentSessionViewModel(
                 }
             st.copy(isStreaming = false, presence = null, turns = turns)
         }
-        // Persist the transcript once the turn settles (fire-and-forget).
-        scope.launch { archiveConversation() }
+        // Capture before another history action can replace the visible conversation.
+        val record = conversationRecord()
+        if (record != null) scope.launch { historyStore.save(record) }
     }
 
     private fun cancelPendingApprovals() {
@@ -521,6 +565,13 @@ public class AgentSessionViewModel(
      * skipped). Creates the record on first use and upserts afterwards.
      */
     private suspend fun archiveConversation() {
+        conversationRecord()?.let { historyStore.save(it) }
+    }
+
+    /** Captures only live conversations; viewing saved history must not rewrite it. */
+    private fun conversationRecord(): AgentSessionRecord? {
+        val restoration = _state.value.restoration
+        if (restoration is SessionRestoration.Loading || restoration is SessionRestoration.TranscriptOnly) return null
         val messages =
             _state.value.turns
                 .flatMap { turn ->
@@ -537,7 +588,7 @@ public class AgentSessionViewModel(
                         }
                     }
                 }.filter { it.text.isNotBlank() }
-        if (messages.none { it.role == AgentHistoryRole.USER }) return
+        if (messages.none { it.role == AgentHistoryRole.USER }) return null
 
         val id = recordId ?: UUID.randomUUID().toString().also { recordId = it }
         val title =
@@ -548,15 +599,13 @@ public class AgentSessionViewModel(
                 ?.trim()
                 ?.let { if (it.length > TITLE_MAX_CHARS) it.take(TITLE_MAX_CHARS) + "…" else it }
                 ?: "Agent session"
-        historyStore.save(
-            AgentSessionRecord(
-                id = id,
-                title = title,
-                projectPath = projectPath,
-                savedAtEpochMillis = System.currentTimeMillis(),
-                agentSessionId = sessionId,
-                messages = messages,
-            ),
+        return AgentSessionRecord(
+            id = id,
+            title = title,
+            projectPath = projectPath,
+            savedAtEpochMillis = System.currentTimeMillis(),
+            agentSessionId = conversationSessionId,
+            messages = messages,
         )
     }
 
@@ -572,15 +621,21 @@ public class AgentSessionViewModel(
         archiveConversation()
         fileSnapshots.clear()
         sessionId = null
-        clearSessionModels()
+        conversationSessionId = null
+        clearSessionSurface()
         recordId = null
         _state.update {
-            it.copy(turns = emptyList(), isStreaming = false, presence = null, error = null)
+            it.copy(turns = emptyList(), isStreaming = false, presence = null, error = null, restoration = null)
         }
     }
 
     /** Deletes a persisted conversation, clearing it when it is the active one. */
     private suspend fun deleteSession(recordIdToDelete: String) {
+        if (recordIdToDelete == recordId) sessionChangeJob?.cancelAndJoin()
+        sendMutex.withLock { deleteSessionRecord(recordIdToDelete) }
+    }
+
+    private suspend fun deleteSessionRecord(recordIdToDelete: String) {
         historyStore.remove(recordIdToDelete)
         if (recordIdToDelete != recordId) {
             _state.update { it.copy(sessionHistory = historyStore.list()) }
@@ -596,7 +651,8 @@ public class AgentSessionViewModel(
         }
         fileSnapshots.clear()
         sessionId = null
-        clearSessionModels()
+        conversationSessionId = null
+        clearSessionSurface()
         recordId = null
         _state.update {
             it.copy(
@@ -604,6 +660,7 @@ public class AgentSessionViewModel(
                 sessionHistory = historyStore.list(),
                 isStreaming = false,
                 presence = null,
+                restoration = null,
             )
         }
     }
@@ -623,36 +680,13 @@ public class AgentSessionViewModel(
         if (wasStreaming && acpClient != null && previousSession != null) {
             runCatching { acpClient.cancel(previousSession) }
         }
+        archiveConversation()
 
         // Drop updates while loading so the replayed history cannot duplicate the
         // restored transcript.
         sessionId = null
-        val loadedSession =
-            if (acpClient != null &&
-                acpClient.isOpen &&
-                record.agentSessionId != null &&
-                acpClient.initializeResponse?.agentCapabilities?.loadSession == true
-            ) {
-                withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
-                    runCatching {
-                        acpClient.loadSession(
-                            sessionId = record.agentSessionId,
-                            cwd = projectPath,
-                            mcpServers =
-                                ideMcpServers(
-                                    acpClient.initializeResponse
-                                        ?.agentCapabilities
-                                        ?.mcpCapabilities
-                                        ?.http == true,
-                                ),
-                        )
-                    }.getOrNull()
-                }
-            } else {
-                null
-            }
-        sessionId = if (loadedSession != null) record.agentSessionId else null
-        applySessionModels(loadedSession?.models)
+        conversationSessionId = record.agentSessionId
+        clearSessionSurface()
         recordId = record.id
 
         var counter = 0
@@ -674,8 +708,83 @@ public class AgentSessionViewModel(
                 }
             }
         _state.update {
-            it.copy(turns = turns, historyVisible = false, error = null, presence = null, isStreaming = false)
+            it.copy(
+                turns = turns,
+                historyVisible = false,
+                error = null,
+                presence = null,
+                isStreaming = false,
+                restoration = SessionRestoration.Loading,
+            )
         }
+        if (record.agentSessionId == null) {
+            transcriptOnly("This saved conversation has no agent session to resume.")
+        } else if (ensureConnected()) {
+            client?.let { restoreAgentSession(it, record) }
+        } else {
+            transcriptOnly("Could not reconnect to the agent.")
+        }
+    }
+
+    /** Reloads context without creating an unrelated session or duplicating replayed messages. */
+    private suspend fun restoreAgentSession(
+        acpClient: AcpClient,
+        record: AgentSessionRecord,
+    ) {
+        val savedSession = record.agentSessionId
+        if (savedSession == null) {
+            transcriptOnly("This saved conversation has no agent session to resume.")
+            return
+        }
+        if (acpClient.initializeResponse?.agentCapabilities?.loadSession != true) {
+            transcriptOnly("This agent does not support resuming saved conversations.")
+            return
+        }
+        _state.update { it.copy(restoration = SessionRestoration.Loading) }
+        try {
+            val loaded =
+                withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+                    acpClient.loadSession(
+                        sessionId = savedSession,
+                        cwd = projectPath,
+                        mcpServers =
+                            ideMcpServers(
+                                acpClient.initializeResponse
+                                    ?.agentCapabilities
+                                    ?.mcpCapabilities
+                                    ?.http == true,
+                            ),
+                    )
+                }
+            if (loaded == null) {
+                resetConnection()
+                _state.update { it.copy(connection = AgentConnection.DISCONNECTED) }
+                transcriptOnly("The agent did not finish restoring this conversation.")
+                return
+            }
+            sessionId = savedSession
+            conversationSessionId = savedSession
+            applySessionModels(loaded.models)
+            applySessionModes(loaded.modes)
+            flushPendingSurface(savedSession, applyMode = loaded.modes == null)
+            _state.update { it.copy(restoration = SessionRestoration.Resumed, error = null) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!acpClient.isOpen) {
+                resetConnection()
+                _state.update { it.copy(connection = AgentConnection.DISCONNECTED) }
+            }
+            transcriptOnly(
+                "Could not resume this conversation: ${e.message ?: "the agent rejected the saved session"}.",
+            )
+        }
+    }
+
+    private fun transcriptOnly(reason: String) {
+        sessionId = null
+        clearSessionSurface()
+        _state.update { it.copy(restoration = SessionRestoration.TranscriptOnly(reason)) }
     }
 
     // ------------------------------------------------------------------------
@@ -716,12 +825,20 @@ public class AgentSessionViewModel(
                 )
             }
 
-            is SessionUpdate.UserMessageChunk,
-            is SessionUpdate.Plan,
-            is SessionUpdate.AvailableCommandsUpdate,
-            is SessionUpdate.CurrentModeUpdate,
-            -> {
-                // These updates are not surfaced on the agent UI.
+            is SessionUpdate.Plan -> {
+                _state.update { it.copy(plan = update.entries.map(::toPlanStep)) }
+            }
+
+            is SessionUpdate.AvailableCommandsUpdate -> {
+                _state.update { it.copy(commands = update.availableCommands.mapNotNull(::toAgentCommand)) }
+            }
+
+            is SessionUpdate.CurrentModeUpdate -> {
+                applyCurrentMode(update.currentModeId)
+            }
+
+            is SessionUpdate.UserMessageChunk -> {
+                // History replay echoes the user's own messages. The transcript already has them.
             }
         }
     }
@@ -951,9 +1068,27 @@ public class AgentSessionViewModel(
 
     override suspend fun sessionUpdate(notification: SessionNotification) {
         // Apply updates before the prompt response can end the turn and archive it.
-        // Updates from abandoned sessions or stopped turns must still be ignored.
+        // Message and tool updates from abandoned sessions or stopped turns stay ignored.
+        // Plan, mode, and slash commands belong to the session, so they also apply
+        // outside a turn and while a saved session is still being restored.
+        val update = notification.update
+        if (isSessionSurface(update)) {
+            val active = notification.sessionId == sessionId
+            val restoring = sessionId == null && notification.sessionId == conversationSessionId
+            when {
+                active || restoring -> {
+                    forgetPendingField(notification.sessionId, update)
+                    applyUpdate(update)
+                }
+
+                sessionId == null -> {
+                    notePendingSurface(notification.sessionId, update)
+                }
+            }
+            return
+        }
         if (notification.sessionId == sessionId && _state.value.isStreaming) {
-            applyUpdate(notification.update)
+            applyUpdate(update)
         }
     }
 
@@ -1211,6 +1346,61 @@ public class AgentSessionViewModel(
         persist()
     }
 
+    /**
+     * Selects [modeId] for the active session.
+     *
+     * The ACP call is authoritative and the conversation is left in place.
+     * State changes only after the agent accepts the mode.
+     */
+    private suspend fun setMode(modeId: String) {
+        val option = _state.value.availableModes.firstOrNull { it.id == modeId } ?: return
+        if (_state.value.mode?.id == modeId) return
+        val acpClient = client
+        val activeSession = sessionId
+        if (acpClient == null || activeSession == null || !acpClient.isOpen) return
+        val applied =
+            try {
+                withTimeoutOrNull(MODE_SELECT_TIMEOUT_MS) {
+                    acpClient.setMode(activeSession, modeId)
+                    true
+                } ?: false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(error = e.message ?: "Could not switch to ${option.name}") }
+                return
+            }
+        if (!applied) {
+            _state.update { it.copy(error = "The agent did not confirm the mode change") }
+            return
+        }
+        _state.update { it.copy(mode = option, error = null) }
+    }
+
+    /** Applies the mode state reported by the agent's session response. A null report leaves the current mode. */
+    private fun applySessionModes(sessionModes: SessionModeState?) {
+        if (sessionModes == null) return
+        val options = sessionModes.availableModes.map { it.toModeOption() }
+        val current =
+            options.firstOrNull { it.id == sessionModes.currentModeId }
+                ?: ModeOption(id = sessionModes.currentModeId, name = sessionModes.currentModeId)
+        _state.update {
+            it.copy(availableModes = options.ifEmpty { listOf(current) }, mode = current)
+        }
+    }
+
+    /** Points the mode chip at [modeId] without changing the selectable list. */
+    private fun applyCurrentMode(modeId: String) {
+        val options = _state.value.availableModes
+        val current = options.firstOrNull { it.id == modeId } ?: ModeOption(id = modeId, name = modeId)
+        _state.update {
+            it.copy(
+                availableModes = if (options.isEmpty()) listOf(current) else options,
+                mode = current,
+            )
+        }
+    }
+
     /** Applies the model state reported by the agent's session response. */
     private fun applySessionModels(sessionModels: SessionModelState?) {
         if (sessionModels == null) {
@@ -1257,6 +1447,84 @@ public class AgentSessionViewModel(
     /** Clears the session-scoped model list, keeping the user's preference. */
     private fun clearSessionModels() {
         _state.update { it.copy(availableModels = emptyList(), model = null) }
+    }
+
+    /** Clears the session-scoped model, mode, plan, and commands, keeping the user's model preference. */
+    private fun clearSessionSurface() {
+        pendingSurface = null
+        _state.update {
+            it.copy(
+                availableModels = emptyList(),
+                model = null,
+                availableModes = emptyList(),
+                mode = null,
+                plan = emptyList(),
+                commands = emptyList(),
+            )
+        }
+    }
+
+    private fun notePendingSurface(
+        session: String,
+        update: SessionUpdate,
+    ) {
+        val base = pendingSurface?.takeIf { it.sessionId == session } ?: PendingSurface(session)
+        pendingSurface =
+            when (update) {
+                is SessionUpdate.Plan -> {
+                    base.copy(plan = update.entries.map(::toPlanStep))
+                }
+
+                is SessionUpdate.AvailableCommandsUpdate -> {
+                    base.copy(commands = update.availableCommands.mapNotNull(::toAgentCommand))
+                }
+
+                is SessionUpdate.CurrentModeUpdate -> {
+                    base.copy(modeId = update.currentModeId)
+                }
+
+                else -> {
+                    base
+                }
+            }
+    }
+
+    /** Drops a stashed field once the same update has been applied to the live session. */
+    private fun forgetPendingField(
+        session: String,
+        update: SessionUpdate,
+    ) {
+        val pending = pendingSurface?.takeIf { it.sessionId == session } ?: return
+        val remaining =
+            when (update) {
+                is SessionUpdate.Plan -> pending.copy(plan = null)
+                is SessionUpdate.AvailableCommandsUpdate -> pending.copy(commands = null)
+                is SessionUpdate.CurrentModeUpdate -> pending.copy(modeId = null)
+                else -> pending
+            }
+        pendingSurface = remaining.takeUnless { it.isEmpty() }
+    }
+
+    /**
+     * Applies surface updates that arrived before this session id was assigned.
+     *
+     * @param applyMode Whether a stashed mode id should win. The session response's
+     * mode list is authoritative when the agent sent one.
+     */
+    private fun flushPendingSurface(
+        session: String,
+        applyMode: Boolean,
+    ) {
+        val pending = pendingSurface
+        pendingSurface = null
+        if (pending == null || pending.sessionId != session) return
+        _state.update { state ->
+            state.copy(
+                plan = pending.plan ?: state.plan,
+                commands = pending.commands ?: state.commands,
+            )
+        }
+        if (applyMode) pending.modeId?.let(::applyCurrentMode)
     }
 
     private fun mutateAgentTurn(transform: (List<Block>) -> List<Block>) {
@@ -1311,6 +1579,9 @@ public class AgentSessionViewModel(
         /** How long a `session/set_model` request may take. */
         private const val MODEL_SELECT_TIMEOUT_MS = 15_000L
 
+        /** How long a `session/set_mode` request may take. */
+        private const val MODE_SELECT_TIMEOUT_MS = 15_000L
+
         /** Name the agent sees for the IDE's embedded MCP server. */
         private const val IDE_MCP_SERVER_NAME = "jetaprog"
 
@@ -1329,6 +1600,29 @@ public class AgentSessionViewModel(
         const val DEFAULT_CLAUDE_CODE_COMMAND: String = "npx -y @zed-industries/claude-code-acp"
 
         fun textOf(content: ContentBlock): String = (content as? ContentBlock.Text)?.text.orEmpty()
+
+        fun isSessionSurface(update: SessionUpdate): Boolean =
+            update is SessionUpdate.Plan ||
+                update is SessionUpdate.AvailableCommandsUpdate ||
+                update is SessionUpdate.CurrentModeUpdate
+
+        fun toPlanStep(entry: PlanEntry): PlanStep =
+            PlanStep(
+                content = entry.content,
+                status =
+                    when (entry.status) {
+                        "pending" -> PlanStepStatus.PENDING
+                        "in_progress" -> PlanStepStatus.IN_PROGRESS
+                        "completed" -> PlanStepStatus.COMPLETED
+                        else -> PlanStepStatus.UNKNOWN
+                    },
+            )
+
+        fun toAgentCommand(command: AvailableCommand): AgentCommand? {
+            val name = command.name.trim()
+            if (name.isEmpty()) return null
+            return AgentCommand(name = name, description = command.description?.takeIf { it.isNotBlank() })
+        }
 
         fun stopStreaming(blocks: List<Block>): List<Block> =
             blocks.map { if (it is Block.Text && it.streaming) it.copy(streaming = false) else it }
@@ -1453,6 +1747,19 @@ public class AgentSessionViewModel(
         )
     }
 }
+
+/** Plan, commands, or mode id observed before the matching session id is assigned. */
+private data class PendingSurface(
+    val sessionId: String,
+    val plan: List<PlanStep>? = null,
+    val commands: List<AgentCommand>? = null,
+    val modeId: String? = null,
+) {
+    /** Whether every stashed field has already been applied or was never set. */
+    fun isEmpty(): Boolean = plan == null && commands == null && modeId == null
+}
+
+private fun SessionMode.toModeOption(): ModeOption = ModeOption(id = id, name = name.ifBlank { id })
 
 /**
  * Classifies an ACP tool call into the IDE's permission buckets.

@@ -18,6 +18,21 @@ public enum class AgentConnection {
     ERROR,
 }
 
+/** Whether a saved conversation's agent context has been restored. */
+public sealed interface SessionRestoration {
+    /** Connecting to the agent or loading its saved context. */
+    public data object Loading : SessionRestoration
+
+    /** The original agent session is ready to continue. */
+    public data object Resumed : SessionRestoration
+
+    /** Only the saved transcript is available; the next prompt starts a separate chat. */
+    public data class TranscriptOnly(
+        /** Why the agent context could not be restored. */
+        val reason: String,
+    ) : SessionRestoration
+}
+
 /** Visual status of a tool call card. */
 public enum class ToolStatus {
     /** The tool call is still running. */
@@ -79,6 +94,74 @@ public data class ModelOption(
     val displayName: String,
     val shortName: String,
 )
+
+/**
+ * A session mode reported by the connected agent, such as Ask or Code.
+ *
+ * @property id Stable identifier passed to `session/set_mode`.
+ * @property name Human-readable name shown on the composer chip.
+ */
+@Immutable
+public data class ModeOption(
+    val id: String,
+    val name: String,
+)
+
+/**
+ * One step of the agent's current plan.
+ *
+ * A later plan update replaces the whole list. The step is not editable.
+ *
+ * @property content The human-readable step.
+ * @property status The agent's progress on this step.
+ */
+@Immutable
+public data class PlanStep(
+    val content: String,
+    val status: PlanStepStatus,
+)
+
+/** Progress of one [PlanStep], as reported by the agent. */
+public enum class PlanStepStatus {
+    /** The step has not started. */
+    PENDING,
+
+    /** The agent is working on this step. */
+    IN_PROGRESS,
+
+    /** The agent marked the step finished. */
+    COMPLETED,
+
+    /** The agent reported a status this surface does not recognize. */
+    UNKNOWN,
+}
+
+/**
+ * A slash command the connected agent is currently advertising.
+ *
+ * @property name Command name without the leading slash.
+ * @property description Optional explanation shown in the slash menu.
+ */
+@Immutable
+public data class AgentCommand(
+    val name: String,
+    val description: String?,
+)
+
+/**
+ * Returns the slash-command name being typed, or null when the composer is not
+ * choosing a command.
+ *
+ * The menu stays open only while the trimmed input is a single `/name` token
+ * with no arguments yet. `/` yields an empty query, which matches every command.
+ */
+internal fun slashCommandQuery(input: String): String? {
+    val trimmed = input.trimStart()
+    if (!trimmed.startsWith("/")) return null
+    val token = trimmed.substringBefore(' ').substringBefore('\n')
+    if (trimmed.length > token.length) return null
+    return token.removePrefix("/")
+}
 
 /** The kind of a single rendered diff line. */
 public enum class DiffLineKind {
@@ -281,9 +364,14 @@ public data class Presence(
  * @property permissions Per-kind authorization policies.
  * @property availableModels Models reported by the connected agent, if any.
  * @property model The model currently active in the agent's session, if known.
+ * @property availableModes Modes the agent can switch to, if it reported any.
+ * @property mode The mode currently active in the agent's session, if known.
+ * @property plan The agent's current plan. A new plan replaces this list.
+ * @property commands Slash commands the agent is currently advertising.
  * @property docked Whether the surface is docked beside the editor (vs full perspective).
  * @property error The most recent error message, if any.
  * @property composerInput The current text in the composer input field.
+ * @property restoration The outcome or progress of restoring a saved conversation.
  */
 @Immutable
 public data class AgentUiState(
@@ -300,9 +388,14 @@ public data class AgentUiState(
         ),
     val availableModels: List<ModelOption> = emptyList(),
     val model: ModelOption? = null,
+    val availableModes: List<ModeOption> = emptyList(),
+    val mode: ModeOption? = null,
+    val plan: List<PlanStep> = emptyList(),
+    val commands: List<AgentCommand> = emptyList(),
     val docked: Boolean = false,
     val error: String? = null,
     val composerInput: String = "",
+    val restoration: SessionRestoration? = null,
     /** Persisted conversations, most recent first (loaded on History). */
     val sessionHistory: List<AgentSessionRecord> = emptyList(),
     /** Whether the History popup is shown. */
@@ -407,6 +500,15 @@ public sealed interface AgentIntent {
     /** Select the agent-reported model with [modelId]. */
     public data class SetModel(
         val modelId: String,
+    ) : AgentIntent
+
+    /**
+     * Switch the active session mode to [modeId].
+     *
+     * The conversation is kept. The agent's permission policies are unchanged.
+     */
+    public data class SetMode(
+        val modeId: String,
     ) : AgentIntent
 
     /** Expand the docked surface to the full perspective. */

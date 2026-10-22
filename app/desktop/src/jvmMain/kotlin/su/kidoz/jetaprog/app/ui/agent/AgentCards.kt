@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -536,3 +537,78 @@ internal fun SendButton(
         )
     }
 }
+
+/**
+ * The agent's current plan. A later update replaces these steps in place.
+ *
+ * @param steps The steps to show, in order. An empty list draws nothing.
+ * @param modifier Layout modifier for the card.
+ */
+@Composable
+internal fun PlanCard(
+    steps: List<PlanStep>,
+    modifier: Modifier = Modifier,
+) {
+    if (steps.isEmpty()) return
+    val shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp)
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(LocalIntelliJColors.current.toolCardBackground)
+                .border(1.dp, LocalIntelliJColors.current.agentCardBorder, shape)
+                .padding(Spacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    ) {
+        Text(
+            text = "Plan",
+            color = LocalIntelliJColors.current.textMuted,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        steps.forEach { step ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(Spacing.sm.dp)
+                            .clip(CircleShape)
+                            .background(planStatusColor(step.status)),
+                )
+                Text(
+                    text = step.content,
+                    color = LocalIntelliJColors.current.textPrimary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = planStatusLabel(step.status),
+                    color = planStatusColor(step.status),
+                    fontSize = 11.sp,
+                )
+            }
+        }
+    }
+}
+
+private fun planStatusLabel(status: PlanStepStatus): String =
+    when (status) {
+        PlanStepStatus.PENDING -> "Pending"
+        PlanStepStatus.IN_PROGRESS -> "In progress"
+        PlanStepStatus.COMPLETED -> "Done"
+        PlanStepStatus.UNKNOWN -> "Unknown"
+    }
+
+@Composable
+private fun planStatusColor(status: PlanStepStatus): Color =
+    when (status) {
+        PlanStepStatus.PENDING -> LocalIntelliJColors.current.textMuted
+        PlanStepStatus.IN_PROGRESS -> LocalIntelliJColors.current.accent
+        PlanStepStatus.COMPLETED -> LocalIntelliJColors.current.success
+        PlanStepStatus.UNKNOWN -> LocalIntelliJColors.current.textSecondary
+    }
