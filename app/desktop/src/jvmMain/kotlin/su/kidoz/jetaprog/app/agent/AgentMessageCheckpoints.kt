@@ -35,8 +35,8 @@ internal data class CheckpointPlan(
  * those baselines back and leaves the transcript alone. A file is skipped when
  * its current contents are not a state the agent wrote or a previous restore
  * put back, which covers hand edits and files a command changed afterwards.
- * Baselines stay in memory for the live conversation and are separate from the
- * per-write stack used by Accept and Reject.
+ * Baselines are saved with the session and loaded again when that conversation
+ * is opened. They stay separate from the per-write stack used by Accept and Reject.
  */
 internal class AgentMessageCheckpoints {
     private val baselines = LinkedHashMap<String, MutableMap<String, FileSnapshot>>()
@@ -57,6 +57,55 @@ internal class AgentMessageCheckpoints {
         baselines.clear()
         known.clear()
         commands.clear()
+    }
+
+    /** Message baselines in conversation order, including messages that only anchor later restores. */
+    fun persistedCheckpoints(): List<AgentMessageCheckpoint> =
+        baselines.map { (turnId, files) ->
+            AgentMessageCheckpoint(
+                turnId = turnId,
+                files =
+                    files.map { (path, snapshot) ->
+                        AgentCheckpointFile(path = path, existed = snapshot.existed, content = snapshot.content)
+                    },
+                commandRan = turnId in commands,
+            )
+        }
+
+    /** Disk states recognized as written by the agent or a restore. */
+    fun persistedDisk(): List<AgentCheckpointFile> =
+        known.flatMap { (path, states) ->
+            states.map { state ->
+                AgentCheckpointFile(path = path, existed = state.existed, content = state.content)
+            }
+        }
+
+    /**
+     * Replaces the in-memory baselines with a saved conversation's checkpoints.
+     *
+     * Blank turn ids are ignored. The first baseline for a path wins.
+     */
+    fun loadPersisted(
+        turns: List<AgentMessageCheckpoint>,
+        disk: List<AgentCheckpointFile>,
+    ) {
+        clear()
+        turns.forEach { turn ->
+            if (turn.turnId.isBlank() || turn.turnId in baselines) return@forEach
+            val files = linkedMapOf<String, FileSnapshot>()
+            turn.files.forEach { file ->
+                if (file.path.isNotBlank()) {
+                    files.putIfAbsent(file.path, FileSnapshot(existed = file.existed, content = file.content))
+                }
+            }
+            baselines[turn.turnId] = files
+            if (turn.commandRan) commands += turn.turnId
+        }
+        disk.forEach { file ->
+            if (file.path.isNotBlank()) {
+                remember(file.path, FileSnapshot(existed = file.existed, content = file.content))
+            }
+        }
     }
 
     /**

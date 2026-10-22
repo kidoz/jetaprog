@@ -90,6 +90,8 @@ class AgentHistoryStoreTest {
             assertEquals(0, listed.removedLines)
             assertEquals(AgentSessionStatus.IDLE, listed.status)
             assertNull(listed.goal)
+            assertEquals(emptyList(), listed.checkpoints)
+            assertEquals(emptyList(), listed.checkpointDisk)
         }
 
     @Test
@@ -113,5 +115,56 @@ class AgentHistoryStoreTest {
             )
 
             assertEquals(goal, store.list().single().goal)
+        }
+
+    @Test
+    fun checkpointsRoundTripWithTheUserTurn() =
+        runTest {
+            store.save(
+                AgentSessionRecord(
+                    id = "checkpoint",
+                    title = "Build it",
+                    savedAtEpochMillis = 20,
+                    messages =
+                        listOf(
+                            AgentHistoryMessage(AgentHistoryRole.USER, "Build it", id = "usr-1"),
+                            AgentHistoryMessage(AgentHistoryRole.AGENT, "Done"),
+                        ),
+                    checkpoints =
+                        listOf(
+                            AgentMessageCheckpoint(
+                                turnId = "usr-1",
+                                files =
+                                    listOf(
+                                        AgentCheckpointFile(
+                                            path = "/proj/src/Reader.kt",
+                                            existed = true,
+                                            content = "old",
+                                        ),
+                                    ),
+                                commandRan = true,
+                            ),
+                        ),
+                    checkpointDisk =
+                        listOf(
+                            AgentCheckpointFile(path = "/proj/src/Reader.kt", existed = true, content = "old"),
+                            AgentCheckpointFile(path = "/proj/src/Reader.kt", existed = true, content = "new"),
+                        ),
+                ),
+            )
+
+            val loaded = store.list().single()
+            assertEquals("usr-1", loaded.messages.first().id)
+            assertNull(loaded.messages.last().id)
+            assertEquals(
+                "old",
+                loaded.checkpoints
+                    .single()
+                    .files
+                    .single()
+                    .content,
+            )
+            assertTrue(loaded.checkpoints.single().commandRan)
+            assertEquals(listOf("old", "new"), loaded.checkpointDisk.map { it.content })
         }
 }

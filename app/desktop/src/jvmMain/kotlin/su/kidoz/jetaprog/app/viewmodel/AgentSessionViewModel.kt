@@ -1564,9 +1564,10 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
 
     /**
-     * Persists the conversation transcript (user messages plus the agent's
-     * text blocks; tool calls, diffs and approvals are not restorable and are
-     * skipped). Creates the record on first use and upserts afterwards.
+     * Persists the conversation text and its message checkpoints.
+     *
+     * Tool cards, diff cards, and approvals are left out of the file.
+     * Creates the record on first use and upserts afterwards.
      */
     private suspend fun archiveConversation() {
         conversationRecord()?.let { historyStore.save(it) }
@@ -1581,7 +1582,7 @@ public class AgentSessionViewModel(
                 .flatMap { turn ->
                     when (turn) {
                         is Turn.User -> {
-                            listOf(AgentHistoryMessage(AgentHistoryRole.USER, turn.text))
+                            listOf(AgentHistoryMessage(AgentHistoryRole.USER, turn.text, id = turn.id))
                         }
 
                         is Turn.Agent -> {
@@ -1616,6 +1617,8 @@ public class AgentSessionViewModel(
             removedLines = summary.removedLines,
             status = summary.status,
             goal = _state.value.goal?.let { persistedGoal(it, now()) },
+            checkpoints = checkpoints.persistedCheckpoints(),
+            checkpointDisk = checkpoints.persistedDisk(),
         )
     }
 
@@ -1707,12 +1710,13 @@ public class AgentSessionViewModel(
         val previousSession = sessionId
         val wasStreaming = _state.value.isStreaming
         invalidateTurn()
-        clearFileMemory()
-        _state.update { it.copy(isStreaming = false, presence = null) }
         if (wasStreaming && acpClient != null && previousSession != null) {
             runCatching { acpClient.cancel(previousSession) }
         }
+        // Archive while the outgoing chat still has its checkpoints.
         archiveConversation()
+        clearFileMemory()
+        _state.update { it.copy(isStreaming = false, presence = null) }
 
         // Drop updates while loading so the replayed history cannot duplicate the
         // restored transcript.
@@ -1725,7 +1729,8 @@ public class AgentSessionViewModel(
         var counter = 0
         val turns =
             record.messages.map { message ->
-                val id = "restored-${record.id}-${counter++}"
+                val generated = "restored-${record.id}-${counter++}"
+                val id = message.id?.takeIf { it.isNotBlank() } ?: generated
                 when (message.role) {
                     AgentHistoryRole.USER -> {
                         Turn.User(id = id, text = message.text, timeLabel = "")
@@ -1755,6 +1760,8 @@ public class AgentSessionViewModel(
                 reviewNotice = null,
             )
         }
+        checkpoints.loadPersisted(record.checkpoints, record.checkpointDisk)
+        publishCheckpointFlags()
         if (record.agentSessionId == null) {
             transcriptOnly("This saved conversation has no agent session to resume.")
         } else if (ensureConnected()) {

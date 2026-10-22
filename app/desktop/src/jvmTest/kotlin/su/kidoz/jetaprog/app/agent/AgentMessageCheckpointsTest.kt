@@ -82,6 +82,37 @@ class AgentMessageCheckpointsTest {
     }
 
     @Test
+    fun savedCheckpointsPlanTheSameRestore() {
+        val original = AgentMessageCheckpoints()
+        original.begin("u1")
+        original.noteWrite("/proj/A.kt", FileSnapshot(existed = true, content = "a0"), "a1")
+        original.begin("u2")
+        original.noteCommand()
+
+        val loaded = AgentMessageCheckpoints()
+        loaded.loadPersisted(original.persistedCheckpoints(), original.persistedDisk())
+
+        val plan =
+            loaded.plan(
+                "u1",
+                current = mapOf("/proj/A.kt" to FileSnapshot(existed = true, content = "a1")),
+                dirty = { false },
+            )
+        assertEquals(listOf("/proj/A.kt" to FileSnapshot(existed = true, content = "a0")), plan?.restore)
+        assertEquals(true, plan?.commandsRan)
+        assertEquals(setOf("u1", "u2"), loaded.restorableTurnIds())
+
+        val handEdited =
+            loaded.plan(
+                "u1",
+                current = mapOf("/proj/A.kt" to FileSnapshot(existed = true, content = "hand")),
+                dirty = { false },
+            )
+        assertEquals(emptyList(), handEdited?.restore)
+        assertEquals(CheckpointSkip.CHANGED, handEdited?.skipped?.single()?.second)
+    }
+
+    @Test
     fun noticeNamesRestoredSkippedAndCommands() {
         assertEquals(
             "Restored A.kt, B.kt. Skipped C.kt because it changed after the agent wrote it. " +

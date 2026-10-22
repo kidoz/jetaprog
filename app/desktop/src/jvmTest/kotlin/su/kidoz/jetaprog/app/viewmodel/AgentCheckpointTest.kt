@@ -33,6 +33,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** A scripted ACP peer whose prompt stays open until [release]. */
@@ -254,6 +255,67 @@ class AgentCheckpointTest {
             runCurrent()
             assertEquals("new", files["/proj/src/Reader.kt"])
             assertFalse(files.containsKey("/proj/src/Other.kt"))
+        }
+
+    @Test
+    fun aReopenedSessionRestoresTheSavedCheckpoint() =
+        runTest {
+            val agent = CheckpointTransport()
+            val viewModel = viewModel(agent)
+            files["/proj/src/Reader.kt"] = "old"
+
+            viewModel.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.SetPermission(PermissionKind.EDIT, PermissionPolicy.AUTO))
+            viewModel.dispatch(AgentIntent.Send("Build it"))
+            runCurrent()
+            agent.update(
+                """{"sessionUpdate":"tool_call","toolCallId":"run","title":"Test","kind":"execute","status":"completed"}""",
+            )
+            viewModel.writeTextFile(WriteTextFileRequest("s1", "/proj/src/Reader.kt", "new"))
+            runCurrent()
+            agent.release.complete(Unit)
+            runCurrent()
+
+            val savedId = viewModel.state.value.activeRecordId
+            assertNotNull(savedId)
+            val originalId =
+                (
+                    viewModel.state.value.turns
+                        .first() as Turn.User
+                ).id
+
+            viewModel.dispatch(AgentIntent.RestoreSession(savedId))
+            runCurrent()
+            val reopened =
+                viewModel.state.value.turns
+                    .first() as Turn.User
+            assertEquals(originalId, reopened.id)
+            assertEquals("Build it", reopened.text)
+            assertTrue(reopened.canRestore)
+            assertEquals("new", files["/proj/src/Reader.kt"])
+
+            val resumed = viewModel(CheckpointTransport())
+            resumed.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            resumed.dispatch(AgentIntent.RestoreSession(savedId))
+            runCurrent()
+            val user =
+                resumed.state.value.turns
+                    .first() as Turn.User
+            assertEquals(originalId, user.id)
+            assertTrue(user.canRestore)
+            resumed.dispatch(AgentIntent.RestoreCheckpoint(user.id))
+            runCurrent()
+
+            assertEquals("old", files["/proj/src/Reader.kt"])
+            val notice =
+                (
+                    resumed.state.value.turns
+                        .first() as Turn.User
+                ).restoreNotice.orEmpty()
+            assertTrue(notice.contains("Restored Reader.kt."), notice)
+            assertTrue(notice.contains("Commands ran after this message."), notice)
         }
 
     private fun viewModel(agent: CheckpointTransport): AgentSessionViewModel =

@@ -11,17 +11,54 @@ public enum class AgentHistoryRole {
     AGENT,
 }
 
-/** One text message of a persisted agent conversation. */
+/**
+ * One text message of a persisted agent conversation.
+ *
+ * @property role Who sent the message.
+ * @property text The message text.
+ * @property id The user-turn id when [role] is USER, so a checkpoint can find the message again.
+ *   Null for agent text and for records saved before turn ids were stored.
+ */
 @Serializable
 public data class AgentHistoryMessage(
     val role: AgentHistoryRole,
     val text: String,
+    val id: String? = null,
 )
 
 /**
- * A persisted agent conversation: a text transcript of the session. Tool
- * calls, diffs and approvals are intentionally not persisted — only the
- * conversation text is restorable.
+ * One file captured for a message checkpoint.
+ *
+ * @property path Absolute path inside the project.
+ * @property existed Whether the file was on disk.
+ * @property content The file text, or null when [existed] is false.
+ */
+@Serializable
+public data class AgentCheckpointFile(
+    val path: String,
+    val existed: Boolean,
+    val content: String? = null,
+)
+
+/**
+ * File baselines for one user message.
+ *
+ * @property turnId The user turn this checkpoint belongs to.
+ * @property files The first recorded contents of files written at this message.
+ * @property commandRan Whether a command ran during this message.
+ */
+@Serializable
+public data class AgentMessageCheckpoint(
+    val turnId: String,
+    val files: List<AgentCheckpointFile> = emptyList(),
+    val commandRan: Boolean = false,
+)
+
+/**
+ * A persisted agent conversation.
+ *
+ * The file stores the conversation text and the message checkpoints Restore uses.
+ * Tool cards, diff cards, and approvals stay out of the file.
  *
  * @property id Stable identifier (also the file name).
  * @property title Short display title, derived from the first user message.
@@ -34,6 +71,8 @@ public data class AgentHistoryMessage(
  * @property removedLines Lines removed across the session's diffs at the last save.
  * @property status Settled outcome of the last save. The open chat overlays a live status.
  * @property goal The session objective, when one was set. Null for older records.
+ * @property checkpoints File baselines for each user message, oldest first.
+ * @property checkpointDisk File states a later restore still recognizes as the agent's writes.
  */
 @Serializable
 public data class AgentSessionRecord(
@@ -47,6 +86,8 @@ public data class AgentSessionRecord(
     val removedLines: Int = 0,
     val status: AgentSessionStatus = AgentSessionStatus.IDLE,
     val goal: AgentGoal? = null,
+    val checkpoints: List<AgentMessageCheckpoint> = emptyList(),
+    val checkpointDisk: List<AgentCheckpointFile> = emptyList(),
 )
 
 /**
