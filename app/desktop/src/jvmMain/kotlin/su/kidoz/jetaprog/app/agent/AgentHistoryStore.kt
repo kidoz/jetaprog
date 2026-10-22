@@ -33,6 +33,7 @@ public data class AgentHistoryMessage(
  * @property addedLines Lines added across the session's diffs at the last save.
  * @property removedLines Lines removed across the session's diffs at the last save.
  * @property status Settled outcome of the last save. The open chat overlays a live status.
+ * @property goal The session objective, when one was set. Null for older records.
  */
 @Serializable
 public data class AgentSessionRecord(
@@ -45,6 +46,7 @@ public data class AgentSessionRecord(
     val addedLines: Int = 0,
     val removedLines: Int = 0,
     val status: AgentSessionStatus = AgentSessionStatus.IDLE,
+    val goal: AgentGoal? = null,
 )
 
 /**

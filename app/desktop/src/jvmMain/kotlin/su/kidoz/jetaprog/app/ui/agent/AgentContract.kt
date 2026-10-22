@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.ui.agent
 
 import androidx.compose.runtime.Immutable
+import su.kidoz.jetaprog.app.agent.AgentGoal
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 
 /** Lifecycle of the connection to the backing ACP agent. */
@@ -525,6 +526,8 @@ public data class Presence(
  * @property restoration The outcome or progress of restoring a saved conversation.
  * @property activeRecordId Id of the conversation open in this surface, when one has been claimed.
  *   The session list uses it to overlay live status and diff counts.
+ * @property goal The one objective for this session, or null when none is set.
+ * @property goalNotice Why the latest goal command was refused or the loop paused, if any.
  */
 @Immutable
 public data class AgentUiState(
@@ -558,6 +561,10 @@ public data class AgentUiState(
     val historyVisible: Boolean = false,
     /** Id of the open conversation, when one has been claimed. */
     val activeRecordId: String? = null,
+    /** The session objective. A saved active goal is paused when the chat is reopened. */
+    val goal: AgentGoal? = null,
+    /** A short explanation for a refused goal command or a paused loop. */
+    val goalNotice: String? = null,
 ) {
     /** Files the agent changed in this session, for the session rail. */
     val sessionChanges: List<SessionFileChange>
@@ -747,4 +754,16 @@ public sealed interface AgentIntent {
 
     /** Drop the queued follow-up so a later turn end does not send it. */
     public data object RemoveQueuedPrompt : AgentIntent
+
+    /** Hold the session goal. A running turn is stopped so the loop does not continue. */
+    public data object PauseGoal : AgentIntent
+
+    /** Continue a paused goal with another work round. */
+    public data object ResumeGoal : AgentIntent
+
+    /** Remove the session goal. A running turn is stopped. */
+    public data object ClearGoal : AgentIntent
+
+    /** Put `/goal ` in the composer so the next send replaces the objective. */
+    public data object ReplaceGoal : AgentIntent
 }

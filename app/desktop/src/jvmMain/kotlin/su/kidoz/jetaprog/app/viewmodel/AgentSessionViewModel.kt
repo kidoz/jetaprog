@@ -56,6 +56,8 @@ import su.kidoz.jetaprog.acp.protocol.ToolCallStatus
 import su.kidoz.jetaprog.acp.protocol.ToolKind
 import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
 import su.kidoz.jetaprog.app.agent.AgentFileSnapshots
+import su.kidoz.jetaprog.app.agent.AgentGoal
+import su.kidoz.jetaprog.app.agent.AgentGoalStatus
 import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
 import su.kidoz.jetaprog.app.agent.AgentHistoryRole
 import su.kidoz.jetaprog.app.agent.AgentHistoryStore
@@ -79,6 +81,13 @@ import su.kidoz.jetaprog.app.ui.agent.DiffDecision
 import su.kidoz.jetaprog.app.ui.agent.DiffLine
 import su.kidoz.jetaprog.app.ui.agent.DiffLineKind
 import su.kidoz.jetaprog.app.ui.agent.EditorSnippet
+import su.kidoz.jetaprog.app.ui.agent.GOAL_BUSY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.GOAL_CAP_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.GOAL_EMPTY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.GOAL_FAILED_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.GOAL_PLAN_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.GOAL_ROUND_LIMIT
+import su.kidoz.jetaprog.app.ui.agent.GoalCommand
 import su.kidoz.jetaprog.app.ui.agent.MentionMatch
 import su.kidoz.jetaprog.app.ui.agent.ModeOption
 import su.kidoz.jetaprog.app.ui.agent.ModelOption
@@ -92,8 +101,24 @@ import su.kidoz.jetaprog.app.ui.agent.SessionRestoration
 import su.kidoz.jetaprog.app.ui.agent.ToolStatus
 import su.kidoz.jetaprog.app.ui.agent.Turn
 import su.kidoz.jetaprog.app.ui.agent.chipLabel
+import su.kidoz.jetaprog.app.ui.agent.elapsedMillis
+import su.kidoz.jetaprog.app.ui.agent.goalCheckLabel
+import su.kidoz.jetaprog.app.ui.agent.goalCheckPrompt
+import su.kidoz.jetaprog.app.ui.agent.goalContinueLabel
+import su.kidoz.jetaprog.app.ui.agent.goalContinuePrompt
+import su.kidoz.jetaprog.app.ui.agent.goalEvidence
+import su.kidoz.jetaprog.app.ui.agent.goalRefusal
+import su.kidoz.jetaprog.app.ui.agent.goalResumeLabel
+import su.kidoz.jetaprog.app.ui.agent.goalResumePrompt
+import su.kidoz.jetaprog.app.ui.agent.goalWorkPrompt
+import su.kidoz.jetaprog.app.ui.agent.isPlanMode
+import su.kidoz.jetaprog.app.ui.agent.judgeGoal
 import su.kidoz.jetaprog.app.ui.agent.mentionQuery
+import su.kidoz.jetaprog.app.ui.agent.parseGoalCommand
+import su.kidoz.jetaprog.app.ui.agent.persistedGoal
 import su.kidoz.jetaprog.app.ui.agent.promptWithContext
+import su.kidoz.jetaprog.app.ui.agent.restoredGoal
+import su.kidoz.jetaprog.app.ui.agent.restoredGoalNotice
 import su.kidoz.jetaprog.app.ui.agent.sessionTitle
 import su.kidoz.jetaprog.app.ui.agent.summarizeSession
 import su.kidoz.jetaprog.app.ui.agent.withoutMentionToken
@@ -170,6 +195,9 @@ public class AgentSessionViewModel(
     /** Serializes the claim of a new turn without blocking cancellation intents. */
     private val sendMutex = Mutex()
 
+    /** Keeps overlapping history writes in the order they were captured. */
+    private val historyMutex = Mutex()
+
     /** Invalidates completions belonging to an abandoned turn. */
     private var turnGeneration = 0
 
@@ -178,6 +206,15 @@ public class AgentSessionViewModel(
 
     /** When true, [endTurn] sends the queued follow-up. Stop clears this. */
     private var deliverQueuedPrompt = false
+
+    /** When true, the turn that just ended was the goal check rather than a work round. */
+    private var goalChecking = false
+
+    /** Automatic continuation rounds since the goal was set or resumed. */
+    private var goalAutoRounds = 0
+
+    /** Turns before this index are not evidence for the current objective. */
+    private var goalBaseline = 0
 
     /** When true, cancel the running turn once no tool call is still running. */
     private var steerArmed = false
@@ -347,6 +384,22 @@ public class AgentSessionViewModel(
             AgentIntent.RemoveQueuedPrompt -> {
                 clearQueuedPrompt()
             }
+
+            AgentIntent.PauseGoal -> {
+                pauseGoal()
+            }
+
+            AgentIntent.ResumeGoal -> {
+                resumeGoal(clearComposer = false)
+            }
+
+            AgentIntent.ClearGoal -> {
+                clearGoal(clearComposer = false)
+            }
+
+            AgentIntent.ReplaceGoal -> {
+                _state.update { it.copy(composerInput = "/goal ", goalNotice = null) }
+            }
         }
     }
 
@@ -495,6 +548,11 @@ public class AgentSessionViewModel(
         val text = prompt.trim()
         if (text.isEmpty()) return
         if (_state.value.restoration is SessionRestoration.Loading) return
+        val goalCommand = parseGoalCommand(text)
+        if (goalCommand != null) {
+            applyGoalCommand(goalCommand, clearComposer = _state.value.composerInput.trim() == text)
+            return
+        }
         val attachments = attachmentsFor(text, contextLabels)
         val clearComposer = _state.value.composerInput.trim() == text
         if (_state.value.isStreaming) {
@@ -527,12 +585,16 @@ public class AgentSessionViewModel(
         prompt: String,
         attachments: List<ComposerAttachment>,
         clearComposer: Boolean,
+        wirePrompt: String? = null,
     ): Boolean {
         val text = prompt.trim()
         if (text.isEmpty()) return false
         val claim = claimTurn(text, attachments, clearComposer) ?: return false
         try {
-            claim.client.promptText(claim.sessionId, promptWithContext(text, attachments))
+            claim.client.promptText(
+                claim.sessionId,
+                wirePrompt ?: promptWithContext(text, attachments),
+            )
             if (claim.generation == turnGeneration) endTurn()
         } catch (e: CancellationException) {
             throw e
@@ -582,6 +644,7 @@ public class AgentSessionViewModel(
                             Turn.Agent(nextId("agt"), "now", emptyList()),
                     isStreaming = true,
                     error = null,
+                    goalNotice = null,
                     presence = Presence(action = "Thinking", fileName = null, startedAtEpochMillis = now()),
                     composerInput = if (clearComposer) "" else it.composerInput,
                     composerAttachments = if (clearComposer) emptyList() else it.composerAttachments,
@@ -596,6 +659,7 @@ public class AgentSessionViewModel(
 
     private suspend fun handleStop() {
         disarmQueue()
+        freezeGoalPaused(notice = null, keepNotice = true)
         _state.update { st ->
             val queued = st.queuedPrompt
             if (queued == null || !queued.steer) st else st.copy(queuedPrompt = queued.copy(steer = false))
@@ -672,13 +736,24 @@ public class AgentSessionViewModel(
             )
         }
         // Capture before another history action can replace the visible conversation.
-        val record = conversationRecord()
-        if (record != null) scope.launch { historyStore.save(record) }
+        persistConversation()
         if (queued != null) {
             val sent = handleSend(queued.prompt, queued.attachments, clearComposer = false)
             if (!sent && !_state.value.isStreaming && _state.value.queuedPrompt == null) {
                 _state.update { it.copy(queuedPrompt = queued.copy(steer = false)) }
             }
+            return
+        }
+        // The check can mark the goal met or paused after the snapshot above.
+        continueGoal()
+        persistConversation()
+    }
+
+    /** Writes the visible conversation, including the goal, without blocking the turn. */
+    private fun persistConversation() {
+        val record = conversationRecord() ?: return
+        scope.launch {
+            historyMutex.withLock { historyStore.save(record) }
         }
     }
 
@@ -744,6 +819,260 @@ public class AgentSessionViewModel(
     private fun clearQueuedPrompt() {
         disarmQueue()
         _state.update { it.copy(queuedPrompt = null) }
+    }
+
+    /**
+     * Applies a `/goal` command locally.
+     *
+     * The command is not sent to the agent. Setting an objective starts a work round.
+     * Pause, resume, and clear adjust the loop.
+     */
+    private suspend fun applyGoalCommand(
+        command: GoalCommand,
+        clearComposer: Boolean,
+    ) {
+        val refusal = goalRefusal(command, _state.value.isStreaming, _state.value.mode)
+        if (refusal != null) {
+            _state.update {
+                it.copy(
+                    goalNotice = refusal,
+                    composerInput = if (clearComposer) "" else it.composerInput,
+                )
+            }
+            return
+        }
+        when (command) {
+            GoalCommand.Show -> {
+                _state.update {
+                    it.copy(
+                        goalNotice = if (it.goal == null) GOAL_EMPTY_NOTICE else null,
+                        composerInput = if (clearComposer) "" else it.composerInput,
+                    )
+                }
+            }
+
+            is GoalCommand.Set -> {
+                beginGoal(command.objective, clearComposer)
+            }
+
+            GoalCommand.Pause -> {
+                if (clearComposer) _state.update { it.copy(composerInput = "") }
+                pauseGoal()
+            }
+
+            GoalCommand.Resume -> {
+                resumeGoal(clearComposer)
+            }
+
+            GoalCommand.Clear -> {
+                clearGoal(clearComposer)
+            }
+        }
+    }
+
+    /** Replaces any current objective and starts the first work round. */
+    private suspend fun beginGoal(
+        objective: String,
+        clearComposer: Boolean,
+    ) {
+        val started = now()
+        goalChecking = false
+        goalAutoRounds = 0
+        goalBaseline = _state.value.turns.size
+        _state.update {
+            it.copy(
+                goal =
+                    AgentGoal(
+                        objective = objective,
+                        status = AgentGoalStatus.ACTIVE,
+                        startedAtEpochMillis = started,
+                        elapsedMillis = 0,
+                        runningSinceEpochMillis = started,
+                        iteration = 1,
+                    ),
+                goalNotice = null,
+                composerInput = if (clearComposer) "" else it.composerInput,
+            )
+        }
+        runGoalPrompt(visible = objective, wire = goalWorkPrompt(objective), checking = false)
+    }
+
+    /** Holds the loop. A running turn is stopped so the next round does not start. */
+    private suspend fun pauseGoal() {
+        freezeGoalPaused(notice = null, keepNotice = false)
+        if (_state.value.isStreaming) handleStop()
+    }
+
+    /** Continues a paused goal. Plan mode cannot resume the loop. */
+    private suspend fun resumeGoal(clearComposer: Boolean) {
+        val goal = _state.value.goal ?: return
+        if (goal.status == AgentGoalStatus.MET) return
+        if (_state.value.isStreaming) {
+            _state.update {
+                it.copy(
+                    goalNotice = GOAL_BUSY_NOTICE,
+                    composerInput = if (clearComposer) "" else it.composerInput,
+                )
+            }
+            return
+        }
+        if (isPlanMode(_state.value.mode)) {
+            _state.update {
+                it.copy(
+                    goalNotice = GOAL_PLAN_NOTICE,
+                    composerInput = if (clearComposer) "" else it.composerInput,
+                )
+            }
+            return
+        }
+        val resumedAt = now()
+        goalAutoRounds = 0
+        _state.update {
+            it.copy(
+                goal =
+                    goal.copy(
+                        status = AgentGoalStatus.ACTIVE,
+                        runningSinceEpochMillis = resumedAt,
+                    ),
+                goalNotice = null,
+                composerInput = if (clearComposer) "" else it.composerInput,
+            )
+        }
+        runGoalPrompt(
+            visible = goalResumeLabel(goal.iteration),
+            wire = goalResumePrompt(goal.objective),
+            checking = false,
+        )
+    }
+
+    /** Drops the objective. A running turn is stopped with it. */
+    private suspend fun clearGoal(clearComposer: Boolean) {
+        resetGoalLoop()
+        _state.update {
+            it.copy(
+                goal = null,
+                goalNotice = null,
+                composerInput = if (clearComposer) "" else it.composerInput,
+            )
+        }
+        if (_state.value.isStreaming) handleStop()
+    }
+
+    /**
+     * After a work round, asks for a separate check. After an unmet check, starts
+     * the next round. A met check, a pause, or the round limit stops the loop.
+     */
+    private suspend fun continueGoal() {
+        val goal = _state.value.goal ?: return
+        if (goal.status != AgentGoalStatus.ACTIVE) return
+        if (!_state.value.error.isNullOrBlank()) {
+            freezeGoalPaused(notice = GOAL_FAILED_NOTICE, keepNotice = false)
+            return
+        }
+        if (goalChecking) {
+            val verdict =
+                judgeGoal(
+                    lastAgentReply(),
+                    goalEvidence(_state.value.turns.drop(goalBaseline), _state.value.plan),
+                )
+            if (verdict.met) {
+                markGoalMet()
+                return
+            }
+            if (goalAutoRounds >= GOAL_ROUND_LIMIT) {
+                freezeGoalPaused(notice = GOAL_CAP_NOTICE, keepNotice = false)
+                return
+            }
+            goalAutoRounds++
+            val iteration = goal.iteration + 1
+            _state.update { st ->
+                val current = st.goal ?: return@update st
+                st.copy(goal = current.copy(iteration = iteration))
+            }
+            val objective = _state.value.goal?.objective ?: return
+            runGoalPrompt(
+                visible = goalContinueLabel(iteration),
+                wire = goalContinuePrompt(objective, verdict.nextAction),
+                checking = false,
+            )
+        } else {
+            runGoalPrompt(
+                visible = goalCheckLabel(goal.iteration),
+                wire = goalCheckPrompt(goal.objective),
+                checking = true,
+            )
+        }
+    }
+
+    private suspend fun runGoalPrompt(
+        visible: String,
+        wire: String,
+        checking: Boolean,
+    ) {
+        goalChecking = checking
+        val sent = handleSend(visible, emptyList(), clearComposer = false, wirePrompt = wire)
+        val goal = _state.value.goal
+        if (!sent && goal != null && goal.status == AgentGoalStatus.ACTIVE && !_state.value.isStreaming) {
+            freezeGoalPaused(notice = GOAL_FAILED_NOTICE, keepNotice = false)
+        }
+    }
+
+    private fun markGoalMet() {
+        val markedAt = now()
+        goalChecking = false
+        _state.update { st ->
+            val goal = st.goal ?: return@update st
+            st.copy(
+                goal =
+                    goal.copy(
+                        status = AgentGoalStatus.MET,
+                        elapsedMillis = elapsedMillis(goal, markedAt),
+                        runningSinceEpochMillis = null,
+                    ),
+                goalNotice = null,
+            )
+        }
+    }
+
+    /**
+     * Freezes an active goal as paused.
+     *
+     * [keepNotice] leaves the current explanation in place. Stop uses that so a
+     * refusal already on screen stays. A null [notice] clears it.
+     */
+    private fun freezeGoalPaused(
+        notice: String?,
+        keepNotice: Boolean,
+    ) {
+        goalChecking = false
+        val frozenAt = now()
+        _state.update { st ->
+            val goal = st.goal ?: return@update st
+            if (goal.status == AgentGoalStatus.MET) return@update st
+            st.copy(
+                goal =
+                    goal.copy(
+                        status = AgentGoalStatus.PAUSED,
+                        elapsedMillis = elapsedMillis(goal, frozenAt),
+                        runningSinceEpochMillis = null,
+                    ),
+                goalNotice = if (keepNotice) st.goalNotice else notice,
+            )
+        }
+    }
+
+    private fun resetGoalLoop() {
+        goalChecking = false
+        goalAutoRounds = 0
+        goalBaseline = 0
+    }
+
+    private fun lastAgentReply(): String {
+        val turn = _state.value.turns.lastOrNull { it is Turn.Agent } as? Turn.Agent ?: return ""
+        return turn.blocks
+            .filterIsInstance<Block.Text>()
+            .filter { !it.thought }
+            .joinToString("\n") { it.text }
     }
 
     private fun updateComposerInput(text: String) {
@@ -900,12 +1229,14 @@ public class AgentSessionViewModel(
             addedLines = summary.addedLines,
             removedLines = summary.removedLines,
             status = summary.status,
+            goal = _state.value.goal?.let { persistedGoal(it, now()) },
         )
     }
 
     /** Starts a fresh chat, cancelling the current turn and abandoning its ACP session. */
     private suspend fun startNewChat() {
         clearQueuedPrompt()
+        freezeGoalPaused(notice = null, keepNotice = true)
         val acpClient = client
         val previousSession = sessionId
         val wasStreaming = _state.value.isStreaming
@@ -919,6 +1250,7 @@ public class AgentSessionViewModel(
         conversationSessionId = null
         clearSessionSurface()
         recordId = null
+        resetGoalLoop()
         _state.update {
             it.copy(
                 turns = emptyList(),
@@ -927,6 +1259,8 @@ public class AgentSessionViewModel(
                 error = null,
                 restoration = null,
                 activeRecordId = null,
+                goal = null,
+                goalNotice = null,
             )
         }
     }
@@ -957,6 +1291,7 @@ public class AgentSessionViewModel(
         conversationSessionId = null
         clearSessionSurface()
         recordId = null
+        resetGoalLoop()
         _state.update {
             it.copy(
                 turns = emptyList(),
@@ -965,6 +1300,8 @@ public class AgentSessionViewModel(
                 presence = null,
                 restoration = null,
                 activeRecordId = null,
+                goal = null,
+                goalNotice = null,
             )
         }
     }
@@ -993,6 +1330,7 @@ public class AgentSessionViewModel(
         conversationSessionId = record.agentSessionId
         clearSessionSurface()
         recordId = record.id
+        resetGoalLoop()
 
         var counter = 0
         val turns =
@@ -1021,6 +1359,8 @@ public class AgentSessionViewModel(
                 isStreaming = false,
                 restoration = SessionRestoration.Loading,
                 activeRecordId = record.id,
+                goal = record.goal?.let(::restoredGoal),
+                goalNotice = restoredGoalNotice(record.goal),
             )
         }
         if (record.agentSessionId == null) {
@@ -1834,6 +2174,9 @@ public class AgentSessionViewModel(
             return
         }
         _state.update { it.copy(mode = option, error = null) }
+        if (isPlanMode(option) && _state.value.goal?.status == AgentGoalStatus.ACTIVE) {
+            freezeGoalPaused(notice = GOAL_PLAN_NOTICE, keepNotice = false)
+        }
     }
 
     /** Applies the mode state reported by the agent's session response. A null report leaves the current mode. */

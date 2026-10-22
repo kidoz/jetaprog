@@ -151,6 +151,19 @@ internal fun AgentSurfaceContent(
         state.restoration?.let { AgentRestorationNotice(it) }
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                val goal = state.goal
+                if (goal != null) {
+                    GoalCard(
+                        goal = goal,
+                        onPause = { dispatch(AgentIntent.PauseGoal) },
+                        onResume = { dispatch(AgentIntent.ResumeGoal) },
+                        onReplace = { dispatch(AgentIntent.ReplaceGoal) },
+                        onClear = { dispatch(AgentIntent.ClearGoal) },
+                        modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
+                    )
+                }
+                val goalNotice = state.goalNotice
+                if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
                 if (state.plan.isNotEmpty()) {
                     PlanCard(
                         steps = state.plan,
@@ -697,7 +710,7 @@ private fun AgentComposer(
             if (mentionQuery(input) != null) {
                 MentionMenu(state.mentionFiles, dispatch)
             } else {
-                SlashCommandMenu(input, state.commands, dispatch)
+                SlashCommandMenu(input, slashCommands(state.commands), dispatch)
             }
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (input.isEmpty()) {

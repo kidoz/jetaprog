@@ -89,5 +89,29 @@ class AgentHistoryStoreTest {
             assertEquals(0, listed.addedLines)
             assertEquals(0, listed.removedLines)
             assertEquals(AgentSessionStatus.IDLE, listed.status)
+            assertNull(listed.goal)
+        }
+
+    @Test
+    fun goalRoundTripsWithTheSession() =
+        runTest {
+            val goal =
+                AgentGoal(
+                    objective = "Make tests pass",
+                    status = AgentGoalStatus.PAUSED,
+                    startedAtEpochMillis = 10,
+                    elapsedMillis = 90_000,
+                    iteration = 4,
+                )
+            store.save(
+                AgentSessionRecord(
+                    id = "goal",
+                    title = "Make tests pass",
+                    savedAtEpochMillis = 10,
+                    goal = goal,
+                ),
+            )
+
+            assertEquals(goal, store.list().single().goal)
         }
 }

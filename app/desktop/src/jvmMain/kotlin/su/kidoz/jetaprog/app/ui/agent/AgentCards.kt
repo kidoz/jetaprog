@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -45,7 +46,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -56,8 +61,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import su.kidoz.jetaprog.app.agent.AgentGoal
+import su.kidoz.jetaprog.app.agent.AgentGoalStatus
 import su.kidoz.jetaprog.app.ui.panels.FileBadge
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
@@ -646,6 +655,127 @@ internal fun PlanCard(
         }
     }
 }
+
+private const val GOAL_CLOCK_PERIOD_MS: Long = 1_000
+
+/**
+ * The session's one objective, with its status, elapsed time, and iteration.
+ *
+ * Pause holds the loop. Replace prepares `/goal` in the composer. Clear removes it.
+ * Pass [now] to pin the clock; otherwise an active goal ticks once a second.
+ *
+ * @param goal The objective to show.
+ * @param onPause Holds the loop.
+ * @param onResume Continues a paused goal.
+ * @param onReplace Asks for a new objective.
+ * @param onClear Removes the goal.
+ * @param modifier Layout modifier for the card.
+ * @param now Pinned clock for tests. Null uses the current time.
+ */
+@Composable
+internal fun GoalCard(
+    goal: AgentGoal,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onReplace: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+    now: Long? = null,
+) {
+    var clock by remember { mutableStateOf(now ?: System.currentTimeMillis()) }
+    val running = goal.status == AgentGoalStatus.ACTIVE && goal.runningSinceEpochMillis != null
+    if (now == null && running) {
+        LaunchedEffect(goal.runningSinceEpochMillis) {
+            while (true) {
+                delay(GOAL_CLOCK_PERIOD_MS)
+                clock = System.currentTimeMillis()
+            }
+        }
+    }
+    val shownNow = now ?: clock
+    val shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp)
+    val colors = LocalIntelliJColors.current
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(colors.toolCardBackground)
+                .border(1.dp, colors.agentCardBorder, shape)
+                .padding(Spacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    ) {
+        Text(
+            text = "Goal",
+            color = colors.textMuted,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = goal.objective,
+            color = colors.textPrimary,
+            fontSize = 13.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(Spacing.sm.dp)
+                        .clip(CircleShape)
+                        .background(GoalStatusColor(goal.status)),
+            )
+            Text(
+                text = goalMetaLabel(goal, shownNow),
+                color = GoalStatusColor(goal.status),
+                fontSize = 11.sp,
+            )
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+        ) {
+            if (goal.status == AgentGoalStatus.ACTIVE) {
+                GoalActionButton("Pause", Icons.Filled.Pause, colors.warning, filled = true, onPause)
+            } else if (goal.status == AgentGoalStatus.PAUSED) {
+                GoalActionButton("Resume", Icons.Filled.PlayArrow, colors.accent, filled = true, onResume)
+            }
+            GoalActionButton("Replace", Icons.Filled.Edit, colors.textPrimary, filled = false, onReplace)
+            GoalActionButton("Clear", Icons.Filled.Close, colors.textPrimary, filled = false, onClear)
+        }
+    }
+}
+
+@Composable
+private fun GoalActionButton(
+    text: String,
+    icon: ImageVector,
+    foreground: Color,
+    filled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = LocalIntelliJColors.current
+    PillButton(
+        text = text,
+        icon = icon,
+        background = if (filled) foreground.copy(alpha = 0.16f) else colors.buttonBackground,
+        foreground = foreground,
+        onClick = onClick,
+        bordered = true,
+    )
+}
+
+@Composable
+private fun GoalStatusColor(status: AgentGoalStatus): Color =
+    when (status) {
+        AgentGoalStatus.ACTIVE -> LocalIntelliJColors.current.accent
+        AgentGoalStatus.PAUSED -> LocalIntelliJColors.current.warning
+        AgentGoalStatus.MET -> LocalIntelliJColors.current.success
+    }
 
 private fun planStatusLabel(status: PlanStepStatus): String =
     when (status) {
