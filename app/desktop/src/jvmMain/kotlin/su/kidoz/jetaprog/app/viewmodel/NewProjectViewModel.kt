@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.app.project.BuildTool
@@ -13,14 +14,16 @@ import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectIntent
 import su.kidoz.jetaprog.app.ui.dialogs.newproject.NewProjectState
 import su.kidoz.jetaprog.common.mvi.MviViewModel
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.platform.process.ProcessExecutor
 
 /**
  * ViewModel for the New Project wizard dialog.
  */
 public class NewProjectViewModel(
     fileSystem: FileSystem,
+    processExecutor: ProcessExecutor,
 ) : MviViewModel<NewProjectIntent, NewProjectState, NewProjectEffect>(NewProjectState()) {
-    private val projectCreator = ProjectCreator(fileSystem)
+    private val projectCreator = ProjectCreator(fileSystem, processExecutor)
 
     override suspend fun handleIntent(intent: NewProjectIntent) {
         when (intent) {
@@ -192,6 +195,9 @@ public class NewProjectViewModel(
                     emitEffect(NewProjectEffect.ShowError(error.message ?: "Failed to create project"))
                 },
             )
+        } catch (e: CancellationException) {
+            updateState { copy(isCreating = false) }
+            throw e
         } catch (e: Exception) {
             updateState { copy(isCreating = false) }
             emitEffect(NewProjectEffect.ShowError(e.message ?: "Failed to create project"))

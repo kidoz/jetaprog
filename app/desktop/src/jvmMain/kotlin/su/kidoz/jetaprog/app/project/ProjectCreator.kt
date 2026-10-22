@@ -1,15 +1,19 @@
 package su.kidoz.jetaprog.app.project
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.build.gradle.wrapper.GradleWrapperGenerator
 import su.kidoz.jetaprog.build.gradle.wrapper.JvmGradleWrapperGenerator
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.platform.process.ProcessExecutor
 
 /**
  * Service for creating new projects from templates.
  */
 public class ProjectCreator(
     private val fileSystem: FileSystem,
+    private val processExecutor: ProcessExecutor,
     private val gradleWrapperGenerator: GradleWrapperGenerator = JvmGradleWrapperGenerator(),
 ) {
     /**
@@ -53,13 +57,45 @@ public class ProjectCreator(
 
             createGitignore(config)
 
+            if (config.initGit) {
+                initializeGit(config.projectPath)
+            }
+
             Result.success(config.projectPath)
         } catch (error: CancellationException) {
-            if (projectDirectoryCreated) rollback(config.projectPath, error)
+            if (projectDirectoryCreated) {
+                withContext(NonCancellable) { rollback(config.projectPath, error) }
+            }
             throw error
         } catch (e: Exception) {
             if (projectDirectoryCreated) rollback(config.projectPath, e)
             Result.failure(e)
+        }
+    }
+
+    private suspend fun initializeGit(projectPath: String) {
+        val result =
+            try {
+                processExecutor
+                    .execute(
+                        command = listOf("git", "init"),
+                        workingDirectory = projectPath,
+                        timeoutMillis = 30_000,
+                    ).getOrThrow()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                throw IllegalStateException(
+                    "Failed to initialize Git repository. Ensure Git is installed and available on PATH. " +
+                        (error.message ?: "Could not run git init."),
+                    error,
+                )
+            }
+
+        check(result.isSuccess) {
+            val details = result.stderr.ifBlank { result.stdout }.trim()
+            "Failed to initialize Git repository (exit code ${result.exitCode})." +
+                if (details.isNotEmpty()) " $details" else ""
         }
     }
 

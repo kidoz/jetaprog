@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.app.project
 import kotlinx.coroutines.runBlocking
 import su.kidoz.jetaprog.build.gradle.wrapper.JvmGradleWrapperGenerator
 import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
+import su.kidoz.jetaprog.platform.process.JvmProcessExecutor
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.createTempDirectory
@@ -29,7 +30,7 @@ class ProjectCreatorIntegrationTest {
     fun `generated Kotlin Gradle project passes tests through its wrapper`() =
         runBlocking {
             val projectPath =
-                ProjectCreator(JvmFileSystem(), JvmGradleWrapperGenerator())
+                ProjectCreator(JvmFileSystem(), JvmProcessExecutor(), JvmGradleWrapperGenerator())
                     .createProject(
                         ProjectConfig(
                             name = PROJECT_NAME,
@@ -55,6 +56,32 @@ class ProjectCreatorIntegrationTest {
 
             assertTrue(completed, "Generated project build timed out.\n${output.readText()}")
             assertEquals(0, process.exitValue(), output.readText())
+        }
+
+    @Test
+    fun `initializes a real Git repository without staging generated files`() =
+        runBlocking {
+            val executor = JvmProcessExecutor()
+            val config =
+                ProjectConfig(
+                    name = "git-project",
+                    location = File(projectsDir, "parent with spaces").absolutePath,
+                    template = RustCargoTemplate,
+                    packageName = "com.example.generated",
+                    initGit = true,
+                    license = License.NONE,
+                )
+
+            val projectPath = ProjectCreator(JvmFileSystem(), executor).createProject(config).getOrThrow()
+
+            assertTrue(File(projectPath, ".git").isDirectory)
+            val root = executor.execute(listOf("git", "rev-parse", "--show-toplevel"), projectPath).getOrThrow()
+            assertEquals(0, root.exitCode, root.stderr)
+            assertEquals(File(projectPath).canonicalFile, File(root.stdout).canonicalFile)
+            val staged = executor.execute(listOf("git", "ls-files"), projectPath).getOrThrow()
+            assertEquals(0, staged.exitCode, staged.stderr)
+            assertEquals("", staged.stdout)
+            assertTrue(File(projectPath, "Cargo.toml").isFile)
         }
 
     private fun wrapperCommand(project: File): List<String> =

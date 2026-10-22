@@ -147,7 +147,7 @@ public class JetaProgApplication {
     /**
      * The new project view model (global).
      */
-    public val newProjectViewModel: NewProjectViewModel = NewProjectViewModel(fileSystem)
+    public val newProjectViewModel: NewProjectViewModel = NewProjectViewModel(fileSystem, processExecutor)
 
     /**
      * The IDE's own file picker, shared by every browse action (open project,
