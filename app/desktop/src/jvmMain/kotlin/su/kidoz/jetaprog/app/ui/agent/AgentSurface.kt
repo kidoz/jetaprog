@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
@@ -54,6 +56,14 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -83,6 +93,7 @@ import java.text.DateFormat
 
 private const val CONVERSATION_MAX_WIDTH = 760
 private const val RAIL_WIDTH = 264
+private const val COMPOSER_MAX_LINES = 8
 private val EXAMPLE_PROMPTS =
     listOf(
         "Explain how this project is structured",
@@ -629,10 +640,12 @@ private fun AgentComposer(
     dispatch: (AgentIntent) -> Unit,
 ) {
     val input = state.composerInput
+    val canSubmit = input.isNotBlank() && state.restoration != SessionRestoration.Loading
     val send: () -> Unit = {
-        if (input.isNotBlank() && state.restoration != SessionRestoration.Loading) {
-            dispatch(AgentIntent.Send(input.trim()))
-        }
+        if (canSubmit) dispatch(AgentIntent.Send(input.trim()))
+    }
+    val steer: () -> Unit = {
+        if (canSubmit) dispatch(AgentIntent.Steer(input.trim()))
     }
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
     Column(modifier = Modifier.fillMaxWidth().padding(Spacing.md.dp)) {
@@ -649,8 +662,16 @@ private fun AgentComposer(
                     ).padding(Spacing.md.dp),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
-            SlashCommandMenu(input, state.commands, dispatch)
-            Box(modifier = Modifier.fillMaxWidth().height(38.dp)) {
+            state.queuedPrompt?.let { QueuedPromptChip(it, dispatch) }
+            if (state.composerAttachments.isNotEmpty()) {
+                AttachmentRow(state.composerAttachments, dispatch)
+            }
+            if (mentionQuery(input) != null) {
+                MentionMenu(state.mentionFiles, dispatch)
+            } else {
+                SlashCommandMenu(input, state.commands, dispatch)
+            }
+            Box(modifier = Modifier.fillMaxWidth()) {
                 if (input.isEmpty()) {
                     Text(
                         text = "Ask the agent to build a feature, refactor, explain code, or run the project…",
@@ -668,7 +689,19 @@ private fun AgentComposer(
                             fontFamily = JetaProgFonts.codeFont,
                         ),
                     cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
-                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = false,
+                    maxLines = COMPOSER_MAX_LINES,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = Dimensions.inputHeight.dp)
+                            .onPreviewKeyEvent { event ->
+                                if (event.key != Key.Enter || event.isShiftPressed) return@onPreviewKeyEvent false
+                                if (event.type == KeyEventType.KeyDown) {
+                                    if (event.isCtrlPressed || event.isMetaPressed) steer() else send()
+                                }
+                                true
+                            },
                 )
             }
             Row(
@@ -738,6 +771,157 @@ private fun SlashCommandMenu(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MentionMenu(
+    files: List<MentionMatch>,
+    dispatch: (AgentIntent) -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = Dimensions.popupListMaxHeight.dp)
+                .verticalScroll(rememberScrollState()),
+    ) {
+        MentionRow(title = "Current file", detail = "Attach the open file") {
+            dispatch(AgentIntent.AttachCurrentFile)
+        }
+        MentionRow(title = "Current selection", detail = "Attach the selected text") {
+            dispatch(AgentIntent.AttachCurrentSelection)
+        }
+        files.forEach { file ->
+            MentionRow(title = file.label, detail = file.path) {
+                dispatch(AgentIntent.AttachMention(path = file.path, label = file.label))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MentionRow(
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(Dimensions.popupRowHeightCompact.dp)
+                .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = Spacing.sm.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    ) {
+        Text(title, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp, maxLines = 1)
+        Text(
+            text = detail,
+            color = LocalIntelliJColors.current.textMuted,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun AttachmentRow(
+    attachments: List<ComposerAttachment>,
+    dispatch: (AgentIntent) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
+    ) {
+        attachments.forEach { attachment ->
+            AttachmentChip(attachment) {
+                dispatch(
+                    AgentIntent.RemoveAttachment(
+                        path = attachment.path,
+                        selection = attachment.excerpt != null,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentChip(
+    attachment: ComposerAttachment,
+    onRemove: () -> Unit,
+) {
+    val name = chipLabel(attachment)
+    Row(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
+                .background(LocalIntelliJColors.current.background)
+                .border(
+                    1.dp,
+                    LocalIntelliJColors.current.divider,
+                    RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
+                ).padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
+    ) {
+        FileBadge(attachment.label)
+        Text(name, color = LocalIntelliJColors.current.textSecondary, fontSize = 11.sp, maxLines = 1)
+        Icon(
+            Icons.Default.Close,
+            contentDescription = "Remove $name",
+            tint = LocalIntelliJColors.current.textMuted,
+            modifier = Modifier.size(Dimensions.iconSm.dp).clickable(onClick = onRemove),
+        )
+    }
+}
+
+@Composable
+private fun QueuedPromptChip(
+    queued: QueuedFollowUp,
+    dispatch: (AgentIntent) -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
+                .background(LocalIntelliJColors.current.background)
+                .border(
+                    1.dp,
+                    LocalIntelliJColors.current.agentCardBorder,
+                    RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
+                ).padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    ) {
+        Text(
+            text = if (queued.steer) "Steering" else "Queued",
+            color = if (queued.steer) LocalIntelliJColors.current.accent else LocalIntelliJColors.current.textMuted,
+            fontSize = 11.sp,
+        )
+        Text(
+            text = queued.prompt,
+            color = LocalIntelliJColors.current.textPrimary,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            Icons.Default.Close,
+            contentDescription = "Remove queued prompt",
+            tint = LocalIntelliJColors.current.textMuted,
+            modifier =
+                Modifier
+                    .size(Dimensions.iconSm.dp)
+                    .clickable { dispatch(AgentIntent.RemoveQueuedPrompt) },
+        )
     }
 }
 

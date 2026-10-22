@@ -163,6 +163,120 @@ internal fun slashCommandQuery(input: String): String? {
     return token.removePrefix("/")
 }
 
+/**
+ * A file or selection attached to the composer draft.
+ *
+ * @property label Chip text, usually the file name.
+ * @property path Workspace path included in the prompt the agent receives.
+ * @property excerpt Selected text, or null when the attachment is the whole file.
+ */
+@Immutable
+public data class ComposerAttachment(
+    val label: String,
+    val path: String,
+    val excerpt: String? = null,
+)
+
+/** Chip text for [attachment], distinguishing a selection from the whole file. */
+internal fun chipLabel(attachment: ComposerAttachment): String =
+    if (attachment.excerpt == null) attachment.label else "${attachment.label} (selection)"
+
+/**
+ * One project file that matches the `@` token being typed.
+ *
+ * @property label File name shown in the mention menu.
+ * @property path Path passed to [AgentIntent.AttachMention].
+ */
+@Immutable
+public data class MentionMatch(
+    val label: String,
+    val path: String,
+)
+
+/**
+ * The editor file and selection available for attachment.
+ *
+ * @property label File name shown on the chip.
+ * @property path Workspace-relative path, or the absolute path when the file is outside the project.
+ * @property selection The selected text, capped, or null when the caret has no selection.
+ */
+@Immutable
+public data class EditorSnippet(
+    val label: String,
+    val path: String,
+    val selection: String? = null,
+)
+
+/**
+ * One follow-up waiting to be sent after the running turn.
+ *
+ * @property prompt The trimmed follow-up text.
+ * @property attachments Context captured when the follow-up was queued.
+ * @property steer Whether the running turn should be cancelled at the next tool boundary.
+ */
+@Immutable
+public data class QueuedFollowUp(
+    val prompt: String,
+    val attachments: List<ComposerAttachment>,
+    val steer: Boolean = false,
+)
+
+/**
+ * Returns the `@` query being typed, or null when the composer is not mentioning a file.
+ *
+ * The query is the last whitespace-delimited token when it starts with `@`.
+ * A bare `@` yields an empty query. A trailing space closes the menu.
+ */
+internal fun mentionQuery(input: String): String? {
+    if (input.isEmpty() || input.last().isWhitespace()) return null
+    val start = input.lastIndexOfAny(charArrayOf(' ', '\n', '\t')) + 1
+    val token = input.substring(start)
+    if (!token.startsWith("@")) return null
+    return token.removePrefix("@")
+}
+
+/**
+ * Removes the `@` token being typed so a chosen mention does not stay in the prompt.
+ *
+ * Text before that token is kept. When no mention is open, [input] is returned unchanged.
+ */
+internal fun withoutMentionToken(input: String): String {
+    if (mentionQuery(input) == null) return input
+    val start = input.lastIndexOfAny(charArrayOf(' ', '\n', '\t')) + 1
+    return input.substring(0, start).trimEnd(' ', '\t')
+}
+
+/**
+ * Builds the ACP prompt, prepending attached files and selections so the agent can see them.
+ *
+ * Chip labels stay on the user turn. This text is what `session/prompt` receives.
+ */
+internal fun promptWithContext(
+    prompt: String,
+    attachments: List<ComposerAttachment>,
+): String {
+    if (attachments.isEmpty()) return prompt
+    val preamble =
+        buildString {
+            append("Context:\n")
+            attachments.forEach { attachment ->
+                val excerpt = attachment.excerpt
+                if (excerpt == null) {
+                    append("File: ")
+                    append(attachment.path)
+                    append("\n\n")
+                } else {
+                    append("Selection in ")
+                    append(attachment.path)
+                    append(":\n")
+                    append(excerpt)
+                    append("\n\n")
+                }
+            }
+        }
+    return preamble + prompt
+}
+
 /** The kind of a single rendered diff line. */
 public enum class DiffLineKind {
     /** Unchanged context line. */
@@ -371,6 +485,9 @@ public data class Presence(
  * @property docked Whether the surface is docked beside the editor (vs full perspective).
  * @property error The most recent error message, if any.
  * @property composerInput The current text in the composer input field.
+ * @property composerAttachments Files and selections chips above the composer.
+ * @property queuedPrompt The single follow-up waiting while a turn is running, if any.
+ * @property mentionFiles Project files matching the `@` token being typed.
  * @property restoration The outcome or progress of restoring a saved conversation.
  */
 @Immutable
@@ -395,6 +512,9 @@ public data class AgentUiState(
     val docked: Boolean = false,
     val error: String? = null,
     val composerInput: String = "",
+    val composerAttachments: List<ComposerAttachment> = emptyList(),
+    val queuedPrompt: QueuedFollowUp? = null,
+    val mentionFiles: List<MentionMatch> = emptyList(),
     val restoration: SessionRestoration? = null,
     /** Persisted conversations, most recent first (loaded on History). */
     val sessionHistory: List<AgentSessionRecord> = emptyList(),
@@ -427,12 +547,26 @@ public sealed interface AgentIntent {
     /**
      * Send a prompt, optionally with attached context file names.
      *
+     * While a turn is streaming, this stores one follow-up instead of starting a second turn.
+     * The follow-up is sent when the turn ends. Stop leaves it unsent.
+     *
      * @property prompt The user's message.
-     * @property context Names of attached context files.
+     * @property context Names of attached context files, used when the composer has no chips.
      */
     public data class Send(
         val prompt: String,
         val context: List<String> = emptyList(),
+    ) : AgentIntent
+
+    /**
+     * Send [prompt] now, or interrupt the running turn so it is delivered at the next tool boundary.
+     *
+     * When a tool call is running, the turn is cancelled once that call finishes. When none is
+     * running, the turn is cancelled immediately. The conversation stays. Stop leaves the
+     * follow-up unsent.
+     */
+    public data class Steer(
+        val prompt: String,
     ) : AgentIntent
 
     /** Ensure the agent is connected (no-op if already connected/connecting). */
@@ -521,4 +655,35 @@ public sealed interface AgentIntent {
     public data class SetComposerInput(
         val text: String,
     ) : AgentIntent
+
+    /** Attach the editor's current file. Does nothing when no file is open. */
+    public data object AttachCurrentFile : AgentIntent
+
+    /** Attach the editor's current selection. Does nothing when there is no selection. */
+    public data object AttachCurrentSelection : AgentIntent
+
+    /**
+     * Attach the project file chosen from the `@` menu.
+     *
+     * @property path Workspace path included in the prompt.
+     * @property label Chip text, usually the file name.
+     */
+    public data class AttachMention(
+        val path: String,
+        val label: String,
+    ) : AgentIntent
+
+    /**
+     * Remove one composer chip.
+     *
+     * @property path Path of the attachment to remove.
+     * @property selection True to remove the selection chip, false to remove the whole-file chip.
+     */
+    public data class RemoveAttachment(
+        val path: String,
+        val selection: Boolean,
+    ) : AgentIntent
+
+    /** Drop the queued follow-up so a later turn end does not send it. */
+    public data object RemoveQueuedPrompt : AgentIntent
 }

@@ -49,6 +49,7 @@ import su.kidoz.jetaprog.app.refactoring.KotlinRenameService
 import su.kidoz.jetaprog.app.refactoring.RenameOutcome
 import su.kidoz.jetaprog.app.refactoring.RenamePlan
 import su.kidoz.jetaprog.app.refactoring.RenamePreparation
+import su.kidoz.jetaprog.app.ui.agent.MentionMatch
 import su.kidoz.jetaprog.app.ui.navigation.NavigationIntent
 import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
 import su.kidoz.jetaprog.app.ui.navigation.SearchMode
@@ -62,6 +63,7 @@ import su.kidoz.jetaprog.app.viewmodel.GradleViewModel
 import su.kidoz.jetaprog.app.viewmodel.IdeMcpEndpoint
 import su.kidoz.jetaprog.app.viewmodel.TerminalViewModel
 import su.kidoz.jetaprog.app.viewmodel.TextSearchViewModel
+import su.kidoz.jetaprog.app.viewmodel.editorSnippet
 import su.kidoz.jetaprog.build.gradle.execution.JvmGradleExecutionService
 import su.kidoz.jetaprog.build.gradle.importer.GradleClasspathResolver
 import su.kidoz.jetaprog.build.gradle.importer.GradleImportModel
@@ -80,6 +82,7 @@ import su.kidoz.jetaprog.database.JvmDatabaseExecutionService
 import su.kidoz.jetaprog.database.SessionDatabaseCredentialStore
 import su.kidoz.jetaprog.editor.navigation.NavigationHistory
 import su.kidoz.jetaprog.editor.navigation.NavigationService
+import su.kidoz.jetaprog.editor.navigation.SearchScope
 import su.kidoz.jetaprog.editor.navigation.index.CSharpSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.GoSymbolExtractor
 import su.kidoz.jetaprog.editor.navigation.index.InMemorySymbolIndex
@@ -601,6 +604,16 @@ public class ProjectSession(
             projectPath = projectPath,
             fileSystem = fileSystem,
             ideMcpEndpoint = ideMcpEndpoint,
+            editorContext = { editorSnippet(projectPath, editorViewModel.state.value) },
+            mentionSearch = { query ->
+                navigationService
+                    .searchFiles(query, SearchScope.PROJECT, MENTION_FILE_LIMIT)
+                    .map { result ->
+                        val path = result.target.filePath
+                        val label = path.substringAfterLast('/').substringAfterLast('\\').ifBlank { result.target.name }
+                        MentionMatch(label = label, path = path)
+                    }
+            },
         )
 
     /**
@@ -1078,5 +1091,8 @@ public class ProjectSession(
 
         /** Debounce for repository file events before refreshing Git state. */
         const val PROJECT_WATCH_REFRESH_DEBOUNCE_MS = 400L
+
+        /** How many project files the agent `@` menu asks navigation to return. */
+        const val MENTION_FILE_LIMIT = 8
     }
 }

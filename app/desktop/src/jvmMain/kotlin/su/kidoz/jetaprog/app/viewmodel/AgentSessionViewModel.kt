@@ -68,9 +68,12 @@ import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
 import su.kidoz.jetaprog.app.ui.agent.Block
+import su.kidoz.jetaprog.app.ui.agent.ComposerAttachment
 import su.kidoz.jetaprog.app.ui.agent.DiffDecision
 import su.kidoz.jetaprog.app.ui.agent.DiffLine
 import su.kidoz.jetaprog.app.ui.agent.DiffLineKind
+import su.kidoz.jetaprog.app.ui.agent.EditorSnippet
+import su.kidoz.jetaprog.app.ui.agent.MentionMatch
 import su.kidoz.jetaprog.app.ui.agent.ModeOption
 import su.kidoz.jetaprog.app.ui.agent.ModelOption
 import su.kidoz.jetaprog.app.ui.agent.PermissionKind
@@ -78,9 +81,14 @@ import su.kidoz.jetaprog.app.ui.agent.PermissionPolicy
 import su.kidoz.jetaprog.app.ui.agent.PlanStep
 import su.kidoz.jetaprog.app.ui.agent.PlanStepStatus
 import su.kidoz.jetaprog.app.ui.agent.Presence
+import su.kidoz.jetaprog.app.ui.agent.QueuedFollowUp
 import su.kidoz.jetaprog.app.ui.agent.SessionRestoration
 import su.kidoz.jetaprog.app.ui.agent.ToolStatus
 import su.kidoz.jetaprog.app.ui.agent.Turn
+import su.kidoz.jetaprog.app.ui.agent.chipLabel
+import su.kidoz.jetaprog.app.ui.agent.mentionQuery
+import su.kidoz.jetaprog.app.ui.agent.promptWithContext
+import su.kidoz.jetaprog.app.ui.agent.withoutMentionToken
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.platform.filesystem.WorkspacePathException
@@ -102,6 +110,8 @@ import java.util.UUID
  *   IDE's own tools; returns null when the server is not running.
  * @param defaultAgentCommand the command used to launch the agent process.
  * @param transportFactory launches the configured agent transport; injectable for protocol testing.
+ * @param editorContext reads the active editor file and selection when the user attaches context.
+ * @param mentionSearch finds project files for an `@` query. Blank queries are not passed.
  */
 public class AgentSessionViewModel(
     private val projectPath: String,
@@ -111,6 +121,8 @@ public class AgentSessionViewModel(
     private val transportFactory: suspend (StdioAgentConfig) -> AcpTransport = { config ->
         StdioAcpTransport(config).also { it.start() }
     },
+    private val editorContext: () -> EditorSnippet? = { null },
+    private val mentionSearch: suspend (String) -> List<MentionMatch> = { emptyList() },
 ) : Disposable,
     AcpClientHandler {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -145,6 +157,15 @@ public class AgentSessionViewModel(
 
     /** Invalidates completions belonging to an abandoned turn. */
     private var turnGeneration = 0
+
+    /** Drops mention results that belong to an older `@` query. */
+    private var mentionGeneration = 0
+
+    /** When true, [endTurn] sends the queued follow-up. Stop clears this. */
+    private var deliverQueuedPrompt = false
+
+    /** When true, cancel the running turn once no tool call is still running. */
+    private var steerArmed = false
 
     /** Ends a stopped turn if the agent never answers the cancellation. */
     private var stopFallbackJob: Job? = null
@@ -199,7 +220,11 @@ public class AgentSessionViewModel(
             }
 
             is AgentIntent.Send -> {
-                handleSend(intent.prompt, intent.context)
+                submit(intent.prompt, intent.context, steer = false)
+            }
+
+            is AgentIntent.Steer -> {
+                submit(intent.prompt, emptyList(), steer = true)
             }
 
             AgentIntent.Stop -> {
@@ -278,7 +303,27 @@ public class AgentSessionViewModel(
             }
 
             is AgentIntent.SetComposerInput -> {
-                _state.update { it.copy(composerInput = intent.text) }
+                updateComposerInput(intent.text)
+            }
+
+            AgentIntent.AttachCurrentFile -> {
+                attachFromEditor(selection = false)
+            }
+
+            AgentIntent.AttachCurrentSelection -> {
+                attachFromEditor(selection = true)
+            }
+
+            is AgentIntent.AttachMention -> {
+                attachMention(intent.path, intent.label)
+            }
+
+            is AgentIntent.RemoveAttachment -> {
+                removeAttachment(intent.path, intent.selection)
+            }
+
+            AgentIntent.RemoveQueuedPrompt -> {
+                clearQueuedPrompt()
             }
         }
     }
@@ -317,6 +362,7 @@ public class AgentSessionViewModel(
         }
 
     private suspend fun resetConnection() {
+        disarmQueue()
         val openClient = client
         client = null
         sessionId = null
@@ -413,20 +459,63 @@ public class AgentSessionViewModel(
     // Turns
     // ------------------------------------------------------------------------
 
-    private suspend fun handleSend(
+    /**
+     * Sends [prompt] immediately, or queues it when a turn is already running.
+     *
+     * [steer] cancels that turn at the next tool boundary so the follow-up is delivered sooner.
+     * Composer chips are included only when [prompt] is the current draft.
+     */
+    private suspend fun submit(
         prompt: String,
-        context: List<String>,
+        contextLabels: List<String>,
+        steer: Boolean,
     ) {
         val text = prompt.trim()
         if (text.isEmpty()) return
-        val claim = claimTurn(text, context) ?: return
+        if (_state.value.restoration is SessionRestoration.Loading) return
+        val attachments = attachmentsFor(text, contextLabels)
+        val clearComposer = _state.value.composerInput.trim() == text
+        if (_state.value.isStreaming) {
+            queueFollowUp(text, attachments, steer, clearComposer)
+        } else {
+            handleSend(text, attachments, clearComposer)
+        }
+    }
+
+    private fun attachmentsFor(
+        text: String,
+        contextLabels: List<String>,
+    ): List<ComposerAttachment> {
+        val current = _state.value
+        if (current.composerInput.trim() == text && current.composerAttachments.isNotEmpty()) {
+            return current.composerAttachments
+        }
+        return contextLabels.filter { it.isNotBlank() }.map { label ->
+            ComposerAttachment(
+                label = label.substringAfterLast('/').substringAfterLast('\\').ifBlank { label },
+                path = label,
+            )
+        }
+    }
+
+    /**
+     * @return false when the turn could not be claimed, so a queued follow-up can be put back.
+     */
+    private suspend fun handleSend(
+        prompt: String,
+        attachments: List<ComposerAttachment>,
+        clearComposer: Boolean,
+    ): Boolean {
+        val text = prompt.trim()
+        if (text.isEmpty()) return false
+        val claim = claimTurn(text, attachments, clearComposer) ?: return false
         try {
-            claim.client.promptText(claim.sessionId, text)
+            claim.client.promptText(claim.sessionId, promptWithContext(text, attachments))
             if (claim.generation == turnGeneration) endTurn()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (claim.generation != turnGeneration) return
+            if (claim.generation != turnGeneration) return true
             val closed = !claim.client.isOpen
             if (closed) resetConnection()
             _state.update {
@@ -437,6 +526,7 @@ public class AgentSessionViewModel(
             }
             endTurn()
         }
+        return true
     }
 
     /**
@@ -447,7 +537,8 @@ public class AgentSessionViewModel(
      */
     private suspend fun claimTurn(
         text: String,
-        context: List<String>,
+        attachments: List<ComposerAttachment>,
+        clearComposer: Boolean,
     ): TurnClaim? {
         if (!sendMutex.tryLock()) return null
         try {
@@ -456,16 +547,19 @@ public class AgentSessionViewModel(
             val acpClient = client ?: return null
             val activeSession = ensureSession(acpClient) ?: return null
             val generation = ++turnGeneration
+            if (clearComposer) mentionGeneration++
             _state.update {
                 it.copy(
                     turns =
                         it.turns +
-                            Turn.User(nextId("usr"), text, "now", context) +
+                            Turn.User(nextId("usr"), text, "now", attachments.map(::chipLabel)) +
                             Turn.Agent(nextId("agt"), "now", emptyList()),
                     isStreaming = true,
                     error = null,
                     presence = Presence(action = "Thinking", fileName = null, startedAtEpochMillis = now()),
-                    composerInput = "",
+                    composerInput = if (clearComposer) "" else it.composerInput,
+                    composerAttachments = if (clearComposer) emptyList() else it.composerAttachments,
+                    mentionFiles = if (clearComposer) emptyList() else it.mentionFiles,
                 )
             }
             return TurnClaim(acpClient, activeSession, generation)
@@ -475,6 +569,11 @@ public class AgentSessionViewModel(
     }
 
     private suspend fun handleStop() {
+        disarmQueue()
+        _state.update { st ->
+            val queued = st.queuedPrompt
+            if (queued == null || !queued.steer) st else st.copy(queuedPrompt = queued.copy(steer = false))
+        }
         val acpClient = client ?: return
         val activeSession = sessionId ?: return
         if (!_state.value.isStreaming) return
@@ -524,11 +623,12 @@ public class AgentSessionViewModel(
         approvedEditPaths.clear()
     }
 
-    private fun endTurn() {
+    private suspend fun endTurn() {
         stopFallbackJob?.cancel()
         stopFallbackJob = null
         cancelPendingApprovals()
         approvedEditPaths.clear()
+        val queued = queuedForDelivery()
         _state.update { st ->
             val turns =
                 st.turns.map { turn ->
@@ -538,11 +638,174 @@ public class AgentSessionViewModel(
                         turn
                     }
                 }
-            st.copy(isStreaming = false, presence = null, turns = turns)
+            st.copy(
+                isStreaming = false,
+                presence = null,
+                turns = turns,
+                queuedPrompt = if (queued != null) null else st.queuedPrompt,
+            )
         }
         // Capture before another history action can replace the visible conversation.
         val record = conversationRecord()
         if (record != null) scope.launch { historyStore.save(record) }
+        if (queued != null) {
+            val sent = handleSend(queued.prompt, queued.attachments, clearComposer = false)
+            if (!sent && !_state.value.isStreaming && _state.value.queuedPrompt == null) {
+                _state.update { it.copy(queuedPrompt = queued.copy(steer = false)) }
+            }
+        }
+    }
+
+    /** Returns the follow-up to send, and disarms delivery so Stop cannot be overtaken. */
+    private fun queuedForDelivery(): QueuedFollowUp? {
+        val queued = _state.value.queuedPrompt
+        if (!deliverQueuedPrompt || queued == null) return null
+        deliverQueuedPrompt = false
+        steerArmed = false
+        return queued
+    }
+
+    private suspend fun queueFollowUp(
+        text: String,
+        attachments: List<ComposerAttachment>,
+        steer: Boolean,
+        clearComposer: Boolean,
+    ) {
+        deliverQueuedPrompt = true
+        steerArmed = steer
+        if (clearComposer) mentionGeneration++
+        _state.update { st ->
+            st.copy(
+                queuedPrompt = QueuedFollowUp(prompt = text, attachments = attachments, steer = steer),
+                composerInput = if (clearComposer) "" else st.composerInput,
+                composerAttachments = if (clearComposer) emptyList() else st.composerAttachments,
+                mentionFiles = if (clearComposer) emptyList() else st.mentionFiles,
+            )
+        }
+        if (steer) steerCancelIfIdle()
+    }
+
+    /**
+     * Cancels the running turn when steering and no tool call is still in progress.
+     *
+     * The prompt call stays in flight until the agent returns. [endTurn] then sends the queue.
+     */
+    private suspend fun steerCancelIfIdle() {
+        if (!steerArmed || !deliverQueuedPrompt) return
+        if (hasRunningTool()) return
+        val acpClient = client ?: return
+        val activeSession = sessionId ?: return
+        steerArmed = false
+        try {
+            acpClient.cancel(activeSession)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // The prompt return path still ends the turn and delivers the follow-up.
+        }
+    }
+
+    private fun hasRunningTool(): Boolean {
+        val turn = _state.value.turns.lastOrNull { it is Turn.Agent } as? Turn.Agent ?: return false
+        return turn.blocks.any { it is Block.Tool && it.status == ToolStatus.RUNNING }
+    }
+
+    private fun disarmQueue() {
+        deliverQueuedPrompt = false
+        steerArmed = false
+    }
+
+    private fun clearQueuedPrompt() {
+        disarmQueue()
+        _state.update { it.copy(queuedPrompt = null) }
+    }
+
+    private fun updateComposerInput(text: String) {
+        val query = mentionQuery(text)
+        _state.update { st ->
+            st.copy(
+                composerInput = text,
+                mentionFiles = if (query.isNullOrEmpty()) emptyList() else st.mentionFiles,
+            )
+        }
+        if (query.isNullOrEmpty()) {
+            mentionGeneration++
+            return
+        }
+        val generation = ++mentionGeneration
+        scope.launch {
+            val matches =
+                try {
+                    mentionSearch(query)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            if (generation != mentionGeneration) return@launch
+            if (mentionQuery(_state.value.composerInput) != query) return@launch
+            _state.update { st ->
+                st.copy(mentionFiles = matches.distinctBy { it.path }.take(MENTION_RESULT_LIMIT))
+            }
+        }
+    }
+
+    private fun attachFromEditor(selection: Boolean) {
+        val snippet = editorContext() ?: return
+        val excerpt = if (selection) snippet.selection?.takeIf { it.isNotBlank() } ?: return else null
+        if (snippet.path.isBlank()) return
+        acceptAttachment(
+            ComposerAttachment(
+                label = snippet.label.ifBlank { snippet.path.substringAfterLast('/') },
+                path = snippet.path,
+                excerpt = excerpt,
+            ),
+        )
+    }
+
+    private fun attachMention(
+        path: String,
+        label: String,
+    ) {
+        if (path.isBlank()) return
+        acceptAttachment(
+            ComposerAttachment(
+                label = label.ifBlank { path.substringAfterLast('/') },
+                path = path,
+            ),
+        )
+    }
+
+    private fun acceptAttachment(attachment: ComposerAttachment) {
+        mentionGeneration++
+        _state.update { st ->
+            st.copy(
+                composerAttachments = addAttachment(st.composerAttachments, attachment),
+                composerInput = withoutMentionToken(st.composerInput),
+                mentionFiles = emptyList(),
+            )
+        }
+    }
+
+    private fun addAttachment(
+        current: List<ComposerAttachment>,
+        attachment: ComposerAttachment,
+    ): List<ComposerAttachment> {
+        val duplicate =
+            current.any { it.path == attachment.path && (it.excerpt != null) == (attachment.excerpt != null) }
+        return if (duplicate) current else current + attachment
+    }
+
+    private fun removeAttachment(
+        path: String,
+        selection: Boolean,
+    ) {
+        _state.update { st ->
+            st.copy(
+                composerAttachments =
+                    st.composerAttachments.filterNot { it.path == path && (it.excerpt != null) == selection },
+            )
+        }
     }
 
     private fun cancelPendingApprovals() {
@@ -611,6 +874,7 @@ public class AgentSessionViewModel(
 
     /** Starts a fresh chat, cancelling the current turn and abandoning its ACP session. */
     private suspend fun startNewChat() {
+        clearQueuedPrompt()
         val acpClient = client
         val previousSession = sessionId
         val wasStreaming = _state.value.isStreaming
@@ -642,6 +906,7 @@ public class AgentSessionViewModel(
             return
         }
 
+        clearQueuedPrompt()
         val acpClient = client
         val previousSession = sessionId
         val wasStreaming = _state.value.isStreaming
@@ -671,6 +936,7 @@ public class AgentSessionViewModel(
      */
     private suspend fun restoreSession(recordIdToRestore: String) {
         val record = historyStore.list().firstOrNull { it.id == recordIdToRestore } ?: return
+        clearQueuedPrompt()
         val acpClient = client
         val previousSession = sessionId
         val wasStreaming = _state.value.isStreaming
@@ -1089,6 +1355,9 @@ public class AgentSessionViewModel(
         }
         if (notification.sessionId == sessionId && _state.value.isStreaming) {
             applyUpdate(update)
+            if (update is SessionUpdate.ToolCallStart || update is SessionUpdate.ToolCallProgress) {
+                steerCancelIfIdle()
+            }
         }
     }
 
@@ -1581,6 +1850,9 @@ public class AgentSessionViewModel(
 
         /** How long a `session/set_mode` request may take. */
         private const val MODE_SELECT_TIMEOUT_MS = 15_000L
+
+        /** How many `@` file matches the composer menu keeps. */
+        private const val MENTION_RESULT_LIMIT = 8
 
         /** Name the agent sees for the IDE's embedded MCP server. */
         private const val IDE_MCP_SERVER_NAME = "jetaprog"

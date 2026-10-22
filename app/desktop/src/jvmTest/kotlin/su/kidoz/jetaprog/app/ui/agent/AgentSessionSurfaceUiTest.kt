@@ -3,18 +3,26 @@ package su.kidoz.jetaprog.app.ui.agent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.KeyInjectionScope
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.ui.saveUiArtifacts
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Verifies the plan card, session-mode chip, and slash-command menu. */
 @OptIn(ExperimentalTestApi::class)
@@ -88,6 +96,112 @@ class AgentSessionSurfaceUiTest {
             onNodeWithText("Review the diff").assertDoesNotExist()
         }
     }
+
+    @Test
+    fun mentionQueryReadsTheTrailingAtToken() {
+        assertEquals("", mentionQuery("@"))
+        assertEquals("Rea", mentionQuery("see @Rea"))
+        assertNull(mentionQuery("see @Rea "))
+        assertNull(mentionQuery("/review"))
+    }
+
+    @Test
+    fun mentionMenuAttachmentsAndQueueAreShownAndRemovable() {
+        for (dark in listOf(true, false)) {
+            val intents = mutableListOf<AgentIntent>()
+            runComposeUiTest {
+                setContent {
+                    JetaProgTheme(darkTheme = dark) {
+                        Box(Modifier.size(480.dp, 640.dp)) {
+                            AgentSurfaceContent(
+                                state = composerState(),
+                                dispatch = { intents += it },
+                                showRail = false,
+                            )
+                        }
+                    }
+                }
+                onNodeWithText("Steering").assertIsDisplayed()
+                onNodeWithText("Add tests").assertIsDisplayed()
+                onNodeWithContentDescription("Remove Reader.kt").assertIsDisplayed()
+                onNodeWithText("Current file").assertIsDisplayed()
+                onNodeWithText("Current selection").assertIsDisplayed()
+                onNodeWithText("src/Reader.kt").assertIsDisplayed()
+                onNodeWithText("/review").assertDoesNotExist()
+                onNodeWithText("Current file").performClick()
+                onNodeWithContentDescription("Remove Reader.kt").performClick()
+                onNodeWithContentDescription("Remove queued prompt").performClick()
+                if (dark) onRoot().saveUiArtifacts("agent-composer-context")
+            }
+            assertEquals(
+                listOf(
+                    AgentIntent.EnsureConnected,
+                    AgentIntent.AttachCurrentFile,
+                    AgentIntent.RemoveAttachment(path = "src/Reader.kt", selection = false),
+                    AgentIntent.RemoveQueuedPrompt,
+                ),
+                intents,
+            )
+        }
+    }
+
+    @Test
+    fun enterSendsShiftEnterDoesNotAndCtrlEnterSteers() {
+        val enter = composerKeys { pressKey(Key.Enter) }
+        assertTrue(enter.contains(AgentIntent.Send("hello")), enter.toString())
+
+        val shiftEnter =
+            composerKeys {
+                keyDown(Key.ShiftLeft)
+                pressKey(Key.Enter)
+                keyUp(Key.ShiftLeft)
+            }
+        assertFalse(shiftEnter.any { it is AgentIntent.Send || it is AgentIntent.Steer })
+
+        val steer =
+            composerKeys {
+                keyDown(Key.CtrlLeft)
+                pressKey(Key.Enter)
+                keyUp(Key.CtrlLeft)
+            }
+        assertTrue(steer.contains(AgentIntent.Steer("hello")))
+    }
+
+    private fun composerKeys(keys: KeyInjectionScope.() -> Unit): List<AgentIntent> {
+        val intents = mutableListOf<AgentIntent>()
+        runComposeUiTest {
+            setContent {
+                JetaProgTheme {
+                    Box(Modifier.size(480.dp, 320.dp)) {
+                        AgentSurfaceContent(
+                            state =
+                                AgentUiState(
+                                    connection = AgentConnection.CONNECTED,
+                                    composerInput = "hello",
+                                    isStreaming = true,
+                                ),
+                            dispatch = { intents += it },
+                            showRail = false,
+                        )
+                    }
+                }
+            }
+            onNode(hasSetTextAction()).performClick().performKeyInput(keys)
+        }
+        return intents
+    }
+
+    private fun composerState(): AgentUiState =
+        AgentUiState(
+            connection = AgentConnection.CONNECTED,
+            isStreaming = true,
+            composerInput = "@Rea",
+            composerAttachments = listOf(ComposerAttachment(label = "Reader.kt", path = "src/Reader.kt")),
+            queuedPrompt = QueuedFollowUp(prompt = "Add tests", attachments = emptyList(), steer = true),
+            mentionFiles = listOf(MentionMatch(label = "Reader.kt", path = "src/Reader.kt")),
+            commands = listOf(AgentCommand(name = "review", description = "Review the diff")),
+            turns = listOf(Turn.User(id = "user", text = "Build it", timeLabel = "")),
+        )
 
     private fun surfaceState(composerInput: String): AgentUiState =
         AgentUiState(
