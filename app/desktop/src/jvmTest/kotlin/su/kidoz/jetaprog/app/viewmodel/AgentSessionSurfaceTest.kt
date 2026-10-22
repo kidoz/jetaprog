@@ -19,8 +19,12 @@ import kotlinx.serialization.json.jsonPrimitive
 import su.kidoz.jetaprog.acp.protocol.AcpConnection
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
+import su.kidoz.jetaprog.app.ui.agent.AgentUiState
+import su.kidoz.jetaprog.app.ui.agent.PermissionKind
+import su.kidoz.jetaprog.app.ui.agent.PermissionPolicy
 import su.kidoz.jetaprog.app.ui.agent.PlanStepStatus
 import su.kidoz.jetaprog.app.ui.agent.Turn
+import su.kidoz.jetaprog.app.ui.agent.nextCycledModeId
 import su.kidoz.jetaprog.platform.filesystem.FileEntry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import kotlin.test.AfterTest
@@ -207,6 +211,67 @@ class AgentSessionSurfaceTest {
             assertEquals(emptyList(), viewModel.state.value.commands)
             assertEquals(null, viewModel.state.value.mode)
         }
+
+    @Test
+    fun cyclingTheModeKeepsTheConversationAndPermissions() =
+        runTest {
+            val agent = SurfaceAgentTransport()
+            val viewModel = viewModel(agent)
+
+            viewModel.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.Send("Build it"))
+            runCurrent()
+            viewModel.dispatch(AgentIntent.AttachMention("src/Reader.kt", "Reader.kt"))
+            viewModel.dispatch(AgentIntent.SetComposerInput("keep"))
+            viewModel.dispatch(AgentIntent.SetPermission(PermissionKind.EDIT, PermissionPolicy.AUTO))
+            runCurrent()
+
+            val before = viewModel.state.value
+            assertEquals("ask", before.mode?.id)
+            assertTrue(before.turns.isNotEmpty())
+            assertTrue(before.plan.isNotEmpty())
+
+            val toCode = checkNotNull(nextCycledModeId(before.mode?.id, before.availableModes))
+            viewModel.dispatch(AgentIntent.SetMode(toCode))
+            runCurrent()
+            val mid = viewModel.state.value
+            assertEquals("code", mid.mode?.id)
+            assertSameConversation(before, mid)
+
+            val backToAsk = checkNotNull(nextCycledModeId(mid.mode?.id, mid.availableModes))
+            viewModel.dispatch(AgentIntent.SetMode(backToAsk))
+            runCurrent()
+            val after = viewModel.state.value
+            assertEquals("ask", after.mode?.id)
+            assertSameConversation(before, after)
+            assertEquals(
+                listOf("code", "ask"),
+                agent.requests
+                    .filter { it.getValue("method").jsonPrimitive.content == "session/set_mode" }
+                    .map {
+                        it
+                            .getValue("params")
+                            .jsonObject
+                            .getValue("modeId")
+                            .jsonPrimitive.content
+                    },
+            )
+        }
+
+    private fun assertSameConversation(
+        before: AgentUiState,
+        current: AgentUiState,
+    ) {
+        assertEquals(before.turns, current.turns)
+        assertEquals(before.plan, current.plan)
+        assertEquals(before.permissions, current.permissions)
+        assertEquals(before.composerInput, current.composerInput)
+        assertEquals(before.composerAttachments, current.composerAttachments)
+        assertEquals(before.queuedPrompt, current.queuedPrompt)
+        assertEquals(before.goal, current.goal)
+        assertEquals(before.commands, current.commands)
+    }
 
     private fun viewModel(agent: SurfaceAgentTransport): AgentSessionViewModel =
         AgentSessionViewModel("/project", fileSystem, transportFactory = { agent }).also { viewModels += it }

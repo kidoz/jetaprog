@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
@@ -823,11 +824,25 @@ private fun AgentComposer(
                             .fillMaxWidth()
                             .heightIn(min = Dimensions.inputHeight.dp)
                             .onPreviewKeyEvent { event ->
-                                if (event.key != Key.Enter || event.isShiftPressed) return@onPreviewKeyEvent false
-                                if (event.type == KeyEventType.KeyDown) {
-                                    if (event.isCtrlPressed || event.isMetaPressed) steer() else send()
+                                val nextMode = nextCycledModeId(state.mode?.id, state.availableModes)
+                                val cycleMode =
+                                    nextMode != null &&
+                                        event.key == Key.Tab &&
+                                        event.isShiftPressed &&
+                                        !event.isCtrlPressed &&
+                                        !event.isMetaPressed &&
+                                        !event.isAltPressed
+                                if (cycleMode) {
+                                    if (event.type == KeyEventType.KeyDown) dispatch(AgentIntent.SetMode(nextMode))
+                                    true
+                                } else if (event.key != Key.Enter || event.isShiftPressed) {
+                                    false
+                                } else {
+                                    if (event.type == KeyEventType.KeyDown) {
+                                        if (event.isCtrlPressed || event.isMetaPressed) steer() else send()
+                                    }
+                                    true
                                 }
-                                true
                             },
                 )
             }

@@ -2,6 +2,10 @@ package su.kidoz.jetaprog.app.ui.agent
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -260,6 +264,69 @@ class AgentSessionSurfaceUiTest {
     }
 
     @Test
+    fun shiftTabCyclesTheModeChipAndWraps() {
+        val selected = mutableListOf<String>()
+        runComposeUiTest {
+            setContent {
+                var state by remember { mutableStateOf(surfaceState("hello")) }
+                JetaProgTheme {
+                    Box(Modifier.size(480.dp, 640.dp)) {
+                        AgentSurfaceContent(
+                            state = state,
+                            dispatch = { intent ->
+                                if (intent is AgentIntent.SetMode) {
+                                    selected += intent.modeId
+                                    val mode = state.availableModes.first { it.id == intent.modeId }
+                                    state = state.copy(mode = mode)
+                                }
+                            },
+                            showRail = false,
+                        )
+                    }
+                }
+            }
+            val field = onNode(hasSetTextAction())
+            field.performClick()
+            field.performKeyInput {
+                keyDown(Key.ShiftLeft)
+                pressKey(Key.Tab)
+                keyUp(Key.ShiftLeft)
+            }
+            onNodeWithText("Code").assertIsDisplayed()
+            onNodeWithText("hello").assertIsDisplayed()
+            field.performKeyInput {
+                keyDown(Key.ShiftLeft)
+                pressKey(Key.Tab)
+                keyUp(Key.ShiftLeft)
+            }
+            onNodeWithText("Ask").assertIsDisplayed()
+            onNodeWithText("Code").assertDoesNotExist()
+        }
+        assertEquals(listOf("code", "ask"), selected)
+    }
+
+    @Test
+    fun tabAndASingleModeLeaveTheChip() {
+        val plainTab = composerKeys(surfaceState("hello")) { pressKey(Key.Tab) }
+        assertFalse(plainTab.any { it is AgentIntent.SetMode })
+
+        val onlyAsk =
+            AgentUiState(
+                connection = AgentConnection.CONNECTED,
+                composerInput = "hello",
+                mode = ModeOption(id = "ask", name = "Ask"),
+                availableModes = listOf(ModeOption(id = "ask", name = "Ask")),
+            )
+        val shiftTab =
+            composerKeys(onlyAsk) {
+                keyDown(Key.ShiftLeft)
+                pressKey(Key.Tab)
+                keyUp(Key.ShiftLeft)
+            }
+        assertFalse(shiftTab.any { it is AgentIntent.SetMode })
+    }
+
+    @Test
     fun enterSendsShiftEnterDoesNotAndCtrlEnterSteers() {
         val enter = composerKeys { pressKey(Key.Enter) }
         assertTrue(enter.contains(AgentIntent.Send("hello")), enter.toString())
@@ -281,19 +348,22 @@ class AgentSessionSurfaceUiTest {
         assertTrue(steer.contains(AgentIntent.Steer("hello")))
     }
 
-    private fun composerKeys(keys: KeyInjectionScope.() -> Unit): List<AgentIntent> {
+    private fun composerKeys(
+        state: AgentUiState =
+            AgentUiState(
+                connection = AgentConnection.CONNECTED,
+                composerInput = "hello",
+                isStreaming = true,
+            ),
+        keys: KeyInjectionScope.() -> Unit,
+    ): List<AgentIntent> {
         val intents = mutableListOf<AgentIntent>()
         runComposeUiTest {
             setContent {
                 JetaProgTheme {
-                    Box(Modifier.size(480.dp, 320.dp)) {
+                    Box(Modifier.size(480.dp, 640.dp)) {
                         AgentSurfaceContent(
-                            state =
-                                AgentUiState(
-                                    connection = AgentConnection.CONNECTED,
-                                    composerInput = "hello",
-                                    isStreaming = true,
-                                ),
+                            state = state,
                             dispatch = { intents += it },
                             showRail = false,
                         )
