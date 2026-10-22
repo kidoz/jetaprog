@@ -1,12 +1,18 @@
 package su.kidoz.jetaprog.acp.protocol
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -64,34 +70,85 @@ public class AcpConnection(
 ) {
     private val mutex = Mutex()
     private var nextId = 0
+    private var started = false
     private val pending = mutableMapOf<String, CompletableDeferred<JsonElement?>>()
+    private val notifications = Channel<Pair<String, JsonElement?>>(Channel.UNLIMITED)
+    private val _isOpen = MutableStateFlow(true)
+
+    /**
+     * Whether the connection is still able to carry requests.
+     *
+     * Changes to `false` when [close] is called or when the transport's inbound
+     * flow completes (for example, because the agent process exited).
+     */
+    public val isOpen: Boolean
+        get() = _isOpen.value
 
     /**
      * Starts listening for inbound messages on the transport.
+     *
+     * Calling this more than once has no effect.
      */
     public fun start() {
+        if (started) return
+        started = true
+        // Notifications are consumed sequentially so streamed session updates keep
+        // their wire order even when a handler applies backpressure.
+        scope.launch {
+            for ((method, params) in notifications) {
+                try {
+                    notificationHandler.handle(method, params)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // A malformed update must not stop subsequent notifications.
+                }
+            }
+        }
         transport.incoming
             .onEach { line -> dispatch(line) }
-            .launchIn(scope)
+            .onCompletion { cause ->
+                _isOpen.value = false
+                notifications.close()
+                // Fail in-flight requests rather than leaving callers suspended forever
+                // when the peer exits or the transport is closed.
+                withContext(NonCancellable) { failAllPending(cause?.message ?: "ACP transport closed") }
+            }.launchIn(scope)
     }
 
     /**
      * Sends a request and suspends until the matching response arrives.
      *
+     * The pending entry is removed when the caller is cancelled or the send fails,
+     * and is completed exceptionally when the connection closes.
+     *
      * @return the result payload, or `null` when the peer returned no result.
-     * @throws AcpRequestException when the peer responded with an error.
+     * @throws AcpRequestException when the peer responded with an error or the
+     *   connection closed before a response arrived.
      */
     public suspend fun sendRequest(
         method: String,
         params: JsonElement? = null,
     ): JsonElement? {
-        val id = mutex.withLock { ++nextId }
+        val id =
+            mutex.withLock {
+                checkOpen()
+                ++nextId
+            }
         val idElement: JsonElement = JsonPrimitive(id)
+        val key = idElement.toString()
         val deferred = CompletableDeferred<JsonElement?>()
-        mutex.withLock { pending[idElement.toString()] = deferred }
+        mutex.withLock {
+            checkOpen()
+            pending[key] = deferred
+        }
 
-        transport.send(json.encodeToString(AcpRequest.serializer(), AcpRequest(idElement, method, params)))
-        return deferred.await()
+        try {
+            transport.send(json.encodeToString(AcpRequest.serializer(), AcpRequest(idElement, method, params)))
+            return deferred.await()
+        } finally {
+            mutex.withLock { pending.remove(key) }
+        }
     }
 
     /**
@@ -105,30 +162,62 @@ public class AcpConnection(
     }
 
     /**
-     * Closes the underlying transport.
+     * Closes the underlying transport and fails every in-flight request.
      */
     public suspend fun close() {
+        _isOpen.value = false
+        notifications.close()
+        failAllPending("ACP connection closed")
         transport.close()
     }
 
-    private fun dispatch(line: String) {
+    private fun checkOpen() {
+        if (!_isOpen.value) {
+            throw AcpRequestException(AcpError.INTERNAL_ERROR, "ACP connection is closed")
+        }
+    }
+
+    private suspend fun failAllPending(message: String) {
+        val failures =
+            mutex.withLock {
+                pending.values.toList().also { pending.clear() }
+            }
+        failures.forEach { deferred ->
+            deferred.completeExceptionally(AcpRequestException(AcpError.INTERNAL_ERROR, message))
+        }
+    }
+
+    private suspend fun dispatch(line: String) {
         if (line.isBlank()) return
         val obj = runCatching { json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return
 
         when {
-            obj.containsKey("id") && obj.containsKey("method") -> scope.launch { handleRequest(obj) }
-            obj.containsKey("id") -> handleResponse(obj)
-            obj.containsKey("method") -> scope.launch { handleNotification(obj) }
+            obj.containsKey("id") && obj.containsKey("method") -> {
+                scope.launch { handleRequest(obj) }
+            }
+
+            obj.containsKey("id") -> {
+                handleResponse(obj)
+            }
+
+            obj.containsKey("method") -> {
+                val method = obj["method"]?.jsonPrimitive?.content ?: return
+                notifications.trySend(method to obj["params"])
+            }
         }
     }
 
-    private fun handleResponse(obj: JsonObject) {
+    private suspend fun handleResponse(obj: JsonObject) {
         val id = obj["id"] ?: return
-        val deferred = pending.remove(id.toString()) ?: return
+        val deferred = mutex.withLock { pending.remove(id.toString()) } ?: return
         val error = obj["error"]
         if (error != null) {
-            val decoded = json.decodeFromJsonElement(AcpError.serializer(), error)
-            deferred.completeExceptionally(AcpRequestException(decoded.code, decoded.message, decoded.data))
+            val decoded = runCatching { json.decodeFromJsonElement(AcpError.serializer(), error) }.getOrNull()
+            if (decoded == null) {
+                deferred.completeExceptionally(AcpRequestException(AcpError.INTERNAL_ERROR, "Malformed error response"))
+            } else {
+                deferred.completeExceptionally(AcpRequestException(decoded.code, decoded.message, decoded.data))
+            }
         } else {
             deferred.complete(obj["result"])
         }
@@ -143,17 +232,14 @@ public class AcpConnection(
             try {
                 val result = requestHandler.handle(method, params)
                 AcpResponse(id = id, result = result)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: AcpRequestException) {
                 AcpResponse(id = id, error = AcpError(e.code, e.message, e.data))
             } catch (e: Exception) {
                 AcpResponse(id = id, error = AcpError(AcpError.INTERNAL_ERROR, e.message ?: "Internal error"))
             }
         transport.send(json.encodeToString(AcpResponse.serializer(), response))
-    }
-
-    private suspend fun handleNotification(obj: JsonObject) {
-        val method = obj["method"]?.jsonPrimitive?.content ?: return
-        notificationHandler.handle(method, obj["params"])
     }
 
     public companion object {

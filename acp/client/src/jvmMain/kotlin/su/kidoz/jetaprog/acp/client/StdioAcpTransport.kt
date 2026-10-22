@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import java.io.BufferedReader
@@ -18,8 +20,12 @@ import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
 
 private val logger = KotlinLogging.logger {}
+
+/** How long [StdioAcpTransport.close] waits for the agent process to exit. */
+private const val PROCESS_EXIT_TIMEOUT_SECONDS: Long = 5
 
 /**
  * Configuration for launching an ACP agent subprocess over stdio.
@@ -40,8 +46,14 @@ public data class StdioAgentConfig(
 public class StdioAcpTransport(
     private val config: StdioAgentConfig,
 ) : AcpTransport {
+    @Volatile
     private var process: Process? = null
+
+    @Volatile
     private var writer: BufferedWriter? = null
+
+    private val sendMutex = Mutex()
+    private var closed = false
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val incomingChannel = Channel<String>(Channel.UNLIMITED)
@@ -58,6 +70,9 @@ public class StdioAcpTransport(
      */
     public suspend fun start(): Unit =
         withContext(Dispatchers.IO) {
+            check(!closed) { "Transport is closed" }
+            if (process != null) return@withContext
+
             logger.info { "Starting ACP agent: ${config.command.joinToString(" ")}" }
 
             val builder =
@@ -76,18 +91,24 @@ public class StdioAcpTransport(
 
     private suspend fun readLines(process: Process) =
         withContext(Dispatchers.IO) {
-            BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
-                try {
-                    while (isActive) {
-                        val line = reader.readLine() ?: break
-                        if (line.isNotBlank()) {
-                            logger.debug { "ACP <- $line" }
-                            incomingChannel.send(line)
+            try {
+                BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
+                    try {
+                        while (isActive) {
+                            val line = reader.readLine() ?: break
+                            if (line.isNotBlank()) {
+                                logger.debug { "ACP <- $line" }
+                                incomingChannel.send(line)
+                            }
                         }
+                    } catch (e: Exception) {
+                        if (isActive) logger.error(e) { "Error reading ACP agent output" }
                     }
-                } catch (e: Exception) {
-                    if (isActive) logger.error(e) { "Error reading ACP agent output" }
                 }
+            } finally {
+                // Signals EOF to the connection so in-flight requests fail instead
+                // of waiting for a response that will never arrive.
+                incomingChannel.close()
             }
         }
 
@@ -102,24 +123,50 @@ public class StdioAcpTransport(
         }
 
     override suspend fun send(line: String): Unit =
-        withContext(Dispatchers.IO) {
-            val target = writer ?: throw IllegalStateException("Transport not started")
-            logger.debug { "ACP -> $line" }
-            target.write(line)
-            target.write("\n")
-            target.flush()
+        sendMutex.withLock {
+            check(!closed) { "Transport is closed" }
+            withContext(Dispatchers.IO) {
+                val running = process ?: throw IllegalStateException("Transport not started")
+                if (!running.isAlive) {
+                    // Signal EOF so the connection fails pending requests and can be reset.
+                    incomingChannel.close()
+                    throw IllegalStateException("ACP agent process is not running")
+                }
+                val target = writer ?: throw IllegalStateException("Transport not started")
+                logger.debug { "ACP -> $line" }
+                target.write(line)
+                target.write("\n")
+                target.flush()
+            }
         }
 
     override suspend fun close() {
+        val alreadyClosed =
+            sendMutex.withLock {
+                if (closed) {
+                    true
+                } else {
+                    closed = true
+                    false
+                }
+            }
+        if (alreadyClosed) return
+
         logger.info { "Closing ACP agent transport" }
         scope.cancel()
         incomingChannel.close()
         withContext(Dispatchers.IO) {
-            try {
-                writer?.close()
-                process?.destroy()
-            } catch (e: Exception) {
-                logger.error(e) { "Error closing ACP agent transport" }
+            val running = process
+            process = null
+            running?.destroy()
+
+            val target = writer
+            writer = null
+            runCatching { target?.close() }
+
+            if (running != null && !running.waitFor(PROCESS_EXIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                running.destroyForcibly()
+                running.waitFor(PROCESS_EXIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             }
         }
     }

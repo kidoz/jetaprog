@@ -22,6 +22,8 @@ import su.kidoz.jetaprog.acp.protocol.Implementation
 import su.kidoz.jetaprog.acp.protocol.InitializeRequest
 import su.kidoz.jetaprog.acp.protocol.InitializeResponse
 import su.kidoz.jetaprog.acp.protocol.KillTerminalRequest
+import su.kidoz.jetaprog.acp.protocol.LoadSessionRequest
+import su.kidoz.jetaprog.acp.protocol.LoadSessionResponse
 import su.kidoz.jetaprog.acp.protocol.McpServer
 import su.kidoz.jetaprog.acp.protocol.NewSessionRequest
 import su.kidoz.jetaprog.acp.protocol.NewSessionResponse
@@ -63,6 +65,14 @@ public class AcpClient(
     public val initializeResponse: InitializeResponse?
         get() = agentCapabilities
 
+    /**
+     * Whether the connection is still able to carry requests.
+     *
+     * Becomes `false` when the agent process exits or [close] is called.
+     */
+    public val isOpen: Boolean
+        get() = connection.isOpen
+
     private val connection =
         AcpConnection(
             transport = transport,
@@ -97,6 +107,25 @@ public class AcpClient(
                 encode(NewSessionRequest.serializer(), NewSessionRequest(cwd, mcpServers)),
             )
         return decode(NewSessionResponse.serializer(), result)
+    }
+
+    /**
+     * Loads a previously created session and replays its history as
+     * `session/update` notifications.
+     *
+     * Only call this when the agent advertises `loadSession` in its capabilities.
+     */
+    public suspend fun loadSession(
+        sessionId: String,
+        cwd: String,
+        mcpServers: List<McpServer> = emptyList(),
+    ): LoadSessionResponse {
+        val result =
+            connection.sendRequest(
+                AcpMethod.SESSION_LOAD,
+                encode(LoadSessionRequest.serializer(), LoadSessionRequest(sessionId, cwd, mcpServers)),
+            )
+        return decode(LoadSessionResponse.serializer(), result)
     }
 
     /**

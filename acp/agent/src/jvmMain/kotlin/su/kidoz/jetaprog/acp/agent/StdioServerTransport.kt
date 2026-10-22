@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import java.io.BufferedReader
@@ -34,6 +36,9 @@ public class StdioServerTransport(
 ) : AcpTransport {
     private val reader = BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8))
     private val writer: BufferedWriter = BufferedWriter(OutputStreamWriter(output, StandardCharsets.UTF_8))
+
+    private val sendMutex = Mutex()
+    private var closed = false
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val incomingChannel = Channel<String>(Channel.UNLIMITED)
@@ -60,18 +65,36 @@ public class StdioServerTransport(
                 }
             } catch (e: Exception) {
                 if (isActive) logger.error(e) { "Error reading ACP client input" }
+            } finally {
+                // Signals EOF to the connection so in-flight requests fail instead
+                // of waiting for a response that will never arrive.
+                incomingChannel.close()
             }
         }
 
     override suspend fun send(line: String): Unit =
-        withContext(Dispatchers.IO) {
-            logger.debug { "ACP -> $line" }
-            writer.write(line)
-            writer.write("\n")
-            writer.flush()
+        sendMutex.withLock {
+            check(!closed) { "Transport is closed" }
+            withContext(Dispatchers.IO) {
+                logger.debug { "ACP -> $line" }
+                writer.write(line)
+                writer.write("\n")
+                writer.flush()
+            }
         }
 
     override suspend fun close() {
+        val alreadyClosed =
+            sendMutex.withLock {
+                if (closed) {
+                    true
+                } else {
+                    closed = true
+                    false
+                }
+            }
+        if (alreadyClosed) return
+
         scope.cancel()
         incomingChannel.close()
         withContext(Dispatchers.IO) {
