@@ -18,6 +18,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -180,6 +181,72 @@ class AcpConnectionTest {
             } finally {
                 scope.cancel()
             }
+        }
+
+    @Test
+    fun responseWaitsOnlyForNotificationsThatPrecedeIt() =
+        runTest {
+            val transport = TestTransport()
+            val firstGate = CompletableDeferred<Unit>()
+            val laterGate = CompletableDeferred<Unit>()
+            val received = mutableListOf<String>()
+            val connection =
+                AcpConnection(
+                    transport,
+                    backgroundScope,
+                    notificationHandler =
+                        AcpNotificationHandler { method, _ ->
+                            if (method == "first") firstGate.await() else laterGate.await()
+                            received += method
+                        },
+                )
+            connection.start()
+            val request = async { connection.sendRequest("prompt", awaitNotifications = true) }
+            runCurrent()
+
+            transport.inbound.send(notification("first"))
+            respond(transport, requestId(transport), "done")
+            transport.inbound.send(notification("later"))
+            runCurrent()
+            assertFalse(request.isCompleted)
+
+            firstGate.complete(Unit)
+            assertEquals(JsonPrimitive("done"), request.await())
+            assertEquals(listOf("first"), received)
+            laterGate.complete(Unit)
+            connection.close()
+        }
+
+    @Test
+    fun notificationHandlerCanMakeRequestsWhilePromptWaitsForIt() =
+        runTest {
+            val transport = TestTransport()
+            lateinit var connection: AcpConnection
+            val callbackResult = CompletableDeferred<JsonElement?>()
+            connection =
+                AcpConnection(
+                    transport,
+                    backgroundScope,
+                    notificationHandler =
+                        AcpNotificationHandler { _, _ ->
+                            callbackResult.complete(connection.sendRequest("nested"))
+                        },
+                )
+            connection.start()
+            val request = async { connection.sendRequest("prompt", awaitNotifications = true) }
+            runCurrent()
+            val promptId = requestId(transport)
+
+            transport.inbound.send(notification("update"))
+            respond(transport, promptId, "done")
+            runCurrent()
+            assertFalse(request.isCompleted)
+
+            val nestedId = json.parseToJsonElement(transport.sent.last()).jsonObject.getValue("id")
+            respond(transport, nestedId, "nested-result")
+            assertEquals(JsonPrimitive("done"), request.await())
+            assertEquals(JsonPrimitive("nested-result"), callbackResult.await())
+            connection.close()
         }
 
     private fun notification(method: String): String =

@@ -1,9 +1,11 @@
 package su.kidoz.jetaprog.acp.client
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -57,7 +59,11 @@ public class AcpClient(
 
     private val _sessionUpdates = MutableSharedFlow<SessionNotification>(extraBufferCapacity = 64)
 
-    /** Streamed `session/update` notifications from the agent. */
+    /**
+     * Streamed `session/update` notifications for observers. Collection is buffered;
+     * use [AcpClientHandler.sessionUpdate] for state that must be applied before
+     * [prompt] or [loadSession] completes.
+     */
     public val sessionUpdates: SharedFlow<SessionNotification> = _sessionUpdates.asSharedFlow()
 
     private var agentCapabilities: InitializeResponse? = null
@@ -88,11 +94,23 @@ public class AcpClient(
      */
     public suspend fun initialize(): InitializeResponse {
         connection.start()
-        val request = InitializeRequest(clientCapabilities = capabilities, clientInfo = clientInfo)
-        val result = connection.sendRequest(AcpMethod.INITIALIZE, encode(InitializeRequest.serializer(), request))
-        val response = decode(InitializeResponse.serializer(), result)
-        agentCapabilities = response
-        return response
+        try {
+            val request = InitializeRequest(clientCapabilities = capabilities, clientInfo = clientInfo)
+            val result = connection.sendRequest(AcpMethod.INITIALIZE, encode(InitializeRequest.serializer(), request))
+            val response = decode(InitializeResponse.serializer(), result)
+            if (response.protocolVersion != AcpMethod.PROTOCOL_VERSION) {
+                throw AcpRequestException(
+                    AcpError.INVALID_REQUEST,
+                    "Unsupported ACP protocol version ${response.protocolVersion}; supported version is ${AcpMethod.PROTOCOL_VERSION}",
+                )
+            }
+            agentCapabilities = response
+            return response
+        } catch (e: Exception) {
+            agentCapabilities = null
+            withContext(NonCancellable) { runCatching { connection.close() } }
+            throw e
+        }
     }
 
     /**
@@ -125,6 +143,7 @@ public class AcpClient(
             connection.sendRequest(
                 AcpMethod.SESSION_LOAD,
                 encode(LoadSessionRequest.serializer(), LoadSessionRequest(sessionId, cwd, mcpServers)),
+                awaitNotifications = true,
             )
         return decode(LoadSessionResponse.serializer(), result)
     }
@@ -140,6 +159,7 @@ public class AcpClient(
             connection.sendRequest(
                 AcpMethod.SESSION_PROMPT,
                 encode(PromptRequest.serializer(), PromptRequest(sessionId, blocks)),
+                awaitNotifications = true,
             )
         return decode(PromptResponse.serializer(), result)
     }
@@ -267,7 +287,9 @@ public class AcpClient(
         params: JsonElement?,
     ) {
         if (method == AcpMethod.SESSION_UPDATE && params != null) {
-            _sessionUpdates.emit(decode(SessionNotification.serializer(), params))
+            val notification = decode(SessionNotification.serializer(), params)
+            handler.sessionUpdate(notification)
+            _sessionUpdates.emit(notification)
         }
     }
 

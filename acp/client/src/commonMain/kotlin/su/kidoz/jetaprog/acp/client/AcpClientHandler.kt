@@ -11,6 +11,7 @@ import su.kidoz.jetaprog.acp.protocol.ReadTextFileResponse
 import su.kidoz.jetaprog.acp.protocol.ReleaseTerminalRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionResponse
+import su.kidoz.jetaprog.acp.protocol.SessionNotification
 import su.kidoz.jetaprog.acp.protocol.TerminalOutputRequest
 import su.kidoz.jetaprog.acp.protocol.TerminalOutputResponse
 import su.kidoz.jetaprog.acp.protocol.WaitForTerminalExitRequest
@@ -25,6 +26,18 @@ import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
  * correspond to the capabilities advertised in [AcpClient]'s configuration.
  */
 public interface AcpClientHandler {
+    /**
+     * Applies a streamed session update in wire order. [AcpClient.prompt] and
+     * [AcpClient.loadSession] wait for preceding updates to finish here before
+     * returning, including when the agent responds with an error.
+     *
+     * Do not call prompt or loadSession from this handler: they would wait for
+     * this handler to finish. The default ignores updates.
+     */
+    public suspend fun sessionUpdate(notification: SessionNotification) {
+        // Observers may instead collect AcpClient.sessionUpdates.
+    }
+
     /**
      * Reads a text file on the agent's behalf.
      */

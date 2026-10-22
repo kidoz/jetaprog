@@ -40,6 +40,7 @@ import su.kidoz.jetaprog.acp.protocol.ReadTextFileResponse
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionResponse
 import su.kidoz.jetaprog.acp.protocol.SessionModelState
+import su.kidoz.jetaprog.acp.protocol.SessionNotification
 import su.kidoz.jetaprog.acp.protocol.SessionUpdate
 import su.kidoz.jetaprog.acp.protocol.ToolCallContent
 import su.kidoz.jetaprog.acp.protocol.ToolCallStatus
@@ -247,7 +248,6 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
 
     private val connectionMutex = Mutex()
-    private var sessionUpdatesJob: Job? = null
 
     private suspend fun ensureConnected(): Boolean =
         connectionMutex.withLock {
@@ -275,8 +275,6 @@ public class AgentSessionViewModel(
         }
 
     private suspend fun resetConnection() {
-        sessionUpdatesJob?.cancel()
-        sessionUpdatesJob = null
         val openClient = client
         client = null
         sessionId = null
@@ -307,18 +305,6 @@ public class AgentSessionViewModel(
                 handler = this,
             )
         client = acpClient
-
-        sessionUpdatesJob =
-            scope.launch {
-                acpClient.sessionUpdates.collect { notification ->
-                    // Updates from an abandoned or replaced session must not leak into
-                    // the current transcript, and nothing may arrive after the turn
-                    // was stopped or reset.
-                    if (notification.sessionId == sessionId && _state.value.isStreaming) {
-                        applyUpdate(notification.update)
-                    }
-                }
-            }
 
         val initialize =
             withTimeoutOrNull(CONNECT_TIMEOUT_MS) { acpClient.initialize() }
@@ -962,6 +948,14 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
     // AcpClientHandler
     // ------------------------------------------------------------------------
+
+    override suspend fun sessionUpdate(notification: SessionNotification) {
+        // Apply updates before the prompt response can end the turn and archive it.
+        // Updates from abandoned sessions or stopped turns must still be ignored.
+        if (notification.sessionId == sessionId && _state.value.isStreaming) {
+            applyUpdate(notification.update)
+        }
+    }
 
     override suspend fun readTextFile(request: ReadTextFileRequest): ReadTextFileResponse {
         val path = guardedPath(request.path)

@@ -71,8 +71,10 @@ public class AcpConnection(
     private val mutex = Mutex()
     private var nextId = 0
     private var started = false
-    private val pending = mutableMapOf<String, CompletableDeferred<JsonElement?>>()
-    private val notifications = Channel<Pair<String, JsonElement?>>(Channel.UNLIMITED)
+    private val pending = mutableMapOf<String, CompletableDeferred<IncomingResponse>>()
+    private val notifications =
+        Channel<IncomingNotification>(Channel.UNLIMITED, onUndeliveredElement = { it.handled.cancel() })
+    private var lastNotification: CompletableDeferred<Unit>? = null
     private val _isOpen = MutableStateFlow(true)
 
     /**
@@ -95,14 +97,21 @@ public class AcpConnection(
         // Notifications are consumed sequentially so streamed session updates keep
         // their wire order even when a handler applies backpressure.
         scope.launch {
-            for ((method, params) in notifications) {
-                try {
-                    notificationHandler.handle(method, params)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    // A malformed update must not stop subsequent notifications.
+            try {
+                for (notification in notifications) {
+                    try {
+                        notificationHandler.handle(notification.method, notification.params)
+                        notification.handled.complete(Unit)
+                    } catch (e: CancellationException) {
+                        notification.handled.cancel(e)
+                        throw e
+                    } catch (_: Exception) {
+                        // A malformed update must not stop subsequent notifications.
+                        notification.handled.complete(Unit)
+                    }
                 }
+            } finally {
+                notifications.cancel()
             }
         }
         transport.incoming
@@ -122,6 +131,9 @@ public class AcpConnection(
      * The pending entry is removed when the caller is cancelled or the send fails,
      * and is completed exceptionally when the connection closes.
      *
+     * @param awaitNotifications wait for notification handlers preceding the response
+     *   on the wire to finish. Use for prompt completion and history replay, but not
+     *   for requests made inside a notification handler (which would await itself).
      * @return the result payload, or `null` when the peer returned no result.
      * @throws AcpRequestException when the peer responded with an error or the
      *   connection closed before a response arrived.
@@ -129,6 +141,7 @@ public class AcpConnection(
     public suspend fun sendRequest(
         method: String,
         params: JsonElement? = null,
+        awaitNotifications: Boolean = false,
     ): JsonElement? {
         val id =
             mutex.withLock {
@@ -137,7 +150,7 @@ public class AcpConnection(
             }
         val idElement: JsonElement = JsonPrimitive(id)
         val key = idElement.toString()
-        val deferred = CompletableDeferred<JsonElement?>()
+        val deferred = CompletableDeferred<IncomingResponse>()
         mutex.withLock {
             checkOpen()
             pending[key] = deferred
@@ -145,9 +158,11 @@ public class AcpConnection(
 
         try {
             transport.send(json.encodeToString(AcpRequest.serializer(), AcpRequest(idElement, method, params)))
-            return deferred.await()
+            val response = deferred.await()
+            if (awaitNotifications) response.notificationsHandled?.await()
+            return response.result()
         } finally {
-            mutex.withLock { pending.remove(key) }
+            withContext(NonCancellable) { mutex.withLock { pending.remove(key) } }
         }
     }
 
@@ -202,7 +217,9 @@ public class AcpConnection(
 
             obj.containsKey("method") -> {
                 val method = obj["method"]?.jsonPrimitive?.content ?: return
-                notifications.trySend(method to obj["params"])
+                val notification = IncomingNotification(method, obj["params"])
+                lastNotification = notification.handled
+                if (notifications.trySend(notification).isFailure) notification.handled.cancel()
             }
         }
     }
@@ -210,17 +227,16 @@ public class AcpConnection(
     private suspend fun handleResponse(obj: JsonObject) {
         val id = obj["id"] ?: return
         val deferred = mutex.withLock { pending.remove(id.toString()) } ?: return
-        val error = obj["error"]
-        if (error != null) {
-            val decoded = runCatching { json.decodeFromJsonElement(AcpError.serializer(), error) }.getOrNull()
-            if (decoded == null) {
-                deferred.completeExceptionally(AcpRequestException(AcpError.INTERNAL_ERROR, "Malformed error response"))
-            } else {
-                deferred.completeExceptionally(AcpRequestException(decoded.code, decoded.message, decoded.data))
-            }
-        } else {
-            deferred.complete(obj["result"])
+        deferred.complete(IncomingResponse(obj, lastNotification))
+    }
+
+    private fun IncomingResponse.result(): JsonElement? {
+        val error = payload["error"] ?: return payload["result"]
+        val decoded = runCatching { json.decodeFromJsonElement(AcpError.serializer(), error) }.getOrNull()
+        if (decoded == null) {
+            throw AcpRequestException(AcpError.INTERNAL_ERROR, "Malformed error response")
         }
+        throw AcpRequestException(decoded.code, decoded.message, decoded.data)
     }
 
     private suspend fun handleRequest(obj: JsonObject) {
@@ -241,6 +257,17 @@ public class AcpConnection(
             }
         transport.send(json.encodeToString(AcpResponse.serializer(), response))
     }
+
+    private data class IncomingNotification(
+        val method: String,
+        val params: JsonElement?,
+        val handled: CompletableDeferred<Unit> = CompletableDeferred(),
+    )
+
+    private data class IncomingResponse(
+        val payload: JsonObject,
+        val notificationsHandled: CompletableDeferred<Unit>?,
+    )
 
     public companion object {
         /** The shared, lenient JSON configuration used across ACP. */
