@@ -44,13 +44,15 @@ public data class NewSessionResponse(
 /**
  * Parameters of the `session/load` request.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class LoadSessionRequest(
     /** The session to load. */
     val sessionId: String,
     /** The working directory for the session. */
     val cwd: String,
-    /** MCP servers the agent may use during the session. */
+    /** MCP servers the agent may use during the session, including an empty list. */
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val mcpServers: List<McpServer> = emptyList(),
 )
 

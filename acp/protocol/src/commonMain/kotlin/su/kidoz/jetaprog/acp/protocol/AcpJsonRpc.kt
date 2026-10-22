@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.acp.protocol
 
+import kotlinx.serialization.Required
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
@@ -12,7 +13,6 @@ import kotlinx.serialization.json.JsonElement
 public sealed interface AcpMessage {
     /** The JSON-RPC protocol version. Always `"2.0"`. */
     public val jsonrpc: String
-        get() = JSON_RPC_VERSION
 
     public companion object {
         /** The supported JSON-RPC version string. */
@@ -34,7 +34,10 @@ public data class AcpRequest(
     val method: String,
     /** The method parameters, or `null` when the method takes none. */
     val params: JsonElement? = null,
-) : AcpMessage
+) : AcpMessage {
+    @Required
+    override val jsonrpc: String = AcpMessage.JSON_RPC_VERSION
+}
 
 /**
  * A JSON-RPC response to a previously issued [AcpRequest].
@@ -47,7 +50,10 @@ public data class AcpResponse(
     val result: JsonElement? = null,
     /** The error payload when the request failed, mutually exclusive with [result]. */
     val error: AcpError? = null,
-) : AcpMessage
+) : AcpMessage {
+    @Required
+    override val jsonrpc: String = AcpMessage.JSON_RPC_VERSION
+}
 
 /**
  * A JSON-RPC notification, a one-way message that expects no response.
@@ -58,7 +64,10 @@ public data class AcpNotification(
     val method: String,
     /** The notification parameters, or `null` when it takes none. */
     val params: JsonElement? = null,
-) : AcpMessage
+) : AcpMessage {
+    @Required
+    override val jsonrpc: String = AcpMessage.JSON_RPC_VERSION
+}
 
 /**
  * A JSON-RPC error object.

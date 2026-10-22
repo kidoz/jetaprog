@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.acp.protocol
 
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.Required
 import kotlinx.serialization.Serializable
 
 /**
@@ -39,6 +40,7 @@ public data class InitializeRequest(
 @Serializable
 public data class InitializeResponse(
     /** The protocol version the agent will use. */
+    @Required
     val protocolVersion: Int = AcpMethod.PROTOCOL_VERSION,
     /** Capabilities the agent supports. */
     val agentCapabilities: AgentCapabilities = AgentCapabilities(),
