@@ -523,6 +523,8 @@ public data class Presence(
  * @property queuedPrompt The single follow-up waiting while a turn is running, if any.
  * @property mentionFiles Project files matching the `@` token being typed.
  * @property restoration The outcome or progress of restoring a saved conversation.
+ * @property activeRecordId Id of the conversation open in this surface, when one has been claimed.
+ *   The session list uses it to overlay live status and diff counts.
  */
 @Immutable
 public data class AgentUiState(
@@ -554,6 +556,8 @@ public data class AgentUiState(
     val sessionHistory: List<AgentSessionRecord> = emptyList(),
     /** Whether the History popup is shown. */
     val historyVisible: Boolean = false,
+    /** Id of the open conversation, when one has been claimed. */
+    val activeRecordId: String? = null,
 ) {
     /** Files the agent changed in this session, for the session rail. */
     val sessionChanges: List<SessionFileChange>

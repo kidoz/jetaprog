@@ -77,7 +77,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.delay
-import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.agent.AgentSessionStatus
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
 import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
@@ -91,7 +91,6 @@ import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
-import java.text.DateFormat
 
 private const val CONVERSATION_MAX_WIDTH = 760
 private const val RAIL_WIDTH = 264
@@ -242,7 +241,7 @@ private fun AgentHeader(
     dispatch: (AgentIntent) -> Unit,
 ) {
     var headerHeightPx by remember { mutableStateOf(0) }
-    var pendingDelete by remember { mutableStateOf<AgentSessionRecord?>(null) }
+    var pendingDelete by remember { mutableStateOf<SessionListRow?>(null) }
     Box(
         modifier = Modifier.onSizeChanged { headerHeightPx = it.height },
     ) {
@@ -278,7 +277,15 @@ private fun AgentHeader(
         }
         if (state.historyVisible) {
             AgentHistoryPopup(
-                records = state.sessionHistory,
+                rows =
+                    sessionListRows(
+                        history = state.sessionHistory,
+                        activeRecordId = state.activeRecordId,
+                        turns = state.turns,
+                        isStreaming = state.isStreaming,
+                        error = state.error,
+                        now = System.currentTimeMillis(),
+                    ),
                 offsetY = headerHeightPx,
                 onRestore = { id ->
                     dispatch(AgentIntent.RestoreSession(id))
@@ -1242,26 +1249,29 @@ private fun subtitleColor(state: AgentUiState): Color =
 private fun formatElapsed(seconds: Long): String = "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
 
 /**
- * Popup listing persisted agent conversations, most recent first: clicking a
- * row restores the transcript into the surface, the trailing icon asks the
- * host to delete it (the confirm overlay lives above this popup).
+ * Session list. Each row shows the title, a status, a relative time, and the
+ * diff line counts. Clicking a row restores that conversation. The trailing
+ * icon asks the host to delete it.
+ *
+ * @param now Clock used for the relative time, so tests can pin it.
  */
 @Composable
 internal fun AgentHistoryPopup(
-    records: List<AgentSessionRecord>,
+    rows: List<SessionListRow>,
     offsetY: Int,
     onRestore: (String) -> Unit,
-    onDeleteRequest: (AgentSessionRecord) -> Unit,
+    onDeleteRequest: (SessionListRow) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    now: Long = System.currentTimeMillis(),
 ) {
     PopupChromeMenu(
         expanded = true,
         onDismissRequest = onDismiss,
-        modifier = modifier,
+        modifier = modifier.width((Dimensions.menuWidth + Spacing.xxl).dp),
         offsetY = offsetY,
     ) {
-        if (records.isEmpty()) {
+        if (rows.isEmpty()) {
             Text(
                 text = "No saved sessions yet.",
                 color = LocalIntelliJColors.current.textMuted,
@@ -1269,41 +1279,72 @@ internal fun AgentHistoryPopup(
                 modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
             )
         } else {
-            for (record in records) {
-                PopupListRow(
-                    selected = false,
-                    onClick = { onRestore(record.id) },
-                ) {
-                    androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = record.title,
-                            color = LocalIntelliJColors.current.textPrimary,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text =
-                                DateFormat
-                                    .getDateInstance(DateFormat.SHORT)
-                                    .format(java.util.Date(record.savedAtEpochMillis)),
-                            color = LocalIntelliJColors.current.textMuted,
-                            fontSize = 10.sp,
-                        )
-                    }
-                    IconButton(
-                        onClick = { onDeleteRequest(record) },
-                        modifier = Modifier.size(20.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete session",
-                            tint = LocalIntelliJColors.current.textSecondary,
-                            modifier = Modifier.size(13.dp),
-                        )
-                    }
-                }
+            for (row in rows) {
+                SessionListPopupRow(row, now, onRestore, onDeleteRequest)
             }
         }
+    }
+}
+
+@Composable
+private fun SessionListPopupRow(
+    row: SessionListRow,
+    now: Long,
+    onRestore: (String) -> Unit,
+    onDeleteRequest: (SessionListRow) -> Unit,
+) {
+    val colors = LocalIntelliJColors.current
+    PopupListRow(
+        selected = row.current,
+        height = (Dimensions.popupRowHeight + Dimensions.popupRowHeightCompact).dp,
+        onClick = { onRestore(row.id) },
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(Spacing.sm.dp)
+                    .clip(CircleShape)
+                    .background(SessionStatusColor(row.status)),
+        )
+        Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm.dp)) {
+            Text(
+                text = row.title,
+                color = colors.textPrimary,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "${sessionStatusLabel(row.status)} · ${relativeSessionTime(row.savedAtEpochMillis, now)}",
+                color = colors.textMuted,
+                fontSize = 10.sp,
+                maxLines = 1,
+            )
+        }
+        sessionDiffCountLabel(row.addedLines, row.removedLines)?.let { counts ->
+            Text(counts, color = colors.textSecondary, fontSize = 11.sp, maxLines = 1)
+        }
+        IconButton(
+            onClick = { onDeleteRequest(row) },
+            modifier = Modifier.size(Dimensions.iconLg.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Delete,
+                contentDescription = "Delete session",
+                tint = colors.textSecondary,
+                modifier = Modifier.size(Dimensions.iconSm.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SessionStatusColor(status: AgentSessionStatus): Color {
+    val colors = LocalIntelliJColors.current
+    return when (status) {
+        AgentSessionStatus.RUNNING -> colors.accent
+        AgentSessionStatus.NEEDS_YOU -> colors.warning
+        AgentSessionStatus.FAILED -> colors.error
+        AgentSessionStatus.IDLE -> colors.textMuted
     }
 }

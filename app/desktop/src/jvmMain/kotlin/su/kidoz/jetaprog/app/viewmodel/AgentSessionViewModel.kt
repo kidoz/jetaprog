@@ -94,6 +94,8 @@ import su.kidoz.jetaprog.app.ui.agent.Turn
 import su.kidoz.jetaprog.app.ui.agent.chipLabel
 import su.kidoz.jetaprog.app.ui.agent.mentionQuery
 import su.kidoz.jetaprog.app.ui.agent.promptWithContext
+import su.kidoz.jetaprog.app.ui.agent.sessionTitle
+import su.kidoz.jetaprog.app.ui.agent.summarizeSession
 import su.kidoz.jetaprog.app.ui.agent.withoutMentionToken
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -453,7 +455,7 @@ public class AgentSessionViewModel(
                 // A fresh agent context must have its own transcript and saved record.
                 recordId = null
                 clearFileMemory()
-                _state.update { it.copy(turns = emptyList(), restoration = null) }
+                _state.update { it.copy(turns = emptyList(), restoration = null, activeRecordId = null) }
             }
             applySessionModels(session.models)
             applySessionModes(session.modes)
@@ -570,8 +572,10 @@ public class AgentSessionViewModel(
             if (clearComposer) mentionGeneration++
             val userId = nextId("usr")
             checkpoints.begin(userId)
+            val activeId = recordId ?: UUID.randomUUID().toString().also { recordId = it }
             _state.update {
                 it.copy(
+                    activeRecordId = activeId,
                     turns =
                         it.turns +
                             Turn.User(userId, text, "now", attachments.map(::chipLabel)) +
@@ -876,21 +880,26 @@ public class AgentSessionViewModel(
         if (messages.none { it.role == AgentHistoryRole.USER }) return null
 
         val id = recordId ?: UUID.randomUUID().toString().also { recordId = it }
-        val title =
-            messages
-                .firstOrNull { it.role == AgentHistoryRole.USER }
-                ?.text
-                ?.replace('\n', ' ')
-                ?.trim()
-                ?.let { if (it.length > TITLE_MAX_CHARS) it.take(TITLE_MAX_CHARS) + "…" else it }
-                ?: "Agent session"
+        if (_state.value.activeRecordId != id) {
+            _state.update { it.copy(activeRecordId = id) }
+        }
+        val summary =
+            summarizeSession(
+                turns = _state.value.turns,
+                isStreaming = false,
+                error = _state.value.error,
+                live = false,
+            )
         return AgentSessionRecord(
             id = id,
-            title = title,
+            title = sessionTitle(_state.value.turns, TITLE_MAX_CHARS) ?: "Agent session",
             projectPath = projectPath,
             savedAtEpochMillis = System.currentTimeMillis(),
             agentSessionId = conversationSessionId,
             messages = messages,
+            addedLines = summary.addedLines,
+            removedLines = summary.removedLines,
+            status = summary.status,
         )
     }
 
@@ -911,7 +920,14 @@ public class AgentSessionViewModel(
         clearSessionSurface()
         recordId = null
         _state.update {
-            it.copy(turns = emptyList(), isStreaming = false, presence = null, error = null, restoration = null)
+            it.copy(
+                turns = emptyList(),
+                isStreaming = false,
+                presence = null,
+                error = null,
+                restoration = null,
+                activeRecordId = null,
+            )
         }
     }
 
@@ -948,6 +964,7 @@ public class AgentSessionViewModel(
                 isStreaming = false,
                 presence = null,
                 restoration = null,
+                activeRecordId = null,
             )
         }
     }
@@ -1003,6 +1020,7 @@ public class AgentSessionViewModel(
                 presence = null,
                 isStreaming = false,
                 restoration = SessionRestoration.Loading,
+                activeRecordId = record.id,
             )
         }
         if (record.agentSessionId == null) {

@@ -40,6 +40,9 @@ class AgentHistoryStoreTest {
                             AgentHistoryMessage(AgentHistoryRole.USER, "Fix the parser"),
                             AgentHistoryMessage(AgentHistoryRole.AGENT, "Done, tests pass."),
                         ),
+                    addedLines = 4,
+                    removedLines = 1,
+                    status = AgentSessionStatus.FAILED,
                 )
             store.save(record)
 
@@ -70,5 +73,21 @@ class AgentHistoryStoreTest {
     fun listIsWhenNoHistoryExists() =
         runTest {
             assertTrue(store.list().isEmpty())
+        }
+
+    @Test
+    fun legacyRecordWithoutCountsLoadsAsIdle() =
+        runTest {
+            val dir = File(projectDir, ".jetaprog/agent-history")
+            dir.mkdirs()
+            File(dir, "legacy.json").writeText(
+                """{"id":"legacy","title":"Legacy","savedAtEpochMillis":5,"messages":[]}""",
+            )
+
+            val listed = store.list().single()
+            assertEquals("legacy", listed.id)
+            assertEquals(0, listed.addedLines)
+            assertEquals(0, listed.removedLines)
+            assertEquals(AgentSessionStatus.IDLE, listed.status)
         }
 }
