@@ -74,6 +74,7 @@ import su.kidoz.jetaprog.app.agent.CheckpointSkip
 import su.kidoz.jetaprog.app.agent.FileSnapshot
 import su.kidoz.jetaprog.app.agent.checkpointNotice
 import su.kidoz.jetaprog.app.agent.toModelOption
+import su.kidoz.jetaprog.app.ui.agent.AGENTS_FILE
 import su.kidoz.jetaprog.app.ui.agent.AgentCommand
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
@@ -131,6 +132,8 @@ import su.kidoz.jetaprog.app.ui.agent.goalRefusal
 import su.kidoz.jetaprog.app.ui.agent.goalResumeLabel
 import su.kidoz.jetaprog.app.ui.agent.goalResumePrompt
 import su.kidoz.jetaprog.app.ui.agent.goalWorkPrompt
+import su.kidoz.jetaprog.app.ui.agent.instructionChip
+import su.kidoz.jetaprog.app.ui.agent.instructionText
 import su.kidoz.jetaprog.app.ui.agent.isPlanMode
 import su.kidoz.jetaprog.app.ui.agent.isSafeRelative
 import su.kidoz.jetaprog.app.ui.agent.judgeGoal
@@ -141,6 +144,7 @@ import su.kidoz.jetaprog.app.ui.agent.parseReviewCommand
 import su.kidoz.jetaprog.app.ui.agent.parseWorktreeCommand
 import su.kidoz.jetaprog.app.ui.agent.persistedGoal
 import su.kidoz.jetaprog.app.ui.agent.promptWithContext
+import su.kidoz.jetaprog.app.ui.agent.promptWithInstructions
 import su.kidoz.jetaprog.app.ui.agent.restoredGoal
 import su.kidoz.jetaprog.app.ui.agent.restoredGoalNotice
 import su.kidoz.jetaprog.app.ui.agent.reviewFiles
@@ -652,12 +656,11 @@ public class AgentSessionViewModel(
     ): Boolean {
         val text = prompt.trim()
         if (text.isEmpty()) return false
-        val claim = claimTurn(text, attachments, clearComposer) ?: return false
+        val instructions = readProjectInstructions()
+        val claim = claimTurn(text, attachments, clearComposer, instructions != null) ?: return false
         try {
-            claim.client.promptText(
-                claim.sessionId,
-                wirePrompt ?: promptWithContext(text, attachments),
-            )
+            val body = wirePrompt ?: promptWithContext(text, attachments)
+            claim.client.promptText(claim.sessionId, promptWithInstructions(instructions, body))
             if (claim.generation == turnGeneration) endTurn()
         } catch (e: CancellationException) {
             throw e
@@ -677,6 +680,21 @@ public class AgentSessionViewModel(
     }
 
     /**
+     * Reads `AGENTS.md` from this checkout's root.
+     *
+     * Nested instruction files are not read, and `@import` lines are not expanded.
+     * A missing or blank file adds nothing to the turn.
+     */
+    private suspend fun readProjectInstructions(): String? {
+        val root = projectPath.trimEnd('/', '\\')
+        if (root.isEmpty()) return null
+        val path = "$root/$AGENTS_FILE"
+        if (!fileSystem.exists(path)) return null
+        val raw = fileSystem.readText(path).getOrNull() ?: return null
+        return instructionText(raw)
+    }
+
+    /**
      * Claims the composer for a new turn and appends the user and agent turns.
      *
      * The mutex covers only the claim, so Stop and New chat stay dispatchable
@@ -686,6 +704,7 @@ public class AgentSessionViewModel(
         text: String,
         attachments: List<ComposerAttachment>,
         clearComposer: Boolean,
+        includeInstructions: Boolean = false,
     ): TurnClaim? {
         if (!sendMutex.tryLock()) return null
         try {
@@ -698,12 +717,15 @@ public class AgentSessionViewModel(
             val userId = nextId("usr")
             checkpoints.begin(userId)
             val activeId = recordId ?: UUID.randomUUID().toString().also { recordId = it }
+            val context =
+                attachments.map(::chipLabel) +
+                    listOfNotNull(instructionChip(attachments, includeInstructions))
             _state.update {
                 it.copy(
                     activeRecordId = activeId,
                     turns =
                         it.turns +
-                            Turn.User(userId, text, "now", attachments.map(::chipLabel)) +
+                            Turn.User(userId, text, "now", context) +
                             Turn.Agent(nextId("agt"), "now", emptyList()),
                     isStreaming = true,
                     error = null,

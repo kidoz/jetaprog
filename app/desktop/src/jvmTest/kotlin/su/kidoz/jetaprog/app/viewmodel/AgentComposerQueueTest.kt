@@ -106,16 +106,21 @@ private class HeldPromptTransport(
 class AgentComposerQueueTest {
     private val fileSystem = mockk<FileSystem>()
     private val files = mutableMapOf<String, String>()
+    private val reads = mutableListOf<String>()
     private val viewModels = mutableListOf<AgentSessionViewModel>()
     private val mainDispatcher = StandardTestDispatcher()
 
     @BeforeTest
     fun setUp() {
         Dispatchers.setMain(mainDispatcher)
+        reads.clear()
         coEvery { fileSystem.exists(any()) } answers
             { files.containsKey(firstArg()) || firstArg<String>().endsWith("agent-history") }
         coEvery { fileSystem.createDirectory(any()) } returns Result.success(Unit)
-        coEvery { fileSystem.readText(any(), any()) } answers { Result.success(files.getValue(firstArg())) }
+        coEvery { fileSystem.readText(any(), any()) } answers {
+            reads += firstArg<String>()
+            Result.success(files.getValue(firstArg()))
+        }
         coEvery { fileSystem.writeText(any(), any(), any()) } answers {
             files[firstArg()] = secondArg()
             Result.success(Unit)
@@ -381,12 +386,72 @@ class AgentComposerQueueTest {
             )
         }
 
+    @Test
+    fun theRootAgentsFileIsSentWithTheTurn() =
+        runTest {
+            files["/proj/AGENTS.md"] = "Use spaces.\n@import ./src/AGENTS.md\n"
+            files["/proj/src/AGENTS.md"] = "NESTED RULE"
+            val agent = HeldPromptTransport(holdFirstPrompt = false)
+            val viewModel = viewModel(agent)
+
+            viewModel.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.Send("Explain this"))
+            runCurrent()
+
+            assertEquals(
+                "Project instructions (AGENTS.md):\nUse spaces.\n@import ./src/AGENTS.md\n\nExplain this",
+                agent.prompts.single(),
+            )
+            val user =
+                viewModel.state.value.turns
+                    .first() as Turn.User
+            assertEquals("Explain this", user.text)
+            assertEquals(listOf("AGENTS.md"), user.context)
+            assertTrue(reads.none { it.replace('\\', '/').endsWith("/src/AGENTS.md") })
+        }
+
+    @Test
+    fun aBlankAgentsFileAndAnotherCheckoutStayOutOfThePrompt() =
+        runTest {
+            files["/proj/AGENTS.md"] = " \n"
+            files["/wt/AGENTS.md"] = "Worktree rules."
+            val blank = HeldPromptTransport(holdFirstPrompt = false)
+            val main = viewModel(blank)
+            main.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            main.dispatch(AgentIntent.Send("Explain this"))
+            runCurrent()
+
+            assertEquals("Explain this", blank.prompts.single())
+            assertEquals(
+                emptyList(),
+                (
+                    main.state.value.turns
+                        .first() as Turn.User
+                ).context,
+            )
+
+            val worktreeAgent = HeldPromptTransport(holdFirstPrompt = false)
+            val worktree = viewModel(worktreeAgent, projectPath = "/wt")
+            worktree.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            worktree.dispatch(AgentIntent.Send("Edit the reader"))
+            runCurrent()
+
+            assertEquals(
+                "Project instructions (AGENTS.md):\nWorktree rules.\n\nEdit the reader",
+                worktreeAgent.prompts.single(),
+            )
+        }
+
     private fun viewModel(
         agent: HeldPromptTransport,
+        projectPath: String = "/proj",
         search: suspend (String) -> List<MentionMatch> = { emptyList() },
     ): AgentSessionViewModel =
         AgentSessionViewModel(
-            projectPath = "/proj",
+            projectPath = projectPath,
             fileSystem = fileSystem,
             transportFactory = { agent },
             editorContext = { EditorSnippet(label = "Reader.kt", path = "src/Reader.kt", selection = "val x = 1") },
