@@ -182,7 +182,8 @@ public sealed interface Block {
      * @property lines The rendered diff hunk.
      * @property decision The user's decision.
      * @property absolutePath The absolute path used to apply/revert the change.
-     * @property oldText The prior file contents, used to revert.
+     * @property oldText The agent-supplied prior text for this hunk. Display only:
+     *   reverts restore an IDE-side snapshot because ACP diffs are not whole files.
      */
     @Immutable
     public data class Diff(
@@ -257,6 +258,9 @@ public enum class FileChangeState {
 
     /** The change is awaiting a decision. */
     PENDING,
+
+    /** The change was rejected and the file was restored. */
+    REJECTED,
 }
 
 /**
@@ -327,13 +331,13 @@ public data class AgentUiState(
     /** Whether the History popup is shown. */
     val historyVisible: Boolean = false,
 ) {
-    /** Files the agent changed in the latest agent turn, for the session rail. */
+    /** Files the agent changed in this session, for the session rail. */
     val sessionChanges: List<SessionFileChange>
         get() =
-            (turns.lastOrNull() as? Turn.Agent)
-                ?.blocks
-                ?.filterIsInstance<Block.Diff>()
-                ?.map { diff ->
+            turns
+                .flatMap { turn -> (turn as? Turn.Agent)?.blocks.orEmpty() }
+                .filterIsInstance<Block.Diff>()
+                .map { diff ->
                     SessionFileChange(
                         name = diff.fileName,
                         added = diff.added,
@@ -341,11 +345,11 @@ public data class AgentUiState(
                         state =
                             when (diff.decision) {
                                 DiffDecision.ACCEPTED -> FileChangeState.ACCEPTED
-                                DiffDecision.REJECTED -> FileChangeState.ACCEPTED
+                                DiffDecision.REJECTED -> FileChangeState.REJECTED
                                 DiffDecision.PROPOSED -> FileChangeState.PENDING
                             },
                     )
-                }.orEmpty()
+                }
 }
 
 /** User intents for the agent surface. */

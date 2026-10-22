@@ -130,7 +130,11 @@ internal fun AgentSurfaceContent(
     LaunchedEffect(Unit) { dispatch(AgentIntent.EnsureConnected) }
     Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
         AgentHeader(state, dispatch)
-        if (state.connection == AgentConnection.ERROR) AgentConnectionError(state, dispatch)
+        if (state.connection == AgentConnection.ERROR) {
+            AgentConnectionError(state, dispatch)
+        } else if (state.error != null) {
+            AgentRunError(state.error.orEmpty())
+        }
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 if (state.turns.isEmpty()) {
@@ -168,6 +172,25 @@ private fun AgentConnectionError(
             modifier = Modifier.weight(1f),
         )
         IntelliJButton("Retry", onClick = { dispatch(AgentIntent.EnsureConnected) })
+    }
+}
+
+@Composable
+private fun AgentRunError(message: String) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(LocalIntelliJColors.current.surface)
+                .padding(Spacing.md.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = message,
+            color = LocalIntelliJColors.current.textSecondary,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

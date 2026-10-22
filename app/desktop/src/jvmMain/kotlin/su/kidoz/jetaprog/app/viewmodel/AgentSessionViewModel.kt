@@ -7,14 +7,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -43,12 +44,14 @@ import su.kidoz.jetaprog.acp.protocol.ToolCallContent
 import su.kidoz.jetaprog.acp.protocol.ToolCallStatus
 import su.kidoz.jetaprog.acp.protocol.ToolKind
 import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
+import su.kidoz.jetaprog.app.agent.AgentFileSnapshots
 import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
 import su.kidoz.jetaprog.app.agent.AgentHistoryRole
 import su.kidoz.jetaprog.app.agent.AgentHistoryStore
 import su.kidoz.jetaprog.app.agent.AgentPrefs
 import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.agent.FileSnapshot
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
@@ -106,6 +109,24 @@ public class AgentSessionViewModel(
     private var seq = 0
     private val pendingApprovals = mutableMapOf<String, PendingApproval>()
 
+    /** Serializes the claim of a new turn without blocking cancellation intents. */
+    private val sendMutex = Mutex()
+
+    /** Invalidates completions belonging to an abandoned turn. */
+    private var turnGeneration = 0
+
+    /** Ends a stopped turn if the agent never answers the cancellation. */
+    private var stopFallbackJob: Job? = null
+
+    /** Pre-write file contents used to revert agent edits. */
+    private val fileSnapshots = AgentFileSnapshots()
+
+    /** Paths whose edit permission was already granted for an upcoming write. */
+    private val approvedEditPaths = mutableMapOf<String, Int>()
+
+    /** Runs process teardown off the UI thread after [dispose]. */
+    private val shutdownScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     init {
         scope.launch {
             val prefs = prefsStore.load()
@@ -140,9 +161,7 @@ public class AgentSessionViewModel(
             }
 
             AgentIntent.NewChat -> {
-                archiveConversation()
-                recordId = null
-                _state.update { it.copy(turns = emptyList(), error = null) }
+                startNewChat()
             }
 
             AgentIntent.ShowHistory -> {
@@ -158,8 +177,7 @@ public class AgentSessionViewModel(
             }
 
             is AgentIntent.DeleteSession -> {
-                historyStore.remove(intent.recordId)
-                _state.update { it.copy(sessionHistory = historyStore.list()) }
+                deleteSession(intent.recordId)
             }
 
             is AgentIntent.ToggleToolCall -> {
@@ -225,7 +243,9 @@ public class AgentSessionViewModel(
 
     private suspend fun ensureConnected(): Boolean =
         connectionMutex.withLock {
-            if (client != null && _state.value.connection == AgentConnection.CONNECTED) return true
+            val current = client
+            if (current != null && current.isOpen && _state.value.connection == AgentConnection.CONNECTED) return true
+            if (current != null) resetConnection()
             if (agentCommand.isBlank()) {
                 _state.update { it.copy(connection = AgentConnection.ERROR, error = "No agent command configured") }
                 return false
@@ -237,17 +257,23 @@ public class AgentSessionViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                sessionUpdatesJob?.cancel()
                 // Keep the connection failure visible even if shutting down the transport also fails.
-                runCatching { client?.close() }
-                client = null
-                sessionId = null
+                resetConnection()
                 _state.update {
                     it.copy(connection = AgentConnection.ERROR, error = e.message ?: "Failed to connect to agent")
                 }
                 false
             }
         }
+
+    private suspend fun resetConnection() {
+        sessionUpdatesJob?.cancel()
+        sessionUpdatesJob = null
+        val openClient = client
+        client = null
+        sessionId = null
+        if (openClient != null) runCatching { openClient.close() }
+    }
 
     private suspend fun openConnection() {
         val stdioTransport =
@@ -275,17 +301,28 @@ public class AgentSessionViewModel(
 
         sessionUpdatesJob =
             scope.launch {
-                acpClient.sessionUpdates.collect { notification -> applyUpdate(notification.update) }
+                acpClient.sessionUpdates.collect { notification ->
+                    // Updates from an abandoned or replaced session must not leak into
+                    // the current transcript, and nothing may arrive after the turn
+                    // was stopped or reset.
+                    if (notification.sessionId == sessionId && _state.value.isStreaming) {
+                        applyUpdate(notification.update)
+                    }
+                }
             }
 
-        val initialize = acpClient.initialize()
+        val initialize =
+            withTimeoutOrNull(CONNECT_TIMEOUT_MS) { acpClient.initialize() }
+                ?: throw IllegalStateException("The agent did not respond to initialize")
         // Hand the agent the IDE's own MCP endpoint so the in-panel agent sees the same
         // workspace tools (diagnostics, git status, project context) as an external CLI.
         val session =
-            acpClient.newSession(
-                cwd = projectPath,
-                mcpServers = ideMcpServers(initialize.agentCapabilities.mcpCapabilities.http),
-            )
+            withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+                acpClient.newSession(
+                    cwd = projectPath,
+                    mcpServers = ideMcpServers(initialize.agentCapabilities.mcpCapabilities.http),
+                )
+            } ?: throw IllegalStateException("The agent did not create a session")
         sessionId = session.sessionId
         _state.update {
             it.copy(
@@ -293,6 +330,40 @@ public class AgentSessionViewModel(
                 agentName = initialize.agentInfo?.name,
                 error = null,
             )
+        }
+    }
+
+    /** Returns the active session, creating one after a chat reset or restore. */
+    private suspend fun ensureSession(acpClient: AcpClient): String? {
+        sessionId?.let { return it }
+        return try {
+            val session =
+                withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+                    acpClient.newSession(
+                        cwd = projectPath,
+                        mcpServers =
+                            ideMcpServers(
+                                acpClient.initializeResponse
+                                    ?.agentCapabilities
+                                    ?.mcpCapabilities
+                                    ?.http == true,
+                            ),
+                    )
+                } ?: throw IllegalStateException("The agent did not create a session")
+            sessionId = session.sessionId
+            session.sessionId
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val closed = !acpClient.isOpen
+            if (closed) resetConnection()
+            _state.update {
+                it.copy(
+                    connection = if (closed) AgentConnection.ERROR else it.connection,
+                    error = e.message ?: "Could not start an agent session",
+                )
+            }
+            null
         }
     }
 
@@ -305,41 +376,117 @@ public class AgentSessionViewModel(
         context: List<String>,
     ) {
         val text = prompt.trim()
-        if (text.isEmpty() || _state.value.isStreaming) return
-        if (!ensureConnected()) return
-        val acpClient = client ?: return
-        val activeSession = sessionId ?: return
-
-        _state.update {
-            it.copy(
-                turns =
-                    it.turns +
-                        Turn.User(nextId("usr"), text, "now", context) +
-                        Turn.Agent(nextId("agt"), "now", emptyList()),
-                isStreaming = true,
-                error = null,
-                presence = Presence(action = "Thinking", fileName = null, startedAtEpochMillis = now()),
-                composerInput = "",
-            )
-        }
-
+        if (text.isEmpty()) return
+        val claim = claimTurn(text, context) ?: return
         try {
-            acpClient.promptText(activeSession, text)
-            endTurn()
+            claim.client.promptText(claim.sessionId, text)
+            if (claim.generation == turnGeneration) endTurn()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            _state.update { it.copy(error = e.message ?: "The agent run failed") }
+            if (claim.generation != turnGeneration) return
+            val closed = !claim.client.isOpen
+            if (closed) resetConnection()
+            _state.update {
+                it.copy(
+                    connection = if (closed) AgentConnection.ERROR else it.connection,
+                    error = e.message ?: "The agent run failed",
+                )
+            }
             endTurn()
+        }
+    }
+
+    /**
+     * Claims the composer for a new turn and appends the user and agent turns.
+     *
+     * The mutex covers only the claim, so Stop and New chat stay dispatchable
+     * while the prompt itself is in flight.
+     */
+    private suspend fun claimTurn(
+        text: String,
+        context: List<String>,
+    ): TurnClaim? {
+        if (!sendMutex.tryLock()) return null
+        try {
+            if (_state.value.isStreaming) return null
+            if (!ensureConnected()) return null
+            val acpClient = client ?: return null
+            val activeSession = ensureSession(acpClient) ?: return null
+            val generation = ++turnGeneration
+            _state.update {
+                it.copy(
+                    turns =
+                        it.turns +
+                            Turn.User(nextId("usr"), text, "now", context) +
+                            Turn.Agent(nextId("agt"), "now", emptyList()),
+                    isStreaming = true,
+                    error = null,
+                    presence = Presence(action = "Thinking", fileName = null, startedAtEpochMillis = now()),
+                    composerInput = "",
+                )
+            }
+            return TurnClaim(acpClient, activeSession, generation)
+        } finally {
+            sendMutex.unlock()
         }
     }
 
     private suspend fun handleStop() {
         val acpClient = client ?: return
         val activeSession = sessionId ?: return
-        acpClient.cancel(activeSession)
-        endTurn()
+        if (!_state.value.isStreaming) return
+
+        try {
+            acpClient.cancel(activeSession)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val closed = !acpClient.isOpen
+            if (closed) resetConnection()
+            invalidateTurn()
+            _state.update {
+                it.copy(
+                    connection = if (closed) AgentConnection.ERROR else it.connection,
+                    error = e.message ?: "Could not stop the agent",
+                )
+            }
+            endTurn()
+            return
+        }
+
+        _state.update { st ->
+            if (st.isStreaming) st.copy(presence = st.presence?.copy(action = "Stopping")) else st
+        }
+        stopFallbackJob?.cancel()
+        stopFallbackJob =
+            scope.launch {
+                delay(STOP_GRACE_PERIOD_MS)
+                if (_state.value.isStreaming) {
+                    stopFallbackJob = null
+                    invalidateTurn()
+                    endTurn()
+                }
+            }
+    }
+
+    /**
+     * Invalidates the current turn so a late prompt completion cannot end or
+     * archive a newer one, then resolves any outstanding approvals.
+     */
+    private fun invalidateTurn() {
+        turnGeneration++
+        stopFallbackJob?.cancel()
+        stopFallbackJob = null
+        cancelPendingApprovals()
+        approvedEditPaths.clear()
     }
 
     private fun endTurn() {
+        stopFallbackJob?.cancel()
+        stopFallbackJob = null
+        cancelPendingApprovals()
+        approvedEditPaths.clear()
         _state.update { st ->
             val turns =
                 st.turns.map { turn ->
@@ -353,6 +500,16 @@ public class AgentSessionViewModel(
         }
         // Persist the transcript once the turn settles (fire-and-forget).
         scope.launch { archiveConversation() }
+    }
+
+    private fun cancelPendingApprovals() {
+        if (pendingApprovals.isEmpty()) return
+        val pending = pendingApprovals.values.toList()
+        pendingApprovals.clear()
+        pending.forEach { approval ->
+            approval.deferred.complete(RequestPermissionResponse(PermissionOutcome.Cancelled))
+        }
+        mutateBlocks { block -> if (block is Block.Approval) block.copy(resolved = true) else block }
     }
 
     // ------------------------------------------------------------------------
@@ -398,15 +555,104 @@ public class AgentSessionViewModel(
                 title = title,
                 projectPath = projectPath,
                 savedAtEpochMillis = System.currentTimeMillis(),
+                agentSessionId = sessionId,
                 messages = messages,
             ),
         )
     }
 
-    /** Rebuilds the surface turns from a persisted transcript. */
+    /** Starts a fresh chat, cancelling the current turn and abandoning its ACP session. */
+    private suspend fun startNewChat() {
+        val acpClient = client
+        val previousSession = sessionId
+        val wasStreaming = _state.value.isStreaming
+        invalidateTurn()
+        if (wasStreaming && acpClient != null && previousSession != null) {
+            runCatching { acpClient.cancel(previousSession) }
+        }
+        archiveConversation()
+        fileSnapshots.clear()
+        sessionId = null
+        recordId = null
+        _state.update {
+            it.copy(turns = emptyList(), isStreaming = false, presence = null, error = null)
+        }
+    }
+
+    /** Deletes a persisted conversation, clearing it when it is the active one. */
+    private suspend fun deleteSession(recordIdToDelete: String) {
+        historyStore.remove(recordIdToDelete)
+        if (recordIdToDelete != recordId) {
+            _state.update { it.copy(sessionHistory = historyStore.list()) }
+            return
+        }
+
+        val acpClient = client
+        val previousSession = sessionId
+        val wasStreaming = _state.value.isStreaming
+        invalidateTurn()
+        if (wasStreaming && acpClient != null && previousSession != null) {
+            runCatching { acpClient.cancel(previousSession) }
+        }
+        fileSnapshots.clear()
+        sessionId = null
+        recordId = null
+        _state.update {
+            it.copy(
+                turns = emptyList(),
+                sessionHistory = historyStore.list(),
+                isStreaming = false,
+                presence = null,
+            )
+        }
+    }
+
+    /**
+     * Rebuilds the surface turns from a persisted transcript and reloads the
+     * agent's session when the record carries its identifier.
+     */
     private suspend fun restoreSession(recordIdToRestore: String) {
         val record = historyStore.list().firstOrNull { it.id == recordIdToRestore } ?: return
+        val acpClient = client
+        val previousSession = sessionId
+        val wasStreaming = _state.value.isStreaming
+        invalidateTurn()
+        fileSnapshots.clear()
+        _state.update { it.copy(isStreaming = false, presence = null) }
+        if (wasStreaming && acpClient != null && previousSession != null) {
+            runCatching { acpClient.cancel(previousSession) }
+        }
+
+        // Drop updates while loading so the replayed history cannot duplicate the
+        // restored transcript.
+        sessionId = null
+        val restoredSession =
+            if (acpClient != null &&
+                acpClient.isOpen &&
+                record.agentSessionId != null &&
+                acpClient.initializeResponse?.agentCapabilities?.loadSession == true
+            ) {
+                withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+                    runCatching {
+                        acpClient.loadSession(
+                            sessionId = record.agentSessionId,
+                            cwd = projectPath,
+                            mcpServers =
+                                ideMcpServers(
+                                    acpClient.initializeResponse
+                                        ?.agentCapabilities
+                                        ?.mcpCapabilities
+                                        ?.http == true,
+                                ),
+                        )
+                    }.isSuccess
+                } ?: false
+            } else {
+                false
+            }
+        sessionId = if (restoredSession) record.agentSessionId else null
         recordId = record.id
+
         var counter = 0
         val turns =
             record.messages.map { message ->
@@ -537,7 +783,9 @@ public class AgentSessionViewModel(
                             expanded = false,
                         )
                 }
-            content.filter { it.type == "diff" }.fold(updated) { acc, diff -> upsertDiff(acc, id, diff) }
+            content.filter { it.type == "diff" }.foldIndexed(updated) { index, acc, diff ->
+                upsertDiff(acc, id, index, diff)
+            }
         }
         updatePresence(kind, toolStatus, location)
     }
@@ -545,11 +793,14 @@ public class AgentSessionViewModel(
     private fun upsertDiff(
         blocks: List<Block>,
         toolCallId: String,
+        index: Int,
         content: ToolCallContent,
     ): List<Block> {
         val path = content.path ?: return blocks
-        val diffId = "$toolCallId:diff"
+        val diffId = "$toolCallId:diff:$index"
         val (lines, added, removed) = computeDiff(content.oldText, content.newText.orEmpty())
+        val blockIndex = blocks.indexOfFirst { it is Block.Diff && it.id == diffId }
+        val existing = if (blockIndex >= 0) blocks[blockIndex] as Block.Diff else null
         val block =
             Block.Diff(
                 id = diffId,
@@ -558,13 +809,14 @@ public class AgentSessionViewModel(
                 added = added,
                 removed = removed,
                 lines = lines,
-                decision = DiffDecision.PROPOSED,
+                // A later update for the same hunk must not resurrect a decision
+                // the user already made.
+                decision = existing?.decision ?: DiffDecision.PROPOSED,
                 absolutePath = path,
                 oldText = content.oldText,
             )
-        val index = blocks.indexOfFirst { it is Block.Diff && it.id == diffId }
-        return if (index >= 0) {
-            blocks.toMutableList().also { it[index] = block }
+        return if (blockIndex >= 0) {
+            blocks.toMutableList().also { it[blockIndex] = block }
         } else {
             blocks + block
         }
@@ -597,8 +849,8 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
 
     private fun toggleTool(blockId: String) {
-        mutateAgentTurn { blocks ->
-            blocks.map { if (it is Block.Tool && it.id == blockId) it.copy(expanded = !it.expanded) else it }
+        mutateBlock(blockId) { block ->
+            if (block is Block.Tool) block.copy(expanded = !block.expanded) else block
         }
     }
 
@@ -606,28 +858,77 @@ public class AgentSessionViewModel(
         blockId: String,
         accept: Boolean,
     ) {
-        val diff = currentDiffs().firstOrNull { it.id == blockId } ?: return
-        if (!accept && diff.oldText != null) {
-            fileSystem.writeText(diff.absolutePath, diff.oldText)
+        val diff = allDiffs().firstOrNull { it.id == blockId } ?: return
+        if (diff.decision != DiffDecision.PROPOSED) return
+        // The agent supplies this path, so never write to it before containment
+        // is verified (the diffs carry hunks, not trusted file operations).
+        val path = runCatching { pathGuard.resolve(diff.absolutePath) }.getOrNull()
+
+        if (accept) {
+            // The write already happened; dropping the snapshot commits it.
+            path?.let { fileSnapshots.pop(it) }
+            setDiffsDecision(diff, DiffDecision.ACCEPTED)
+            return
         }
-        setDiffDecision(blockId, if (accept) DiffDecision.ACCEPTED else DiffDecision.REJECTED)
+
+        if (path == null) {
+            _state.update {
+                it.copy(error = "Cannot revert ${diff.fileName}: the path is outside the project")
+            }
+            return
+        }
+
+        val snapshot = fileSnapshots.pop(path)
+        if (snapshot == null) {
+            _state.update {
+                it.copy(error = "Cannot revert ${diff.fileName}: no saved pre-edit content")
+            }
+            return
+        }
+
+        val result =
+            if (snapshot.existed) {
+                fileSystem.writeText(path, snapshot.content.orEmpty())
+            } else {
+                fileSystem.delete(path)
+            }
+        result.onFailure { error ->
+            // Keep the snapshot so the user can retry after fixing the cause.
+            fileSnapshots.push(path, snapshot)
+            _state.update {
+                it.copy(error = "Could not revert ${diff.fileName}: ${error.message ?: "file operation failed"}")
+            }
+            return
+        }
+        setDiffsDecision(diff, DiffDecision.REJECTED)
     }
 
     private suspend fun decideAll(accept: Boolean) {
-        currentDiffs().filter { it.decision == DiffDecision.PROPOSED }.forEach { decideDiff(it.id, accept) }
+        // Newest first so repeated edits to one file pop snapshots in order.
+        allDiffs()
+            .filter { it.decision == DiffDecision.PROPOSED }
+            .asReversed()
+            .forEach { decideDiff(it.id, accept) }
     }
 
-    private fun setDiffDecision(
-        blockId: String,
+    /**
+     * Applies [decision] to every hunk produced by the same tool call: an ACP
+     * write is atomic, so accepting or reverting one hunk applies to all of them.
+     */
+    private fun setDiffsDecision(
+        diff: Block.Diff,
         decision: DiffDecision,
     ) {
-        mutateAgentTurn { blocks ->
-            blocks.map { if (it is Block.Diff && it.id == blockId) it.copy(decision = decision) else it }
+        val prefix = "${diff.id.substringBefore(":diff:")}:diff:"
+        mutateBlocks { block ->
+            if (block is Block.Diff && block.id.startsWith(prefix)) block.copy(decision = decision) else block
         }
     }
 
-    private fun currentDiffs(): List<Block.Diff> =
-        (_state.value.turns.lastOrNull() as? Turn.Agent)?.blocks?.filterIsInstance<Block.Diff>().orEmpty()
+    private fun allDiffs(): List<Block.Diff> =
+        _state.value.turns
+            .flatMap { turn -> (turn as? Turn.Agent)?.blocks.orEmpty() }
+            .filterIsInstance<Block.Diff>()
 
     private fun resolveApproval(
         callId: String,
@@ -637,8 +938,8 @@ public class AgentSessionViewModel(
         val optionId = if (approve) pending.allowOptionId else pending.rejectOptionId
         val outcome = if (optionId != null) PermissionOutcome.Selected(optionId) else PermissionOutcome.Cancelled
         pending.deferred.complete(RequestPermissionResponse(outcome))
-        mutateAgentTurn { blocks ->
-            blocks.map { if (it is Block.Approval && it.id == callId) it.copy(resolved = true) else it }
+        mutateBlock(callId) { block ->
+            if (block is Block.Approval) block.copy(resolved = true) else block
         }
     }
 
@@ -648,12 +949,34 @@ public class AgentSessionViewModel(
 
     override suspend fun readTextFile(request: ReadTextFileRequest): ReadTextFileResponse {
         val path = guardedPath(request.path)
+        when (_state.value.permissions[PermissionKind.READ] ?: PermissionPolicy.ASK) {
+            PermissionPolicy.AUTO -> {
+                // No approval needed.
+            }
+
+            PermissionPolicy.NEVER -> {
+                throw AcpRequestException(
+                    code = AcpError.INVALID_REQUEST,
+                    message = "The user denied reading ${File(path).name}",
+                )
+            }
+
+            PermissionPolicy.ASK -> {
+                if (!approveDirectRead(path)) {
+                    throw AcpRequestException(
+                        code = AcpError.INVALID_REQUEST,
+                        message = "The user denied reading ${File(path).name}",
+                    )
+                }
+            }
+        }
+
         val text = fileSystem.readText(path).getOrElse { throw it }
         val sliced =
             if (request.line != null || request.limit != null) {
                 val lines = text.lines()
                 val start = ((request.line ?: 1) - 1).coerceIn(0, lines.size)
-                val end = request.limit?.let { (start + it).coerceAtMost(lines.size) } ?: lines.size
+                val end = request.limit?.let { (start + it.coerceAtLeast(0)).coerceAtMost(lines.size) } ?: lines.size
                 lines.subList(start, end).joinToString("\n")
             } else {
                 text
@@ -663,15 +986,21 @@ public class AgentSessionViewModel(
 
     override suspend fun writeTextFile(request: WriteTextFileRequest) {
         val path = guardedPath(request.path)
-        // Agents may write directly instead of asking through session/request_permission,
-        // so apply the Edit policy here too rather than trusting them to request it.
-        if (!approveDirectWrite(path)) {
+        // A permission request for this edit was already granted, in which case the
+        // fs callback must not ask a second time. Otherwise apply the Edit policy as
+        // a backstop for agents that write without asking.
+        if (!consumeApprovedEdit(path) && !approveDirectWrite(path)) {
             throw AcpRequestException(
                 code = AcpError.INVALID_REQUEST,
                 message = "The user denied writing ${File(path).name}",
             )
         }
-        fileSystem.writeText(path, request.content).getOrElse { throw it }
+        captureSnapshot(path)
+        fileSystem.writeText(path, request.content).getOrElse { error ->
+            // The write did not happen, so the snapshot must not outlive it.
+            fileSnapshots.pop(path)
+            throw error
+        }
     }
 
     /**
@@ -686,6 +1015,26 @@ public class AgentSessionViewModel(
                 message = exception.message ?: "Path is outside the open project",
             )
         }
+
+    /**
+     * Saves the current contents of [path] before an agent write so a rejected
+     * diff can restore the whole file rather than a single hunk.
+     */
+    private suspend fun captureSnapshot(path: String) {
+        val existed = fileSystem.exists(path)
+        val content =
+            if (existed) {
+                fileSystem.readText(path).getOrElse { error ->
+                    throw AcpRequestException(
+                        code = AcpError.INTERNAL_ERROR,
+                        message = "Cannot save ${File(path).name} before writing: ${error.message ?: "read failed"}",
+                    )
+                }
+            } else {
+                null
+            }
+        fileSnapshots.push(path, FileSnapshot(existed, content))
+    }
 
     /**
      * Applies the Edit permission policy to a direct `fs/write_text_file` call, prompting
@@ -703,21 +1052,40 @@ public class AgentSessionViewModel(
             }
 
             PermissionPolicy.ASK -> {
-                val deferred = CompletableDeferred<RequestPermissionResponse>()
-                val callId = "write:$path:${seq++}"
-                pendingApprovals[callId] = PendingApproval(deferred, ALLOW_OPTION_ID, REJECT_OPTION_ID)
-                mutateAgentTurn { blocks ->
-                    blocks + Block.Approval(callId, "Write $fileName", path)
-                }
-                val outcome = deferred.await().outcome
-                outcome is PermissionOutcome.Selected && outcome.optionId == ALLOW_OPTION_ID
+                approveDirectAccess("write", "Write $fileName", path)
             }
         }
     }
 
+    /** Applies the Read permission policy to a direct `fs/read_text_file` call. */
+    private suspend fun approveDirectRead(path: String): Boolean =
+        approveDirectAccess("read", "Read ${File(path).name}", path)
+
+    /**
+     * Raises an approval card for an IDE-initiated file access and waits for it.
+     */
+    private suspend fun approveDirectAccess(
+        prefix: String,
+        title: String,
+        detail: String?,
+    ): Boolean {
+        // Without an active turn there is no card to accept; deny instead of
+        // suspending a request that the user can never answer.
+        if (_state.value.turns.none { it is Turn.Agent }) return false
+        val deferred = CompletableDeferred<RequestPermissionResponse>()
+        val callId = "$prefix:$detail:${seq++}"
+        pendingApprovals[callId] = PendingApproval(deferred, ALLOW_OPTION_ID, REJECT_OPTION_ID)
+        mutateAgentTurn { blocks ->
+            blocks + Block.Approval(callId, title, detail)
+        }
+        val outcome = deferred.await().outcome
+        return outcome is PermissionOutcome.Selected && outcome.optionId == ALLOW_OPTION_ID
+    }
+
     override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
-        val kind = permissionKindFor(request.toolCall.kind)
-        val policy = _state.value.permissions[kind] ?: PermissionPolicy.ASK
+        val kind = AgentPermissionPolicy.kindFor(request.toolCall)
+        // Unknown kinds are never auto-approved: fall back to asking the user.
+        val policy = kind?.let { _state.value.permissions[it] } ?: PermissionPolicy.ASK
         val allow =
             request.options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ONCE }?.optionId
                 ?: request.options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ALWAYS }?.optionId
@@ -727,6 +1095,7 @@ public class AgentSessionViewModel(
 
         return when (policy) {
             PermissionPolicy.AUTO -> {
+                if (kind == PermissionKind.EDIT && allow != null) recordApprovedEdit(request.toolCall)
                 RequestPermissionResponse(outcomeFor(allow))
             }
 
@@ -741,19 +1110,44 @@ public class AgentSessionViewModel(
                 mutateAgentTurn { blocks ->
                     blocks + Block.Approval(callId, request.toolCall.title ?: "Tool call", commandFor(request.toolCall))
                 }
-                deferred.await()
+                val response = deferred.await()
+                val selected = (response.outcome as? PermissionOutcome.Selected)?.optionId
+                if (kind == PermissionKind.EDIT && selected != null && selected == allow) {
+                    recordApprovedEdit(request.toolCall)
+                }
+                response
             }
         }
     }
 
+    /** Records that the upcoming write for this tool call has already been approved. */
+    private fun recordApprovedEdit(toolCall: PermissionToolCall) {
+        val rawPath = AgentPermissionPolicy.pathOf(toolCall) ?: return
+        val path = runCatching { pathGuard.resolve(rawPath) }.getOrNull() ?: return
+        approvedEditPaths[path] = (approvedEditPaths[path] ?: 0) + 1
+    }
+
+    /** Consumes a previously granted edit approval for [path], if one exists. */
+    private fun consumeApprovedEdit(path: String): Boolean {
+        val remaining = approvedEditPaths[path] ?: return false
+        if (remaining <= 1) {
+            approvedEditPaths.remove(path)
+        } else {
+            approvedEditPaths[path] = remaining - 1
+        }
+        return true
+    }
+
     override fun dispose() {
-        // Close the connection before cancelling the scope: the agent runs as a child
-        // process and is otherwise left running after the project closes.
+        // The agent is a child process: close it off the caller's thread so the UI
+        // does not block on process teardown during a project switch.
         val openClient = client
         client = null
         sessionId = null
+        invalidateTurn()
+        fileSnapshots.clear()
         if (openClient != null) {
-            runBlocking { runCatching { openClient.close() } }
+            shutdownScope.launch { runCatching { openClient.close() } }
         }
         scope.cancel()
     }
@@ -781,6 +1175,26 @@ public class AgentSessionViewModel(
         }
     }
 
+    /** Updates a block by id across every turn, so older cards stay actionable. */
+    private fun mutateBlock(
+        blockId: String,
+        transform: (Block) -> Block,
+    ) {
+        mutateBlocks { block -> if (block.id == blockId) transform(block) else block }
+    }
+
+    /** Updates every block in every agent turn. */
+    private fun mutateBlocks(transform: (Block) -> Block) {
+        _state.update { st ->
+            st.copy(
+                turns =
+                    st.turns.map { turn ->
+                        if (turn is Turn.Agent) turn.copy(blocks = turn.blocks.map(transform)) else turn
+                    },
+            )
+        }
+    }
+
     private fun nextId(prefix: String): String = "$prefix-${seq++}"
 
     private fun now(): Long = System.currentTimeMillis()
@@ -790,10 +1204,16 @@ public class AgentSessionViewModel(
         private const val MAX_DIFF_BODY_LINES = 10
         private const val CONTEXT_LINES = 2
 
+        /** How long the agent has to complete initialize and session creation. */
+        private const val CONNECT_TIMEOUT_MS = 120_000L
+
+        /** How long a stopped turn waits for the agent before it is abandoned. */
+        private const val STOP_GRACE_PERIOD_MS = 5_000L
+
         /** Name the agent sees for the IDE's embedded MCP server. */
         private const val IDE_MCP_SERVER_NAME = "jetaprog"
 
-        /** Option ids used for approvals the IDE raises itself (direct file writes). */
+        /** Option ids used for approvals the IDE raises itself (direct file access). */
         private const val ALLOW_OPTION_ID = "allow"
 
         /** Max characters of a persisted session title. */
@@ -835,13 +1255,6 @@ public class AgentSessionViewModel(
                 ToolKind.EXECUTE -> "Running"
                 ToolKind.FETCH -> "Fetching"
                 else -> "Working"
-            }
-
-        fun permissionKindFor(kind: ToolKind?): PermissionKind =
-            when (kind) {
-                ToolKind.EDIT, ToolKind.DELETE, ToolKind.MOVE -> PermissionKind.EDIT
-                ToolKind.EXECUTE -> PermissionKind.RUN
-                else -> PermissionKind.READ
             }
 
         fun outcomeFor(optionId: String?): PermissionOutcome =
@@ -912,6 +1325,12 @@ public class AgentSessionViewModel(
         val rejectOptionId: String?,
     )
 
+    private data class TurnClaim(
+        val client: AcpClient,
+        val sessionId: String,
+        val generation: Int,
+    )
+
     /**
      * The IDE's embedded MCP server, described for the agent's own MCP client.
      *
@@ -932,6 +1351,49 @@ public class AgentSessionViewModel(
             ),
         )
     }
+}
+
+/**
+ * Classifies an ACP tool call into the IDE's permission buckets.
+ *
+ * Agents are not required to send [PermissionToolCall.kind] (the Claude Code
+ * adapter omits it), so the raw input is inspected first. Anything that cannot
+ * be classified is left unknown and must be confirmed by the user.
+ */
+internal object AgentPermissionPolicy {
+    /**
+     * Returns the policy bucket for [toolCall], or null when it cannot be
+     * classified and the user must be asked.
+     */
+    fun kindFor(toolCall: PermissionToolCall): PermissionKind? {
+        val input = toolCall.rawInput as? JsonObject
+        if (input != null) {
+            if (stringField(input, "command", "cmd") != null) return PermissionKind.RUN
+            if (stringField(input, "new_string", "old_string", "content") != null) return PermissionKind.EDIT
+        }
+        when (toolCall.kind) {
+            ToolKind.READ, ToolKind.SEARCH, ToolKind.THINK -> return PermissionKind.READ
+            ToolKind.EDIT, ToolKind.DELETE, ToolKind.MOVE -> return PermissionKind.EDIT
+            ToolKind.EXECUTE -> return PermissionKind.RUN
+            ToolKind.FETCH, ToolKind.OTHER -> return null
+            null -> Unit
+        }
+        if (input != null && stringField(input, "file_path", "filePath", "path", "abs_path") != null) {
+            return PermissionKind.READ
+        }
+        return null
+    }
+
+    /** Returns the file path carried by [toolCall]'s raw input, if any. */
+    fun pathOf(toolCall: PermissionToolCall): String? {
+        val input = toolCall.rawInput as? JsonObject ?: return null
+        return stringField(input, "file_path", "filePath", "path", "abs_path")
+    }
+
+    private fun stringField(
+        input: JsonObject,
+        vararg keys: String,
+    ): String? = keys.firstNotNullOfOrNull { key -> (input[key] as? JsonPrimitive)?.contentOrNull }
 }
 
 /**

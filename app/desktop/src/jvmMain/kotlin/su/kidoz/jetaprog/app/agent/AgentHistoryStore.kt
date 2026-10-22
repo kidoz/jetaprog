@@ -27,6 +27,8 @@ public data class AgentHistoryMessage(
  * @property title Short display title, derived from the first user message.
  * @property projectPath Workspace root the conversation belonged to.
  * @property savedAtEpochMillis Last update time.
+ * @property agentSessionId The ACP session identifier, used to reload the agent's
+ *   conversation context. Null for records saved before this was tracked.
  * @property messages The transcript, oldest first.
  */
 @Serializable
@@ -35,6 +37,7 @@ public data class AgentSessionRecord(
     val title: String = "Agent session",
     val projectPath: String = "",
     val savedAtEpochMillis: Long = 0,
+    val agentSessionId: String? = null,
     val messages: List<AgentHistoryMessage> = emptyList(),
 )
 
