@@ -37,6 +37,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -816,8 +817,25 @@ private fun MainScreenContent(
 
                 // Left tool window (resizable) — content switches with the activity bar
                 val sidebarItem = selectedActivityItem
-                val agentState by session.agentSessionViewModel.state.collectAsState()
-                val agentInPerspective = sidebarItem == ActivityBarItem.AGENT && !agentState.docked
+                val agentViewModel by session.agentSessionHost.active.collectAsState()
+                val mainAgentState by session.agentSessionViewModel.state.collectAsState()
+                val worktreeAgent by session.agentSessionHost.worktree.collectAsState()
+                val viewingWorktree = agentViewModel !== session.agentSessionViewModel
+                val checkoutLabel =
+                    when {
+                        viewingWorktree -> "Main"
+                        worktreeAgent != null -> "Worktree"
+                        else -> null
+                    }
+                val onSwitchCheckout = {
+                    if (viewingWorktree) {
+                        session.agentSessionHost.showMain()
+                    } else {
+                        session.agentSessionHost.showWorktree()
+                    }
+                }
+                val mirrorLayout = if (viewingWorktree) session.agentSessionViewModel::dispatch else null
+                val agentInPerspective = sidebarItem == ActivityBarItem.AGENT && !mainAgentState.docked
                 if (sidebarItem in SIDEBAR_PANEL_ITEMS && !agentInPerspective) {
                     val minWidth = Dimensions.toolWindowMinWidth.dp
                     val maxWidth = Dimensions.toolWindowMaxWidth.dp
@@ -860,7 +878,16 @@ private fun MainScreenContent(
                         }
 
                         ActivityBarItem.AGENT -> {
-                            AgentToolWindow(viewModel = session.agentSessionViewModel, modifier = panelModifier)
+                            key(agentViewModel) {
+                                AgentToolWindow(
+                                    viewModel = agentViewModel,
+                                    modifier = panelModifier,
+                                    checkoutLabel = checkoutLabel,
+                                    onSwitchCheckout = onSwitchCheckout,
+                                    layoutDocked = mainAgentState.docked,
+                                    mirrorLayout = mirrorLayout,
+                                )
+                            }
                         }
 
                         ActivityBarItem.DEBUG -> {
@@ -915,10 +942,16 @@ private fun MainScreenContent(
                 // Editor area — replaced by a full perspective when VCS or the Agent is active
                 Column(modifier = Modifier.weight(1f)) {
                     if (agentInPerspective) {
-                        AgentPerspective(
-                            viewModel = session.agentSessionViewModel,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        key(agentViewModel) {
+                            AgentPerspective(
+                                viewModel = agentViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                checkoutLabel = checkoutLabel,
+                                onSwitchCheckout = onSwitchCheckout,
+                                layoutDocked = mainAgentState.docked,
+                                mirrorLayout = mirrorLayout,
+                            )
+                        }
                     } else if (selectedActivityItem == ActivityBarItem.VCS) {
                         VcsMainArea(
                             viewModel = session.gitViewModel,

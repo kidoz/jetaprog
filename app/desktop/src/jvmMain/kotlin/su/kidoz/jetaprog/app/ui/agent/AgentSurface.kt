@@ -108,14 +108,31 @@ private val EXAMPLE_PROMPTS =
  *
  * @param viewModel the agent session view model.
  * @param modifier the layout modifier.
+ * @param checkoutLabel Label of the other checkout, such as Worktree or Main. Null hides the switch.
+ * @param onSwitchCheckout Shows the other checkout without stopping this one.
+ * @param layoutDocked The docked flag that controls the window, when it lives on another session.
+ * @param mirrorLayout Receives dock and expand so the window follows the main session.
  */
 @Composable
 public fun AgentPerspective(
     viewModel: AgentSessionViewModel,
     modifier: Modifier = Modifier,
+    checkoutLabel: String? = null,
+    onSwitchCheckout: (() -> Unit)? = null,
+    layoutDocked: Boolean? = null,
+    mirrorLayout: ((AgentIntent) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
-    AgentSurfaceContent(state = state, dispatch = viewModel::dispatch, showRail = true, modifier = modifier)
+    AgentSurfaceContent(
+        state = state,
+        dispatch = viewModel::dispatch,
+        showRail = true,
+        modifier = modifier,
+        checkoutLabel = checkoutLabel,
+        onSwitchCheckout = onSwitchCheckout,
+        layoutDocked = layoutDocked,
+        mirrorLayout = mirrorLayout,
+    )
 }
 
 /**
@@ -123,14 +140,31 @@ public fun AgentPerspective(
  *
  * @param viewModel the agent session view model.
  * @param modifier the layout modifier.
+ * @param checkoutLabel Label of the other checkout, such as Worktree or Main. Null hides the switch.
+ * @param onSwitchCheckout Shows the other checkout without stopping this one.
+ * @param layoutDocked The docked flag that controls the window, when it lives on another session.
+ * @param mirrorLayout Receives dock and expand so the window follows the main session.
  */
 @Composable
 public fun AgentToolWindow(
     viewModel: AgentSessionViewModel,
     modifier: Modifier = Modifier,
+    checkoutLabel: String? = null,
+    onSwitchCheckout: (() -> Unit)? = null,
+    layoutDocked: Boolean? = null,
+    mirrorLayout: ((AgentIntent) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
-    AgentSurfaceContent(state = state, dispatch = viewModel::dispatch, showRail = false, modifier = modifier)
+    AgentSurfaceContent(
+        state = state,
+        dispatch = viewModel::dispatch,
+        showRail = false,
+        modifier = modifier,
+        checkoutLabel = checkoutLabel,
+        onSwitchCheckout = onSwitchCheckout,
+        layoutDocked = layoutDocked,
+        mirrorLayout = mirrorLayout,
+    )
 }
 
 @Composable
@@ -139,10 +173,14 @@ internal fun AgentSurfaceContent(
     dispatch: (AgentIntent) -> Unit,
     showRail: Boolean,
     modifier: Modifier = Modifier,
+    checkoutLabel: String? = null,
+    onSwitchCheckout: (() -> Unit)? = null,
+    layoutDocked: Boolean? = null,
+    mirrorLayout: ((AgentIntent) -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) { dispatch(AgentIntent.EnsureConnected) }
     Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
-        AgentHeader(state, dispatch)
+        AgentHeader(state, dispatch, checkoutLabel, onSwitchCheckout, layoutDocked, mirrorLayout)
         if (state.connection == AgentConnection.ERROR) {
             AgentConnectionError(state, dispatch)
         } else if (state.error != null) {
@@ -164,6 +202,19 @@ internal fun AgentSurfaceContent(
                 }
                 val goalNotice = state.goalNotice
                 if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
+                if (state.reviewVisible) {
+                    ReviewCard(
+                        files = reviewFiles(state.turns),
+                        onAccept = { key -> dispatch(AgentIntent.AcceptReviewFile(key)) },
+                        onDismiss = { key -> dispatch(AgentIntent.DismissReviewFile(key)) },
+                        onClose = { dispatch(AgentIntent.HideReview) },
+                        modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
+                    )
+                }
+                val reviewNotice = state.reviewNotice
+                if (!reviewNotice.isNullOrBlank()) AgentStatusMessage(reviewNotice)
+                val worktreeNotice = state.worktreeNotice
+                if (!worktreeNotice.isNullOrBlank()) AgentStatusMessage(worktreeNotice)
                 if (state.plan.isNotEmpty()) {
                     PlanCard(
                         steps = state.plan,
@@ -252,6 +303,10 @@ internal fun AgentRestorationNotice(restoration: SessionRestoration) {
 private fun AgentHeader(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
+    checkoutLabel: String?,
+    onSwitchCheckout: (() -> Unit)?,
+    layoutDocked: Boolean?,
+    mirrorLayout: ((AgentIntent) -> Unit)?,
 ) {
     var headerHeightPx by remember { mutableStateOf(0) }
     var pendingDelete by remember { mutableStateOf<SessionListRow?>(null) }
@@ -279,13 +334,23 @@ private fun AgentHeader(
                 Text(subtitleFor(state), color = subtitleColor(state), fontSize = 10.sp)
             }
             ModelChip(state)
+            if (checkoutLabel != null && onSwitchCheckout != null) {
+                CheckoutChip(checkoutLabel, onSwitchCheckout)
+            }
             Spacer(Modifier.weight(1f))
             HeaderIcon(Icons.Default.History, "History") { dispatch(AgentIntent.ShowHistory) }
             HeaderIcon(Icons.Default.Add, "New chat") { dispatch(AgentIntent.NewChat) }
-            if (state.docked) {
-                HeaderIcon(Icons.Default.OpenInFull, "Expand") { dispatch(AgentIntent.ExpandToPerspective) }
+            val docked = layoutDocked ?: state.docked
+            if (docked) {
+                HeaderIcon(Icons.Default.OpenInFull, "Expand") {
+                    dispatch(AgentIntent.ExpandToPerspective)
+                    mirrorLayout?.invoke(AgentIntent.ExpandToPerspective)
+                }
             } else {
-                HeaderIcon(Icons.Default.CloseFullscreen, "Dock") { dispatch(AgentIntent.DockToToolWindow) }
+                HeaderIcon(Icons.Default.CloseFullscreen, "Dock") {
+                    dispatch(AgentIntent.DockToToolWindow)
+                    mirrorLayout?.invoke(AgentIntent.DockToToolWindow)
+                }
             }
         }
         if (state.historyVisible) {
@@ -374,6 +439,27 @@ private fun HeaderIcon(
                 .clickable(onClick = onClick)
                 .padding(Spacing.xxs.dp)
                 .size(Dimensions.iconLg.dp),
+    )
+}
+
+@Composable
+private fun CheckoutChip(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = label,
+        color = LocalIntelliJColors.current.accent,
+        fontSize = 11.sp,
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                .border(
+                    1.dp,
+                    LocalIntelliJColors.current.agentCardBorder,
+                    RoundedCornerShape(Dimensions.cornerRadius.dp),
+                ).clickable(onClick = onClick)
+                .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
     )
 }
 

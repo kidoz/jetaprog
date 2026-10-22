@@ -27,6 +27,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.adapter.EditorServiceBridge
+import su.kidoz.jetaprog.app.agent.AgentCheckout
+import su.kidoz.jetaprog.app.agent.AgentWorktree
+import su.kidoz.jetaprog.app.agent.GitAgentWorktreeLauncher
 import su.kidoz.jetaprog.app.build.WorkspaceBuildModelService
 import su.kidoz.jetaprog.app.command.CommandPaletteIntent
 import su.kidoz.jetaprog.app.command.CommandPaletteViewModel
@@ -54,6 +57,7 @@ import su.kidoz.jetaprog.app.ui.navigation.NavigationIntent
 import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
 import su.kidoz.jetaprog.app.ui.navigation.SearchMode
 import su.kidoz.jetaprog.app.ui.navigation.handleNavigationKeyEvent
+import su.kidoz.jetaprog.app.viewmodel.AgentSessionHost
 import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
 import su.kidoz.jetaprog.app.viewmodel.ConfigurationViewModel
 import su.kidoz.jetaprog.app.viewmodel.DebugViewModel
@@ -599,7 +603,12 @@ public class ProjectSession(
         )
 
     /**
-     * The agent (ACP) session view model, driving an external coding agent.
+     * Set while [agentSessionHost] is being created so `/worktree` can attach the second session.
+     */
+    private var agentHostSlot: AgentSessionHost? = null
+
+    /**
+     * The agent (ACP) session view model for the main checkout.
      */
     public val agentSessionViewModel: AgentSessionViewModel =
         AgentSessionViewModel(
@@ -619,16 +628,21 @@ public class ProjectSession(
             openInIdeDiff = { absolutePath ->
                 gitViewModel.openWorkingTreeDiff(repositoryRelativePath(projectPath, absolutePath))
             },
-            isEditorDirty = { absolutePath ->
-                val uri = DocumentUri.file(absolutePath)
-                editorViewModel.state.value.tabs
-                    .any { it.uri == uri && it.isDirty }
-            },
-            onWorkspaceFilesChanged = { paths ->
-                paths.forEach { path -> editorViewModel.dispatch(EditorIntent.ReloadFile(path)) }
-                gitViewModel.refreshIfIdle()
-            },
+            isEditorDirty = { absolutePath -> editorHasUnsavedBuffer(absolutePath) },
+            onWorkspaceFilesChanged = { paths -> reloadWorkspaceFiles(paths) },
+            checkout = AgentCheckout.MAIN,
+            worktreeLauncher = GitAgentWorktreeLauncher(processExecutor, fileSystem),
+            onWorktreeReady = { tree -> agentHostSlot?.attach(tree) },
         )
+
+    /**
+     * The main session and, after `/worktree`, the linked checkout's session.
+     */
+    public val agentSessionHost: AgentSessionHost =
+        AgentSessionHost(
+            main = agentSessionViewModel,
+            openWorktree = ::worktreeAgent,
+        ).also { agentHostSlot = it }
 
     /**
      * The project-wide full-text search ("Find in Files") view model.
@@ -1063,6 +1077,38 @@ public class ProjectSession(
         sessionScope.launch { loadKotlinClasspath() }
     }
 
+    /**
+     * The second agent session. Its working directory is the linked checkout, and it does not
+     * receive the main project's editor context or IDE tools.
+     */
+    private fun worktreeAgent(tree: AgentWorktree): AgentSessionViewModel =
+        AgentSessionViewModel(
+            projectPath = tree.path,
+            fileSystem = fileSystem,
+            ideMcpEndpoint = { null },
+            editorContext = { null },
+            mentionSearch = { emptyList() },
+            openInIdeDiff = { absolutePath ->
+                editorViewModel.dispatch(EditorIntent.OpenFile(absolutePath))
+            },
+            isEditorDirty = { absolutePath -> editorHasUnsavedBuffer(absolutePath) },
+            onWorkspaceFilesChanged = { paths -> reloadWorkspaceFiles(paths) },
+            checkout = AgentCheckout.WORKTREE,
+        )
+
+    /** Whether [absolutePath] is open with unsaved edits. */
+    private fun editorHasUnsavedBuffer(absolutePath: String): Boolean {
+        val uri = DocumentUri.file(absolutePath)
+        return editorViewModel.state.value.tabs
+            .any { it.uri == uri && it.isDirty }
+    }
+
+    /** Reloads editor buffers and Git status after the agent rewrites files. */
+    private fun reloadWorkspaceFiles(paths: List<String>) {
+        paths.forEach { path -> editorViewModel.dispatch(EditorIntent.ReloadFile(path)) }
+        gitViewModel.refreshIfIdle()
+    }
+
     private fun kotlinClasspath(filePath: String?): List<String> {
         val resolver = kotlinClasspathResolver ?: return emptyList()
         return filePath?.let(resolver::classpathFor) ?: resolver.workspaceClasspath()
@@ -1083,7 +1129,7 @@ public class ProjectSession(
         commandPaletteViewModel.dispose()
         terminalViewModel.dispose()
         gradleViewModel.dispose()
-        agentSessionViewModel.dispose()
+        agentSessionHost.dispose()
         textSearchViewModel.dispose()
         gitViewModel.dispose()
         configurationViewModel.dispose()

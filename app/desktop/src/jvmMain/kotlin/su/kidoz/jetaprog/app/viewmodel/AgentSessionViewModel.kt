@@ -55,6 +55,7 @@ import su.kidoz.jetaprog.acp.protocol.ToolCallContent
 import su.kidoz.jetaprog.acp.protocol.ToolCallStatus
 import su.kidoz.jetaprog.acp.protocol.ToolKind
 import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
+import su.kidoz.jetaprog.app.agent.AgentCheckout
 import su.kidoz.jetaprog.app.agent.AgentFileSnapshots
 import su.kidoz.jetaprog.app.agent.AgentGoal
 import su.kidoz.jetaprog.app.agent.AgentGoalStatus
@@ -65,6 +66,8 @@ import su.kidoz.jetaprog.app.agent.AgentMessageCheckpoints
 import su.kidoz.jetaprog.app.agent.AgentPrefs
 import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.agent.AgentWorktree
+import su.kidoz.jetaprog.app.agent.AgentWorktreeLauncher
 import su.kidoz.jetaprog.app.agent.CheckpointSkip
 import su.kidoz.jetaprog.app.agent.FileSnapshot
 import su.kidoz.jetaprog.app.agent.checkpointNotice
@@ -97,9 +100,15 @@ import su.kidoz.jetaprog.app.ui.agent.PlanStep
 import su.kidoz.jetaprog.app.ui.agent.PlanStepStatus
 import su.kidoz.jetaprog.app.ui.agent.Presence
 import su.kidoz.jetaprog.app.ui.agent.QueuedFollowUp
+import su.kidoz.jetaprog.app.ui.agent.REVIEW_BUSY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.REVIEW_EMPTY_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.SessionRestoration
 import su.kidoz.jetaprog.app.ui.agent.ToolStatus
 import su.kidoz.jetaprog.app.ui.agent.Turn
+import su.kidoz.jetaprog.app.ui.agent.WORKTREE_ALREADY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.WORKTREE_BUSY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.WORKTREE_OPENING_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.WORKTREE_UNAVAILABLE_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.chipLabel
 import su.kidoz.jetaprog.app.ui.agent.elapsedMillis
 import su.kidoz.jetaprog.app.ui.agent.goalCheckLabel
@@ -115,10 +124,13 @@ import su.kidoz.jetaprog.app.ui.agent.isPlanMode
 import su.kidoz.jetaprog.app.ui.agent.judgeGoal
 import su.kidoz.jetaprog.app.ui.agent.mentionQuery
 import su.kidoz.jetaprog.app.ui.agent.parseGoalCommand
+import su.kidoz.jetaprog.app.ui.agent.parseReviewCommand
+import su.kidoz.jetaprog.app.ui.agent.parseWorktreeCommand
 import su.kidoz.jetaprog.app.ui.agent.persistedGoal
 import su.kidoz.jetaprog.app.ui.agent.promptWithContext
 import su.kidoz.jetaprog.app.ui.agent.restoredGoal
 import su.kidoz.jetaprog.app.ui.agent.restoredGoalNotice
+import su.kidoz.jetaprog.app.ui.agent.reviewFiles
 import su.kidoz.jetaprog.app.ui.agent.sessionTitle
 import su.kidoz.jetaprog.app.ui.agent.summarizeSession
 import su.kidoz.jetaprog.app.ui.agent.withoutMentionToken
@@ -149,6 +161,9 @@ import java.util.UUID
  * @param isEditorDirty reports an unsaved editor buffer for an absolute path. Those files are skipped
  *   by a checkpoint restore.
  * @param onWorkspaceFilesChanged tells the editor and Git panel that these absolute paths were rewritten.
+ * @param checkout Whether this session edits the main checkout or a linked worktree.
+ * @param worktreeLauncher Creates the linked checkout for `/worktree`. Null refuses the command.
+ * @param onWorktreeReady Tells the host to show the second session. Called again to switch back to it.
  */
 public class AgentSessionViewModel(
     private val projectPath: String,
@@ -163,6 +178,9 @@ public class AgentSessionViewModel(
     private val openInIdeDiff: (String) -> Unit = {},
     private val isEditorDirty: (String) -> Boolean = { false },
     private val onWorkspaceFilesChanged: (List<String>) -> Unit = {},
+    private val checkout: AgentCheckout = AgentCheckout.MAIN,
+    private val worktreeLauncher: AgentWorktreeLauncher? = null,
+    private val onWorktreeReady: (AgentWorktree) -> Unit = {},
 ) : Disposable,
     AcpClientHandler {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -215,6 +233,12 @@ public class AgentSessionViewModel(
 
     /** Turns before this index are not evidence for the current objective. */
     private var goalBaseline = 0
+
+    /** The linked checkout this main session already opened. */
+    private var linkedWorktree: AgentWorktree? = null
+
+    /** True while [worktreeLauncher] is creating the checkout. */
+    private var worktreeOpening = false
 
     /** When true, cancel the running turn once no tool call is still running. */
     private var steerArmed = false
@@ -400,6 +424,18 @@ public class AgentSessionViewModel(
             AgentIntent.ReplaceGoal -> {
                 _state.update { it.copy(composerInput = "/goal ", goalNotice = null) }
             }
+
+            AgentIntent.HideReview -> {
+                _state.update { it.copy(reviewVisible = false) }
+            }
+
+            is AgentIntent.AcceptReviewFile -> {
+                decideReviewFile(intent.key, accept = true)
+            }
+
+            is AgentIntent.DismissReviewFile -> {
+                decideReviewFile(intent.key, accept = false)
+            }
         }
     }
 
@@ -553,8 +589,16 @@ public class AgentSessionViewModel(
             applyGoalCommand(goalCommand, clearComposer = _state.value.composerInput.trim() == text)
             return
         }
-        val attachments = attachmentsFor(text, contextLabels)
         val clearComposer = _state.value.composerInput.trim() == text
+        if (parseReviewCommand(text)) {
+            showReview(clearComposer)
+            return
+        }
+        if (parseWorktreeCommand(text)) {
+            openWorktree(clearComposer)
+            return
+        }
+        val attachments = attachmentsFor(text, contextLabels)
         if (_state.value.isStreaming) {
             queueFollowUp(text, attachments, steer, clearComposer)
         } else {
@@ -868,6 +912,98 @@ public class AgentSessionViewModel(
                 clearGoal(clearComposer)
             }
         }
+    }
+
+    /**
+     * Opens the session review.
+     *
+     * The command is local. It does not send a prompt, so the agent cannot edit from the review.
+     */
+    private fun showReview(clearComposer: Boolean) {
+        val files = reviewFiles(_state.value.turns)
+        _state.update {
+            it.copy(
+                reviewVisible = files.isNotEmpty(),
+                reviewNotice = if (files.isEmpty()) REVIEW_EMPTY_NOTICE else null,
+                composerInput = if (clearComposer) "" else it.composerInput,
+            )
+        }
+    }
+
+    /** Accepts or dismisses every still-proposed hunk of the reviewed file [key]. */
+    private suspend fun decideReviewFile(
+        key: String,
+        accept: Boolean,
+    ) {
+        if (_state.value.isStreaming) {
+            _state.update { it.copy(reviewNotice = REVIEW_BUSY_NOTICE) }
+            return
+        }
+        val file = reviewFiles(_state.value.turns).firstOrNull { it.key == key } ?: return
+        file.pendingBlockIds.forEach { blockId -> decideDiff(blockId, accept) }
+    }
+
+    /**
+     * Opens a second session in a new Git worktree.
+     *
+     * The main checkout stays as it is. A later `/worktree` switches back to the session
+     * already created.
+     */
+    private suspend fun openWorktree(clearComposer: Boolean) {
+        fun notice(message: String) {
+            _state.update {
+                it.copy(
+                    worktreeNotice = message,
+                    composerInput = if (clearComposer) "" else it.composerInput,
+                )
+            }
+        }
+        if (checkout == AgentCheckout.WORKTREE) {
+            notice(WORKTREE_ALREADY_NOTICE)
+            return
+        }
+        if (_state.value.isStreaming) {
+            notice(WORKTREE_BUSY_NOTICE)
+            return
+        }
+        val launcher = worktreeLauncher
+        if (launcher == null) {
+            notice(WORKTREE_UNAVAILABLE_NOTICE)
+            return
+        }
+        val existing = linkedWorktree
+        if (existing != null) {
+            _state.update {
+                it.copy(
+                    worktreeNotice = null,
+                    composerInput = if (clearComposer) "" else it.composerInput,
+                )
+            }
+            onWorktreeReady(existing)
+            return
+        }
+        if (worktreeOpening) {
+            notice(WORKTREE_OPENING_NOTICE)
+            return
+        }
+        worktreeOpening = true
+        val created = launcher.create(projectPath)
+        created.onSuccess { tree -> linkedWorktree = tree }
+        worktreeOpening = false
+        created.fold(
+            onSuccess = { tree ->
+                _state.update {
+                    it.copy(
+                        worktreeNotice = null,
+                        composerInput = if (clearComposer) "" else it.composerInput,
+                    )
+                }
+                onWorktreeReady(tree)
+            },
+            onFailure = { error ->
+                notice(error.message ?: "Could not create a worktree.")
+            },
+        )
     }
 
     /** Replaces any current objective and starts the first work round. */
@@ -1261,6 +1397,8 @@ public class AgentSessionViewModel(
                 activeRecordId = null,
                 goal = null,
                 goalNotice = null,
+                reviewVisible = false,
+                reviewNotice = null,
             )
         }
     }
@@ -1302,6 +1440,8 @@ public class AgentSessionViewModel(
                 activeRecordId = null,
                 goal = null,
                 goalNotice = null,
+                reviewVisible = false,
+                reviewNotice = null,
             )
         }
     }
@@ -1361,6 +1501,8 @@ public class AgentSessionViewModel(
                 activeRecordId = record.id,
                 goal = record.goal?.let(::restoredGoal),
                 goalNotice = restoredGoalNotice(record.goal),
+                reviewVisible = false,
+                reviewNotice = null,
             )
         }
         if (record.agentSessionId == null) {

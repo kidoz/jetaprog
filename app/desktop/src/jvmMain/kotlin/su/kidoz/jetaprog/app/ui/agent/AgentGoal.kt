@@ -131,10 +131,21 @@ internal fun isPlanMode(mode: ModeOption?): Boolean {
     return mode.id.equals("plan", ignoreCase = true) || mode.name.equals("plan", ignoreCase = true)
 }
 
-/** Puts the built-in goal command first and drops a duplicate advertised by the agent. */
+/**
+ * Puts the built-in goal, review, and worktree commands first.
+ *
+ * A goal advertised by the agent is dropped. A review command keeps the agent's own description.
+ */
 internal fun slashCommands(agentCommands: List<AgentCommand>): List<AgentCommand> {
-    val goal = AgentCommand(name = GOAL_COMMAND, description = GOAL_COMMAND_DESCRIPTION)
-    return listOf(goal) + agentCommands.filterNot { it.name.equals(GOAL_COMMAND, ignoreCase = true) }
+    val advertised = agentCommands.associateBy { it.name.lowercase() }
+    val builtIn =
+        listOf(
+            AgentCommand(name = GOAL_COMMAND, description = GOAL_COMMAND_DESCRIPTION),
+            advertised[REVIEW_COMMAND] ?: AgentCommand(name = REVIEW_COMMAND, description = REVIEW_COMMAND_DESCRIPTION),
+            AgentCommand(name = WORKTREE_COMMAND, description = WORKTREE_COMMAND_DESCRIPTION),
+        )
+    val taken = setOf(GOAL_COMMAND, REVIEW_COMMAND, WORKTREE_COMMAND)
+    return builtIn + agentCommands.filterNot { it.name.lowercase() in taken }
 }
 
 /** Prompt sent for the first work round. The transcript shows the objective itself. */

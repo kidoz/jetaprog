@@ -528,6 +528,9 @@ public data class Presence(
  *   The session list uses it to overlay live status and diff counts.
  * @property goal The one objective for this session, or null when none is set.
  * @property goalNotice Why the latest goal command was refused or the loop paused, if any.
+ * @property reviewVisible Whether the read-only review of this session's diffs is open.
+ * @property reviewNotice Why `/review` or a review action could not be applied, if any.
+ * @property worktreeNotice Why `/worktree` could not open a second session, if any.
  */
 @Immutable
 public data class AgentUiState(
@@ -565,6 +568,12 @@ public data class AgentUiState(
     val goal: AgentGoal? = null,
     /** A short explanation for a refused goal command or a paused loop. */
     val goalNotice: String? = null,
+    /** Whether `/review` is showing this session's files. */
+    val reviewVisible: Boolean = false,
+    /** A short explanation for a refused review command or action. */
+    val reviewNotice: String? = null,
+    /** A short explanation for a refused worktree command. */
+    val worktreeNotice: String? = null,
 ) {
     /** Files the agent changed in this session, for the session rail. */
     val sessionChanges: List<SessionFileChange>
@@ -766,4 +775,25 @@ public sealed interface AgentIntent {
 
     /** Put `/goal ` in the composer so the next send replaces the objective. */
     public data object ReplaceGoal : AgentIntent
+
+    /** Hide the session review card. */
+    public data object HideReview : AgentIntent
+
+    /**
+     * Accept every still-proposed hunk of the reviewed file [key].
+     *
+     * The review does not ask the agent to edit. Accept keeps the change the agent already wrote.
+     */
+    public data class AcceptReviewFile(
+        val key: String,
+    ) : AgentIntent
+
+    /**
+     * Dismiss every still-proposed hunk of the reviewed file [key].
+     *
+     * Dismiss reverts those hunks the same way Reject does on a diff card.
+     */
+    public data class DismissReviewFile(
+        val key: String,
+    ) : AgentIntent
 }

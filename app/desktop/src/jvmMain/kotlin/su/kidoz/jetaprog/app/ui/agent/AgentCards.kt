@@ -599,6 +599,122 @@ internal fun SendButton(
 }
 
 /**
+ * Files changed in this session, grouped for a read-only review.
+ *
+ * Accept keeps a change the agent already wrote. Dismiss reverts it. Close hides the card.
+ * The command does not ask the agent to edit.
+ *
+ * @param files The session's changed files, in first-seen order.
+ * @param onAccept Accepts every still-proposed hunk of that file.
+ * @param onDismiss Reverts every still-proposed hunk of that file.
+ * @param onClose Hides the card.
+ * @param modifier Layout modifier for the card.
+ */
+@Composable
+internal fun ReviewCard(
+    files: List<ReviewFile>,
+    onAccept: (String) -> Unit,
+    onDismiss: (String) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (files.isEmpty()) return
+    val shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp)
+    val colors = LocalIntelliJColors.current
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(colors.toolCardBackground)
+                .border(1.dp, colors.agentCardBorder, shape)
+                .padding(Spacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Review",
+                color = colors.textMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Close review",
+                tint = colors.textSecondary,
+                modifier =
+                    Modifier
+                        .size(Dimensions.iconSm.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onClose),
+            )
+        }
+        files.forEach { file ->
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+                ) {
+                    Text(
+                        text = file.fileName,
+                        color = colors.textPrimary,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    val counts = sessionDiffCountLabel(file.added, file.removed)
+                    if (counts != null) {
+                        Text(text = counts, color = colors.textSecondary, fontSize = 11.sp)
+                    }
+                }
+                if (file.pathLabel.isNotBlank()) {
+                    Text(
+                        text = file.pathLabel,
+                        color = colors.textMuted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                val status = file.statusLabel
+                if (status != null) {
+                    Text(
+                        text = status,
+                        color = if (status == "Accepted") colors.success else colors.textSecondary,
+                        fontSize = 11.sp,
+                    )
+                } else {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+                    ) {
+                        PillButton(
+                            text = "Accept",
+                            icon = Icons.Filled.Check,
+                            background = colors.success.copy(alpha = 0.16f),
+                            foreground = colors.success,
+                            onClick = { onAccept(file.key) },
+                            bordered = true,
+                        )
+                        PillButton(
+                            text = "Dismiss",
+                            icon = Icons.Filled.Close,
+                            background = colors.buttonBackground,
+                            foreground = colors.textPrimary,
+                            onClick = { onDismiss(file.key) },
+                            bordered = true,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * The agent's current plan. A later update replaces these steps in place.
  *
  * @param steps The steps to show, in order. An empty list draws nothing.
