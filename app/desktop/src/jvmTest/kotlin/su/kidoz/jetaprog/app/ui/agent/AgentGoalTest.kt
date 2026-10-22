@@ -46,7 +46,7 @@ class AgentGoalTest {
                     AgentCommand("goal", "Agent goal"),
                 ),
             )
-        assertEquals(listOf(GOAL_COMMAND, "review", "worktree"), commands.map { it.name })
+        assertEquals(listOf(GOAL_COMMAND, "review", "worktree", "bring"), commands.map { it.name })
         assertEquals(GOAL_COMMAND_DESCRIPTION, commands.first().description)
         assertEquals("Review the diff", commands[1].description)
     }

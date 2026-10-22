@@ -19,10 +19,18 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import su.kidoz.jetaprog.acp.protocol.AcpConnection
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
+import su.kidoz.jetaprog.app.agent.AgentBringOutcome
+import su.kidoz.jetaprog.app.agent.AgentBroughtChange
 import su.kidoz.jetaprog.app.agent.AgentCheckout
 import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.AgentWorktreeLauncher
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
+import su.kidoz.jetaprog.app.ui.agent.BRING_BUSY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_DIRTY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_EMPTY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_FROM_WORKTREE_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_PENDING_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_UNAVAILABLE_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.Block
 import su.kidoz.jetaprog.app.ui.agent.DiffDecision
 import su.kidoz.jetaprog.app.ui.agent.REVIEW_BUSY_NOTICE
@@ -85,11 +93,11 @@ private class ReviewTransport(
         }
     }
 
-    suspend fun diff() {
+    suspend fun diff(path: String = "/proj/src/Reader.kt") {
         inbound.send(
             """{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":""" +
                 """{"sessionUpdate":"tool_call","toolCallId":"edit","title":"Edit","kind":"edit",""" +
-                """"status":"completed","content":[{"type":"diff","path":"/proj/src/Reader.kt",""" +
+                """"status":"completed","content":[{"type":"diff","path":"$path",""" +
                 """"oldText":"old","newText":"new"}]}}}""",
         )
     }
@@ -279,19 +287,172 @@ class AgentSessionWorktreeReviewTest {
             assertEquals(REVIEW_BUSY_NOTICE, viewModel.state.value.reviewNotice)
         }
 
+    @Test
+    fun bringCopiesTheWorktreeFileIntoTheMainReview() =
+        runTest {
+            files["/wt/src/Reader.kt"] = "new"
+            files["/proj/src/Reader.kt"] = "old"
+            val agent = ReviewTransport { it.diff("/wt/src/Reader.kt") }
+            val main = model()
+            lateinit var host: AgentSessionHost
+            val worktree =
+                model(
+                    agent = agent,
+                    checkout = AgentCheckout.WORKTREE,
+                    projectPath = "/wt",
+                    onBringBack = { changes ->
+                        val outcome = main.importBroughtChanges(changes)
+                        if (outcome.imported > 0) host.showMain()
+                        outcome
+                    },
+                )
+            host = AgentSessionHost(main) { worktree }
+            host.attach(AgentWorktree("/wt", "jetaprog/wt"))
+            host.showWorktree()
+            connect(worktree)
+            worktree.dispatch(AgentIntent.Send("Edit the reader"))
+            runCurrent()
+            worktree.dispatch(AgentIntent.Send("/bring"))
+            runCurrent()
+
+            assertEquals(listOf("Edit the reader"), agent.prompts)
+            assertTrue(host.active.value === main)
+            assertTrue(main.state.value.reviewVisible)
+            assertEquals("new", files["/proj/src/Reader.kt"])
+            assertNull(worktree.state.value.worktreeNotice)
+            main.dispatch(AgentIntent.DismissReviewFile("/proj/src/Reader.kt"))
+            runCurrent()
+
+            assertEquals("old", files["/proj/src/Reader.kt"])
+            val decision =
+                main.state.value.turns
+                    .filterIsInstance<Turn.Agent>()
+                    .flatMap { it.blocks }
+                    .filterIsInstance<Block.Diff>()
+                    .single()
+                    .decision
+            assertEquals(DiffDecision.REJECTED, decision)
+        }
+
+    @Test
+    fun bringOnTheMainChatAndAnArgumentStayOutOfTheCopy() =
+        runTest {
+            val main = model()
+            main.dispatch(AgentIntent.Send("/bring"))
+            runCurrent()
+            assertEquals(BRING_FROM_WORKTREE_NOTICE, main.state.value.worktreeNotice)
+
+            val worktree = model(checkout = AgentCheckout.WORKTREE, projectPath = "/wt")
+            worktree.dispatch(AgentIntent.Send("/bring"))
+            runCurrent()
+            assertEquals(BRING_EMPTY_NOTICE, worktree.state.value.worktreeNotice)
+
+            files["/wt/src/Reader.kt"] = "new"
+            val unlinked = ReviewTransport { it.diff("/wt/src/Reader.kt") }
+            val linked = model(unlinked, checkout = AgentCheckout.WORKTREE, projectPath = "/wt")
+            connect(linked)
+            linked.dispatch(AgentIntent.Send("Edit the reader"))
+            runCurrent()
+            linked.dispatch(AgentIntent.Send("/bring"))
+            runCurrent()
+            assertEquals(BRING_UNAVAILABLE_NOTICE, linked.state.value.worktreeNotice)
+            assertFalse(files.containsKey("/proj/src/Reader.kt"))
+            assertEquals("new", files["/wt/src/Reader.kt"])
+
+            val agent = ReviewTransport()
+            val chatting = model(agent, checkout = AgentCheckout.WORKTREE, projectPath = "/wt")
+            connect(chatting)
+            chatting.dispatch(AgentIntent.Send("/bring the changes"))
+            runCurrent()
+            assertEquals(listOf("/bring the changes"), agent.prompts)
+            assertNull(chatting.state.value.worktreeNotice)
+        }
+
+    @Test
+    fun aRunningTurnRefusesToBringChangesBack() =
+        runTest {
+            val agent = ReviewTransport(holdFrom = 1) { it.diff("/wt/src/Reader.kt") }
+            files["/wt/src/Reader.kt"] = "new"
+            val worktree =
+                model(
+                    agent = agent,
+                    checkout = AgentCheckout.WORKTREE,
+                    projectPath = "/wt",
+                    onBringBack = { AgentBringOutcome(imported = 1) },
+                )
+            connect(worktree)
+            worktree.dispatch(AgentIntent.Send("Edit the reader"))
+            runCurrent()
+            worktree.dispatch(AgentIntent.Send("/bring"))
+            runCurrent()
+
+            assertEquals(BRING_BUSY_NOTICE, worktree.state.value.worktreeNotice)
+            assertEquals(listOf("Edit the reader"), agent.prompts)
+        }
+
+    @Test
+    fun dirtyAndPendingMainFilesStayInPlace() =
+        runTest {
+            files["/wt/src/Reader.kt"] = "from-worktree"
+            files["/proj/src/Reader.kt"] = "old"
+            val dirtyMain = model(editorDirty = { path -> path.endsWith("Reader.kt") })
+            val dirtyAgent = ReviewTransport { it.diff("/wt/src/Reader.kt") }
+            val dirtyWorktree =
+                model(
+                    agent = dirtyAgent,
+                    checkout = AgentCheckout.WORKTREE,
+                    projectPath = "/wt",
+                    onBringBack = { changes -> dirtyMain.importBroughtChanges(changes) },
+                )
+            connect(dirtyWorktree)
+            dirtyWorktree.dispatch(AgentIntent.Send("Edit the reader"))
+            runCurrent()
+            dirtyWorktree.dispatch(AgentIntent.Send("/bring"))
+            runCurrent()
+
+            assertEquals(BRING_DIRTY_NOTICE, dirtyWorktree.state.value.worktreeNotice)
+            assertEquals("old", files["/proj/src/Reader.kt"])
+            assertFalse(dirtyMain.state.value.reviewVisible)
+
+            files["/proj/src/Writer.kt"] = "kept"
+            val main = model(ReviewTransport { it.diff("/proj/src/Writer.kt") })
+            connect(main)
+            main.dispatch(AgentIntent.Send("Edit the writer"))
+            runCurrent()
+            val pending =
+                main.importBroughtChanges(
+                    listOf(
+                        AgentBroughtChange("src/Reader.kt", exists = true, content = "from-worktree"),
+                        AgentBroughtChange("src/Writer.kt", exists = true, content = "fresh"),
+                    ),
+                )
+
+            assertEquals(1, pending.imported)
+            assertEquals(1, pending.skippedPending)
+            assertEquals("from-worktree", files["/proj/src/Reader.kt"])
+            assertEquals("kept", files["/proj/src/Writer.kt"])
+            assertEquals(BRING_PENDING_NOTICE, main.state.value.reviewNotice)
+            assertTrue(main.state.value.reviewVisible)
+        }
+
     private fun model(
         agent: ReviewTransport = ReviewTransport(),
         checkout: AgentCheckout = AgentCheckout.MAIN,
         launcher: AgentWorktreeLauncher? = null,
         onReady: (AgentWorktree) -> Unit = {},
+        projectPath: String = "/proj",
+        onBringBack: (suspend (List<AgentBroughtChange>) -> AgentBringOutcome)? = null,
+        editorDirty: (String) -> Boolean = { false },
     ): AgentSessionViewModel =
         AgentSessionViewModel(
-            projectPath = "/proj",
+            projectPath = projectPath,
             fileSystem = fileSystem,
             transportFactory = { agent },
+            isEditorDirty = editorDirty,
             checkout = checkout,
             worktreeLauncher = launcher,
             onWorktreeReady = onReady,
+            onBringBack = onBringBack,
         ).also { viewModels += it }
 
     private fun kotlinx.coroutines.test.TestScope.connect(viewModel: AgentSessionViewModel) {

@@ -1094,6 +1094,11 @@ public class ProjectSession(
             isEditorDirty = { absolutePath -> editorHasUnsavedBuffer(absolutePath) },
             onWorkspaceFilesChanged = { paths -> reloadWorkspaceFiles(paths) },
             checkout = AgentCheckout.WORKTREE,
+            onBringBack = { changes ->
+                val outcome = agentSessionViewModel.importBroughtChanges(changes)
+                if (outcome.imported > 0) agentHostSlot?.showMain()
+                outcome
+            },
         )
 
     /** Whether [absolutePath] is open with unsaved edits. */

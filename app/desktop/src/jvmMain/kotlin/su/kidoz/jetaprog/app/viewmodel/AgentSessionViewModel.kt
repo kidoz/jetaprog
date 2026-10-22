@@ -55,6 +55,8 @@ import su.kidoz.jetaprog.acp.protocol.ToolCallContent
 import su.kidoz.jetaprog.acp.protocol.ToolCallStatus
 import su.kidoz.jetaprog.acp.protocol.ToolKind
 import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
+import su.kidoz.jetaprog.app.agent.AgentBringOutcome
+import su.kidoz.jetaprog.app.agent.AgentBroughtChange
 import su.kidoz.jetaprog.app.agent.AgentCheckout
 import su.kidoz.jetaprog.app.agent.AgentFileSnapshots
 import su.kidoz.jetaprog.app.agent.AgentGoal
@@ -78,6 +80,14 @@ import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
 import su.kidoz.jetaprog.app.ui.agent.ApprovalChoice
 import su.kidoz.jetaprog.app.ui.agent.ApprovalChoiceRole
+import su.kidoz.jetaprog.app.ui.agent.BRING_BUSY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_DIRTY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_EMPTY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_FAILED_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_FROM_WORKTREE_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_MAIN_BUSY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_PENDING_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.BRING_UNAVAILABLE_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.Block
 import su.kidoz.jetaprog.app.ui.agent.ComposerAttachment
 import su.kidoz.jetaprog.app.ui.agent.DiffDecision
@@ -109,6 +119,7 @@ import su.kidoz.jetaprog.app.ui.agent.WORKTREE_ALREADY_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.WORKTREE_BUSY_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.WORKTREE_OPENING_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.WORKTREE_UNAVAILABLE_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.bringableRelativePaths
 import su.kidoz.jetaprog.app.ui.agent.chipLabel
 import su.kidoz.jetaprog.app.ui.agent.elapsedMillis
 import su.kidoz.jetaprog.app.ui.agent.goalCheckLabel
@@ -121,8 +132,10 @@ import su.kidoz.jetaprog.app.ui.agent.goalResumeLabel
 import su.kidoz.jetaprog.app.ui.agent.goalResumePrompt
 import su.kidoz.jetaprog.app.ui.agent.goalWorkPrompt
 import su.kidoz.jetaprog.app.ui.agent.isPlanMode
+import su.kidoz.jetaprog.app.ui.agent.isSafeRelative
 import su.kidoz.jetaprog.app.ui.agent.judgeGoal
 import su.kidoz.jetaprog.app.ui.agent.mentionQuery
+import su.kidoz.jetaprog.app.ui.agent.parseBringCommand
 import su.kidoz.jetaprog.app.ui.agent.parseGoalCommand
 import su.kidoz.jetaprog.app.ui.agent.parseReviewCommand
 import su.kidoz.jetaprog.app.ui.agent.parseWorktreeCommand
@@ -164,6 +177,7 @@ import java.util.UUID
  * @param checkout Whether this session edits the main checkout or a linked worktree.
  * @param worktreeLauncher Creates the linked checkout for `/worktree`. Null refuses the command.
  * @param onWorktreeReady Tells the host to show the second session. Called again to switch back to it.
+ * @param onBringBack Copies this worktree's files into the main checkout. Null refuses `/bring`.
  */
 public class AgentSessionViewModel(
     private val projectPath: String,
@@ -181,6 +195,7 @@ public class AgentSessionViewModel(
     private val checkout: AgentCheckout = AgentCheckout.MAIN,
     private val worktreeLauncher: AgentWorktreeLauncher? = null,
     private val onWorktreeReady: (AgentWorktree) -> Unit = {},
+    private val onBringBack: (suspend (List<AgentBroughtChange>) -> AgentBringOutcome)? = null,
 ) : Disposable,
     AcpClientHandler {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -598,6 +613,10 @@ public class AgentSessionViewModel(
             openWorktree(clearComposer)
             return
         }
+        if (parseBringCommand(text)) {
+            bringChanges(clearComposer)
+            return
+        }
         val attachments = attachmentsFor(text, contextLabels)
         if (_state.value.isStreaming) {
             queueFollowUp(text, attachments, steer, clearComposer)
@@ -1003,6 +1022,215 @@ public class AgentSessionViewModel(
             onFailure = { error ->
                 notice(error.message ?: "Could not create a worktree.")
             },
+        )
+    }
+
+    /**
+     * Copies this worktree's changes into the main checkout and opens them for review.
+     *
+     * The command is local. It does not send a prompt, commit, or merge.
+     */
+    private suspend fun bringChanges(clearComposer: Boolean) {
+        fun notice(message: String) {
+            _state.update {
+                it.copy(
+                    worktreeNotice = message,
+                    composerInput = if (clearComposer) "" else it.composerInput,
+                )
+            }
+        }
+        if (checkout != AgentCheckout.WORKTREE) {
+            notice(BRING_FROM_WORKTREE_NOTICE)
+            return
+        }
+        if (_state.value.isStreaming) {
+            notice(BRING_BUSY_NOTICE)
+            return
+        }
+        val relatives = bringableRelativePaths(projectPath, _state.value.turns)
+        if (relatives.isEmpty()) {
+            notice(BRING_EMPTY_NOTICE)
+            return
+        }
+        val importer = onBringBack
+        if (importer == null) {
+            notice(BRING_UNAVAILABLE_NOTICE)
+            return
+        }
+        val changes = mutableListOf<AgentBroughtChange>()
+        for (relative in relatives) {
+            val path = runCatching { pathGuard.resolve(relative) }.getOrNull()
+            if (path == null) {
+                notice(BRING_FAILED_NOTICE)
+                return
+            }
+            val exists = fileSystem.exists(path)
+            val content =
+                if (exists) {
+                    fileSystem.readText(path).getOrElse { error ->
+                        notice(error.message ?: BRING_FAILED_NOTICE)
+                        return
+                    }
+                } else {
+                    null
+                }
+            changes += AgentBroughtChange(relativePath = relative, exists = exists, content = content)
+        }
+        val outcome = importer(changes)
+        val refusal = outcome.refusal
+        if (refusal != null) {
+            notice(refusal)
+            return
+        }
+        if (outcome.imported == 0) {
+            val message =
+                if (outcome.skippedDirty > 0) {
+                    BRING_DIRTY_NOTICE
+                } else if (outcome.skippedPending > 0) {
+                    BRING_PENDING_NOTICE
+                } else {
+                    BRING_EMPTY_NOTICE
+                }
+            notice(message)
+            return
+        }
+        _state.update {
+            it.copy(
+                worktreeNotice = null,
+                composerInput = if (clearComposer) "" else it.composerInput,
+            )
+        }
+    }
+
+    /**
+     * Writes [changes] into this checkout and opens the review on the files that changed.
+     *
+     * A running turn refuses the copy. An unsaved editor, or a file already waiting in
+     * this review, stays as it is. Accept keeps a copied file. Dismiss restores the text
+     * this checkout had before the copy.
+     */
+    internal suspend fun importBroughtChanges(changes: List<AgentBroughtChange>): AgentBringOutcome {
+        if (_state.value.isStreaming) {
+            return AgentBringOutcome(refusal = BRING_MAIN_BUSY_NOTICE)
+        }
+        val proposed =
+            allDiffs()
+                .filter { it.decision == DiffDecision.PROPOSED }
+                .mapNotNull { resolvedPath(it.absolutePath) }
+                .toSet()
+        val blocks = mutableListOf<Block>()
+        val written = mutableListOf<String>()
+        var skippedDirty = 0
+        var skippedPending = 0
+        var index = 0
+        for (change in changes) {
+            if (!isSafeRelative(change.relativePath)) continue
+            val path = runCatching { pathGuard.resolve(change.relativePath) }.getOrNull() ?: continue
+            if (isEditorDirty(path)) {
+                skippedDirty++
+                continue
+            }
+            if (path in proposed) {
+                skippedPending++
+                continue
+            }
+            val existed = fileSystem.exists(path)
+            val current =
+                if (!existed) {
+                    null
+                } else {
+                    fileSystem.readText(path).getOrElse { error ->
+                        return publishBroughtChanges(
+                            blocks,
+                            written,
+                            skippedDirty,
+                            skippedPending,
+                            error.message ?: BRING_FAILED_NOTICE,
+                        )
+                    }
+                }
+            val incoming = if (change.exists) change.content.orEmpty() else null
+            val unchanged = if (change.exists) existed && current == incoming else !existed
+            if (unchanged) continue
+            val result =
+                if (change.exists) {
+                    fileSystem.writeText(path, incoming.orEmpty())
+                } else {
+                    fileSystem.delete(path)
+                }
+            if (result.isFailure) {
+                return publishBroughtChanges(
+                    blocks,
+                    written,
+                    skippedDirty,
+                    skippedPending,
+                    result.exceptionOrNull()?.message ?: BRING_FAILED_NOTICE,
+                )
+            }
+            fileSnapshots.push(path, FileSnapshot(existed, current))
+            val (lines, added, removed) = computeDiff(current, incoming.orEmpty())
+            blocks +=
+                Block.Diff(
+                    id = "bring-$index:diff:0",
+                    fileName = change.relativePath.substringAfterLast('/'),
+                    path = change.relativePath.substringBeforeLast('/', missingDelimiterValue = ""),
+                    added = added,
+                    removed = removed,
+                    lines = lines,
+                    decision = DiffDecision.PROPOSED,
+                    absolutePath = path,
+                    oldText = current,
+                )
+            written += path
+            index++
+        }
+        return publishBroughtChanges(blocks, written, skippedDirty, skippedPending, failure = null)
+    }
+
+    private fun publishBroughtChanges(
+        blocks: List<Block>,
+        written: List<String>,
+        skippedDirty: Int,
+        skippedPending: Int,
+        failure: String?,
+    ): AgentBringOutcome {
+        if (blocks.isEmpty()) {
+            return AgentBringOutcome(
+                skippedDirty = skippedDirty,
+                skippedPending = skippedPending,
+                refusal = failure,
+            )
+        }
+        val notice =
+            failure
+                ?: if (skippedDirty > 0) {
+                    BRING_DIRTY_NOTICE
+                } else if (skippedPending > 0) {
+                    BRING_PENDING_NOTICE
+                } else {
+                    null
+                }
+        val textId = nextId("bring-text")
+        val turnId = nextId("bring")
+        _state.update { state ->
+            state.copy(
+                turns =
+                    state.turns +
+                        Turn.Agent(
+                            id = turnId,
+                            timeLabel = "now",
+                            blocks = listOf(Block.Text(id = textId, text = "Brought from the worktree.")) + blocks,
+                        ),
+                reviewVisible = true,
+                reviewNotice = notice,
+                error = null,
+            )
+        }
+        if (written.isNotEmpty()) onWorkspaceFilesChanged(written)
+        return AgentBringOutcome(
+            imported = blocks.size,
+            skippedDirty = skippedDirty,
+            skippedPending = skippedPending,
         )
     }
 

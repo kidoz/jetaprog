@@ -132,9 +132,10 @@ internal fun isPlanMode(mode: ModeOption?): Boolean {
 }
 
 /**
- * Puts the built-in goal, review, and worktree commands first.
+ * Puts the built-in goal, review, worktree, and bring commands first.
  *
- * A goal advertised by the agent is dropped. A review command keeps the agent's own description.
+ * A goal, worktree, or bring command advertised by the agent is dropped. A review command
+ * keeps the agent's own description.
  */
 internal fun slashCommands(agentCommands: List<AgentCommand>): List<AgentCommand> {
     val advertised = agentCommands.associateBy { it.name.lowercase() }
@@ -143,8 +144,9 @@ internal fun slashCommands(agentCommands: List<AgentCommand>): List<AgentCommand
             AgentCommand(name = GOAL_COMMAND, description = GOAL_COMMAND_DESCRIPTION),
             advertised[REVIEW_COMMAND] ?: AgentCommand(name = REVIEW_COMMAND, description = REVIEW_COMMAND_DESCRIPTION),
             AgentCommand(name = WORKTREE_COMMAND, description = WORKTREE_COMMAND_DESCRIPTION),
+            AgentCommand(name = BRING_COMMAND, description = BRING_COMMAND_DESCRIPTION),
         )
-    val taken = setOf(GOAL_COMMAND, REVIEW_COMMAND, WORKTREE_COMMAND)
+    val taken = setOf(GOAL_COMMAND, REVIEW_COMMAND, WORKTREE_COMMAND, BRING_COMMAND)
     return builtIn + agentCommands.filterNot { it.name.lowercase() in taken }
 }
 
