@@ -38,6 +38,8 @@ import su.kidoz.jetaprog.app.command.CommandPaletteIntent
 import su.kidoz.jetaprog.app.command.CommandPaletteViewModel
 import su.kidoz.jetaprog.app.database.DatabaseViewModel
 import su.kidoz.jetaprog.app.gradle.GradleImportCoordinator
+import su.kidoz.jetaprog.app.inspection.FileInspection
+import su.kidoz.jetaprog.app.inspection.FileInspectionRunner
 import su.kidoz.jetaprog.app.keymap.CommandActions
 import su.kidoz.jetaprog.app.keymap.KeymapManager
 import su.kidoz.jetaprog.app.keymap.NavigationActions
@@ -301,6 +303,17 @@ public class ProjectSession(
         query: String,
         limit: Int,
     ): List<IndexedSymbolLookup> = indexedSymbolSearch.search(query, limit)
+
+    /**
+     * Runs registered inspections on one file.
+     *
+     * Honors the project lint configuration. Does not apply fixes.
+     */
+    public suspend fun inspectFile(
+        absolutePath: String,
+        content: String,
+        languageId: String,
+    ): FileInspection = FileInspectionRunner(lintService).inspect(absolutePath, content, languageId)
 
     /**
      * One back stack for the whole navigation service chain. Each layer used to own

@@ -10,8 +10,10 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import su.kidoz.jetaprog.app.ProjectSession
+import su.kidoz.jetaprog.app.inspection.FileInspection
 import su.kidoz.jetaprog.app.navigation.IndexedSymbolLookup
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
+import su.kidoz.jetaprog.editor.language.LanguageDefinitionRegistry
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.mcp.server.EmbeddedMcpServer
 import su.kidoz.jetaprog.mcp.server.prompts.Prompt
@@ -22,6 +24,7 @@ import su.kidoz.jetaprog.mcp.server.tools.Tool
 import su.kidoz.jetaprog.mcp.server.tools.ToolContent
 import su.kidoz.jetaprog.mcp.server.tools.ToolResult
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.platform.filesystem.WorkspacePathException
 import su.kidoz.jetaprog.platform.filesystem.WorkspacePathGuard
 import java.io.File
 
@@ -147,6 +150,47 @@ public fun registerIdeTools(
                     },
                 )
             }
+        },
+    )
+
+    server.tools.register(
+        Tool(
+            name = "run_inspection",
+            description =
+                "Run code inspections on one project file and return each finding's severity, rule, file, and line.",
+            inputSchema =
+                objectSchema(
+                    "path" to "Optional project-relative file. Defaults to the active editor file.",
+                    required = emptyList(),
+                ),
+        ) { args ->
+            val session = currentSession() ?: return@Tool text("No project is open.")
+            val requested = args.string("path")
+            val absolute =
+                if (requested.isNullOrBlank()) {
+                    editorFilePath(session) ?: return@Tool text("No file is open. Pass a path to inspect.")
+                } else {
+                    try {
+                        resolve(requested)
+                    } catch (error: WorkspacePathException) {
+                        return@Tool ToolResult.Error(error.message ?: "Path is outside the open project")
+                    }
+                }
+            val file = File(absolute)
+            if (file.isDirectory) return@Tool ToolResult.Error("Pass a file to inspect.")
+            if (!file.isFile) {
+                return@Tool ToolResult.Error("Failed to read ${requested ?: absolute}: file not found")
+            }
+            val content =
+                if (editorFilePath(session)?.let { samePath(it, absolute) } == true) {
+                    session.editorViewModel.state.value.content
+                } else {
+                    fileSystem.readText(absolute).getOrElse { error ->
+                        return@Tool ToolResult.Error("Failed to read ${requested ?: absolute}: ${error.message}")
+                    }
+                }
+            val inspection = session.inspectFile(absolute, content, languageOf(absolute))
+            text(formatInspection(session.projectPath, absolute, inspection))
         },
     )
 
@@ -307,6 +351,52 @@ private fun objectSchema(
 
 private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
 
+internal fun formatInspection(
+    projectPath: String,
+    absolutePath: String,
+    inspection: FileInspection,
+): String =
+    when (inspection) {
+        FileInspection.Disabled -> {
+            "Inspections are disabled."
+        }
+
+        FileInspection.Excluded -> {
+            "This path is excluded from inspections."
+        }
+
+        is FileInspection.Findings -> {
+            if (inspection.results.isEmpty()) {
+                "No problems."
+            } else {
+                val root = File(projectPath)
+                val file = File(absolutePath)
+                val shown = if (file.startsWith(root)) file.relativeTo(root).path else absolutePath
+                inspection.results.take(MAX_INSPECTION_RESULTS).joinToString("\n") { result ->
+                    val line = result.range.start.line + 1
+                    "[${result.severity}] ${result.ruleId.value} $shown:$line: ${result.message}"
+                }
+            }
+        }
+    }
+
+private fun editorFilePath(session: ProjectSession): String? {
+    val uri =
+        session.editorViewModel.state.value.activeDocumentUri
+            ?.value ?: return null
+    if (!uri.startsWith("file://")) return null
+    return uri.removePrefix("file://")
+}
+
+private fun samePath(
+    left: String,
+    right: String,
+): Boolean = runCatching { File(left).canonicalPath == File(right).canonicalPath }.getOrDefault(left == right)
+
+private fun languageOf(path: String): String =
+    LanguageDefinitionRegistry.detect(path)?.value
+        ?: path.substringAfterLast('.', "").lowercase().ifEmpty { "plaintext" }
+
 internal fun formatIndexedSymbols(
     projectPath: String,
     hits: List<IndexedSymbolLookup>,
@@ -326,3 +416,4 @@ private fun missing(parameter: String): ToolResult = ToolResult.Error("Missing r
 
 private val SEARCH_EXCLUDED_DIRECTORIES = setOf(".git", ".gradle", ".idea", ".jetaprog", "build", "node_modules")
 private const val MAX_SEARCH_RESULTS = 200
+private const val MAX_INSPECTION_RESULTS = 200
