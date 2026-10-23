@@ -59,6 +59,7 @@ import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
 import su.kidoz.jetaprog.app.agent.AGENT_BUSY_NOTICE
 import su.kidoz.jetaprog.app.agent.AgentBringOutcome
 import su.kidoz.jetaprog.app.agent.AgentBroughtChange
+import su.kidoz.jetaprog.app.agent.AgentCatalogEntry
 import su.kidoz.jetaprog.app.agent.AgentCheckout
 import su.kidoz.jetaprog.app.agent.AgentChoice
 import su.kidoz.jetaprog.app.agent.AgentFileReview
@@ -75,12 +76,16 @@ import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.AgentWorktreeLauncher
+import su.kidoz.jetaprog.app.agent.CLAUDE_AGENT_ID
 import su.kidoz.jetaprog.app.agent.CheckpointSkip
 import su.kidoz.jetaprog.app.agent.FileSnapshot
+import su.kidoz.jetaprog.app.agent.ZCODE_INSTALL_COPIED_NOTICE
+import su.kidoz.jetaprog.app.agent.ZCODE_INSTALL_COPY_FAILED_NOTICE
 import su.kidoz.jetaprog.app.agent.agentLabel
 import su.kidoz.jetaprog.app.agent.agentUnavailableNotice
 import su.kidoz.jetaprog.app.agent.checkpointNotice
 import su.kidoz.jetaprog.app.agent.defaultLaunch
+import su.kidoz.jetaprog.app.agent.discoverAgentCatalog
 import su.kidoz.jetaprog.app.agent.discoverInstalledAgents
 import su.kidoz.jetaprog.app.agent.legacyClaudeLaunch
 import su.kidoz.jetaprog.app.agent.restoredLaunch
@@ -89,6 +94,7 @@ import su.kidoz.jetaprog.app.ui.agent.AGENTS_FILE
 import su.kidoz.jetaprog.app.ui.agent.AgentCommand
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
+import su.kidoz.jetaprog.app.ui.agent.AgentMenuRow
 import su.kidoz.jetaprog.app.ui.agent.AgentOption
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
 import su.kidoz.jetaprog.app.ui.agent.ApprovalChoice
@@ -196,6 +202,7 @@ import java.util.UUID
  * @param onWorktreeReady Tells the host to show the second session. Called again to switch back to it.
  * @param onBringBack Copies this worktree's files into the main checkout. Null refuses `/bring`.
  * @param discoverAgents Finds installed agents. The default reads this machine and starts no process.
+ * @param discoverCatalog Reads every catalog row, including agents that cannot launch yet.
  * @param agentChoice The agent a new chat launches. Shared with the linked worktree session.
  * @param onAgentSwitch Tells the other checkout to adopt [AgentLaunch]. Returns a notice to refuse
  *   the change, or null when this chat may switch.
@@ -219,6 +226,7 @@ public class AgentSessionViewModel(
     private val onWorktreeReady: (AgentWorktree) -> Unit = {},
     private val onBringBack: (suspend (List<AgentBroughtChange>) -> AgentBringOutcome)? = null,
     private val discoverAgents: () -> List<AgentLaunch> = { discoverInstalledAgents() },
+    private val discoverCatalog: () -> List<AgentCatalogEntry> = { discoverAgentCatalog() },
     private val agentChoice: AgentChoice = AgentChoice(legacyClaudeLaunch(defaultAgentCommand)),
     private val onAgentSwitch: (suspend (AgentLaunch) -> String?)? = null,
     private val remembersAgentChoice: Boolean = true,
@@ -451,6 +459,19 @@ public class AgentSessionViewModel(
                 publishAgents(discoverAgents())
             }
 
+            is AgentIntent.ReportAgentInstallCopy -> {
+                _state.update {
+                    it.copy(
+                        agentNotice =
+                            if (intent.copied) {
+                                ZCODE_INSTALL_COPIED_NOTICE
+                            } else {
+                                ZCODE_INSTALL_COPY_FAILED_NOTICE
+                            },
+                    )
+                }
+            }
+
             AgentIntent.ExpandToPerspective -> {
                 _state.update { it.copy(docked = false) }
                 persist()
@@ -585,8 +606,9 @@ public class AgentSessionViewModel(
     private suspend fun selectAgent(agentId: String) {
         prefsLoaded.await()
         val installed = discoverAgents()
-        publishAgents(installed)
-        val launch = installed.firstOrNull { it.id == agentId } ?: return
+        val catalog = discoverCatalog()
+        publishAgents(installed, catalog)
+        val launch = installed.firstOrNull { it.id == agentId } ?: claudeAdapterFallback(agentId, catalog) ?: return
         if (launch == activeLaunch) {
             _state.update { it.copy(agentNotice = null) }
             return
@@ -693,15 +715,40 @@ public class AgentSessionViewModel(
         return true
     }
 
-    private fun publishAgents(installed: List<AgentLaunch>) {
+    private fun publishAgents(
+        installed: List<AgentLaunch>,
+        catalog: List<AgentCatalogEntry> = discoverCatalog(),
+    ) {
         installedAgents = installed
         _state.update {
             it.copy(
                 availableAgents = installed.map { launch -> AgentOption(launch.id, launch.label) },
+                agentMenu = catalog.map { entry -> entry.toMenuRow() },
                 agent = AgentOption(activeLaunch.id, activeLaunch.label),
             )
         }
     }
+
+    /** The npx Claude adapter, when the catalog row is the selectable fallback. */
+    private fun claudeAdapterFallback(
+        agentId: String,
+        catalog: List<AgentCatalogEntry>,
+    ): AgentLaunch? {
+        if (agentId != CLAUDE_AGENT_ID) return null
+        val entry = catalog.firstOrNull { it.id == CLAUDE_AGENT_ID } ?: return null
+        if (entry.countsAsInstalled || entry.launch == null) return null
+        return fallbackLaunch
+    }
+
+    private fun AgentCatalogEntry.toMenuRow(): AgentMenuRow =
+        AgentMenuRow(
+            id = id,
+            name = label,
+            detail = detail,
+            selectable = launch != null,
+            installCommand = installCommand,
+            warning = warning,
+        )
 
     // ------------------------------------------------------------------------
     // Connection

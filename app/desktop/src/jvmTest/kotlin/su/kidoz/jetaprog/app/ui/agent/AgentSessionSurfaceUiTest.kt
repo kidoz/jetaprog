@@ -421,10 +421,20 @@ class AgentSessionSurfaceUiTest {
                             state =
                                 surfaceState(composerInput = "keep").copy(
                                     agent = AgentOption(id = "claude", name = "Claude"),
-                                    availableAgents =
+                                    agentMenu =
                                         listOf(
-                                            AgentOption(id = "claude", name = "Claude"),
-                                            AgentOption(id = "grok", name = "Grok"),
+                                            AgentMenuRow(
+                                                id = "claude",
+                                                name = "Claude",
+                                                detail = "/bin/claude",
+                                                selectable = true,
+                                            ),
+                                            AgentMenuRow(
+                                                id = "grok",
+                                                name = "Grok",
+                                                detail = "/bin/grok agent stdio",
+                                                selectable = true,
+                                            ),
                                         ),
                                     agentNotice = "Finish the running task before changing the agent.",
                                 ),
@@ -436,6 +446,8 @@ class AgentSessionSurfaceUiTest {
             }
             onNodeWithText("Finish the running task before changing the agent.").assertIsDisplayed()
             onNodeWithText("Claude").performClick()
+            onNodeWithText(AGENT_SCAN_FOOTER).assertIsDisplayed()
+            onNodeWithText("/bin/grok agent stdio").assertIsDisplayed()
             onNodeWithText("Grok").performClick()
         }
         assertEquals(
@@ -446,6 +458,85 @@ class AgentSessionSurfaceUiTest {
             ),
             intents,
         )
+    }
+
+    @Test
+    fun theAgentMenuCopiesTheZcodeInstallCommandAndLeavesMissingRowsAlone() {
+        val intents = mutableListOf<AgentIntent>()
+        val copied = mutableListOf<String>()
+        val original = copyAgentInstallText
+        copyAgentInstallText = { text ->
+            copied += text
+            true
+        }
+        try {
+            runComposeUiTest {
+                setContent {
+                    JetaProgTheme {
+                        Box(Modifier.size(520.dp, 720.dp)) {
+                            AgentSurfaceContent(
+                                state =
+                                    surfaceState(composerInput = "").copy(
+                                        agent = AgentOption(id = "claude", name = "Claude"),
+                                        agentMenu =
+                                            listOf(
+                                                AgentMenuRow(
+                                                    id = "claude",
+                                                    name = "Claude",
+                                                    detail = "/bin/claude",
+                                                    selectable = true,
+                                                ),
+                                                AgentMenuRow(
+                                                    id = "codex",
+                                                    name = "Codex",
+                                                    detail = "codex was not found.",
+                                                    selectable = false,
+                                                ),
+                                                AgentMenuRow(
+                                                    id = "zcode",
+                                                    name = "ZCode",
+                                                    detail = "App found. Needs zcode-acp-server.",
+                                                    selectable = false,
+                                                    installCommand = "npm install -g zcode-acp-server",
+                                                ),
+                                            ),
+                                    ),
+                                dispatch = { intents += it },
+                                showRail = false,
+                            )
+                        }
+                    }
+                }
+                onNodeWithText("Claude").performClick()
+                onNodeWithText("codex was not found.").performClick()
+                onNodeWithText("Install").performClick()
+            }
+        } finally {
+            copyAgentInstallText = original
+        }
+        assertEquals(listOf("npm install -g zcode-acp-server"), copied)
+        assertEquals(
+            listOf(
+                AgentIntent.EnsureConnected,
+                AgentIntent.RefreshAgents,
+                AgentIntent.ReportAgentInstallCopy(copied = true),
+            ),
+            intents,
+        )
+    }
+
+    @Test
+    fun readyAgentRowsStayAheadOfRowsThatCannotLaunch() {
+        val (ready, blocked) =
+            splitAgentMenu(
+                listOf(
+                    AgentMenuRow(id = "claude", name = "Claude", detail = "adapter", selectable = true, warning = true),
+                    AgentMenuRow(id = "codex", name = "Codex", detail = "missing", selectable = false),
+                    AgentMenuRow(id = "grok", name = "Grok", detail = "/bin/grok agent stdio", selectable = true),
+                ),
+            )
+        assertEquals(listOf("claude", "grok"), ready.map { it.id })
+        assertEquals(listOf("codex"), blocked.map { it.id })
     }
 
     private fun checkpointState(streaming: Boolean): AgentUiState =

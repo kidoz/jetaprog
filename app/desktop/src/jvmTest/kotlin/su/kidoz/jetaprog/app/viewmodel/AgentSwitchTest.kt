@@ -22,8 +22,16 @@ import su.kidoz.jetaprog.acp.protocol.AcpConnection
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import su.kidoz.jetaprog.app.agent.AGENT_BUSY_NOTICE
 import su.kidoz.jetaprog.app.agent.AGENT_OTHER_BUSY_NOTICE
+import su.kidoz.jetaprog.app.agent.AgentCatalogEntry
 import su.kidoz.jetaprog.app.agent.AgentChoice
 import su.kidoz.jetaprog.app.agent.AgentLaunch
+import su.kidoz.jetaprog.app.agent.CLAUDE_FALLBACK_DETAIL
+import su.kidoz.jetaprog.app.agent.CODEX_MISSING_DETAIL
+import su.kidoz.jetaprog.app.agent.KIMI_MISSING_DETAIL
+import su.kidoz.jetaprog.app.agent.ZCODE_BRIDGE_DETAIL
+import su.kidoz.jetaprog.app.agent.ZCODE_INSTALL_COMMAND
+import su.kidoz.jetaprog.app.agent.ZCODE_INSTALL_COPIED_NOTICE
+import su.kidoz.jetaprog.app.agent.ZCODE_INSTALL_COPY_FAILED_NOTICE
 import su.kidoz.jetaprog.app.agent.legacyClaudeLaunch
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
@@ -39,6 +47,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private class SwitchTransport(
@@ -400,6 +409,103 @@ class AgentSwitchTest {
             runCurrent()
         }
 
+    @Test
+    fun theMenuShowsTheScanAndAMissingClaudeUsesTheAdapter() =
+        runTest {
+            val configs = mutableListOf<StdioAgentConfig>()
+            val viewModel =
+                viewModel(
+                    configs = configs,
+                    installed = listOf(grokLaunch()),
+                    catalog = scanCatalog(),
+                )
+            viewModel.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.SetComposerInput("keep"))
+            runCurrent()
+
+            val listed = viewModel.state.value.agentMenu
+            assertEquals(listOf("claude", "codex", "grok", "kimi", "zcode"), listed.map { it.id })
+            assertEquals(CLAUDE_FALLBACK_DETAIL, listed[0].detail)
+            assertTrue(listed[0].selectable)
+            assertTrue(listed[0].warning)
+            assertEquals(CODEX_MISSING_DETAIL, listed[1].detail)
+            assertFalse(listed[1].selectable)
+            assertEquals("/bin/grok agent stdio", listed[2].detail)
+            assertEquals(KIMI_MISSING_DETAIL, listed[3].detail)
+            assertEquals(ZCODE_BRIDGE_DETAIL, listed[4].detail)
+            assertEquals(ZCODE_INSTALL_COMMAND, listed[4].installCommand)
+            assertEquals(
+                listOf("grok"),
+                viewModel.state.value.availableAgents
+                    .map { it.id },
+            )
+
+            viewModel.dispatch(AgentIntent.ReportAgentInstallCopy(copied = false))
+            runCurrent()
+            assertEquals(ZCODE_INSTALL_COPY_FAILED_NOTICE, viewModel.state.value.agentNotice)
+            assertNull(viewModel.state.value.error)
+
+            viewModel.dispatch(AgentIntent.SelectAgent("codex"))
+            runCurrent()
+            assertEquals(
+                "grok",
+                viewModel.state.value.agent
+                    ?.id,
+            )
+            assertEquals(ZCODE_INSTALL_COPY_FAILED_NOTICE, viewModel.state.value.agentNotice)
+            assertEquals(1, configs.size)
+
+            viewModel.dispatch(AgentIntent.SelectAgent("claude"))
+            runCurrent()
+            assertEquals(
+                "claude",
+                viewModel.state.value.agent
+                    ?.id,
+            )
+            assertEquals("keep", viewModel.state.value.composerInput)
+            assertEquals(listOf("npx", "-y", "@agentclientprotocol/claude-agent-acp"), configs.last().command)
+            assertTrue(configs.last().environment.isEmpty())
+            assertNull(viewModel.state.value.agentNotice)
+            assertNull(viewModel.state.value.error)
+
+            viewModel.dispatch(AgentIntent.ReportAgentInstallCopy(copied = true))
+            runCurrent()
+            assertEquals(ZCODE_INSTALL_COPIED_NOTICE, viewModel.state.value.agentNotice)
+            assertNull(viewModel.state.value.error)
+            assertEquals(
+                "claude",
+                viewModel.state.value.agent
+                    ?.id,
+            )
+        }
+
+    private fun scanCatalog(): List<AgentCatalogEntry> =
+        listOf(
+            AgentCatalogEntry(
+                id = "claude",
+                label = "Claude",
+                detail = CLAUDE_FALLBACK_DETAIL,
+                launch = legacyClaudeLaunch(),
+                warning = true,
+            ),
+            AgentCatalogEntry(id = "codex", label = "Codex", detail = CODEX_MISSING_DETAIL),
+            AgentCatalogEntry(
+                id = "grok",
+                label = "Grok",
+                detail = "/bin/grok agent stdio",
+                launch = grokLaunch(),
+                countsAsInstalled = true,
+            ),
+            AgentCatalogEntry(id = "kimi", label = "Kimi", detail = KIMI_MISSING_DETAIL),
+            AgentCatalogEntry(
+                id = "zcode",
+                label = "ZCode",
+                detail = ZCODE_BRIDGE_DETAIL,
+                installCommand = ZCODE_INSTALL_COMMAND,
+            ),
+        )
+
     private fun jsonAgentId(json: String): String? =
         Regex(""""agentId"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1)
 
@@ -407,6 +513,7 @@ class AgentSwitchTest {
         projectPath: String = "/proj",
         configs: MutableList<StdioAgentConfig> = mutableListOf(),
         installed: List<AgentLaunch>,
+        catalog: List<AgentCatalogEntry> = emptyList(),
         choice: AgentChoice = AgentChoice(legacyClaudeLaunch()),
         remembers: Boolean = true,
         transport: SwitchTransport? = null,
@@ -421,6 +528,7 @@ class AgentSwitchTest {
                 (transport ?: SwitchTransport()).also { created -> transports?.add(created) }
             },
             discoverAgents = { installed },
+            discoverCatalog = { catalog },
             agentChoice = choice,
             onAgentSwitch = onSwitch,
             remembersAgentChoice = remembers,

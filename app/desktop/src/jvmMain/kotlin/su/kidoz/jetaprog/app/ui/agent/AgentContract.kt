@@ -121,6 +121,46 @@ public data class AgentOption(
 )
 
 /**
+ * One agent in the picker menu.
+ *
+ * Ready rows are [selectable]. A row with [installCommand] copies that command. The other rows
+ * show why the scan could not launch the agent.
+ *
+ * @property id Stable id stored with the chat.
+ * @property name Label shown on the row.
+ * @property detail Discovered path, command, or the reason this agent cannot launch.
+ * @property selectable When true, choosing the row switches to this agent.
+ * @property installCommand Command copied by Install. Null when the row has no install action.
+ * @property warning When true, [detail] uses the warning color.
+ */
+@Immutable
+public data class AgentMenuRow(
+    val id: String,
+    val name: String,
+    val detail: String,
+    val selectable: Boolean,
+    val installCommand: String? = null,
+    val warning: Boolean = false,
+)
+
+/** Footer under the agent menu. The scan checks the IDE PATH, then Homebrew and `/usr/local/bin`. */
+internal const val AGENT_SCAN_FOOTER: String = "Scanned PATH, Homebrew, and /usr/local/bin."
+
+/**
+ * Ready rows first, then rows that cannot launch.
+ *
+ * Order inside each group stays as given.
+ */
+internal fun splitAgentMenu(rows: List<AgentMenuRow>): Pair<List<AgentMenuRow>, List<AgentMenuRow>> {
+    val ready = mutableListOf<AgentMenuRow>()
+    val blocked = mutableListOf<AgentMenuRow>()
+    for (row in rows) {
+        if (row.selectable) ready += row else blocked += row
+    }
+    return ready to blocked
+}
+
+/**
  * One step of the agent's current plan.
  *
  * A later plan update replaces the whole list. The step is not editable.
@@ -563,7 +603,8 @@ public data class Presence(
  * @property reviewVisible Whether the read-only review of this session's diffs is open.
  * @property reviewNotice Why `/review` or a review action could not be applied, if any.
  * @property worktreeNotice Why `/worktree` could not open a second session, if any.
- * @property availableAgents Agents discovered on this machine, in picker order.
+ * @property availableAgents Agents whose launch command exists on this machine.
+ * @property agentMenu Every catalog agent, with the path or the reason it cannot launch.
  * @property agent The agent this chat is using, when one has been chosen.
  * @property agentNotice Why the latest agent change was refused, or why a saved agent is missing.
  */
@@ -622,6 +663,8 @@ public data class AgentUiState(
     val worktreeNotice: String? = null,
     /** Agents whose launch command exists on this machine. */
     val availableAgents: List<AgentOption> = emptyList(),
+    /** Every catalog agent, ready rows and rows that cannot launch. */
+    val agentMenu: List<AgentMenuRow> = emptyList(),
     /** The agent launching this chat. */
     val agent: AgentOption? = null,
     /** A short explanation for a refused agent change, or a missing saved agent. */
@@ -784,6 +827,15 @@ public sealed interface AgentIntent {
 
     /** Look again for installed agents. The open chat stays on its current agent. */
     public data object RefreshAgents : AgentIntent
+
+    /**
+     * Record that Install copied its command, or that the copy failed.
+     *
+     * @property copied Whether the command reached the clipboard.
+     */
+    public data class ReportAgentInstallCopy(
+        val copied: Boolean,
+    ) : AgentIntent
 
     /** Expand the docked surface to the full perspective. */
     public data object ExpandToPerspective : AgentIntent

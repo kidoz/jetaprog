@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -92,6 +93,8 @@ import su.kidoz.jetaprog.app.ui.theme.JetaProgFonts
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.app.ui.theme.Spacing
 import su.kidoz.jetaprog.app.viewmodel.AgentSessionViewModel
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 
 private const val CONVERSATION_MAX_WIDTH = 760
 private const val RAIL_WIDTH = 264
@@ -1060,6 +1063,13 @@ private fun AttachmentChip(
     }
 }
 
+/** Copies the ZCode install command. Tests replace this so they leave the system clipboard alone. */
+internal var copyAgentInstallText: (String) -> Boolean = { text ->
+    runCatching {
+        Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+    }.isSuccess
+}
+
 @Composable
 private fun AgentPickerChip(
     state: AgentUiState,
@@ -1068,7 +1078,9 @@ private fun AgentPickerChip(
     val agent = state.agent ?: return
     var open by remember { mutableStateOf(false) }
     var anchorHeightPx by remember { mutableStateOf(0) }
-    val canSwitch = state.availableAgents.size > 1
+    val sections = splitAgentMenu(state.agentMenu)
+    val ready = sections.first
+    val blocked = sections.second
     Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
         Row(
             modifier =
@@ -1079,7 +1091,7 @@ private fun AgentPickerChip(
                         1.dp,
                         LocalIntelliJColors.current.agentCardBorder,
                         RoundedCornerShape(Dimensions.cornerRadius.dp),
-                    ).clickable(enabled = canSwitch) {
+                    ).clickable {
                         dispatch(AgentIntent.RefreshAgents)
                         open = true
                     }.padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
@@ -1087,32 +1099,88 @@ private fun AgentPickerChip(
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
         ) {
             Text(agent.name, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
-            if (canSwitch) {
-                Icon(
-                    Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Agent",
-                    tint = LocalIntelliJColors.current.textMuted,
-                    modifier = Modifier.size(Dimensions.iconSm.dp),
-                )
-            }
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = "Agent",
+                tint = LocalIntelliJColors.current.textMuted,
+                modifier = Modifier.size(Dimensions.iconSm.dp),
+            )
         }
         PopupChromeMenu(
             expanded = open,
             onDismissRequest = { open = false },
+            modifier = Modifier.width(Dimensions.popupCompletionWidth.dp),
             offsetY = anchorHeightPx,
         ) {
-            state.availableAgents.forEach { option ->
-                PopupListRow(
-                    selected = option.id == agent.id,
-                    height = Dimensions.popupRowHeightCompact.dp,
-                    onClick = {
-                        dispatch(AgentIntent.SelectAgent(option.id))
-                        open = false
-                    },
-                ) {
-                    Text(option.name, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
-                }
+            ready.forEach { row -> AgentMenuEntry(row, agent.id, dispatch) { open = false } }
+            if (ready.isNotEmpty() && blocked.isNotEmpty()) {
+                HorizontalDivider(
+                    thickness = Dimensions.dividerThickness.dp,
+                    color = LocalIntelliJColors.current.border,
+                )
             }
+            blocked.forEach { row -> AgentMenuEntry(row, agent.id, dispatch) { open = false } }
+            Text(
+                text = AGENT_SCAN_FOOTER,
+                color = LocalIntelliJColors.current.textMuted,
+                fontSize = 11.sp,
+                modifier =
+                    Modifier.padding(
+                        horizontal = Spacing.sm.dp,
+                        vertical = Spacing.xs.dp,
+                    ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AgentMenuEntry(
+    row: AgentMenuRow,
+    activeId: String,
+    dispatch: (AgentIntent) -> Unit,
+    close: () -> Unit,
+) {
+    val colors = LocalIntelliJColors.current
+    val nameColor = if (row.selectable) colors.textPrimary else colors.textMuted
+    val detailColor = if (row.warning) colors.warning else colors.textMuted
+    PopupListRow(
+        selected = row.selectable && row.id == activeId,
+        height = (Dimensions.popupRowHeight + Dimensions.popupRowHeightCompact).dp,
+        onClick = {
+            val command = row.installCommand
+            if (command != null) {
+                dispatch(AgentIntent.ReportAgentInstallCopy(copyAgentInstallText(command)))
+                close()
+            } else if (row.selectable) {
+                dispatch(AgentIntent.SelectAgent(row.id))
+                close()
+            }
+        },
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = row.name,
+                color = nameColor,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = row.detail,
+                color = detailColor,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (row.installCommand != null) {
+            Text(
+                text = "Install",
+                color = colors.accent,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = Spacing.sm.dp),
+            )
         }
     }
 }

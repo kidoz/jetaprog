@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.app.agent
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -120,6 +121,60 @@ class AgentDiscoveryTest {
         assertEquals(fallback, restoredLaunch(null, emptyList(), fallback))
         assertEquals("Kimi", agentLabel("kimi"))
         assertEquals("Kimi is not installed.", agentUnavailableNotice("Kimi"))
+    }
+
+    @Test
+    fun catalogKeepsEveryAgentAndDescribesWhatTheScanFound() {
+        val files =
+            setOf(
+                file("/opt/bin", "claude"),
+                file("/opt/bin", "grok"),
+                "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+            )
+        val rows =
+            discoverAgentCatalog(
+                path = "/opt/bin",
+                pathSeparator = ":",
+                extraDirectories = emptyList(),
+                fileExists = files::contains,
+                zcodeBin = null,
+            )
+
+        assertEquals(listOf("claude", "codex", "grok", "kimi", "zcode"), rows.map { it.id })
+        assertEquals(NPX_MISSING_DETAIL, rows[0].detail)
+        assertFalse(rows[0].countsAsInstalled)
+        assertNull(rows[0].launch)
+        assertEquals(CODEX_MISSING_DETAIL, rows[1].detail)
+        assertNull(rows[1].installCommand)
+        assertEquals("${file("/opt/bin", "grok")} agent stdio", rows[2].detail)
+        assertTrue(rows[2].countsAsInstalled)
+        assertEquals(KIMI_MISSING_DETAIL, rows[3].detail)
+        assertEquals(ZCODE_BRIDGE_DETAIL, rows[4].detail)
+        assertEquals(ZCODE_INSTALL_COMMAND, rows[4].installCommand)
+        assertNull(rows[4].launch)
+    }
+
+    @Test
+    fun aMissingClaudeRowStaysSelectableAsTheAdapterFallback() {
+        val files = setOf(file("/opt/bin", "npx"), file("/opt/bin", "codex"))
+        val rows =
+            discoverAgentCatalog(
+                path = "/opt/bin",
+                pathSeparator = ":",
+                extraDirectories = emptyList(),
+                fileExists = files::contains,
+                zcodeBin = null,
+            )
+
+        val claude = rows.first()
+        assertEquals(CLAUDE_FALLBACK_DETAIL, claude.detail)
+        assertTrue(claude.warning)
+        assertFalse(claude.countsAsInstalled)
+        assertEquals(legacyClaudeLaunch().command, claude.launch?.command)
+        assertEquals(file("/opt/bin", "codex"), rows[1].detail)
+        assertTrue(rows[1].countsAsInstalled)
+        assertEquals(ZCODE_APP_MISSING_DETAIL, rows.last().detail)
+        assertNull(rows.last().installCommand)
     }
 
     private fun file(
