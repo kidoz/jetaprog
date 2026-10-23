@@ -12,6 +12,8 @@ import kotlinx.serialization.json.putJsonObject
 import su.kidoz.jetaprog.app.ProjectSession
 import su.kidoz.jetaprog.app.inspection.FileInspection
 import su.kidoz.jetaprog.app.navigation.IndexedSymbolLookup
+import su.kidoz.jetaprog.app.ui.debug.DebugIntent
+import su.kidoz.jetaprog.app.ui.debug.DebugUiState
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.editor.language.LanguageDefinitionRegistry
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
@@ -196,6 +198,25 @@ public fun registerIdeTools(
 
     server.tools.register(
         Tool(
+            name = "debug",
+            description =
+                "Report the debugger, toggle a breakpoint, or step a running session. Does not launch a program.",
+            inputSchema =
+                objectSchema(
+                    "action" to
+                        "status, breakpoint, resume, pause, stop, step_over, step_into, or step_out. Defaults to status.",
+                    "path" to "Project-relative file for a breakpoint. Defaults to the active editor file.",
+                    "line" to "1-based line for a breakpoint.",
+                    required = emptyList(),
+                ),
+        ) { args ->
+            val session = currentSession() ?: return@Tool text("No project is open.")
+            debugAction(session, args, ::resolve)
+        },
+    )
+
+    server.tools.register(
+        Tool(
             name = "search_text",
             description = "Search project files for literal text and return matching file names and lines.",
             inputSchema =
@@ -351,6 +372,100 @@ private fun objectSchema(
 
 private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
 
+private val DEBUG_CONTROL = setOf("resume", "pause", "stop", "step_over", "step_into", "step_out")
+
+private suspend fun debugAction(
+    session: ProjectSession,
+    args: JsonObject,
+    resolve: (String) -> String,
+): ToolResult {
+    val action = args.string("action")?.trim()?.takeIf { it.isNotEmpty() } ?: "status"
+    if (action != "status" && action != "breakpoint" && action !in DEBUG_CONTROL) {
+        return ToolResult.Error("Unknown debug action: $action")
+    }
+    val debugger = session.debugViewModel
+    if (action == "status") {
+        return text(formatDebug(session.projectPath, debugger.state.value))
+    }
+    if (action == "breakpoint") {
+        val line = args.string("line")?.toIntOrNull()
+        if (line == null || line < 1) return ToolResult.Error("Pass a 1-based line.")
+        val requested = args.string("path")
+        val absolute =
+            if (requested.isNullOrBlank()) {
+                editorFilePath(session) ?: return text("No file is open. Pass a path and a 1-based line.")
+            } else {
+                try {
+                    resolve(requested)
+                } catch (error: WorkspacePathException) {
+                    return ToolResult.Error(error.message ?: "Path is outside the open project")
+                }
+            }
+        val file = File(absolute)
+        if (file.isDirectory) return ToolResult.Error("Pass a file for the breakpoint.")
+        if (!file.isFile) return ToolResult.Error("Failed to read ${requested ?: absolute}: file not found")
+        val stored = editorFilePath(session)?.takeIf { samePath(it, absolute) } ?: absolute
+        val state = debugger.perform(DebugIntent.ToggleBreakpoint(stored, line))
+        return text("requested: breakpoint\n" + formatDebug(session.projectPath, state))
+    }
+    val current = debugger.state.value
+    if (!current.hasSession) {
+        return text("No debug session is running.\n" + formatDebug(session.projectPath, current))
+    }
+    val intent =
+        when (action) {
+            "resume" -> DebugIntent.Resume
+            "pause" -> DebugIntent.Pause
+            "stop" -> DebugIntent.Stop
+            "step_over" -> DebugIntent.StepOver
+            "step_into" -> DebugIntent.StepInto
+            else -> DebugIntent.StepOut
+        }
+    val state = debugger.perform(intent)
+    return text("requested: $action\n" + formatDebug(session.projectPath, state))
+}
+
+internal fun formatDebug(
+    projectPath: String,
+    state: DebugUiState,
+): String {
+    val lines = mutableListOf("status: ${state.status}")
+    state.stoppedAt?.let { stopped ->
+        lines += "stopped: ${projectRelative(projectPath, stopped.path)}:${stopped.line}"
+    }
+    if (!state.hasSession) lines += "No debug session is running."
+    if (state.frames.isNotEmpty()) {
+        lines += "frames:"
+        state.frames.take(MAX_DEBUG_LINES).forEach { frame ->
+            val mark = if (frame.isCurrent) "*" else " "
+            lines += "$mark ${frame.method} ${frame.location}"
+        }
+    }
+    if (state.variableValues.isNotEmpty()) {
+        lines += "variables:"
+        state.variableValues.entries.take(MAX_DEBUG_LINES).forEach { (name, value) ->
+            lines += "  $name = $value"
+        }
+    }
+    if (state.breakpoints.isNotEmpty()) {
+        lines += "breakpoints:"
+        state.breakpoints.take(MAX_DEBUG_LINES).forEach { breakpoint ->
+            val flag = if (breakpoint.enabled) "enabled" else "disabled"
+            lines += "  ${projectRelative(projectPath, breakpoint.file)}:${breakpoint.line} $flag"
+        }
+    }
+    return lines.joinToString("\n")
+}
+
+private fun projectRelative(
+    projectPath: String,
+    absolutePath: String,
+): String {
+    val root = File(projectPath)
+    val file = File(absolutePath)
+    return if (file.startsWith(root)) file.relativeTo(root).path else absolutePath
+}
+
 internal fun formatInspection(
     projectPath: String,
     absolutePath: String,
@@ -417,3 +532,4 @@ private fun missing(parameter: String): ToolResult = ToolResult.Error("Missing r
 private val SEARCH_EXCLUDED_DIRECTORIES = setOf(".git", ".gradle", ".idea", ".jetaprog", "build", "node_modules")
 private const val MAX_SEARCH_RESULTS = 200
 private const val MAX_INSPECTION_RESULTS = 200
+private const val MAX_DEBUG_LINES = 200

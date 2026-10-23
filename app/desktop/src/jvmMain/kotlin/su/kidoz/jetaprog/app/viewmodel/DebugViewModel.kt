@@ -89,6 +89,15 @@ public class DebugViewModel(
         scope.launch { handle(intent) }
     }
 
+    /**
+     * Applies [intent] and returns the debugger state once that change is stored.
+     * A later debug-adapter event can still update the state.
+     */
+    public suspend fun perform(intent: DebugIntent): DebugUiState {
+        handle(intent)
+        return _state.value
+    }
+
     private suspend fun handle(intent: DebugIntent) {
         val session = active
         when (intent) {
