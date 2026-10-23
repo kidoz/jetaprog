@@ -35,6 +35,25 @@ class AgentPrefsStoreTest {
             assertEquals("gpt-6.1-sol[high]", prefs.modelId)
             assertEquals(true, prefs.docked)
             assertEquals(PermissionPolicy.AUTO, prefs.permissions[PermissionKind.READ])
+            assertEquals(emptyMap(), prefs.modelIds)
+        }
+
+    @Test
+    fun modelIdsRoundTripPerAgent() =
+        runTest {
+            store.save(
+                AgentPrefs(
+                    permissions = mapOf(PermissionKind.READ to PermissionPolicy.AUTO),
+                    modelId = "claude-opus-4-8",
+                    docked = false,
+                    agentId = "grok",
+                    modelIds = mapOf("claude" to "claude-opus-4-8", "grok" to "grok-4"),
+                ),
+            )
+
+            val prefs = store.load()
+            assertEquals(mapOf("claude" to "claude-opus-4-8", "grok" to "grok-4"), prefs.modelIds)
+            assertEquals("grok", prefs.agentId)
         }
 
     @Test
@@ -49,5 +68,6 @@ class AgentPrefsStoreTest {
             assertEquals(PermissionPolicy.AUTO, prefs.permissions[PermissionKind.READ])
             assertEquals(PermissionPolicy.ASK, prefs.permissions[PermissionKind.EDIT])
             assertNull(prefs.agentId)
+            assertEquals(emptyMap(), prefs.modelIds)
         }
 }

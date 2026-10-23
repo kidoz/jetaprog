@@ -313,8 +313,11 @@ public class AgentSessionViewModel(
     /** Runs process teardown off the UI thread after [dispose]. */
     private val shutdownScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** The model the user selected, persisted across sessions and agents. */
-    private var preferredModelId: String? = null
+    /** The model last chosen for each agent id. */
+    private val modelIds = mutableMapOf<String, String>()
+
+    /** The single model from a preference file written before per-agent models. */
+    private var legacyModelId: String? = null
 
     /** Completes once the on-disk preferences have been applied. */
     private val prefsLoaded = CompletableDeferred<AgentPrefs>()
@@ -322,7 +325,11 @@ public class AgentSessionViewModel(
     init {
         scope.launch {
             val prefs = prefsStore.load()
-            preferredModelId = prefs.modelId
+            legacyModelId = prefs.modelId
+            modelIds.putAll(prefs.modelIds)
+            val legacyOwner = prefs.agentId?.takeIf { it.isNotBlank() } ?: CLAUDE_AGENT_ID
+            val legacyModel = prefs.modelId
+            if (legacyModel != null) modelIds.putIfAbsent(legacyOwner, legacyModel)
             val installed = discoverAgents()
             if (remembersAgentChoice) {
                 val preferred = defaultLaunch(prefs.agentId, installed, fallbackLaunch)
@@ -3061,24 +3068,25 @@ public class AgentSessionViewModel(
         prefsStore.save(
             AgentPrefs(
                 permissions = st.permissions,
-                modelId = preferredModelId ?: st.model?.id,
+                modelId = modelIds[chosenAgentId ?: CLAUDE_AGENT_ID] ?: legacyModelId,
                 docked = st.docked,
                 agentId = chosenAgentId,
+                modelIds = modelIds.toMap(),
             ),
         )
     }
 
     /**
-     * Selects [modelId] for the active session and remembers it for future
-     * sessions. The ACP call is authoritative; state changes only after the
-     * agent accepts it.
+     * Selects [modelId] for the active session and remembers it for this agent.
+     * The ACP call is authoritative; state changes only after the agent accepts it.
+     * An id the agent did not advertise is ignored.
      */
     private suspend fun setModel(modelId: String) {
         val option = _state.value.availableModels.firstOrNull { it.id == modelId } ?: return
         val acpClient = client
         val activeSession = sessionId
         if (acpClient == null || activeSession == null || !acpClient.isOpen) {
-            preferredModelId = modelId
+            modelIds[activeLaunch.id] = modelId
             _state.update { it.copy(model = option, error = null) }
             persist()
             return
@@ -3100,7 +3108,7 @@ public class AgentSessionViewModel(
             _state.update { it.copy(error = "The agent did not confirm the model change") }
             return
         }
-        preferredModelId = modelId
+        modelIds[activeLaunch.id] = modelId
         _state.update { it.copy(model = option, error = null) }
         persist()
     }
@@ -3185,8 +3193,7 @@ public class AgentSessionViewModel(
         acpClient: AcpClient,
         activeSession: String,
     ) {
-        val preferred = preferredModelId ?: prefsLoaded.await().modelId ?: return
-        preferredModelId = preferred
+        val preferred = modelIds[activeLaunch.id] ?: return
         val option = _state.value.availableModels.firstOrNull { it.id == preferred } ?: return
         if (_state.value.model?.id == preferred) return
         val applied =

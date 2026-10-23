@@ -52,9 +52,11 @@ import kotlin.test.assertTrue
 
 private class SwitchTransport(
     private val holdPrompt: CompletableDeferred<Unit>? = null,
+    private val newSessionResult: String = """{"sessionId":"s1"}""",
 ) : AcpTransport {
     val inbound = Channel<String>(Channel.UNLIMITED)
     val methods = mutableListOf<String>()
+    val selectedModels = mutableListOf<String>()
     var loadedSession: String? = null
     override val incoming: Flow<String> = inbound.receiveAsFlow()
 
@@ -69,7 +71,17 @@ private class SwitchTransport(
             }
 
             "session/new" -> {
-                reply(id, """{"sessionId":"s1"}""")
+                reply(id, newSessionResult)
+            }
+
+            "session/set_model" -> {
+                selectedModels +=
+                    request
+                        .getValue("params")
+                        .jsonObject
+                        .getValue("modelId")
+                        .jsonPrimitive.content
+                reply(id, "null")
             }
 
             "session/prompt" -> {
@@ -506,6 +518,71 @@ class AgentSwitchTest {
             ),
         )
 
+    @Test
+    fun eachAgentKeepsTheModelChosenForIt() =
+        runTest {
+            files["/proj/.jetaprog/agent-prefs.json"] = """{"modelId":"claude-model","docked":false}"""
+            val transports = mutableListOf<SwitchTransport>()
+            val viewModel =
+                viewModel(
+                    installed = listOf(claudeLaunch(), grokLaunch()),
+                    transports = transports,
+                    newSessionResult =
+                        """{"sessionId":"s1","models":{"currentModelId":"agent-default",""" +
+                            """"availableModels":[{"modelId":"claude-model","name":"Claude model"},""" +
+                            """{"modelId":"grok-model","name":"Grok model"}]}}""",
+                )
+            viewModel.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            assertEquals(listOf("claude-model"), transports.single().selectedModels)
+            assertEquals(
+                "claude-model",
+                viewModel.state.value.model
+                    ?.id,
+            )
+
+            viewModel.dispatch(AgentIntent.SetModel("missing"))
+            runCurrent()
+            assertEquals(listOf("claude-model"), transports.single().selectedModels)
+            assertNull(viewModel.state.value.error)
+
+            viewModel.dispatch(AgentIntent.SelectAgent("grok"))
+            runCurrent()
+            assertEquals(emptyList(), transports.last().selectedModels)
+            assertEquals(
+                "agent-default",
+                viewModel.state.value.model
+                    ?.id,
+            )
+
+            viewModel.dispatch(AgentIntent.SetModel("grok-model"))
+            runCurrent()
+            assertEquals(listOf("grok-model"), transports.last().selectedModels)
+
+            viewModel.dispatch(AgentIntent.SelectAgent("claude"))
+            runCurrent()
+            assertEquals(listOf("claude-model"), transports.last().selectedModels)
+            assertEquals(
+                "claude-model",
+                viewModel.state.value.model
+                    ?.id,
+            )
+
+            viewModel.dispatch(AgentIntent.SelectAgent("grok"))
+            runCurrent()
+            assertEquals(listOf("grok-model"), transports.last().selectedModels)
+            assertEquals(
+                "grok-model",
+                viewModel.state.value.model
+                    ?.id,
+            )
+            assertNull(viewModel.state.value.error)
+
+            val saved = files.getValue("/proj/.jetaprog/agent-prefs.json")
+            assertTrue(saved.contains("claude-model"))
+            assertTrue(saved.contains("grok-model"))
+        }
+
     private fun jsonAgentId(json: String): String? =
         Regex(""""agentId"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1)
 
@@ -518,6 +595,7 @@ class AgentSwitchTest {
         remembers: Boolean = true,
         transport: SwitchTransport? = null,
         transports: MutableList<SwitchTransport>? = null,
+        newSessionResult: String = """{"sessionId":"s1"}""",
         onSwitch: (suspend (AgentLaunch) -> String?)? = null,
     ): AgentSessionViewModel =
         AgentSessionViewModel(
@@ -525,7 +603,9 @@ class AgentSwitchTest {
             fileSystem = fileSystem,
             transportFactory = { config ->
                 configs += config
-                (transport ?: SwitchTransport()).also { created -> transports?.add(created) }
+                (transport ?: SwitchTransport(newSessionResult = newSessionResult)).also { created ->
+                    transports?.add(created)
+                }
             },
             discoverAgents = { installed },
             discoverCatalog = { catalog },

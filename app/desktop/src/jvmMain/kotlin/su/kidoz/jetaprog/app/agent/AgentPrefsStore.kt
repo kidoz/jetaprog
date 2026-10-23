@@ -10,15 +10,18 @@ import su.kidoz.jetaprog.platform.filesystem.FileSystem
  * The persisted agent preferences for a project.
  *
  * @property permissions Per-kind authorization policies.
- * @property modelId The model the user last selected, if any.
+ * @property modelId The model last chosen before models were stored per agent.
+ *   It belongs to [agentId], or to Claude when the agent was not saved.
  * @property docked Whether the surface was last docked.
  * @property agentId The agent a new chat launches. Null for preferences saved before the picker.
+ * @property modelIds The model last chosen for each agent id. Empty for older preference files.
  */
 public data class AgentPrefs(
     val permissions: Map<PermissionKind, PermissionPolicy>,
     val modelId: String?,
     val docked: Boolean,
     val agentId: String? = null,
+    val modelIds: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -29,6 +32,7 @@ private data class AgentPrefsDto(
     val modelId: String? = null,
     val docked: Boolean = false,
     val agentId: String? = null,
+    val modelIds: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -69,6 +73,7 @@ public class AgentPrefsStore(
             modelId = dto.modelId,
             docked = dto.docked,
             agentId = dto.agentId,
+            modelIds = dto.modelIds,
         )
     }
 
@@ -84,6 +89,7 @@ public class AgentPrefsStore(
                     modelId = prefs.modelId,
                     docked = prefs.docked,
                     agentId = prefs.agentId,
+                    modelIds = prefs.modelIds,
                 )
             fileSystem.writeText(file, json.encodeToString(AgentPrefsDto.serializer(), dto))
         }
