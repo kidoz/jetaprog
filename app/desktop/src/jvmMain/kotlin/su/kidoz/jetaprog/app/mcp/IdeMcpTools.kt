@@ -10,6 +10,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import su.kidoz.jetaprog.app.ProjectSession
+import su.kidoz.jetaprog.app.navigation.IndexedSymbolLookup
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.mcp.server.EmbeddedMcpServer
@@ -195,6 +196,23 @@ public fun registerIdeTools(
 
     server.tools.register(
         Tool(
+            name = "search_symbol",
+            description = "Search indexed symbol names and return each match's name, kind, file, and line.",
+            inputSchema =
+                objectSchema(
+                    "query" to "Symbol name or camel-case pattern",
+                    required = listOf("query"),
+                ),
+        ) { args ->
+            val query = args.string("query") ?: return@Tool missing("query")
+            val session = currentSession() ?: return@Tool text("No project is open.")
+            val hits = session.searchIndexedSymbols(query, MAX_SEARCH_RESULTS)
+            text(formatIndexedSymbols(session.projectPath, hits))
+        },
+    )
+
+    server.tools.register(
+        Tool(
             name = "run_gradle_task",
             description = "Start a Gradle task in the open project; inspect build and test state afterward.",
             inputSchema = objectSchema("task" to "Gradle task path", required = listOf("task")),
@@ -288,6 +306,19 @@ private fun objectSchema(
     }
 
 private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
+
+internal fun formatIndexedSymbols(
+    projectPath: String,
+    hits: List<IndexedSymbolLookup>,
+): String {
+    if (hits.isEmpty()) return "No matches."
+    val root = File(projectPath)
+    return hits.joinToString("\n") { hit ->
+        val file = File(hit.filePath)
+        val shown = if (file.startsWith(root)) file.relativeTo(root).path else hit.filePath
+        "${hit.name} ${hit.kind} $shown:${hit.line + 1}"
+    }
+}
 
 private fun text(value: String): ToolResult = ToolResult.Success(listOf(ToolContent.Text(value)))
 

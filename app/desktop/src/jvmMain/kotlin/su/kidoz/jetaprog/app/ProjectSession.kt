@@ -44,6 +44,8 @@ import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.navigation.DefaultNavigationService
 import su.kidoz.jetaprog.app.navigation.DiskFileContentProvider
 import su.kidoz.jetaprog.app.navigation.EmbeddedServerDocumentSync
+import su.kidoz.jetaprog.app.navigation.IndexedSymbolLookup
+import su.kidoz.jetaprog.app.navigation.IndexedSymbolSearch
 import su.kidoz.jetaprog.app.navigation.KotlinIndexNavigationService
 import su.kidoz.jetaprog.app.navigation.WorkspaceSymbolIndexService
 import su.kidoz.jetaprog.app.notification.NotificationCenter
@@ -287,6 +289,18 @@ public class ProjectSession(
         }
 
     private val workspaceSymbolIndexService = WorkspaceSymbolIndexService(workspaceSymbolIndexer)
+
+    private val indexedSymbolSearch = IndexedSymbolSearch(workspaceSymbolIndex, kotlinSymbolIndex)
+
+    /**
+     * Looks up [query] in the symbol indexes Go to Symbol already fills.
+     *
+     * @param limit Maximum number of matches.
+     */
+    public suspend fun searchIndexedSymbols(
+        query: String,
+        limit: Int,
+    ): List<IndexedSymbolLookup> = indexedSymbolSearch.search(query, limit)
 
     /**
      * One back stack for the whole navigation service chain. Each layer used to own
