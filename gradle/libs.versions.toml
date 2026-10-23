@@ -24,6 +24,7 @@ mockk = "1.14.11"
 turbine = "1.2.1"
 pty4j = "0.13.13"
 gradleToolingApi = "9.8.0"
+markdownRenderer = "0.43.0"
 
 [libraries]
 # Compose libraries deprecated by the plugin's convenience accessors
@@ -49,6 +50,10 @@ starrocks-connector = { module = "com.starrocks:starrocks-connector-j", version.
 
 # Serialization
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
+# Markdown rendering (agent chat)
+markdown-renderer = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "markdownRenderer" }
+markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
 
 # Network (Ktor)
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }

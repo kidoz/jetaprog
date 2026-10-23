@@ -46,6 +46,8 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.compose.material3)
                 implementation(libs.compose.material.icons.extended)
+                implementation(libs.markdown.renderer)
+                implementation(libs.markdown.renderer.m3)
 
                 implementation(libs.coroutines.core)
                 implementation(libs.coroutines.swing)

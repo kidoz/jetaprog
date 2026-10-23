@@ -644,18 +644,20 @@ private fun BlockView(
     when (block) {
         is Block.Text -> {
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = block.text,
-                    color =
-                        if (block.thought) {
-                            LocalIntelliJColors.current.textMuted
-                        } else {
-                            LocalIntelliJColors.current.textPrimary
-                        },
-                    fontStyle = if (block.thought) FontStyle.Italic else FontStyle.Normal,
-                    fontSize = 13.sp,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
+                if (block.thought) {
+                    Text(
+                        text = block.text,
+                        color = LocalIntelliJColors.current.textMuted,
+                        fontStyle = FontStyle.Italic,
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                } else {
+                    AgentMarkdown(
+                        markdown = block.text,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
                 if (block.streaming) StreamingCaret()
             }
         }

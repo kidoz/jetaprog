@@ -6,10 +6,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.test.waitUntilExactlyOneExists
 import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.ui.saveUiArtifacts
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
@@ -63,6 +65,8 @@ class AgentSessionRestorationUiTest {
                 onNodeWithText(
                     "Transcript only. This agent does not support resuming saved conversations. Your next message starts a new chat.",
                 ).assertIsDisplayed()
+                // Agent messages render via asynchronously parsed Markdown, so wait for the node.
+                waitUntilExactlyOneExists(hasText("Old answer"))
                 onNodeWithText("Old answer").assertIsDisplayed()
                 onRoot().saveUiArtifacts("agent-transcript-only-$dark")
             }
