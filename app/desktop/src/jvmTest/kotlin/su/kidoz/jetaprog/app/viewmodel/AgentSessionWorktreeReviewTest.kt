@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.app.viewmodel
 
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -433,6 +434,117 @@ class AgentSessionWorktreeReviewTest {
             assertEquals("kept", files["/proj/src/Writer.kt"])
             assertEquals(BRING_PENDING_NOTICE, main.state.value.reviewNotice)
             assertTrue(main.state.value.reviewVisible)
+        }
+
+    @Test
+    fun revertPreservesLaterHumanEditsAndUnsavedBuffers() =
+        runTest {
+            val path = "/proj/src/Reader.kt"
+            files[path] = "original"
+            var dirty = false
+            val main = model(editorDirty = { dirty })
+            main.importBroughtChanges(listOf(AgentBroughtChange("src/Reader.kt", true, "agent")))
+            files[path] = "human"
+            main.dispatch(AgentIntent.DismissReviewFile(path))
+            runCurrent()
+            assertEquals("human", files[path])
+            assertTrue(
+                main.state.value.reviewConflicts
+                    .getValue(path)
+                    .contains("outside"),
+            )
+
+            files[path] = "agent"
+            dirty = true
+            main.dispatch(AgentIntent.DismissReviewFile(path))
+            runCurrent()
+            assertEquals("agent", files[path])
+            assertTrue(
+                main.state.value.reviewConflicts
+                    .getValue(path)
+                    .contains("unsaved"),
+            )
+
+            dirty = false
+            main.dispatch(AgentIntent.DismissReviewFile(path))
+            runCurrent()
+            assertEquals("original", files[path])
+            assertTrue(
+                main.state.value.reviewConflicts
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun keepDoesNotWriteAndTheNextRevertRetainsKeptEdits() =
+        runTest {
+            val path = "/proj/src/Reader.kt"
+            files[path] = "original"
+            val main = model()
+            main.importBroughtChanges(listOf(AgentBroughtChange("src/Reader.kt", true, "kept")))
+            main.dispatch(AgentIntent.AcceptReviewFile(path))
+            runCurrent()
+            assertEquals("kept", files[path])
+            coVerify(exactly = 1) { fileSystem.writeText(path, any(), any()) }
+            main.importBroughtChanges(listOf(AgentBroughtChange("src/Reader.kt", true, "next")))
+            main.dispatch(AgentIntent.DismissReviewFile(path))
+            runCurrent()
+            assertEquals("kept", files[path])
+            val diffs =
+                main.state.value.turns
+                    .filterIsInstance<Turn.Agent>()
+                    .flatMap { it.blocks }
+                    .filterIsInstance<Block.Diff>()
+            assertEquals(listOf(DiffDecision.ACCEPTED, DiffDecision.REJECTED), diffs.map { it.decision })
+        }
+
+    @Test
+    fun failedRevertRetainsItsBaselineForRetry() =
+        runTest {
+            val path = "/proj/src/Reader.kt"
+            files[path] = "original"
+            val main = model()
+            main.importBroughtChanges(listOf(AgentBroughtChange("src/Reader.kt", true, "agent")))
+            coEvery { fileSystem.writeText(path, "original", any()) } returns
+                Result.failure(IllegalStateException("read only"))
+            main.dispatch(AgentIntent.DismissReviewFile(path))
+            runCurrent()
+            assertEquals("agent", files[path])
+            assertTrue(
+                main.state.value.reviewConflicts
+                    .getValue(path)
+                    .contains("read only"),
+            )
+            coEvery { fileSystem.writeText(path, "original", any()) } answers {
+                files[path] = "original"
+                Result.success(Unit)
+            }
+            main.dispatch(AgentIntent.DismissReviewFile(path))
+            runCurrent()
+            assertEquals("original", files[path])
+            assertTrue(
+                main.state.value.reviewConflicts
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun recreatedDeletedFileIsPreservedAndCreatedFileCanBeSafelyRemoved() =
+        runTest {
+            val path = "/proj/src/Reader.kt"
+            files[path] = "original"
+            val main = model()
+            main.importBroughtChanges(listOf(AgentBroughtChange("src/Reader.kt", false, null)))
+            files[path] = "recreated by human"
+            main.dispatch(AgentIntent.DismissReviewFile(path))
+            runCurrent()
+            assertEquals("recreated by human", files[path])
+            assertTrue(path in main.state.value.reviewConflicts)
+
+            main.importBroughtChanges(listOf(AgentBroughtChange("src/New.kt", true, "created")))
+            main.dispatch(AgentIntent.DismissReviewFile("/proj/src/New.kt"))
+            runCurrent()
+            assertFalse(files.containsKey("/proj/src/New.kt"))
         }
 
     private fun model(

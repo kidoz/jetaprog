@@ -16,11 +16,16 @@ import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The review card lists each changed file with Accept and Dismiss. */
+/** Review decisions and conflict notices remain usable in both themes. */
 @OptIn(ExperimentalTestApi::class)
 class AgentReviewCardUiTest {
     @Test
-    fun cardGroupsAFileAndAcceptsIt() =
+    fun cardGroupsAFileAndKeepsItInDarkTheme() = reviewCard(darkTheme = true)
+
+    @Test
+    fun cardGroupsAFileAndKeepsItInLightTheme() = reviewCard(darkTheme = false)
+
+    private fun reviewCard(darkTheme: Boolean) =
         runComposeUiTest {
             val file =
                 ReviewFile(
@@ -31,16 +36,18 @@ class AgentReviewCardUiTest {
                     removed = 1,
                     pendingBlockIds = listOf("diff"),
                     statusLabel = null,
+                    conflict = "Revert blocked: this file has unsaved editor changes.",
                 )
             val clicks = mutableListOf<String>()
             setContent {
-                JetaProgTheme(darkTheme = true) {
-                    Box(Modifier.size(420.dp, 220.dp)) {
+                JetaProgTheme(darkTheme = darkTheme) {
+                    Box(Modifier.size(420.dp, 280.dp)) {
                         ReviewCard(
                             files = listOf(file),
                             onAccept = { clicks += "accept:$it" },
                             onDismiss = { clicks += "dismiss:$it" },
                             onClose = { clicks += "close" },
+                            onOpen = { clicks += "open:$it" },
                         )
                     }
                 }
@@ -49,10 +56,12 @@ class AgentReviewCardUiTest {
             onNodeWithText("Reader.kt").assertIsDisplayed()
             onNodeWithText("src").assertIsDisplayed()
             onNodeWithText(sessionDiffCountLabel(1, 1).orEmpty()).assertIsDisplayed()
-            onNodeWithText("Accept").performClick()
-            onNodeWithText("Dismiss").assertIsDisplayed()
-            onRoot().saveUiArtifacts("agent-review-card")
-            assertEquals(listOf("accept:/proj/src/Reader.kt"), clicks)
+            onNodeWithText("Open file").assertIsDisplayed().performClick()
+            onNodeWithText("Keep").performClick()
+            onNodeWithText("Revert").assertIsDisplayed()
+            onNodeWithText(file.conflict.orEmpty()).assertIsDisplayed()
+            onRoot().saveUiArtifacts("agent-review-${if (darkTheme) "dark" else "light"}")
+            assertEquals(listOf("open:/proj/src/Reader.kt", "accept:/proj/src/Reader.kt"), clicks)
         }
 
     @Test

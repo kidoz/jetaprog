@@ -59,9 +59,9 @@ class AgentGoalTest {
     }
 
     @Test
-    fun aCitedChangeMeetsTheGoalOnlyWhenThePlanIsFinished() {
+    fun onlySuccessfulCommandEvidenceCanMeetTheGoal() {
         val files = evidence(files = listOf("Reader.kt"))
-        assertTrue(judgeGoal("GOAL_MET: Reader.kt", files).met)
+        assertFalse(judgeGoal("GOAL_MET: Reader.kt", files).met)
         assertTrue(
             judgeGoal(
                 "I think so\nGOAL_MET: BUILD SUCCESSFUL",
@@ -109,6 +109,8 @@ class AgentGoalTest {
                                 status = ToolStatus.OK,
                                 result = "BUILD SUCCESSFUL",
                                 expanded = false,
+                                exitCode = 0,
+                                checkRevision = 0,
                             ),
                         ),
                 ),

@@ -43,6 +43,9 @@ class AgentHistoryStoreTest {
                     addedLines = 4,
                     removedLines = 1,
                     status = AgentSessionStatus.FAILED,
+                    pendingReviews = listOf(AgentPendingReview("/proj/Reader.kt", "Reader.kt", "/proj")),
+                    failure = "Agent process exited",
+                    interrupted = true,
                 )
             store.save(record)
 
@@ -92,6 +95,10 @@ class AgentHistoryStoreTest {
             assertNull(listed.goal)
             assertEquals(emptyList(), listed.checkpoints)
             assertEquals(emptyList(), listed.checkpointDisk)
+            assertNull(listed.agentId)
+            assertTrue(listed.pendingReviews.isEmpty())
+            assertNull(listed.failure)
+            assertEquals(false, listed.interrupted)
         }
 
     @Test

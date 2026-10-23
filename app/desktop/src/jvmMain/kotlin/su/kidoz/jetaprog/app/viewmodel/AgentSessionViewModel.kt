@@ -51,20 +51,25 @@ import su.kidoz.jetaprog.acp.protocol.SessionModeState
 import su.kidoz.jetaprog.acp.protocol.SessionModelState
 import su.kidoz.jetaprog.acp.protocol.SessionNotification
 import su.kidoz.jetaprog.acp.protocol.SessionUpdate
+import su.kidoz.jetaprog.acp.protocol.StopReason
 import su.kidoz.jetaprog.acp.protocol.ToolCallContent
 import su.kidoz.jetaprog.acp.protocol.ToolCallStatus
 import su.kidoz.jetaprog.acp.protocol.ToolKind
 import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
+import su.kidoz.jetaprog.app.agent.AGENT_BUSY_NOTICE
 import su.kidoz.jetaprog.app.agent.AgentBringOutcome
 import su.kidoz.jetaprog.app.agent.AgentBroughtChange
 import su.kidoz.jetaprog.app.agent.AgentCheckout
-import su.kidoz.jetaprog.app.agent.AgentFileSnapshots
+import su.kidoz.jetaprog.app.agent.AgentChoice
+import su.kidoz.jetaprog.app.agent.AgentFileReview
 import su.kidoz.jetaprog.app.agent.AgentGoal
 import su.kidoz.jetaprog.app.agent.AgentGoalStatus
 import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
 import su.kidoz.jetaprog.app.agent.AgentHistoryRole
 import su.kidoz.jetaprog.app.agent.AgentHistoryStore
+import su.kidoz.jetaprog.app.agent.AgentLaunch
 import su.kidoz.jetaprog.app.agent.AgentMessageCheckpoints
+import su.kidoz.jetaprog.app.agent.AgentPendingReview
 import su.kidoz.jetaprog.app.agent.AgentPrefs
 import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
@@ -72,12 +77,19 @@ import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.AgentWorktreeLauncher
 import su.kidoz.jetaprog.app.agent.CheckpointSkip
 import su.kidoz.jetaprog.app.agent.FileSnapshot
+import su.kidoz.jetaprog.app.agent.agentLabel
+import su.kidoz.jetaprog.app.agent.agentUnavailableNotice
 import su.kidoz.jetaprog.app.agent.checkpointNotice
+import su.kidoz.jetaprog.app.agent.defaultLaunch
+import su.kidoz.jetaprog.app.agent.discoverInstalledAgents
+import su.kidoz.jetaprog.app.agent.legacyClaudeLaunch
+import su.kidoz.jetaprog.app.agent.restoredLaunch
 import su.kidoz.jetaprog.app.agent.toModelOption
 import su.kidoz.jetaprog.app.ui.agent.AGENTS_FILE
 import su.kidoz.jetaprog.app.ui.agent.AgentCommand
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
+import su.kidoz.jetaprog.app.ui.agent.AgentOption
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
 import su.kidoz.jetaprog.app.ui.agent.ApprovalChoice
 import su.kidoz.jetaprog.app.ui.agent.ApprovalChoiceRole
@@ -122,6 +134,7 @@ import su.kidoz.jetaprog.app.ui.agent.WORKTREE_OPENING_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.WORKTREE_UNAVAILABLE_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.bringableRelativePaths
 import su.kidoz.jetaprog.app.ui.agent.chipLabel
+import su.kidoz.jetaprog.app.ui.agent.commandExitCode
 import su.kidoz.jetaprog.app.ui.agent.elapsedMillis
 import su.kidoz.jetaprog.app.ui.agent.goalCheckLabel
 import su.kidoz.jetaprog.app.ui.agent.goalCheckPrompt
@@ -170,7 +183,7 @@ import java.util.UUID
  * @param fileSystem the file system used to satisfy the agent's file requests.
  * @param ideMcpEndpoint supplies the IDE's embedded MCP server so the agent can use the
  *   IDE's own tools; returns null when the server is not running.
- * @param defaultAgentCommand the command used to launch the agent process.
+ * @param defaultAgentCommand fallback command used when no installed agent is discovered.
  * @param transportFactory launches the configured agent transport; injectable for protocol testing.
  * @param editorContext reads the active editor file and selection when the user attaches context.
  * @param mentionSearch finds project files for an `@` query. Blank queries are not passed.
@@ -182,6 +195,11 @@ import java.util.UUID
  * @param worktreeLauncher Creates the linked checkout for `/worktree`. Null refuses the command.
  * @param onWorktreeReady Tells the host to show the second session. Called again to switch back to it.
  * @param onBringBack Copies this worktree's files into the main checkout. Null refuses `/bring`.
+ * @param discoverAgents Finds installed agents. The default reads this machine and starts no process.
+ * @param agentChoice The agent a new chat launches. Shared with the linked worktree session.
+ * @param onAgentSwitch Tells the other checkout to adopt [AgentLaunch]. Returns a notice to refuse
+ *   the change, or null when this chat may switch.
+ * @param remembersAgentChoice When true, the selected agent is saved as the project default.
  */
 public class AgentSessionViewModel(
     private val projectPath: String,
@@ -200,15 +218,22 @@ public class AgentSessionViewModel(
     private val worktreeLauncher: AgentWorktreeLauncher? = null,
     private val onWorktreeReady: (AgentWorktree) -> Unit = {},
     private val onBringBack: (suspend (List<AgentBroughtChange>) -> AgentBringOutcome)? = null,
+    private val discoverAgents: () -> List<AgentLaunch> = { discoverInstalledAgents() },
+    private val agentChoice: AgentChoice = AgentChoice(legacyClaudeLaunch(defaultAgentCommand)),
+    private val onAgentSwitch: (suspend (AgentLaunch) -> String?)? = null,
+    private val remembersAgentChoice: Boolean = true,
 ) : Disposable,
     AcpClientHandler {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val agentCommand = defaultAgentCommand
+    private val fallbackLaunch = legacyClaudeLaunch(defaultAgentCommand)
+    private var activeLaunch: AgentLaunch = agentChoice.launch
+    private var chosenAgentId: String? = null
+    private var installedAgents: List<AgentLaunch> = emptyList()
     private val prefsStore = AgentPrefsStore(fileSystem, projectPath)
     private val historyStore = AgentHistoryStore(fileSystem, projectPath)
     private val pathGuard = WorkspacePathGuard { projectPath }
 
-    private val _state = MutableStateFlow(AgentUiState())
+    private val _state = MutableStateFlow(AgentUiState(workspacePath = projectPath))
 
     /** The observable agent surface state. */
     public val state: StateFlow<AgentUiState> = _state.asStateFlow()
@@ -243,6 +268,9 @@ public class AgentSessionViewModel(
 
     /** When true, [endTurn] sends the queued follow-up. Stop clears this. */
     private var deliverQueuedPrompt = false
+    private var queueVersion = 0L
+    private var queueSession = 0L
+    private var queueDeliveryJob: Job? = null
 
     /** When true, the turn that just ended was the goal check rather than a work round. */
     private var goalChecking = false
@@ -265,8 +293,8 @@ public class AgentSessionViewModel(
     /** Ends a stopped turn if the agent never answers the cancellation. */
     private var stopFallbackJob: Job? = null
 
-    /** Pre-write file contents used to revert a single agent edit. */
-    private val fileSnapshots = AgentFileSnapshots()
+    /** Full-file baselines and expected contents used by Keep and Revert. */
+    private val fileReview = AgentFileReview()
 
     /** File baselines taken at each user message. Not persisted. */
     private val checkpoints = AgentMessageCheckpoints()
@@ -287,6 +315,16 @@ public class AgentSessionViewModel(
         scope.launch {
             val prefs = prefsStore.load()
             preferredModelId = prefs.modelId
+            val installed = discoverAgents()
+            if (remembersAgentChoice) {
+                val preferred = defaultLaunch(prefs.agentId, installed, fallbackLaunch)
+                agentChoice.launch = preferred
+                activeLaunch = preferred
+                chosenAgentId = preferred.id
+            } else {
+                activeLaunch = agentChoice.launch
+            }
+            publishAgents(installed)
             _state.update {
                 it.copy(
                     permissions = prefs.permissions,
@@ -299,7 +337,11 @@ public class AgentSessionViewModel(
 
     /** Dispatches a user [intent]. */
     public fun dispatch(intent: AgentIntent) {
-        if (intent is AgentIntent.RestoreSession || intent == AgentIntent.NewChat) {
+        if (
+            intent is AgentIntent.RestoreSession ||
+            intent == AgentIntent.NewChat ||
+            intent is AgentIntent.SelectAgent
+        ) {
             sessionChangeJob?.cancel()
             sessionChangeJob = scope.launch { sendMutex.withLock { handle(intent) } }
         } else {
@@ -311,6 +353,8 @@ public class AgentSessionViewModel(
         when (intent) {
             AgentIntent.EnsureConnected -> {
                 sendMutex.withLock {
+                    prefsLoaded.await()
+                    publishAgents(discoverAgents())
                     if (ensureConnected() && _state.value.restoration !is SessionRestoration.TranscriptOnly) {
                         client?.let { ensureSession(it) }
                     }
@@ -323,6 +367,10 @@ public class AgentSessionViewModel(
 
             is AgentIntent.Steer -> {
                 submit(intent.prompt, emptyList(), steer = true)
+            }
+
+            AgentIntent.ShowReview -> {
+                showReview(clearComposer = false)
             }
 
             AgentIntent.Stop -> {
@@ -394,6 +442,15 @@ public class AgentSessionViewModel(
                 setMode(intent.modeId)
             }
 
+            is AgentIntent.SelectAgent -> {
+                selectAgent(intent.agentId)
+            }
+
+            AgentIntent.RefreshAgents -> {
+                prefsLoaded.await()
+                publishAgents(discoverAgents())
+            }
+
             AgentIntent.ExpandToPerspective -> {
                 _state.update { it.copy(docked = false) }
                 persist()
@@ -424,8 +481,41 @@ public class AgentSessionViewModel(
                 removeAttachment(intent.path, intent.selection)
             }
 
-            AgentIntent.RemoveQueuedPrompt -> {
-                clearQueuedPrompt()
+            is AgentIntent.RemoveQueuedPrompt -> {
+                changeQueue { queue -> queue.filterNot { it.id == intent.id } }
+            }
+
+            AgentIntent.PauseQueue -> {
+                disarmQueue()
+            }
+
+            AgentIntent.ResumeQueue -> {
+                deliverQueuedPrompt = true
+                _state.update { it.copy(queuePaused = false) }
+                startQueueDelivery()
+            }
+
+            is AgentIntent.UpdateQueuedPrompt -> {
+                val text = intent.prompt.trim()
+                if (text.isNotEmpty()) {
+                    changeQueue { queue ->
+                        queue.map { if (it.id == intent.id) it.copy(prompt = text) else it }
+                    }
+                }
+            }
+
+            is AgentIntent.MoveQueuedPrompt -> {
+                changeQueue { queue ->
+                    val index = queue.indexOfFirst { it.id == intent.id }
+                    val target = index + if (intent.earlier) -1 else 1
+                    if (index < 0 || target !in queue.indices) {
+                        queue
+                    } else {
+                        queue.toMutableList().apply {
+                            add(target, removeAt(index))
+                        }
+                    }
+                }
             }
 
             AgentIntent.PauseGoal -> {
@@ -459,6 +549,161 @@ public class AgentSessionViewModel(
     }
 
     // ------------------------------------------------------------------------
+    // Agent picker
+    // ------------------------------------------------------------------------
+
+    /**
+     * Archives this chat and launches [launch] on the other checkout when that checkout is idle.
+     *
+     * Returns a notice when the other checkout is busy. The caller's own process stays up until
+     * the caller switches too.
+     */
+    internal suspend fun acceptSharedAgent(launch: AgentLaunch) {
+        sendMutex.withLock {
+            agentChoice.launch = launch
+            if (remembersAgentChoice) {
+                chosenAgentId = launch.id
+                persist()
+            }
+            if (launch != activeLaunch) switchOnto(launch, reconnect = client != null)
+        }
+    }
+
+    /**
+     * Points this checkout at [launch].
+     *
+     * A connected process is replaced. A checkout that has not connected yet keeps the launch
+     * for its next connection.
+     */
+    internal suspend fun applySharedAgent(launch: AgentLaunch) {
+        sendMutex.withLock {
+            if (launch == activeLaunch) return@withLock
+            switchOnto(launch, reconnect = client != null)
+        }
+    }
+
+    private suspend fun selectAgent(agentId: String) {
+        prefsLoaded.await()
+        val installed = discoverAgents()
+        publishAgents(installed)
+        val launch = installed.firstOrNull { it.id == agentId } ?: return
+        if (launch == activeLaunch) {
+            _state.update { it.copy(agentNotice = null) }
+            return
+        }
+        if (_state.value.isStreaming) {
+            _state.update { it.copy(agentNotice = AGENT_BUSY_NOTICE) }
+            return
+        }
+        val previous = agentChoice.launch
+        agentChoice.launch = launch
+        val refusal = onAgentSwitch?.invoke(launch)
+        if (refusal != null) {
+            agentChoice.launch = previous
+            _state.update { it.copy(agentNotice = refusal) }
+            return
+        }
+        if (remembersAgentChoice) {
+            chosenAgentId = launch.id
+            persist()
+        }
+        switchOnto(launch, reconnect = true)
+    }
+
+    private suspend fun switchOnto(
+        launch: AgentLaunch,
+        reconnect: Boolean,
+    ) {
+        clearQueuedPrompt()
+        freezeGoalPaused(notice = null, keepNotice = true)
+        archiveConversation()
+        clearFileMemory()
+        sessionId = null
+        conversationSessionId = null
+        recordId = null
+        resetGoalLoop()
+        activeLaunch = launch
+        if (client != null) resetConnection()
+        _state.update {
+            it.copy(
+                turns = emptyList(),
+                interrupted = false,
+                isStreaming = false,
+                presence = null,
+                error = null,
+                restoration = null,
+                activeRecordId = null,
+                goal = null,
+                goalNotice = null,
+                reviewVisible = false,
+                reviewNotice = null,
+                agentNotice = null,
+                connection = if (client == null) AgentConnection.DISCONNECTED else it.connection,
+                agent = AgentOption(launch.id, launch.label),
+            )
+        }
+        publishAgents(installedAgents)
+        if (reconnect && ensureConnected()) {
+            client?.let { ensureSession(it) }
+        }
+    }
+
+    /** Returns a new chat to the saved agent after a restored chat used a different one. */
+    private suspend fun alignWithChosenAgent() {
+        val chosen = agentChoice.launch
+        if (chosen == activeLaunch) return
+        activeLaunch = chosen
+        if (client != null) resetConnection()
+        _state.update {
+            it.copy(
+                connection = if (client == null) AgentConnection.DISCONNECTED else it.connection,
+                agent = AgentOption(chosen.id, chosen.label),
+            )
+        }
+        publishAgents(installedAgents)
+    }
+
+    /**
+     * Selects the agent stored on [record] before `session/load`.
+     *
+     * Returns false when that agent is not installed. The current process is closed so a later
+     * message cannot resume the chat on a different agent.
+     */
+    private suspend fun prepareRestoredAgent(record: AgentSessionRecord): Boolean {
+        val installed = discoverAgents()
+        val target = restoredLaunch(record.agentId, installed, fallbackLaunch)
+        if (target == null) {
+            publishAgents(installed)
+            if (client != null) resetConnection()
+            val notice = agentUnavailableNotice(agentLabel(record.agentId))
+            _state.update {
+                it.copy(
+                    connection = AgentConnection.DISCONNECTED,
+                    agentNotice = notice,
+                )
+            }
+            return false
+        }
+        if (target != activeLaunch) {
+            if (client != null) resetConnection()
+            activeLaunch = target
+        }
+        publishAgents(installed)
+        _state.update { it.copy(agentNotice = null) }
+        return true
+    }
+
+    private fun publishAgents(installed: List<AgentLaunch>) {
+        installedAgents = installed
+        _state.update {
+            it.copy(
+                availableAgents = installed.map { launch -> AgentOption(launch.id, launch.label) },
+                agent = AgentOption(activeLaunch.id, activeLaunch.label),
+            )
+        }
+    }
+
+    // ------------------------------------------------------------------------
     // Connection
     // ------------------------------------------------------------------------
 
@@ -469,7 +714,7 @@ public class AgentSessionViewModel(
             val current = client
             if (current != null && current.isOpen && _state.value.connection == AgentConnection.CONNECTED) return true
             if (current != null) resetConnection()
-            if (agentCommand.isBlank()) {
+            if (activeLaunch.command.isEmpty()) {
                 _state.update { it.copy(connection = AgentConnection.ERROR, error = "No agent command configured") }
                 return false
             }
@@ -504,8 +749,9 @@ public class AgentSessionViewModel(
         val stdioTransport =
             transportFactory(
                 StdioAgentConfig(
-                    command = agentCommand.split(Regex("\\s+")),
+                    command = activeLaunch.command,
                     workingDirectory = projectPath,
+                    environment = activeLaunch.environment,
                 ),
             )
 
@@ -622,7 +868,7 @@ public class AgentSessionViewModel(
             return
         }
         val attachments = attachmentsFor(text, contextLabels)
-        if (_state.value.isStreaming) {
+        if (_state.value.isStreaming || _state.value.queuedPrompts.isNotEmpty()) {
             queueFollowUp(text, attachments, steer, clearComposer)
         } else {
             handleSend(text, attachments, clearComposer)
@@ -653,15 +899,24 @@ public class AgentSessionViewModel(
         attachments: List<ComposerAttachment>,
         clearComposer: Boolean,
         wirePrompt: String? = null,
+        queuedId: String? = null,
+        expectedQueueVersion: Long = 0,
     ): Boolean {
         val text = prompt.trim()
         if (text.isEmpty()) return false
         val instructions = readProjectInstructions()
-        val claim = claimTurn(text, attachments, clearComposer, instructions != null) ?: return false
+        val claim =
+            claimTurn(text, attachments, clearComposer, instructions != null, queuedId, expectedQueueVersion)
+                ?: return false
         try {
             val body = wirePrompt ?: promptWithContext(text, attachments)
-            claim.client.promptText(claim.sessionId, promptWithInstructions(instructions, body))
-            if (claim.generation == turnGeneration) endTurn()
+            val result = claim.client.promptText(claim.sessionId, promptWithInstructions(instructions, body))
+            if (claim.generation == turnGeneration) {
+                if (result.stopReason != StopReason.END_TURN) {
+                    _state.update { it.copy(interrupted = true) }
+                }
+                endTurn()
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -705,13 +960,16 @@ public class AgentSessionViewModel(
         attachments: List<ComposerAttachment>,
         clearComposer: Boolean,
         includeInstructions: Boolean = false,
+        queuedId: String? = null,
+        expectedQueueVersion: Long = 0,
     ): TurnClaim? {
         if (!sendMutex.tryLock()) return null
         try {
-            if (_state.value.isStreaming) return null
+            if (_state.value.isStreaming || !canDeliverQueued(queuedId, expectedQueueVersion)) return null
             if (!ensureConnected()) return null
             val acpClient = client ?: return null
             val activeSession = ensureSession(acpClient) ?: return null
+            if (!canDeliverQueued(queuedId, expectedQueueVersion)) return null
             val generation = ++turnGeneration
             if (clearComposer) mentionGeneration++
             val userId = nextId("usr")
@@ -728,6 +986,8 @@ public class AgentSessionViewModel(
                             Turn.User(userId, text, "now", context) +
                             Turn.Agent(nextId("agt"), "now", emptyList()),
                     isStreaming = true,
+                    queuedPrompts = if (queuedId == null) it.queuedPrompts else it.queuedPrompts.drop(1),
+                    interrupted = false,
                     error = null,
                     goalNotice = null,
                     presence = Presence(action = "Thinking", fileName = null, startedAtEpochMillis = now()),
@@ -745,13 +1005,10 @@ public class AgentSessionViewModel(
     private suspend fun handleStop() {
         disarmQueue()
         freezeGoalPaused(notice = null, keepNotice = true)
-        _state.update { st ->
-            val queued = st.queuedPrompt
-            if (queued == null || !queued.steer) st else st.copy(queuedPrompt = queued.copy(steer = false))
-        }
         val acpClient = client ?: return
         val activeSession = sessionId ?: return
         if (!_state.value.isStreaming) return
+        _state.update { it.copy(interrupted = true) }
 
         try {
             acpClient.cancel(activeSession)
@@ -792,6 +1049,8 @@ public class AgentSessionViewModel(
      */
     private fun invalidateTurn() {
         turnGeneration++
+        queueDeliveryJob?.cancel()
+        queueDeliveryJob = null
         stopFallbackJob?.cancel()
         stopFallbackJob = null
         cancelPendingApprovals()
@@ -803,7 +1062,10 @@ public class AgentSessionViewModel(
         stopFallbackJob = null
         cancelPendingApprovals()
         approvedEditPaths.clear()
-        val queued = queuedForDelivery()
+        val state = _state.value
+        if (!state.error.isNullOrBlank() || (state.interrupted && state.queuedPrompts.firstOrNull()?.steer != true)) {
+            disarmQueue()
+        }
         _state.update { st ->
             val turns =
                 st.turns.map { turn ->
@@ -817,20 +1079,17 @@ public class AgentSessionViewModel(
                 isStreaming = false,
                 presence = null,
                 turns = turns,
-                queuedPrompt = if (queued != null) null else st.queuedPrompt,
             )
         }
         // Capture before another history action can replace the visible conversation.
         persistConversation()
-        if (queued != null) {
-            val sent = handleSend(queued.prompt, queued.attachments, clearComposer = false)
-            if (!sent && !_state.value.isStreaming && _state.value.queuedPrompt == null) {
-                _state.update { it.copy(queuedPrompt = queued.copy(steer = false)) }
-            }
+        if (deliverQueuedPrompt && _state.value.queuedPrompts.isNotEmpty()) {
+            startQueueDelivery()
             return
         }
+        if (queueDeliveryJob?.isActive == true) return
         // The check can mark the goal met or paused after the snapshot above.
-        continueGoal()
+        continueAfterQueue()
         persistConversation()
     }
 
@@ -842,13 +1101,70 @@ public class AgentSessionViewModel(
         }
     }
 
-    /** Returns the follow-up to send, and disarms delivery so Stop cannot be overtaken. */
-    private fun queuedForDelivery(): QueuedFollowUp? {
-        val queued = _state.value.queuedPrompt
-        if (!deliverQueuedPrompt || queued == null) return null
-        deliverQueuedPrompt = false
-        steerArmed = false
-        return queued
+    /** Claims queued input only if Stop, editing, or a session switch has not invalidated it. */
+    private fun canDeliverQueued(
+        id: String?,
+        version: Long,
+    ): Boolean =
+        id == null ||
+            (
+                deliverQueuedPrompt && version == queueVersion && _state.value.queuedPrompts
+                    .firstOrNull()
+                    ?.id == id
+            )
+
+    /** One drain job serializes delivery; each item leaves the queue only after its turn is claimed. */
+    private fun startQueueDelivery() {
+        if (_state.value.isStreaming || !deliverQueuedPrompt || queueDeliveryJob?.isActive == true) return
+        val session = queueSession
+        queueDeliveryJob =
+            scope.launch {
+                while (session == queueSession && deliverQueuedPrompt && !_state.value.isStreaming) {
+                    val queued = _state.value.queuedPrompts.firstOrNull() ?: break
+                    val version = queueVersion
+                    val sent =
+                        handleSend(
+                            queued.prompt,
+                            queued.attachments,
+                            clearComposer = false,
+                            queuedId = queued.id,
+                            expectedQueueVersion = version,
+                        )
+                    if (!sent && version == queueVersion) {
+                        disarmQueue()
+                        break
+                    }
+                }
+                if (session == queueSession) {
+                    queueDeliveryJob = null
+                    if (!_state.value.isStreaming) continueAfterQueue()
+                    persistConversation()
+                }
+            }
+    }
+
+    private suspend fun continueAfterQueue() {
+        if (_state.value.queuedPrompts.isNotEmpty() && !deliverQueuedPrompt) {
+            freezeGoalPaused(notice = "Follow-up queue paused. Resume when ready.", keepNotice = false)
+        } else {
+            continueGoal()
+        }
+    }
+
+    private fun changeQueue(change: (List<QueuedFollowUp>) -> List<QueuedFollowUp>) {
+        queueVersion++
+        _state.update { state ->
+            state.copy(
+                queuedPrompts =
+                    change(state.queuedPrompts).mapIndexed { index, item ->
+                        if (index == 0) item else item.copy(steer = false)
+                    },
+            )
+        }
+        steerArmed = steerArmed && _state.value.queuedPrompts
+            .firstOrNull()
+            ?.steer == true
+        if (_state.value.queuedPrompts.isEmpty()) disarmQueue()
     }
 
     private suspend fun queueFollowUp(
@@ -857,18 +1173,32 @@ public class AgentSessionViewModel(
         steer: Boolean,
         clearComposer: Boolean,
     ) {
-        deliverQueuedPrompt = true
-        steerArmed = steer
+        val entry = QueuedFollowUp(text, attachments, steer, id = nextId("queued"))
+        val wasEmpty = _state.value.queuedPrompts.isEmpty()
+        if (wasEmpty || steer) {
+            deliverQueuedPrompt = true
+            _state.update { it.copy(queuePaused = false) }
+        }
+        if (steer) {
+            queueVersion++
+            steerArmed = true
+        }
         if (clearComposer) mentionGeneration++
         _state.update { st ->
             st.copy(
-                queuedPrompt = QueuedFollowUp(prompt = text, attachments = attachments, steer = steer),
+                queuedPrompts =
+                    if (steer) {
+                        listOf(entry) + st.queuedPrompts.map { it.copy(steer = false) }
+                    } else {
+                        st.queuedPrompts + entry
+                    },
                 composerInput = if (clearComposer) "" else st.composerInput,
                 composerAttachments = if (clearComposer) emptyList() else st.composerAttachments,
                 mentionFiles = if (clearComposer) emptyList() else st.mentionFiles,
             )
         }
-        if (steer) steerCancelIfIdle()
+        if (steer && _state.value.isStreaming) steerCancelIfIdle()
+        startQueueDelivery()
     }
 
     /**
@@ -897,13 +1227,20 @@ public class AgentSessionViewModel(
     }
 
     private fun disarmQueue() {
+        queueVersion++
         deliverQueuedPrompt = false
         steerArmed = false
+        _state.update { st ->
+            st.copy(queuePaused = true, queuedPrompts = st.queuedPrompts.map { it.copy(steer = false) })
+        }
     }
 
     private fun clearQueuedPrompt() {
         disarmQueue()
-        _state.update { it.copy(queuedPrompt = null) }
+        queueSession++
+        queueDeliveryJob?.cancel()
+        queueDeliveryJob = null
+        _state.update { it.copy(queuedPrompts = emptyList(), queuePaused = false) }
     }
 
     /**
@@ -981,7 +1318,7 @@ public class AgentSessionViewModel(
             return
         }
         val file = reviewFiles(_state.value.turns).firstOrNull { it.key == key } ?: return
-        file.pendingBlockIds.forEach { blockId -> decideDiff(blockId, accept) }
+        file.pendingBlockIds.firstOrNull()?.let { blockId -> decideDiff(blockId, accept) }
     }
 
     /**
@@ -1189,11 +1526,11 @@ public class AgentSessionViewModel(
                     result.exceptionOrNull()?.message ?: BRING_FAILED_NOTICE,
                 )
             }
-            fileSnapshots.push(path, FileSnapshot(existed, current))
+            fileReview.record(path, FileSnapshot(existed, current), FileSnapshot(change.exists, incoming))
             val (lines, added, removed) = computeDiff(current, incoming.orEmpty())
             blocks +=
                 Block.Diff(
-                    id = "bring-$index:diff:0",
+                    id = "${nextId("bring-diff")}:diff:$index",
                     fileName = change.relativePath.substringAfterLast('/'),
                     path = change.relativePath.substringBeforeLast('/', missingDelimiterValue = ""),
                     added = added,
@@ -1248,7 +1585,11 @@ public class AgentSessionViewModel(
                 error = null,
             )
         }
-        if (written.isNotEmpty()) onWorkspaceFilesChanged(written)
+        if (written.isNotEmpty()) {
+            invalidateCheckEvidence()
+            onWorkspaceFilesChanged(written)
+        }
+        publishReviewCounts()
         return AgentBringOutcome(
             imported = blocks.size,
             skippedDirty = skippedDirty,
@@ -1351,16 +1692,40 @@ public class AgentSessionViewModel(
     private suspend fun continueGoal() {
         val goal = _state.value.goal ?: return
         if (goal.status != AgentGoalStatus.ACTIVE) return
+        if (_state.value.interrupted) {
+            freezeGoalPaused(
+                notice = "The agent stopped before completing the turn. Resume when ready.",
+                keepNotice = false,
+            )
+            return
+        }
         if (!_state.value.error.isNullOrBlank()) {
             freezeGoalPaused(notice = GOAL_FAILED_NOTICE, keepNotice = false)
             return
         }
         if (goalChecking) {
-            val verdict =
-                judgeGoal(
-                    lastAgentReply(),
-                    goalEvidence(_state.value.turns.drop(goalBaseline), _state.value.plan),
+            val evidence =
+                goalEvidence(
+                    _state.value.turns.drop(goalBaseline),
+                    _state.value.plan,
+                    _state.value.workspaceRevision,
+                    _state.value.hasUnsavedEdits,
                 )
+            val reply = lastAgentReply()
+            val claimsCompletion =
+                reply
+                    .lineSequence()
+                    .lastOrNull { it.isNotBlank() }
+                    ?.trim()
+                    ?.startsWith("GOAL_MET:") == true
+            if (claimsCompletion && evidence.commandOutputs.isEmpty()) {
+                freezeGoalPaused(
+                    notice = "Completion is unverified. Check the command evidence before resuming the goal.",
+                    keepNotice = false,
+                )
+                return
+            }
+            val verdict = judgeGoal(reply, evidence)
             if (verdict.met) {
                 markGoalMet()
                 return
@@ -1602,9 +1967,10 @@ public class AgentSessionViewModel(
         val summary =
             summarizeSession(
                 turns = _state.value.turns,
-                isStreaming = false,
+                isStreaming = _state.value.isStreaming,
                 error = _state.value.error,
                 live = false,
+                interrupted = _state.value.interrupted,
             )
         return AgentSessionRecord(
             id = id,
@@ -1619,6 +1985,10 @@ public class AgentSessionViewModel(
             goal = _state.value.goal?.let { persistedGoal(it, now()) },
             checkpoints = checkpoints.persistedCheckpoints(),
             checkpointDisk = checkpoints.persistedDisk(),
+            agentId = activeLaunch.id,
+            pendingReviews = pendingReviewRecords(),
+            failure = _state.value.error,
+            interrupted = _state.value.interrupted || _state.value.isStreaming,
         )
     }
 
@@ -1643,6 +2013,7 @@ public class AgentSessionViewModel(
         _state.update {
             it.copy(
                 turns = emptyList(),
+                interrupted = false,
                 isStreaming = false,
                 presence = null,
                 error = null,
@@ -1654,6 +2025,7 @@ public class AgentSessionViewModel(
                 reviewNotice = null,
             )
         }
+        alignWithChosenAgent()
     }
 
     /** Deletes a persisted conversation, clearing it when it is the active one. */
@@ -1687,6 +2059,8 @@ public class AgentSessionViewModel(
             it.copy(
                 turns = emptyList(),
                 sessionHistory = historyStore.list(),
+                interrupted = false,
+                error = null,
                 isStreaming = false,
                 presence = null,
                 restoration = null,
@@ -1747,9 +2121,10 @@ public class AgentSessionViewModel(
             }
         _state.update {
             it.copy(
-                turns = turns,
+                turns = turns + restoredReviewTurns(record),
                 historyVisible = false,
-                error = null,
+                error = record.failure,
+                interrupted = record.interrupted,
                 presence = null,
                 isStreaming = false,
                 restoration = SessionRestoration.Loading,
@@ -1762,6 +2137,10 @@ public class AgentSessionViewModel(
         }
         checkpoints.loadPersisted(record.checkpoints, record.checkpointDisk)
         publishCheckpointFlags()
+        if (!prepareRestoredAgent(record)) {
+            transcriptOnly(agentUnavailableNotice(agentLabel(record.agentId)))
+            return
+        }
         if (record.agentSessionId == null) {
             transcriptOnly("This saved conversation has no agent session to resume.")
         } else if (ensureConnected()) {
@@ -1769,6 +2148,7 @@ public class AgentSessionViewModel(
         } else {
             transcriptOnly("Could not reconnect to the agent.")
         }
+        _state.update { it.copy(error = it.error ?: record.failure) }
     }
 
     /** Reloads context without creating an unrelated session or duplicating replayed messages. */
@@ -1836,6 +2216,16 @@ public class AgentSessionViewModel(
     // ACP session updates -> blocks
     // ------------------------------------------------------------------------
 
+    /** Invalidates command evidence when an agent, editor, or external process changes the workspace. */
+    public fun invalidateCheckEvidence() {
+        _state.update { it.copy(workspaceRevision = it.workspaceRevision + 1) }
+    }
+
+    /** Marks unsaved editor content that cannot have been checked by a disk-based command. */
+    public fun setCheckUnsavedEdits(dirty: Boolean) {
+        _state.update { it.copy(hasUnsavedEdits = dirty) }
+    }
+
     private fun applyUpdate(update: SessionUpdate) {
         when (update) {
             is SessionUpdate.AgentMessageChunk -> {
@@ -1855,6 +2245,7 @@ public class AgentSessionViewModel(
                     content = update.content,
                     location = update.locations.firstOrNull()?.path,
                     rawInput = update.rawInput,
+                    rawOutput = null,
                 )
             }
 
@@ -1867,6 +2258,7 @@ public class AgentSessionViewModel(
                     content = update.content,
                     location = null,
                     rawInput = null,
+                    rawOutput = update.rawOutput,
                 )
             }
 
@@ -1911,6 +2303,7 @@ public class AgentSessionViewModel(
         content: List<ToolCallContent>,
         location: String?,
         rawInput: JsonElement?,
+        rawOutput: JsonElement?,
     ) {
         val resultText =
             content
@@ -1920,6 +2313,9 @@ public class AgentSessionViewModel(
                         ::textOf,
                     )
                 }.joinToString("\n")
+        if (kind in setOf(ToolKind.EDIT, ToolKind.DELETE, ToolKind.MOVE) || content.any { it.type == "diff" }) {
+            invalidateCheckEvidence()
+        }
         val toolStatus = toolStatusOf(status)
         var createdExecute = false
         mutateAgentTurn { blocks ->
@@ -1932,7 +2328,8 @@ public class AgentSessionViewModel(
                         it[index] =
                             existing.copy(
                                 name = title ?: existing.name,
-                                status = toolStatus,
+                                status = if (status == null) existing.status else toolStatus,
+                                exitCode = commandExitCode(rawOutput) ?: existing.exitCode,
                                 result = mergeResult(existing.result, resultText),
                             )
                     }
@@ -1947,6 +2344,17 @@ public class AgentSessionViewModel(
                             status = toolStatus,
                             result = resultText.ifBlank { null },
                             expanded = false,
+                            command = stringField(rawInput, "command", "cmd"),
+                            exitCode = commandExitCode(rawOutput),
+                            checkRevision =
+                                if (kind == ToolKind.EXECUTE && toolStatus == ToolStatus.RUNNING &&
+                                    _state.value.isStreaming && _state.value.restoration !is SessionRestoration.Loading
+                                ) {
+                                    _state.value.workspaceRevision
+                                } else {
+                                    null
+                                },
+                            startedAtEpochMillis = now(),
                         )
                 }
             content.filter { it.type == "diff" }.foldIndexed(updated) { index, acc, diff ->
@@ -1966,7 +2374,8 @@ public class AgentSessionViewModel(
         index: Int,
         content: ToolCallContent,
     ): List<Block> {
-        val path = content.path ?: return blocks
+        val rawPath = content.path ?: return blocks
+        val path = resolvedPath(rawPath) ?: rawPath
         val diffId = "$toolCallId:diff:$index"
         val (lines, added, removed) = computeDiff(content.oldText, content.newText.orEmpty())
         val blockIndex = blocks.indexOfFirst { it is Block.Diff && it.id == diffId }
@@ -1979,11 +2388,18 @@ public class AgentSessionViewModel(
                 added = added,
                 removed = removed,
                 lines = lines,
-                // A later update for the same hunk must not resurrect a decision
-                // the user already made.
-                decision = existing?.decision ?: DiffDecision.PROPOSED,
+                // Identical updates preserve decisions; changed content needs review again.
+                decision =
+                    if (existing != null && existing.absolutePath == path && existing.newText == content.newText &&
+                        existing.oldText == content.oldText
+                    ) {
+                        existing.decision
+                    } else {
+                        DiffDecision.PROPOSED
+                    },
                 absolutePath = path,
                 oldText = content.oldText,
+                newText = content.newText,
             )
         return if (blockIndex >= 0) {
             blocks.toMutableList().also { it[blockIndex] = block }
@@ -2028,50 +2444,147 @@ public class AgentSessionViewModel(
         blockId: String,
         accept: Boolean,
     ) {
-        val diff = allDiffs().firstOrNull { it.id == blockId } ?: return
-        if (diff.decision != DiffDecision.PROPOSED) return
-        // The agent supplies this path, so never write to it before containment
-        // is verified (the diffs carry hunks, not trusted file operations).
+        if (_state.value.isStreaming) {
+            _state.update { it.copy(reviewNotice = REVIEW_BUSY_NOTICE) }
+            return
+        }
+        val diff = allDiffs().firstOrNull { it.id == blockId && it.decision == DiffDecision.PROPOSED } ?: return
         val path = runCatching { pathGuard.resolve(diff.absolutePath) }.getOrNull()
-
-        if (accept) {
-            // The write already happened; dropping the snapshot commits it.
-            path?.let { fileSnapshots.pop(it) }
-            setDiffsDecision(diff, DiffDecision.ACCEPTED)
-            return
-        }
-
         if (path == null) {
-            _state.update {
-                it.copy(error = "Cannot revert ${diff.fileName}: the path is outside the project")
-            }
+            reviewConflict(diff.absolutePath, "Cannot review this path outside the project.")
             return
         }
-
-        val snapshot = fileSnapshots.pop(path)
-        if (snapshot == null) {
-            _state.update {
-                it.copy(error = "Cannot revert ${diff.fileName}: no saved pre-edit content")
-            }
+        if (accept) {
+            fileReview.keep(path)
+            finishFileReview(path, DiffDecision.ACCEPTED)
             return
         }
-
+        if (!fileReview.hasPending(path)) {
+            reviewConflict(
+                path,
+                "Revert unavailable: original file contents were not saved. Review this file manually.",
+            )
+            return
+        }
+        if (isEditorDirty(path)) {
+            reviewConflict(path, "Revert blocked: this file has unsaved editor changes.")
+            return
+        }
+        val current = currentSnapshot(path)
+        if (current == null) {
+            reviewConflict(path, "Revert blocked: the current file could not be read.")
+            return
+        }
+        val target = fileReview.revertTarget(path, current)
+        if (target == null) {
+            reviewConflict(
+                path,
+                "Revert blocked: this file changed outside the pending agent edits. Review it manually.",
+            )
+            return
+        }
         val result =
-            if (snapshot.existed) {
-                fileSystem.writeText(path, snapshot.content.orEmpty())
+            if (target.existed) {
+                fileSystem.writeText(
+                    path,
+                    target.content.orEmpty(),
+                )
             } else {
                 fileSystem.delete(path)
             }
-        result.onFailure { error ->
-            // Keep the snapshot so the user can retry after fixing the cause.
-            fileSnapshots.push(path, snapshot)
-            _state.update {
-                it.copy(error = "Could not revert ${diff.fileName}: ${error.message ?: "file operation failed"}")
-            }
+        if (result.isFailure) {
+            reviewConflict(path, "Revert failed: ${result.exceptionOrNull()?.message ?: "file operation failed"}")
             return
         }
-        checkpoints.noteDisk(path, snapshot)
-        setDiffsDecision(diff, DiffDecision.REJECTED)
+        fileReview.reverted(path, target)
+        checkpoints.noteDisk(path, target)
+        invalidateCheckEvidence()
+        finishFileReview(path, DiffDecision.REJECTED)
+        onWorkspaceFilesChanged(listOf(path))
+    }
+
+    private fun reviewConflict(
+        path: String,
+        notice: String,
+    ) {
+        _state.update { it.copy(reviewVisible = true, reviewConflicts = it.reviewConflicts + (path to notice)) }
+    }
+
+    private fun finishFileReview(
+        path: String,
+        decision: DiffDecision,
+    ) {
+        mutateBlocks { block ->
+            if (block is Block.Diff && block.decision == DiffDecision.PROPOSED &&
+                resolvedPath(block.absolutePath) == path
+            ) {
+                block.copy(decision = decision)
+            } else {
+                block
+            }
+        }
+        _state.update { it.copy(reviewConflicts = it.reviewConflicts - path, reviewNotice = null) }
+        publishReviewCounts()
+        persistReviewDecision()
+    }
+
+    private fun pendingReviewRecords(): List<AgentPendingReview> =
+        reviewFiles(_state.value.turns)
+            .filter { it.pendingBlockIds.isNotEmpty() }
+            .map { AgentPendingReview(it.key, it.fileName, it.pathLabel) }
+
+    private fun restoredReviewTurns(record: AgentSessionRecord): List<Turn.Agent> {
+        if (record.pendingReviews.isEmpty()) return emptyList()
+        return listOf(
+            Turn.Agent(
+                id = "restored-review-${record.id}",
+                timeLabel = "",
+                blocks =
+                    record.pendingReviews.mapIndexed { index, file ->
+                        Block.Diff(
+                            id = "restored-review-${record.id}:diff:$index",
+                            fileName = file.fileName,
+                            path = file.parent,
+                            absolutePath = file.path,
+                            added = 0,
+                            removed = 0,
+                            lines = emptyList(),
+                            decision = DiffDecision.PROPOSED,
+                            previewAvailable = false,
+                            oldText = null,
+                        )
+                    },
+            ),
+        )
+    }
+
+    /** Review decisions also persist for transcript-only sessions, without rewriting their messages. */
+    private fun persistReviewDecision() {
+        if (_state.value.restoration !is SessionRestoration.TranscriptOnly) {
+            persistConversation()
+            return
+        }
+        val id = recordId ?: return
+        val pending = pendingReviewRecords()
+        val summary = summarizeSession(_state.value.turns, false, _state.value.error, false, _state.value.interrupted)
+        scope.launch {
+            historyMutex.withLock {
+                val saved = historyStore.list().firstOrNull { it.id == id } ?: return@withLock
+                historyStore.save(saved.copy(pendingReviews = pending, status = summary.status))
+            }
+        }
+    }
+
+    private fun publishReviewCounts() {
+        val counts =
+            fileReview
+                .netContents()
+                .mapNotNull { (path, contents) ->
+                    su.kidoz.jetaprog.app.ui.agent
+                        .netReviewDelta(contents.first, contents.second)
+                        ?.let { path to it }
+                }.toMap()
+        _state.update { it.copy(reviewCounts = counts) }
     }
 
     /**
@@ -2111,8 +2624,10 @@ public class AgentSessionViewModel(
                 }
             result
                 .onSuccess {
+                    invalidateCheckEvidence()
                     checkpoints.noteDisk(path, snapshot)
-                    fileSnapshots.drop(path)
+                    fileReview.drop(path)
+                    publishReviewCounts()
                     restored += fileName(path)
                     restoredPaths += path
                 }.onFailure {
@@ -2130,7 +2645,11 @@ public class AgentSessionViewModel(
                     },
             )
         }
-        if (restoredPaths.isNotEmpty()) onWorkspaceFilesChanged(restoredPaths)
+        if (restoredPaths.isNotEmpty()) {
+            invalidateCheckEvidence()
+            onWorkspaceFilesChanged(restoredPaths)
+            persistReviewDecision()
+        }
     }
 
     /** The file as it is on disk, or null when the read fails. */
@@ -2195,7 +2714,8 @@ public class AgentSessionViewModel(
     }
 
     private fun clearFileMemory() {
-        fileSnapshots.clear()
+        fileReview.clear()
+        _state.update { it.copy(reviewCounts = emptyMap(), reviewConflicts = emptyMap()) }
         checkpoints.clear()
     }
 
@@ -2204,21 +2724,8 @@ public class AgentSessionViewModel(
         allDiffs()
             .filter { it.decision == DiffDecision.PROPOSED }
             .asReversed()
+            .distinctBy { resolvedPath(it.absolutePath) ?: it.absolutePath }
             .forEach { decideDiff(it.id, accept) }
-    }
-
-    /**
-     * Applies [decision] to every hunk produced by the same tool call: an ACP
-     * write is atomic, so accepting or reverting one hunk applies to all of them.
-     */
-    private fun setDiffsDecision(
-        diff: Block.Diff,
-        decision: DiffDecision,
-    ) {
-        val prefix = "${diff.id.substringBefore(":diff:")}:diff:"
-        mutateBlocks { block ->
-            if (block is Block.Diff && block.id.startsWith(prefix)) block.copy(decision = decision) else block
-        }
     }
 
     private fun allDiffs(): List<Block.Diff> =
@@ -2328,10 +2835,11 @@ public class AgentSessionViewModel(
         }
         val before = captureSnapshot(path)
         fileSystem.writeText(path, request.content).getOrElse { error ->
-            // The write did not happen, so the snapshot must not outlive it.
-            fileSnapshots.pop(path)
             throw error
         }
+        invalidateCheckEvidence()
+        fileReview.record(path, before, FileSnapshot(existed = true, content = request.content))
+        publishReviewCounts()
         checkpoints.noteWrite(path, before, request.content)
         publishCheckpointFlags()
     }
@@ -2367,7 +2875,6 @@ public class AgentSessionViewModel(
                 null
             }
         val snapshot = FileSnapshot(existed, content)
-        fileSnapshots.push(path, snapshot)
         return snapshot
     }
 
@@ -2504,7 +3011,14 @@ public class AgentSessionViewModel(
         // has populated the preference.
         prefsLoaded.await()
         val st = _state.value
-        prefsStore.save(AgentPrefs(st.permissions, preferredModelId ?: st.model?.id, st.docked))
+        prefsStore.save(
+            AgentPrefs(
+                permissions = st.permissions,
+                modelId = preferredModelId ?: st.model?.id,
+                docked = st.docked,
+                agentId = chosenAgentId,
+            ),
+        )
     }
 
     /**
@@ -2797,11 +3311,10 @@ public class AgentSessionViewModel(
         private const val REJECT_OPTION_ID = "reject"
 
         /**
-         * Default launch command driving Claude Code over ACP via the Zed adapter.
-         * `npx -y` resolves and runs the published adapter without an interactive
-         * install prompt, reusing the user's existing Claude Code authentication.
+         * Fallback launch used when Claude's binary is not installed.
+         * Discovery replaces it with the installed `claude` and the current ACP adapter.
          */
-        const val DEFAULT_CLAUDE_CODE_COMMAND: String = "npx -y @zed-industries/claude-code-acp"
+        const val DEFAULT_CLAUDE_CODE_COMMAND: String = "npx -y @agentclientprotocol/claude-agent-acp"
 
         fun textOf(content: ContentBlock): String = (content as? ContentBlock.Text)?.text.orEmpty()
 

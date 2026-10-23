@@ -9,6 +9,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -37,9 +38,13 @@ import kotlin.test.assertTrue
 /** A scripted ACP peer whose first prompt can be held open until [release]. */
 private class HeldPromptTransport(
     private val holdFirstPrompt: Boolean,
+    private val failAt: Int = -1,
+    private val firstStopReason: String = "end_turn",
+    private val holdSecondPrompt: Boolean = false,
 ) : AcpTransport {
     val inbound = Channel<String>(Channel.UNLIMITED)
     val release = CompletableDeferred<Unit>()
+    val secondRelease = CompletableDeferred<Unit>()
     val requests = mutableListOf<JsonObject>()
     val prompts = mutableListOf<String>()
     private var promptCount = 0
@@ -73,7 +78,15 @@ private class HeldPromptTransport(
                         .jsonPrimitive.content
                 promptCount++
                 if (holdFirstPrompt && promptCount == 1) release.await()
-                reply(request, """{"stopReason":"end_turn"}""")
+                if (holdSecondPrompt && promptCount == 2) secondRelease.await()
+                if (promptCount == failAt) {
+                    inbound.send(
+                        """{"jsonrpc":"2.0","id":${request["id"]},"error":{"code":-32603,"message":"Agent failed"}}""",
+                    )
+                } else {
+                    val reason = if (promptCount == 1) firstStopReason else "end_turn"
+                    reply(request, """{"stopReason":"$reason"}""")
+                }
             }
         }
     }
@@ -159,11 +172,13 @@ class AgentComposerQueueTest {
             assertTrue(viewModel.state.value.isStreaming)
             assertEquals(
                 "Add tests",
-                viewModel.state.value.queuedPrompt
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull()
                     ?.prompt,
             )
             assertFalse(
-                viewModel.state.value.queuedPrompt
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull()
                     ?.steer == true,
             )
             assertEquals("", viewModel.state.value.composerInput)
@@ -173,7 +188,10 @@ class AgentComposerQueueTest {
             runCurrent()
 
             assertEquals(listOf("Build it", "Add tests"), agent.prompts)
-            assertNull(viewModel.state.value.queuedPrompt)
+            assertNull(
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull(),
+            )
             assertFalse(viewModel.state.value.isStreaming)
         }
 
@@ -194,11 +212,13 @@ class AgentComposerQueueTest {
 
             assertEquals(
                 "Add tests",
-                viewModel.state.value.queuedPrompt
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull()
                     ?.prompt,
             )
             assertFalse(
-                viewModel.state.value.queuedPrompt
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull()
                     ?.steer == true,
             )
             assertEquals(1, agent.cancels)
@@ -209,7 +229,8 @@ class AgentComposerQueueTest {
             assertEquals(listOf("Build it"), agent.prompts)
             assertEquals(
                 "Add tests",
-                viewModel.state.value.queuedPrompt
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull()
                     ?.prompt,
             )
             assertFalse(viewModel.state.value.isStreaming)
@@ -231,7 +252,8 @@ class AgentComposerQueueTest {
             runCurrent()
 
             assertTrue(
-                viewModel.state.value.queuedPrompt
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull()
                     ?.steer == true,
             )
             assertEquals(0, agent.cancels)
@@ -244,7 +266,10 @@ class AgentComposerQueueTest {
             runCurrent()
 
             assertEquals(listOf("Build it", "Follow up"), agent.prompts)
-            assertNull(viewModel.state.value.queuedPrompt)
+            assertNull(
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull(),
+            )
         }
 
     @Test
@@ -262,7 +287,8 @@ class AgentComposerQueueTest {
 
             assertEquals(1, agent.cancels)
             assertTrue(
-                viewModel.state.value.queuedPrompt
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull()
                     ?.steer == true,
             )
 
@@ -287,7 +313,10 @@ class AgentComposerQueueTest {
             viewModel.dispatch(AgentIntent.NewChat)
             runCurrent()
 
-            assertNull(viewModel.state.value.queuedPrompt)
+            assertNull(
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull(),
+            )
 
             agent.release.complete(Unit)
             runCurrent()
@@ -311,12 +340,21 @@ class AgentComposerQueueTest {
             runCurrent()
             viewModel.dispatch(AgentIntent.Send("Add tests"))
             runCurrent()
-            viewModel.dispatch(AgentIntent.RemoveQueuedPrompt)
+            viewModel.dispatch(
+                AgentIntent.RemoveQueuedPrompt(
+                    viewModel.state.value.queuedPrompts
+                        .first()
+                        .id,
+                ),
+            )
             runCurrent()
             agent.release.complete(Unit)
             runCurrent()
 
-            assertNull(viewModel.state.value.queuedPrompt)
+            assertNull(
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull(),
+            )
             assertEquals(listOf("Build it"), agent.prompts)
         }
 
@@ -443,6 +481,233 @@ class AgentComposerQueueTest {
                 "Project instructions (AGENTS.md):\nWorktree rules.\n\nEdit the reader",
                 worktreeAgent.prompts.single(),
             )
+        }
+
+    @Test
+    fun multipleFollowUpsKeepTheirOrderAndDistinctIdentities() =
+        runTest {
+            val agent = HeldPromptTransport(true)
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            runCurrent()
+            listOf("Test", "Test", "Document").forEach { vm.dispatch(AgentIntent.Send(it)) }
+            runCurrent()
+            assertEquals(
+                listOf("Test", "Test", "Document"),
+                vm.state.value.queuedPrompts
+                    .map { it.prompt },
+            )
+            assertEquals(
+                3,
+                vm.state.value.queuedPrompts
+                    .map { it.id }
+                    .distinct()
+                    .size,
+            )
+            agent.release.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("Build", "Test", "Test", "Document"), agent.prompts)
+            assertTrue(
+                vm.state.value.queuedPrompts
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun queueEditsMovesAndRemovalPreserveAttachmentsAndComposerDraft() =
+        runTest {
+            val agent = HeldPromptTransport(true)
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            runCurrent()
+            vm.dispatch(AgentIntent.SetComposerInput("Explain"))
+            vm.dispatch(AgentIntent.AttachCurrentSelection)
+            vm.dispatch(AgentIntent.Send("Explain"))
+            vm.dispatch(AgentIntent.Send("Drop"))
+            vm.dispatch(AgentIntent.Send("Test"))
+            runCurrent()
+            val queue = vm.state.value.queuedPrompts
+            vm.dispatch(AgentIntent.PauseQueue)
+            vm.dispatch(AgentIntent.SetComposerInput("Unsent draft"))
+            vm.dispatch(AgentIntent.UpdateQueuedPrompt(queue[0].id, "Explain better"))
+            vm.dispatch(AgentIntent.RemoveQueuedPrompt(queue[1].id))
+            vm.dispatch(AgentIntent.MoveQueuedPrompt(queue[2].id, earlier = true))
+            runCurrent()
+            assertEquals(
+                listOf("Test", "Explain better"),
+                vm.state.value.queuedPrompts
+                    .map { it.prompt },
+            )
+            assertEquals(
+                queue[0].attachments,
+                vm.state.value.queuedPrompts
+                    .last()
+                    .attachments,
+            )
+            assertEquals("Unsent draft", vm.state.value.composerInput)
+            agent.release.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("Build"), agent.prompts)
+            vm.dispatch(AgentIntent.ResumeQueue)
+            runCurrent()
+            assertEquals("Test", agent.prompts[1])
+            assertTrue(agent.prompts[2].contains("val x = 1"))
+            assertTrue(agent.prompts[2].endsWith("Explain better"))
+            assertEquals("Unsent draft", vm.state.value.composerInput)
+        }
+
+    @Test
+    fun steeringPrioritizesTheNewMessageWithoutDroppingEarlierOnes() =
+        runTest {
+            val agent = HeldPromptTransport(true, firstStopReason = "cancelled")
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            runCurrent()
+            vm.dispatch(AgentIntent.Send("Test"))
+            vm.dispatch(AgentIntent.Send("Document"))
+            vm.dispatch(AgentIntent.Steer("Change approach"))
+            runCurrent()
+            assertEquals(
+                listOf("Change approach", "Test", "Document"),
+                vm.state.value.queuedPrompts
+                    .map { it.prompt },
+            )
+            agent.release.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("Build", "Change approach", "Test", "Document"), agent.prompts)
+        }
+
+    @Test
+    fun failedQueuedTurnPausesTheRemainingItemsUntilExplicitResume() =
+        runTest {
+            val agent = HeldPromptTransport(true, failAt = 2)
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            runCurrent()
+            vm.dispatch(AgentIntent.Send("Test"))
+            vm.dispatch(AgentIntent.Send("Document"))
+            runCurrent()
+            agent.release.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("Build", "Test"), agent.prompts)
+            assertTrue(vm.state.value.queuePaused)
+            assertEquals(
+                "Document",
+                vm.state.value.queuedPrompts
+                    .single()
+                    .prompt,
+            )
+            vm.dispatch(AgentIntent.ResumeQueue)
+            runCurrent()
+            assertEquals(listOf("Build", "Test", "Document"), agent.prompts)
+        }
+
+    @Test
+    fun stopDuringFollowUpPreparationCannotBeOvertakenByDelivery() =
+        runTest {
+            val preparing = CompletableDeferred<Unit>()
+            val releaseRead = CompletableDeferred<Unit>()
+            var instructionReads = 0
+            coEvery { fileSystem.exists("/proj/AGENTS.md") } coAnswers {
+                instructionReads++
+                if (instructionReads == 2) {
+                    preparing.complete(Unit)
+                    releaseRead.await()
+                }
+                false
+            }
+            val agent = HeldPromptTransport(true)
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            runCurrent()
+            vm.dispatch(AgentIntent.Send("Test"))
+            runCurrent()
+            agent.release.complete(Unit)
+            runCurrent()
+            assertTrue(preparing.isCompleted)
+            vm.dispatch(AgentIntent.Stop)
+            runCurrent()
+            releaseRead.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("Build"), agent.prompts)
+            assertEquals(
+                "Test",
+                vm.state.value.queuedPrompts
+                    .single()
+                    .prompt,
+            )
+            assertTrue(vm.state.value.queuePaused)
+            vm.dispatch(AgentIntent.ResumeQueue)
+            vm.dispatch(AgentIntent.ResumeQueue)
+            runCurrent()
+            assertEquals(listOf("Build", "Test"), agent.prompts)
+        }
+
+    @Test
+    fun unacknowledgedStopDoesNotLeaveTheQueueRunnerStuck() =
+        runTest {
+            val agent = HeldPromptTransport(true, holdSecondPrompt = true)
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            runCurrent()
+            vm.dispatch(AgentIntent.Send("Test"))
+            vm.dispatch(AgentIntent.Send("Document"))
+            runCurrent()
+            agent.release.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("Build", "Test"), agent.prompts)
+            vm.dispatch(AgentIntent.Stop)
+            runCurrent()
+            advanceTimeBy(5_001)
+            runCurrent()
+            assertFalse(vm.state.value.isStreaming)
+            assertTrue(vm.state.value.queuePaused)
+            assertEquals(
+                "Document",
+                vm.state.value.queuedPrompts
+                    .single()
+                    .prompt,
+            )
+            vm.dispatch(AgentIntent.ResumeQueue)
+            runCurrent()
+            assertEquals(listOf("Build", "Test", "Document"), agent.prompts)
+            assertTrue(
+                vm.state.value.queuedPrompts
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun movingASteeringMessageBackDisarmsItsPendingCancellation() =
+        runTest {
+            val agent = HeldPromptTransport(true)
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            runCurrent()
+            agent.tool("in_progress", update = false)
+            runCurrent()
+            vm.dispatch(AgentIntent.Send("Test"))
+            vm.dispatch(AgentIntent.Steer("Change approach"))
+            runCurrent()
+            vm.dispatch(
+                AgentIntent.MoveQueuedPrompt(
+                    vm.state.value.queuedPrompts
+                        .first()
+                        .id,
+                    earlier = false,
+                ),
+            )
+            runCurrent()
+            agent.tool("completed", update = true)
+            runCurrent()
+            assertEquals(0, agent.cancels)
+            assertTrue(
+                vm.state.value.queuedPrompts
+                    .none { it.steer },
+            )
+            agent.release.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("Build", "Test", "Change approach"), agent.prompts)
         }
 
     private fun viewModel(

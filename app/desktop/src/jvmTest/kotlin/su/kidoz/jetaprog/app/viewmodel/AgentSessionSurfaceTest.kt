@@ -268,7 +268,7 @@ class AgentSessionSurfaceTest {
         assertEquals(before.permissions, current.permissions)
         assertEquals(before.composerInput, current.composerInput)
         assertEquals(before.composerAttachments, current.composerAttachments)
-        assertEquals(before.queuedPrompt, current.queuedPrompt)
+        assertEquals(before.queuedPrompts, current.queuedPrompts)
         assertEquals(before.goal, current.goal)
         assertEquals(before.commands, current.commands)
     }

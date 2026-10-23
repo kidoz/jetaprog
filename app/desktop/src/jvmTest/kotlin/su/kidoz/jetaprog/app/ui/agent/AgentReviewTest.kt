@@ -40,9 +40,9 @@ class AgentReviewTest {
                         ),
                 ),
             )
-        val files = reviewFiles(turns)
+        val files = reviewFiles(turns, mapOf("/proj/src/Reader.kt" to ReviewDelta(2, 1)))
         assertEquals(listOf("/proj/src/Reader.kt", "/proj/src/Writer.kt"), files.map { it.key })
-        assertEquals(3, files[0].added)
+        assertEquals(2, files[0].added)
         assertEquals(1, files[0].removed)
         assertEquals(listOf("a"), files[0].pendingBlockIds)
         assertNull(files[0].statusLabel)
@@ -62,7 +62,7 @@ class AgentReviewTest {
                     ),
                 ),
             )
-        assertEquals("Accepted", accepted.single().statusLabel)
+        assertEquals("Kept", accepted.single().statusLabel)
         val dismissed =
             reviewFiles(
                 listOf(
@@ -73,7 +73,27 @@ class AgentReviewTest {
                     ),
                 ),
             )
-        assertEquals("Dismissed", dismissed.single().statusLabel)
+        assertEquals("Reverted", dismissed.single().statusLabel)
+    }
+
+    @Test
+    fun netCountsExcludeUnchangedInteriorLinesAndHandleFileLifecycle() {
+        assertEquals(ReviewDelta(2, 2), netReviewDelta("a\nstable\nb\n", "x\nstable\ny\n"))
+        assertEquals(ReviewDelta(0, 0), netReviewDelta("same\n", "same\n"))
+        assertEquals(ReviewDelta(2, 0), netReviewDelta(null, "a\nb\n"))
+        assertEquals(ReviewDelta(0, 2), netReviewDelta("a\nb\n", null))
+        assertEquals(ReviewDelta(0, 0), netReviewDelta(null, ""))
+        assertEquals(ReviewDelta(1, 1), netReviewDelta("line", "line\n"))
+        assertNull(netReviewDelta("a\n".repeat(1001), "b\n".repeat(1001)))
+    }
+
+    @Test
+    fun fragmentOnlyDiffsNeverPretendToBeNetTotals() {
+        val turns = listOf(Turn.Agent("agent", "", listOf(diff("a", "/proj/a", "", 9, 7))))
+        val file = reviewFiles(turns).single()
+        assertNull(file.added)
+        assertNull(file.removed)
+        assertEquals(1, AgentUiState(turns = turns).sessionChanges.size)
     }
 
     private fun diff(

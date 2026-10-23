@@ -100,6 +100,17 @@ private class GoalTransport(
         )
     }
 
+    suspend fun command(exitCode: Int? = 0) {
+        update(
+            """{"sessionUpdate":"tool_call","toolCallId":"run","title":"Test","kind":"execute","status":"in_progress","rawInput":{"command":"./gradlew test"}}""",
+        )
+        val raw = exitCode?.let { ""","rawOutput":{"exitCode":$it}""" }.orEmpty()
+        update(
+            """{"sessionUpdate":"tool_call_update","toolCallId":"run","status":"completed","content":[{"type":"content","content":{"type":"text","text":"BUILD SUCCESSFUL"}}]$raw}""",
+        )
+        update("""{"sessionUpdate":"tool_call_update","toolCallId":"run","title":"Test finished"}""")
+    }
+
     private suspend fun update(body: String) {
         inbound.send(
             """{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":$body}}""",
@@ -160,7 +171,7 @@ class AgentSessionGoalTest {
     }
 
     @Test
-    fun aConclusiveReplyContinuesAndACitedFileMeetsTheGoal() =
+    fun aConclusiveReplyContinuesAndASuccessfulCommandMeetsTheGoal() =
         runTest {
             val unmet =
                 GoalTransport(holdFrom = 3) { count, agent ->
@@ -197,8 +208,14 @@ class AgentSessionGoalTest {
             val met =
                 GoalTransport { count, agent ->
                     when (count) {
-                        1 -> agent.diff()
-                        2 -> agent.message("GOAL_MET: Reader.kt")
+                        1 -> {
+                            agent.diff()
+                            agent.command()
+                        }
+
+                        2 -> {
+                            agent.message("GOAL_MET: BUILD SUCCESSFUL")
+                        }
                     }
                 }
             val metModel = model(met)
@@ -225,6 +242,64 @@ class AgentSessionGoalTest {
                     .single()
                     .goal
                     ?.status,
+            )
+        }
+
+    @Test
+    fun completedCommandsExposeExitStatusAndBecomeStaleAfterEdits() =
+        runTest {
+            val agent = GoalTransport { _, peer -> peer.command() }
+            val viewModel = model(agent)
+            connect(viewModel)
+            viewModel.dispatch(AgentIntent.Send("Run tests"))
+            runCurrent()
+            val state = viewModel.state.value
+            assertEquals(
+                su.kidoz.jetaprog.app.ui.agent.CheckStatus.PASSED,
+                su.kidoz.jetaprog.app.ui.agent
+                    .agentChecks(state.turns, state.workspaceRevision, false)
+                    .single()
+                    .status,
+            )
+            viewModel.invalidateCheckEvidence()
+            assertEquals(
+                su.kidoz.jetaprog.app.ui.agent.CheckStatus.STALE,
+                su.kidoz.jetaprog.app.ui.agent
+                    .agentChecks(
+                        state.turns,
+                        viewModel.state.value.workspaceRevision,
+                        false,
+                    ).single()
+                    .status,
+            )
+        }
+
+    @Test
+    fun aFilenameOrLaunchAcknowledgementPausesInsteadOfCompletingAGoal() =
+        runTest {
+            val agent =
+                GoalTransport { count, peer ->
+                    if (count == 1) {
+                        peer.diff()
+                        peer.command(exitCode = null)
+                    } else {
+                        peer.message("GOAL_MET: Reader.kt")
+                    }
+                }
+            val viewModel = model(agent)
+            connect(viewModel)
+            viewModel.dispatch(AgentIntent.Send("/goal Make tests pass"))
+            runCurrent()
+            assertEquals(2, agent.prompts.size)
+            assertEquals(
+                AgentGoalStatus.PAUSED,
+                viewModel.state.value.goal
+                    ?.status,
+            )
+            assertTrue(
+                viewModel.state.value.goalNotice
+                    .orEmpty()
+                    .contains("unverified"),
             )
         }
 
@@ -257,7 +332,10 @@ class AgentSessionGoalTest {
             runCurrent()
 
             assertNull(runningModel.state.value.goal)
-            assertNull(runningModel.state.value.queuedPrompt)
+            assertNull(
+                runningModel.state.value.queuedPrompts
+                    .firstOrNull(),
+            )
             assertEquals(GOAL_BUSY_NOTICE, runningModel.state.value.goalNotice)
             assertEquals(1, running.prompts.size)
             running.allow()
@@ -275,7 +353,8 @@ class AgentSessionGoalTest {
             runCurrent()
             assertEquals(
                 "Also docs",
-                viewModel.state.value.queuedPrompt
+                viewModel.state.value.queuedPrompts
+                    .firstOrNull()
                     ?.prompt,
             )
 

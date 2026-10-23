@@ -184,8 +184,6 @@ internal fun AgentSurfaceContent(
         AgentHeader(state, dispatch, checkoutLabel, onSwitchCheckout, layoutDocked, mirrorLayout)
         if (state.connection == AgentConnection.ERROR) {
             AgentConnectionError(state, dispatch)
-        } else if (state.error != null) {
-            AgentStatusMessage(state.error.orEmpty())
         }
         state.restoration?.let { AgentRestorationNotice(it) }
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -205,10 +203,18 @@ internal fun AgentSurfaceContent(
                 if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
                 if (state.reviewVisible) {
                     ReviewCard(
-                        files = reviewFiles(state.turns),
+                        files = reviewFiles(state.turns, state.reviewCounts, state.reviewConflicts),
                         onAccept = { key -> dispatch(AgentIntent.AcceptReviewFile(key)) },
                         onDismiss = { key -> dispatch(AgentIntent.DismissReviewFile(key)) },
                         onClose = { dispatch(AgentIntent.HideReview) },
+                        onOpen = { path ->
+                            state.turns
+                                .filterIsInstance<Turn.Agent>()
+                                .flatMap { it.blocks }
+                                .filterIsInstance<Block.Diff>()
+                                .firstOrNull { it.absolutePath == path }
+                                ?.let { dispatch(AgentIntent.OpenDiff(it.id)) }
+                        },
                         modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
                     )
                 }
@@ -216,6 +222,8 @@ internal fun AgentSurfaceContent(
                 if (!reviewNotice.isNullOrBlank()) AgentStatusMessage(reviewNotice)
                 val worktreeNotice = state.worktreeNotice
                 if (!worktreeNotice.isNullOrBlank()) AgentStatusMessage(worktreeNotice)
+                val agentNotice = state.agentNotice
+                if (!agentNotice.isNullOrBlank()) AgentStatusMessage(agentNotice)
                 if (state.plan.isNotEmpty()) {
                     PlanCard(
                         steps = state.plan,
@@ -232,6 +240,14 @@ internal fun AgentSurfaceContent(
             }
             if (showRail) SessionChangesRail(state, dispatch)
         }
+        val checks = agentChecks(state.turns, state.workspaceRevision, state.isStreaming, state.hasUnsavedEdits)
+        if (checks.isNotEmpty() || state.goal != null || state.turns.isEmpty()) {
+            AgentChecksSection(
+                checks = checks,
+                workspace = state.workspacePath.ifBlank { checkoutLabel ?: "Current workspace" },
+            )
+        }
+        AgentAttentionSection(agentAttention(state.turns, state.isStreaming, state.error, state.interrupted), dispatch)
         AgentPresenceBar(state, dispatch)
         AgentComposer(state, dispatch)
     }
@@ -364,10 +380,11 @@ private fun AgentHeader(
                         isStreaming = state.isStreaming,
                         error = state.error,
                         now = System.currentTimeMillis(),
+                        interrupted = state.interrupted,
                     ),
                 offsetY = headerHeightPx,
                 onRestore = { id ->
-                    dispatch(AgentIntent.RestoreSession(id))
+                    if (id != state.activeRecordId) dispatch(AgentIntent.RestoreSession(id))
                     dispatch(AgentIntent.HideHistory)
                 },
                 onDeleteRequest = { pendingDelete = it },
@@ -722,8 +739,19 @@ private fun AgentPresenceBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
-        PulsingDot()
-        Text(presence.action, color = LocalIntelliJColors.current.editorIdentifier, fontSize = 12.sp)
+        val attention = agentAttention(state.turns, state.isStreaming, state.error, state.interrupted)
+        if (attention.approval == null) PulsingDot()
+        Text(
+            if (attention.approval !=
+                null
+            ) {
+                "Waiting"
+            } else {
+                presence.action
+            },
+            color = LocalIntelliJColors.current.editorIdentifier,
+            fontSize = 12.sp,
+        )
         presence.fileName?.let { ContextChip(it) }
         Text(
             text = "· ${formatElapsed(elapsed)}",
@@ -790,7 +818,7 @@ private fun AgentComposer(
                     ).padding(Spacing.md.dp),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
-            state.queuedPrompt?.let { QueuedPromptChip(it, dispatch) }
+            AgentQueueSection(state.queuedPrompts, state.queuePaused, dispatch)
             if (state.composerAttachments.isNotEmpty()) {
                 AttachmentRow(state.composerAttachments, dispatch)
             }
@@ -802,7 +830,12 @@ private fun AgentComposer(
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (input.isEmpty()) {
                     Text(
-                        text = "Ask the agent to build a feature, refactor, explain code, or run the project…",
+                        text =
+                            if (state.isStreaming || state.queuedPrompts.isNotEmpty()) {
+                                "Enter queues a follow-up. Ctrl/Cmd+Enter steers next…"
+                            } else {
+                                "Ask the agent to build a feature, refactor, explain code, or run the project…"
+                            },
                         color = LocalIntelliJColors.current.textMuted,
                         fontSize = 13.sp,
                     )
@@ -850,6 +883,9 @@ private fun AgentComposer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
+                if (state.agent != null) {
+                    AgentPickerChip(state, dispatch)
+                }
                 if (state.mode != null) {
                     ModePickerChip(state, dispatch)
                 }
@@ -862,6 +898,7 @@ private fun AgentComposer(
                         input.isNotBlank() && state.connection != AgentConnection.CONNECTING &&
                             state.restoration != SessionRestoration.Loading,
                     onClick = send,
+                    label = if (state.isStreaming || state.queuedPrompts.isNotEmpty()) "Queue message" else "Send",
                 )
             }
         }
@@ -1024,46 +1061,59 @@ private fun AttachmentChip(
 }
 
 @Composable
-private fun QueuedPromptChip(
-    queued: QueuedFollowUp,
+private fun AgentPickerChip(
+    state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .background(LocalIntelliJColors.current.background)
-                .border(
-                    1.dp,
-                    LocalIntelliJColors.current.agentCardBorder,
-                    RoundedCornerShape(Dimensions.cornerRadiusSmall.dp),
-                ).padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
-    ) {
-        Text(
-            text = if (queued.steer) "Steering" else "Queued",
-            color = if (queued.steer) LocalIntelliJColors.current.accent else LocalIntelliJColors.current.textMuted,
-            fontSize = 11.sp,
-        )
-        Text(
-            text = queued.prompt,
-            color = LocalIntelliJColors.current.textPrimary,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Icon(
-            Icons.Default.Close,
-            contentDescription = "Remove queued prompt",
-            tint = LocalIntelliJColors.current.textMuted,
+    val agent = state.agent ?: return
+    var open by remember { mutableStateOf(false) }
+    var anchorHeightPx by remember { mutableStateOf(0) }
+    val canSwitch = state.availableAgents.size > 1
+    Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
+        Row(
             modifier =
                 Modifier
-                    .size(Dimensions.iconSm.dp)
-                    .clickable { dispatch(AgentIntent.RemoveQueuedPrompt) },
-        )
+                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                    .background(LocalIntelliJColors.current.background)
+                    .border(
+                        1.dp,
+                        LocalIntelliJColors.current.agentCardBorder,
+                        RoundedCornerShape(Dimensions.cornerRadius.dp),
+                    ).clickable(enabled = canSwitch) {
+                        dispatch(AgentIntent.RefreshAgents)
+                        open = true
+                    }.padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
+        ) {
+            Text(agent.name, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
+            if (canSwitch) {
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Agent",
+                    tint = LocalIntelliJColors.current.textMuted,
+                    modifier = Modifier.size(Dimensions.iconSm.dp),
+                )
+            }
+        }
+        PopupChromeMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            offsetY = anchorHeightPx,
+        ) {
+            state.availableAgents.forEach { option ->
+                PopupListRow(
+                    selected = option.id == agent.id,
+                    height = Dimensions.popupRowHeightCompact.dp,
+                    onClick = {
+                        dispatch(AgentIntent.SelectAgent(option.id))
+                        open = false
+                    },
+                ) {
+                    Text(option.name, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+                }
+            }
+        }
     }
 }
 
@@ -1221,7 +1271,7 @@ private fun SessionChangesRail(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
                 PillButton(
-                    text = "Accept all",
+                    text = "Keep all",
                     icon = null,
                     background = LocalIntelliJColors.current.buttonBackground,
                     foreground = LocalIntelliJColors.current.textPrimary,
@@ -1282,12 +1332,12 @@ private fun SessionChangeRow(change: SessionFileChange) {
             modifier = Modifier.weight(1f, fill = false),
         )
         Spacer(Modifier.weight(1f))
-        if (change.added >
+        if ((change.added ?: 0) >
             0
         ) {
             Text("+${change.added}", color = LocalIntelliJColors.current.diffAddedGutter, fontSize = 11.sp)
         }
-        if (change.removed >
+        if ((change.removed ?: 0) >
             0
         ) {
             Text("−${change.removed}", color = LocalIntelliJColors.current.diffRemovedText, fontSize = 11.sp)
@@ -1457,7 +1507,9 @@ private fun SessionStatusColor(status: AgentSessionStatus): Color {
     val colors = LocalIntelliJColors.current
     return when (status) {
         AgentSessionStatus.RUNNING -> colors.accent
-        AgentSessionStatus.NEEDS_YOU -> colors.warning
+        AgentSessionStatus.NEEDS_YOU, AgentSessionStatus.WAITING_APPROVAL -> colors.warning
+        AgentSessionStatus.REVIEW_READY -> colors.accent
+        AgentSessionStatus.INTERRUPTED -> colors.textSecondary
         AgentSessionStatus.FAILED -> colors.error
         AgentSessionStatus.IDLE -> colors.textMuted
     }

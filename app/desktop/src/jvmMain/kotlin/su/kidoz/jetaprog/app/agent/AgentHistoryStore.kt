@@ -54,6 +54,17 @@ public data class AgentMessageCheckpoint(
     val commandRan: Boolean = false,
 )
 
+/** Pending file review metadata. File contents and executable approvals are not replayed. */
+@Serializable
+public data class AgentPendingReview(
+    /** Absolute file path used to open the review. */
+    val path: String,
+    /** File name shown in the review. */
+    val fileName: String,
+    /** Parent path shown under the file name. */
+    val parent: String,
+)
+
 /**
  * A persisted agent conversation.
  *
@@ -73,6 +84,8 @@ public data class AgentMessageCheckpoint(
  * @property goal The session objective, when one was set. Null for older records.
  * @property checkpoints File baselines for each user message, oldest first.
  * @property checkpointDisk File states a later restore still recognizes as the agent's writes.
+ * @property agentId The agent that owned this conversation. Null for records saved before the
+ *   agent picker. Those chats launch Claude.
  */
 @Serializable
 public data class AgentSessionRecord(
@@ -88,13 +101,20 @@ public data class AgentSessionRecord(
     val goal: AgentGoal? = null,
     val checkpoints: List<AgentMessageCheckpoint> = emptyList(),
     val checkpointDisk: List<AgentCheckpointFile> = emptyList(),
+    val agentId: String? = null,
+    /** Files still requiring review; empty for records predating persistent review. */
+    val pendingReviews: List<AgentPendingReview> = emptyList(),
+    /** Last visible failure, retained when reopening the conversation. */
+    val failure: String? = null,
+    /** Whether execution stopped before normal completion, independently of pending review. */
+    val interrupted: Boolean = false,
 )
 
 /**
  * Settled outcome stored with a saved session.
  *
- * Running and needs-you are live states of the open chat. A saved row is idle
- * unless that save recorded a failure.
+ * Running and waiting-for-approval are live states. Saved rows retain pending review,
+ * interruption, and failure; they never imply that an old permission request is still executable.
  */
 @Serializable
 public enum class AgentSessionStatus {
@@ -106,6 +126,15 @@ public enum class AgentSessionStatus {
 
     /** The open chat is waiting for an approval or a diff review. */
     NEEDS_YOU,
+
+    /** A live permission request requires a user decision. */
+    WAITING_APPROVAL,
+
+    /** Execution has ended and files still need review. */
+    REVIEW_READY,
+
+    /** The turn stopped before normal completion. */
+    INTERRUPTED,
 
     /** The last turn failed. */
     FAILED,

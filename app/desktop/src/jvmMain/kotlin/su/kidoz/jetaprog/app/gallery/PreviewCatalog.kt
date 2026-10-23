@@ -160,3 +160,47 @@ private fun RunOutputPreview() {
         )
     }
 }
+
+// Entry point used by the IDE preview renderer.
+@Suppress("UnusedPrivateMember")
+@Preview
+@Composable
+private fun AgentChecksPreview() {
+    JetaProgTheme {
+        su.kidoz.jetaprog.app.ui.agent
+            .AgentChecksSection(emptyList(), "/project")
+    }
+}
+
+@Suppress("UnusedPrivateMember")
+@Preview
+@Composable
+private fun AgentAttentionPreview() {
+    JetaProgTheme {
+        su.kidoz.jetaprog.app.ui.agent.AgentAttentionSection(
+            su.kidoz.jetaprog.app.ui.agent.AgentAttention(
+                su.kidoz.jetaprog.app.ui.agent.AgentExecution.INTERRUPTED,
+                approval = null,
+                pendingFiles = 2,
+                failure = null,
+            ),
+            dispatch = {},
+        )
+    }
+}
+
+@Suppress("UnusedPrivateMember")
+@Preview
+@Composable
+private fun AgentQueuePreview() {
+    JetaProgTheme {
+        su.kidoz.jetaprog.app.ui.agent.AgentQueueSection(
+            listOf(
+                su.kidoz.jetaprog.app.ui.agent
+                    .QueuedFollowUp("Add regression tests", emptyList(), id = "preview"),
+            ),
+            paused = true,
+            dispatch = {},
+        )
+    }
+}

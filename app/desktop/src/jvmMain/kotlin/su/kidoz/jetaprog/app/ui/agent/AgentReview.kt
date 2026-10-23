@@ -1,5 +1,7 @@
 package su.kidoz.jetaprog.app.ui.agent
 
+import androidx.compose.runtime.Immutable
+
 /** Slash name of the read-only review command. */
 internal const val REVIEW_COMMAND: String = "review"
 
@@ -9,30 +11,31 @@ internal const val REVIEW_COMMAND_DESCRIPTION: String = "Review the diff"
 /** Shown when `/review` finds no file changes in this session. */
 internal const val REVIEW_EMPTY_NOTICE: String = "No session changes to review."
 
-/** Shown when Accept or Dismiss is used while a turn is still running. */
-internal const val REVIEW_BUSY_NOTICE: String = "Finish the running task before accepting or dismissing changes."
+/** Shown when Keep or Revert is used while a turn is still running. */
+internal const val REVIEW_BUSY_NOTICE: String = "Finish the running task before keeping or reverting changes."
 
 /**
  * One file in the session review.
  *
- * Counts add every hunk. [pendingBlockIds] are the hunks the user can still accept or dismiss.
+ * Counts describe the net recorded change when full-file baselines are available.
  *
  * @property key Stable identity, the absolute path when the diff has one.
  * @property fileName The file's display name.
  * @property pathLabel The parent path shown under the name.
- * @property added Added lines across the file's hunks.
- * @property removed Removed lines across the file's hunks.
- * @property pendingBlockIds Hunks that are still proposed, latest first so a revert undoes the last write first.
- * @property statusLabel Settled text such as Accepted, or null while a decision is still open.
+ * @property added Net added lines, or null without a reliable baseline.
+ * @property removed Net removed lines, or null without a reliable baseline.
+ * @property pendingBlockIds Pending diff IDs; each action applies to all pending changes in this file.
+ * @property statusLabel Settled text such as Kept, or null while a decision is still open.
  */
 internal data class ReviewFile(
     val key: String,
     val fileName: String,
     val pathLabel: String,
-    val added: Int,
-    val removed: Int,
+    val added: Int?,
+    val removed: Int?,
     val pendingBlockIds: List<String>,
     val statusLabel: String?,
+    val conflict: String? = null,
 )
 
 /**
@@ -43,7 +46,11 @@ internal data class ReviewFile(
 internal fun parseReviewCommand(input: String): Boolean = exactSlashCommand(input, REVIEW_COMMAND)
 
 /** Groups the session's diffs by file, in the order the files first appeared. */
-internal fun reviewFiles(turns: List<Turn>): List<ReviewFile> {
+internal fun reviewFiles(
+    turns: List<Turn>,
+    counts: Map<String, ReviewDelta> = emptyMap(),
+    conflicts: Map<String, String> = emptyMap(),
+): List<ReviewFile> {
     val grouped = linkedMapOf<String, MutableList<Block.Diff>>()
     turns.filterIsInstance<Turn.Agent>().forEach { turn ->
         turn.blocks.filterIsInstance<Block.Diff>().forEach { diff ->
@@ -59,14 +66,15 @@ internal fun reviewFiles(turns: List<Turn>): List<ReviewFile> {
             key = key,
             fileName = first.fileName.ifBlank { key.substringAfterLast('/').substringAfterLast('\\') },
             pathLabel = first.path,
-            added = hunks.sumOf { it.added },
-            removed = hunks.sumOf { it.removed },
+            added = counts[key]?.added,
+            removed = counts[key]?.removed,
             pendingBlockIds = pending,
+            conflict = conflicts[key],
             statusLabel =
                 when {
                     pending.isNotEmpty() -> null
-                    decisions == setOf(DiffDecision.ACCEPTED) -> "Accepted"
-                    decisions == setOf(DiffDecision.REJECTED) -> "Dismissed"
+                    decisions == setOf(DiffDecision.ACCEPTED) -> "Kept"
+                    decisions == setOf(DiffDecision.REJECTED) -> "Reverted"
                     else -> "Reviewed"
                 },
         )
@@ -81,3 +89,57 @@ private fun exactSlashCommand(
     if (!trimmed.startsWith("/")) return false
     return trimmed.removePrefix("/").trim().equals(name, ignoreCase = true)
 }
+
+/** Net line totals from the first recorded file contents to the latest recorded contents. */
+@Immutable
+public data class ReviewDelta(
+    /** Lines inserted relative to the recorded baseline. */
+    val added: Int,
+    /** Lines removed relative to the recorded baseline. */
+    val removed: Int,
+)
+
+/** Exact line totals using bounded LCS; oversized comparisons remain explicitly unavailable. */
+internal fun netReviewDelta(
+    before: String?,
+    after: String?,
+): ReviewDelta? {
+    val old = reviewLines(before)
+    val new = reviewLines(after)
+    var prefix = 0
+    while (prefix < minOf(old.size, new.size) && old[prefix] == new[prefix]) prefix++
+    var suffix = 0
+    while (suffix < minOf(old.size, new.size) - prefix &&
+        old[old.lastIndex - suffix] == new[new.lastIndex - suffix]
+    ) {
+        suffix++
+    }
+    val a = old.subList(prefix, old.size - suffix)
+    val b = new.subList(prefix, new.size - suffix)
+    if (a.size.toLong() * b.size > MAX_REVIEW_COMPARISONS) return null
+    val lengths = IntArray(b.size + 1)
+    for (line in a) {
+        var diagonal = 0
+        b.forEachIndexed { index, other ->
+            val previous = lengths[index + 1]
+            lengths[index + 1] = if (line == other) diagonal + 1 else maxOf(lengths[index], previous)
+            diagonal = previous
+        }
+    }
+    val common = lengths.last()
+    return ReviewDelta(added = b.size - common, removed = a.size - common)
+}
+
+private fun reviewLines(text: String?): List<String> {
+    if (text.isNullOrEmpty()) return emptyList()
+    val lines = text.split('\n')
+    return lines.mapIndexedNotNull { index, line ->
+        when {
+            index < lines.lastIndex -> "$line\n"
+            line.isNotEmpty() -> line
+            else -> null
+        }
+    }
+}
+
+private const val MAX_REVIEW_COMPARISONS: Long = 1_000_000

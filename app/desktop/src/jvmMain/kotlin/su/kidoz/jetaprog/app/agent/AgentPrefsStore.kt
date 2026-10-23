@@ -12,11 +12,13 @@ import su.kidoz.jetaprog.platform.filesystem.FileSystem
  * @property permissions Per-kind authorization policies.
  * @property modelId The model the user last selected, if any.
  * @property docked Whether the surface was last docked.
+ * @property agentId The agent a new chat launches. Null for preferences saved before the picker.
  */
 public data class AgentPrefs(
     val permissions: Map<PermissionKind, PermissionPolicy>,
     val modelId: String?,
     val docked: Boolean,
+    val agentId: String? = null,
 )
 
 @Serializable
@@ -26,6 +28,7 @@ private data class AgentPrefsDto(
     val run: String = PermissionPolicy.ASK.name,
     val modelId: String? = null,
     val docked: Boolean = false,
+    val agentId: String? = null,
 )
 
 /**
@@ -65,6 +68,7 @@ public class AgentPrefsStore(
                 ),
             modelId = dto.modelId,
             docked = dto.docked,
+            agentId = dto.agentId,
         )
     }
 
@@ -79,6 +83,7 @@ public class AgentPrefsStore(
                     run = prefs.permissions.policyName(PermissionKind.RUN),
                     modelId = prefs.modelId,
                     docked = prefs.docked,
+                    agentId = prefs.agentId,
                 )
             fileSystem.writeText(file, json.encodeToString(AgentPrefsDto.serializer(), dto))
         }

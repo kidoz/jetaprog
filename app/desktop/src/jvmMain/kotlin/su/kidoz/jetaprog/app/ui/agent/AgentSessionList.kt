@@ -34,43 +34,28 @@ internal data class SessionSummary(
 /**
  * Summarizes the diffs and status of a conversation.
  *
- * [live] is for the open chat. A save passes false: the stored row is Idle, or
- * Failed when [error] is set, because a reopened transcript has no running turn.
+ * [live] permits running permissions. Saved sessions retain review and failures,
+ * and an unfinished turn becomes interrupted instead of appearing to keep running.
  */
 internal fun summarizeSession(
     turns: List<Turn>,
     isStreaming: Boolean,
     error: String?,
     live: Boolean,
+    interrupted: Boolean = false,
 ): SessionSummary {
     val blocks = turns.filterIsInstance<Turn.Agent>().flatMap { it.blocks }
     val diffs = blocks.filterIsInstance<Block.Diff>()
-    val needsApproval = blocks.filterIsInstance<Block.Approval>().any { !it.resolved }
-    val needsReview = diffs.any { it.decision == DiffDecision.PROPOSED }
+    val attention = agentAttention(turns, isStreaming, error, interrupted)
     val status =
-        when {
-            !live -> {
-                if (error.isNullOrBlank()) AgentSessionStatus.IDLE else AgentSessionStatus.FAILED
-            }
-
-            needsApproval -> {
-                AgentSessionStatus.NEEDS_YOU
-            }
-
-            isStreaming -> {
-                AgentSessionStatus.RUNNING
-            }
-
-            !error.isNullOrBlank() -> {
-                AgentSessionStatus.FAILED
-            }
-
-            needsReview -> {
-                AgentSessionStatus.NEEDS_YOU
-            }
-
-            else -> {
-                AgentSessionStatus.IDLE
+        if (live) {
+            attention.status
+        } else {
+            when {
+                !error.isNullOrBlank() -> AgentSessionStatus.FAILED
+                isStreaming || interrupted -> AgentSessionStatus.INTERRUPTED
+                attention.pendingFiles > 0 -> AgentSessionStatus.REVIEW_READY
+                else -> AgentSessionStatus.IDLE
             }
         }
     return SessionSummary(
@@ -121,6 +106,9 @@ internal fun sessionStatusLabel(status: AgentSessionStatus): String =
         AgentSessionStatus.IDLE -> "Idle"
         AgentSessionStatus.RUNNING -> "Running"
         AgentSessionStatus.NEEDS_YOU -> "Needs you"
+        AgentSessionStatus.WAITING_APPROVAL -> "Waiting for approval"
+        AgentSessionStatus.REVIEW_READY -> "Review ready"
+        AgentSessionStatus.INTERRUPTED -> "Interrupted"
         AgentSessionStatus.FAILED -> "Failed"
     }
 
@@ -154,9 +142,10 @@ internal fun sessionListRows(
     isStreaming: Boolean,
     error: String?,
     now: Long,
+    interrupted: Boolean = false,
 ): List<SessionListRow> {
     val liveTitle = sessionTitle(turns)
-    val live = summarizeSession(turns, isStreaming, error, live = true)
+    val live = summarizeSession(turns, isStreaming, error, live = true, interrupted = interrupted)
     val listed =
         history.map { record ->
             val current = liveTitle != null && record.id == activeRecordId

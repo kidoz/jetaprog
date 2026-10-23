@@ -2,9 +2,11 @@ package su.kidoz.jetaprog.app.ui.agent
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
@@ -91,7 +93,7 @@ class AgentHistoryPopupUiTest {
             onNodeWithText("Fix the parser").assertIsDisplayed()
             onNodeWithText("Running · 5m").assertIsDisplayed()
             onNodeWithText(sessionDiffCountLabel(4, 1)!!).assertIsDisplayed()
-            onRoot().saveUiArtifacts("agent-session-list")
+            onNode(isRoot() and hasAnyDescendant(hasText("Fix the parser"))).saveUiArtifacts("agent-session-list")
         }
 
     private fun androidx.compose.ui.test.ComposeUiTest.show(

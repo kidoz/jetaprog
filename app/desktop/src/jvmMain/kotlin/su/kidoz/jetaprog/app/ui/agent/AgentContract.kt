@@ -109,6 +109,18 @@ public data class ModeOption(
 )
 
 /**
+ * An agent the composer can launch.
+ *
+ * @property id Stable id stored with the chat and the project preference.
+ * @property name Label shown on the agent chip.
+ */
+@Immutable
+public data class AgentOption(
+    val id: String,
+    val name: String,
+)
+
+/**
  * One step of the agent's current plan.
  *
  * A later plan update replaces the whole list. The step is not editable.
@@ -220,6 +232,8 @@ public data class QueuedFollowUp(
     val prompt: String,
     val attachments: List<ComposerAttachment>,
     val steer: Boolean = false,
+    /** Stable identity for queue actions, independent of the prompt text or position. */
+    val id: String,
 )
 
 /**
@@ -335,6 +349,10 @@ public sealed interface Block {
      * @property status Current visual status.
      * @property result The result body shown when expanded, if any.
      * @property expanded Whether the result body is shown.
+     * @property command Full command when supplied as a structured input, for evidence inspection.
+     * @property exitCode Structured process exit code reported by the adapter, when available.
+     * @property checkRevision Workspace revision at command start; null for replayed or legacy tools.
+     * @property startedAtEpochMillis Local time the command was first observed.
      */
     @Immutable
     public data class Tool(
@@ -345,6 +363,10 @@ public sealed interface Block {
         val status: ToolStatus,
         val result: String?,
         val expanded: Boolean,
+        val command: String? = null,
+        val exitCode: Int? = null,
+        val checkRevision: Long? = null,
+        val startedAtEpochMillis: Long? = null,
     ) : Block
 
     /**
@@ -357,6 +379,7 @@ public sealed interface Block {
      * @property lines The rendered diff hunk.
      * @property decision The user's decision.
      * @property absolutePath The absolute path used to apply/revert the change.
+     * @property newText The latest agent-supplied fragment, used to reopen review when an edit changes.
      * @property oldText The agent-supplied prior text for this hunk. Display only:
      *   reverts restore an IDE-side snapshot because ACP diffs are not whole files.
      */
@@ -371,6 +394,9 @@ public sealed interface Block {
         val decision: DiffDecision,
         val absolutePath: String,
         val oldText: String?,
+        val newText: String? = null,
+        /** False for restored review metadata with no saved diff contents. */
+        val previewAvailable: Boolean = true,
     ) : Block
 
     /**
@@ -470,6 +496,9 @@ public enum class FileChangeState {
 
     /** The change was rejected and the file was restored. */
     REJECTED,
+
+    /** All changes were reviewed, with some kept and some reverted. */
+    REVIEWED,
 }
 
 /**
@@ -483,8 +512,8 @@ public enum class FileChangeState {
 @Immutable
 public data class SessionFileChange(
     val name: String,
-    val added: Int,
-    val removed: Int,
+    val added: Int?,
+    val removed: Int?,
     val state: FileChangeState,
 )
 
@@ -505,6 +534,9 @@ public data class Presence(
 /**
  * Immutable state of the agent surface.
  *
+ * @property hasUnsavedEdits Whether this checkout has editor changes absent from the command input on disk.
+ * @property workspacePath Checkout whose command evidence is displayed.
+ * @property workspaceRevision Monotonic revision used to invalidate command evidence after edits.
  * @property connection The agent connection lifecycle.
  * @property agentName The connected agent's reported name, if any.
  * @property turns The conversation, oldest first.
@@ -521,7 +553,7 @@ public data class Presence(
  * @property error The most recent error message, if any.
  * @property composerInput The current text in the composer input field.
  * @property composerAttachments Files and selections chips above the composer.
- * @property queuedPrompt The single follow-up waiting while a turn is running, if any.
+ * @property queuedPrompts Follow-ups in delivery order, each retaining its attached context.
  * @property mentionFiles Project files matching the `@` token being typed.
  * @property restoration The outcome or progress of restoring a saved conversation.
  * @property activeRecordId Id of the conversation open in this surface, when one has been claimed.
@@ -531,13 +563,21 @@ public data class Presence(
  * @property reviewVisible Whether the read-only review of this session's diffs is open.
  * @property reviewNotice Why `/review` or a review action could not be applied, if any.
  * @property worktreeNotice Why `/worktree` could not open a second session, if any.
+ * @property availableAgents Agents discovered on this machine, in picker order.
+ * @property agent The agent this chat is using, when one has been chosen.
+ * @property agentNotice Why the latest agent change was refused, or why a saved agent is missing.
  */
 @Immutable
 public data class AgentUiState(
+    val workspaceRevision: Long = 0,
+    val workspacePath: String = "",
+    val hasUnsavedEdits: Boolean = false,
     val connection: AgentConnection = AgentConnection.DISCONNECTED,
     val agentName: String? = null,
     val turns: List<Turn> = emptyList(),
     val isStreaming: Boolean = false,
+    /** The latest turn stopped before normal completion. Cleared when a new turn starts. */
+    val interrupted: Boolean = false,
     val presence: Presence? = null,
     val permissions: Map<PermissionKind, PermissionPolicy> =
         mapOf(
@@ -555,7 +595,9 @@ public data class AgentUiState(
     val error: String? = null,
     val composerInput: String = "",
     val composerAttachments: List<ComposerAttachment> = emptyList(),
-    val queuedPrompt: QueuedFollowUp? = null,
+    val queuedPrompts: List<QueuedFollowUp> = emptyList(),
+    /** Delivery is paused after Stop, failure, or an explicit pause. */
+    val queuePaused: Boolean = false,
     val mentionFiles: List<MentionMatch> = emptyList(),
     val restoration: SessionRestoration? = null,
     /** Persisted conversations, most recent first (loaded on History). */
@@ -570,30 +612,38 @@ public data class AgentUiState(
     val goalNotice: String? = null,
     /** Whether `/review` is showing this session's files. */
     val reviewVisible: Boolean = false,
+    /** Exact net counts for files with complete IDE-observed baselines. */
+    val reviewCounts: Map<String, ReviewDelta> = emptyMap(),
+    /** File-specific reasons a revert could not safely proceed. */
+    val reviewConflicts: Map<String, String> = emptyMap(),
     /** A short explanation for a refused review command or action. */
     val reviewNotice: String? = null,
     /** A short explanation for a refused worktree command. */
     val worktreeNotice: String? = null,
+    /** Agents whose launch command exists on this machine. */
+    val availableAgents: List<AgentOption> = emptyList(),
+    /** The agent launching this chat. */
+    val agent: AgentOption? = null,
+    /** A short explanation for a refused agent change, or a missing saved agent. */
+    val agentNotice: String? = null,
 ) {
     /** Files the agent changed in this session, for the session rail. */
     val sessionChanges: List<SessionFileChange>
         get() =
-            turns
-                .flatMap { turn -> (turn as? Turn.Agent)?.blocks.orEmpty() }
-                .filterIsInstance<Block.Diff>()
-                .map { diff ->
-                    SessionFileChange(
-                        name = diff.fileName,
-                        added = diff.added,
-                        removed = diff.removed,
-                        state =
-                            when (diff.decision) {
-                                DiffDecision.ACCEPTED -> FileChangeState.ACCEPTED
-                                DiffDecision.REJECTED -> FileChangeState.REJECTED
-                                DiffDecision.PROPOSED -> FileChangeState.PENDING
-                            },
-                    )
-                }
+            reviewFiles(turns, reviewCounts).map { file ->
+                SessionFileChange(
+                    name = file.fileName,
+                    added = file.added,
+                    removed = file.removed,
+                    state =
+                        when (file.statusLabel) {
+                            "Kept" -> FileChangeState.ACCEPTED
+                            "Reviewed" -> FileChangeState.REVIEWED
+                            "Reverted" -> FileChangeState.REJECTED
+                            else -> FileChangeState.PENDING
+                        },
+                )
+            }
 }
 
 /** User intents for the agent surface. */
@@ -601,8 +651,8 @@ public sealed interface AgentIntent {
     /**
      * Send a prompt, optionally with attached context file names.
      *
-     * While a turn is streaming, this stores one follow-up instead of starting a second turn.
-     * The follow-up is sent when the turn ends. Stop leaves it unsent.
+     * While a turn is streaming or a queue exists, append a follow-up with its current context.
+     * Active queues deliver in order. Stop pauses delivery and retains all unsent items.
      *
      * @property prompt The user's message.
      * @property context Names of attached context files, used when the composer has no chips.
@@ -617,7 +667,7 @@ public sealed interface AgentIntent {
      *
      * When a tool call is running, the turn is cancelled once that call finishes. When none is
      * running, the turn is cancelled immediately. The conversation stays. Stop leaves the
-     * follow-up unsent.
+     * follow-up unsent. Steering puts this message first and retains the previous queue.
      */
     public data class Steer(
         val prompt: String,
@@ -653,12 +703,12 @@ public sealed interface AgentIntent {
         val blockId: String,
     ) : AgentIntent
 
-    /** Accept the proposed diff with the given block id. */
+    /** Keep all pending changes in the file identified by this diff block. */
     public data class AcceptDiff(
         val blockId: String,
     ) : AgentIntent
 
-    /** Reject (and revert) the proposed diff with the given block id. */
+    /** Revert all pending changes in the file identified by this diff block, when safe. */
     public data class RejectDiff(
         val blockId: String,
     ) : AgentIntent
@@ -683,7 +733,7 @@ public sealed interface AgentIntent {
         val turnId: String,
     ) : AgentIntent
 
-    /** Accept all pending diffs in the current turn. */
+    /** Keep all pending file changes in this session. */
     public data object AcceptAll : AgentIntent
 
     /** Revert all pending diffs in the current turn. */
@@ -721,6 +771,19 @@ public sealed interface AgentIntent {
     public data class SetMode(
         val modeId: String,
     ) : AgentIntent
+
+    /**
+     * Launch [agentId] for a new chat.
+     *
+     * An idle chat is archived first. The composer draft, permission policies, and dock stay.
+     * A running turn keeps the current agent.
+     */
+    public data class SelectAgent(
+        val agentId: String,
+    ) : AgentIntent
+
+    /** Look again for installed agents. The open chat stays on its current agent. */
+    public data object RefreshAgents : AgentIntent
 
     /** Expand the docked surface to the full perspective. */
     public data object ExpandToPerspective : AgentIntent
@@ -762,7 +825,27 @@ public sealed interface AgentIntent {
     ) : AgentIntent
 
     /** Drop the queued follow-up so a later turn end does not send it. */
-    public data object RemoveQueuedPrompt : AgentIntent
+    public data class RemoveQueuedPrompt(
+        val id: String,
+    ) : AgentIntent
+
+    /** Pauses automatic delivery without stopping the current turn. */
+    public data object PauseQueue : AgentIntent
+
+    /** Resumes queued delivery, starting immediately when no turn is running. */
+    public data object ResumeQueue : AgentIntent
+
+    /** Replaces queued text while retaining its identity and attached context. */
+    public data class UpdateQueuedPrompt(
+        val id: String,
+        val prompt: String,
+    ) : AgentIntent
+
+    /** Moves a queued prompt by one position in the requested direction. */
+    public data class MoveQueuedPrompt(
+        val id: String,
+        val earlier: Boolean,
+    ) : AgentIntent
 
     /** Hold the session goal. A running turn is stopped so the loop does not continue. */
     public data object PauseGoal : AgentIntent
@@ -779,19 +862,22 @@ public sealed interface AgentIntent {
     /** Hide the session review card. */
     public data object HideReview : AgentIntent
 
+    /** Opens local file review without sending or clearing the composer. */
+    public data object ShowReview : AgentIntent
+
     /**
-     * Accept every still-proposed hunk of the reviewed file [key].
+     * Keep all pending changes of the reviewed file [key].
      *
-     * The review does not ask the agent to edit. Accept keeps the change the agent already wrote.
+     * Keep acknowledges the edits already on disk without writing to the file.
      */
     public data class AcceptReviewFile(
         val key: String,
     ) : AgentIntent
 
     /**
-     * Dismiss every still-proposed hunk of the reviewed file [key].
+     * Revert all pending changes of the reviewed file [key].
      *
-     * Dismiss reverts those hunks the same way Reject does on a diff card.
+     * Restoration requires saved original contents and no subsequent external or unsaved edits.
      */
     public data class DismissReviewFile(
         val key: String,

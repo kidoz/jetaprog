@@ -27,9 +27,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.adapter.EditorServiceBridge
+import su.kidoz.jetaprog.app.agent.AGENT_OTHER_BUSY_NOTICE
 import su.kidoz.jetaprog.app.agent.AgentCheckout
+import su.kidoz.jetaprog.app.agent.AgentChoice
 import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.GitAgentWorktreeLauncher
+import su.kidoz.jetaprog.app.agent.legacyClaudeLaunch
 import su.kidoz.jetaprog.app.build.WorkspaceBuildModelService
 import su.kidoz.jetaprog.app.command.CommandPaletteIntent
 import su.kidoz.jetaprog.app.command.CommandPaletteViewModel
@@ -53,6 +56,7 @@ import su.kidoz.jetaprog.app.refactoring.RenameOutcome
 import su.kidoz.jetaprog.app.refactoring.RenamePlan
 import su.kidoz.jetaprog.app.refactoring.RenamePreparation
 import su.kidoz.jetaprog.app.ui.agent.MentionMatch
+import su.kidoz.jetaprog.app.ui.agent.isCheckInput
 import su.kidoz.jetaprog.app.ui.navigation.NavigationIntent
 import su.kidoz.jetaprog.app.ui.navigation.NavigationViewModel
 import su.kidoz.jetaprog.app.ui.navigation.SearchMode
@@ -607,6 +611,9 @@ public class ProjectSession(
      */
     private var agentHostSlot: AgentSessionHost? = null
 
+    /** The agent a new chat launches. The worktree session uses the same choice. */
+    private val agentChoice: AgentChoice = AgentChoice(legacyClaudeLaunch())
+
     /**
      * The agent (ACP) session view model for the main checkout.
      */
@@ -633,6 +640,16 @@ public class ProjectSession(
             checkout = AgentCheckout.MAIN,
             worktreeLauncher = GitAgentWorktreeLauncher(processExecutor, fileSystem),
             onWorktreeReady = { tree -> agentHostSlot?.attach(tree) },
+            agentChoice = agentChoice,
+            onAgentSwitch = { launch ->
+                val other = agentHostSlot?.worktree?.value
+                if (other != null && other.state.value.isStreaming) {
+                    AGENT_OTHER_BUSY_NOTICE
+                } else {
+                    other?.applySharedAgent(launch)
+                    null
+                }
+            },
         )
 
     /**
@@ -783,6 +800,7 @@ public class ProjectSession(
         // Keep editor gutter VCS markers in sync with the active document and git state
         sessionScope.launch { observeGitLineMarkers() }
         sessionScope.launch { observeProjectFileEvents() }
+        sessionScope.launch { observeAgentCheckEdits() }
 
         // Keep the plugin editor surface aligned with tab switches initiated by the UI.
         sessionScope.launch {
@@ -921,6 +939,9 @@ public class ProjectSession(
             fileSystem
                 .watch(projectPath, recursive = true)
                 .collect { event ->
+                    if (!event.isDirectory && isCheckInput(projectPath, event.path)) {
+                        agentSessionViewModel.invalidateCheckEvidence()
+                    }
                     reindexChangedFile(event)
                     gitRefresh?.cancel()
                     gitRefresh =
@@ -947,6 +968,34 @@ public class ProjectSession(
             else -> {
                 workspaceSymbolIndexService.indexFile(path)
                 kotlinSymbolIndex.indexFile(path)
+            }
+        }
+    }
+
+    /** Unsaved editor changes also invalidate command results, before a disk event arrives. */
+    private suspend fun observeAgentCheckEdits() {
+        val versions = mutableMapOf<String, Int>()
+        editorViewModel.state.collect { state ->
+            agentSessionViewModel.setCheckUnsavedEdits(
+                state.tabs.any {
+                    it.isDirty &&
+                        it.uri.value.startsWith("file://$projectPath/")
+                },
+            )
+            val worktree = agentSessionHost.worktree.value
+            val worktreePath = worktree?.state?.value?.workspacePath
+            worktree?.setCheckUnsavedEdits(
+                state.tabs.any {
+                    it.isDirty &&
+                        it.uri.value.startsWith("file://$worktreePath/")
+                },
+            )
+            val path = state.activeDocumentUri?.value?.removePrefix("file://") ?: return@collect
+            val previous = versions.put(path, state.documentVersion)
+            val dirty = state.tabs.any { it.uri == state.activeDocumentUri && it.isDirty }
+            if (dirty && previous != state.documentVersion) {
+                if (path.startsWith("${projectPath.trimEnd('/')}/")) agentSessionViewModel.invalidateCheckEvidence()
+                if (worktreePath != null && path.startsWith("$worktreePath/")) worktree.invalidateCheckEvidence()
             }
         }
     }
@@ -1099,7 +1148,25 @@ public class ProjectSession(
                 if (outcome.imported > 0) agentHostSlot?.showMain()
                 outcome
             },
-        )
+            agentChoice = agentChoice,
+            remembersAgentChoice = false,
+            onAgentSwitch = { launch ->
+                if (agentSessionViewModel.state.value.isStreaming) {
+                    AGENT_OTHER_BUSY_NOTICE
+                } else {
+                    agentSessionViewModel.acceptSharedAgent(launch)
+                    null
+                }
+            },
+        ).also { agent ->
+            sessionScope.launch {
+                fileSystem.watch(tree.path, recursive = true).collect { event ->
+                    if (!event.isDirectory && isCheckInput(tree.path, event.path)) {
+                        agent.invalidateCheckEvidence()
+                    }
+                }
+            }
+        }
 
     /** Whether [absolutePath] is open with unsaved edits. */
     private fun editorHasUnsavedBuffer(absolutePath: String): Boolean {

@@ -35,9 +35,7 @@ internal const val GOAL_COMMAND_DESCRIPTION: String = "View or set the goal for 
 
 private const val GOAL_MET_PREFIX: String = "GOAL_MET:"
 private const val GOAL_UNMET_PREFIX: String = "GOAL_UNMET:"
-private const val EXECUTE_TOOL_KIND: String = "execute"
 private const val EVIDENCE_CITATION_MIN: Int = 8
-private const val FILE_NAME_MIN: Int = 3
 private const val NEXT_ACTION_MAX: Int = 200
 private const val CONTINUE_ACTION: String = "Continue the goal."
 private const val MILLIS_PER_SECOND: Long = 1_000
@@ -159,11 +157,12 @@ internal fun goalWorkPrompt(objective: String): String =
 /** Prompt for the separate check. The transcript shows [goalCheckLabel]. */
 internal fun goalCheckPrompt(objective: String): String =
     "Check whether this goal is met: $objective\n" +
-        "Use only changed files, command output, and test results. " +
+        "Cite output from a successful command with a structured exit code after the latest edit. " +
+        "A changed filename or a command launch acknowledgement is not completion evidence. " +
         "A plan, a checklist, or a conclusive summary does not count. " +
         "If any plan step is unfinished, the goal is not met.\n" +
         "End with exactly one line:\n" +
-        "$GOAL_MET_PREFIX <citation of a changed file, command output, or test result>\n" +
+        "$GOAL_MET_PREFIX <citation of successful command output>\n" +
         "or\n" +
         "$GOAL_UNMET_PREFIX <the single next action>"
 
@@ -193,8 +192,8 @@ internal fun goalResumeLabel(iteration: Int): String = "Iteration $iteration · 
 /**
  * Decides the check from evidence already on the surface.
  *
- * A last line of `GOAL_MET` counts only when its citation names a changed file
- * or quotes command output, and every plan step is finished. Any other reply,
+ * A last line of `GOAL_MET` counts only when its citation quotes current successful
+ * command output, and every plan step is finished. Any other reply,
  * including a conclusive summary, is unmet.
  */
 internal fun judgeGoal(
@@ -223,31 +222,34 @@ internal fun judgeGoal(
     if (!citationMatches(citation, evidence)) {
         return GoalVerdict(
             met = false,
-            nextAction = "The check cited no changed file, command output, or test result.",
+            nextAction = "Cite output from a successful command with a reported exit code after the latest edit.",
         )
     }
     return GoalVerdict(met = true, nextAction = "")
 }
 
 /**
- * Collects the diffs and finished command output in [turns].
+ * Collects diffs and current successful command output in [turns].
  *
  * Agent prose is omitted. A plan step that is not completed blocks a met verdict.
  */
 internal fun goalEvidence(
     turns: List<Turn>,
     plan: List<PlanStep>,
+    workspaceRevision: Long = 0,
+    hasUnsavedEdits: Boolean = false,
 ): GoalEvidence {
     val files = mutableListOf<String>()
-    val outputs = mutableListOf<String>()
+    val outputs =
+        agentChecks(turns, workspaceRevision, isStreaming = false, hasUnsavedEdits = hasUnsavedEdits)
+            .takeLast(1)
+            .filter { it.status == CheckStatus.PASSED }
+            .mapNotNull { it.tool.result?.takeIf(String::isNotBlank) }
     turns.filterIsInstance<Turn.Agent>().forEach { turn ->
         turn.blocks.forEach { block ->
             if (block is Block.Diff) {
                 if (block.fileName.isNotBlank()) files += block.fileName
                 if (block.absolutePath.isNotBlank()) files += block.absolutePath
-            } else if (block is Block.Tool && block.kind == EXECUTE_TOOL_KIND) {
-                val result = block.result
-                if (!result.isNullOrBlank()) outputs += result
             }
         }
     }
@@ -329,7 +331,6 @@ private fun citationMatches(
     evidence: GoalEvidence,
 ): Boolean {
     if (citation.length < EVIDENCE_CITATION_MIN) return false
-    if (evidence.files.any { name -> name.length >= FILE_NAME_MIN && citation.contains(name) }) return true
     return evidence.commandOutputs.any { output ->
         val body = output.trim()
         body.length >= EVIDENCE_CITATION_MIN && (body.contains(citation) || citation.contains(body))

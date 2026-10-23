@@ -125,8 +125,8 @@ class AgentSessionSurfaceUiTest {
                         }
                     }
                 }
-                onNodeWithText("Steering").assertIsDisplayed()
-                onNodeWithText("Add tests").assertIsDisplayed()
+                onNodeWithText("Queued (1) · Show").assertIsDisplayed()
+                onNodeWithText("Next: Add tests").assertIsDisplayed()
                 onNodeWithContentDescription("Remove Reader.kt").assertIsDisplayed()
                 onNodeWithText("Current file").assertIsDisplayed()
                 onNodeWithText("Current selection").assertIsDisplayed()
@@ -134,7 +134,8 @@ class AgentSessionSurfaceUiTest {
                 onNodeWithText("/review").assertDoesNotExist()
                 onNodeWithText("Current file").performClick()
                 onNodeWithContentDescription("Remove Reader.kt").performClick()
-                onNodeWithContentDescription("Remove queued prompt").performClick()
+                onNodeWithText("Queued (1) · Show").performClick()
+                onNodeWithContentDescription("Remove queued message 1").performClick()
                 if (dark) onRoot().saveUiArtifacts("agent-composer-context")
             }
             assertEquals(
@@ -142,7 +143,7 @@ class AgentSessionSurfaceUiTest {
                     AgentIntent.EnsureConnected,
                     AgentIntent.AttachCurrentFile,
                     AgentIntent.RemoveAttachment(path = "src/Reader.kt", selection = false),
-                    AgentIntent.RemoveQueuedPrompt,
+                    AgentIntent.RemoveQueuedPrompt("queued-1"),
                 ),
                 intents,
             )
@@ -409,6 +410,44 @@ class AgentSessionSurfaceUiTest {
                 ),
         )
 
+    @Test
+    fun theAgentChipListsInstalledAgentsAndSelectsOne() {
+        val intents = mutableListOf<AgentIntent>()
+        runComposeUiTest {
+            setContent {
+                JetaProgTheme {
+                    Box(Modifier.size(480.dp, 640.dp)) {
+                        AgentSurfaceContent(
+                            state =
+                                surfaceState(composerInput = "keep").copy(
+                                    agent = AgentOption(id = "claude", name = "Claude"),
+                                    availableAgents =
+                                        listOf(
+                                            AgentOption(id = "claude", name = "Claude"),
+                                            AgentOption(id = "grok", name = "Grok"),
+                                        ),
+                                    agentNotice = "Finish the running task before changing the agent.",
+                                ),
+                            dispatch = { intents += it },
+                            showRail = false,
+                        )
+                    }
+                }
+            }
+            onNodeWithText("Finish the running task before changing the agent.").assertIsDisplayed()
+            onNodeWithText("Claude").performClick()
+            onNodeWithText("Grok").performClick()
+        }
+        assertEquals(
+            listOf(
+                AgentIntent.EnsureConnected,
+                AgentIntent.RefreshAgents,
+                AgentIntent.SelectAgent("grok"),
+            ),
+            intents,
+        )
+    }
+
     private fun checkpointState(streaming: Boolean): AgentUiState =
         AgentUiState(
             connection = AgentConnection.CONNECTED,
@@ -443,7 +482,10 @@ class AgentSessionSurfaceUiTest {
             isStreaming = true,
             composerInput = "@Rea",
             composerAttachments = listOf(ComposerAttachment(label = "Reader.kt", path = "src/Reader.kt")),
-            queuedPrompt = QueuedFollowUp(prompt = "Add tests", attachments = emptyList(), steer = true),
+            queuedPrompts =
+                listOf(
+                    QueuedFollowUp(prompt = "Add tests", attachments = emptyList(), steer = true, id = "queued-1"),
+                ),
             mentionFiles = listOf(MentionMatch(label = "Reader.kt", path = "src/Reader.kt")),
             commands = listOf(AgentCommand(name = "review", description = "Review the diff")),
             turns = listOf(Turn.User(id = "user", text = "Build it", timeLabel = "")),

@@ -25,6 +25,7 @@ import su.kidoz.jetaprog.app.ui.agent.Block
 import su.kidoz.jetaprog.app.ui.agent.DiffDecision
 import su.kidoz.jetaprog.app.ui.agent.PermissionKind
 import su.kidoz.jetaprog.app.ui.agent.PermissionPolicy
+import su.kidoz.jetaprog.app.ui.agent.ReviewDelta
 import su.kidoz.jetaprog.app.ui.agent.Turn
 import su.kidoz.jetaprog.platform.filesystem.FileEntry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -316,6 +317,51 @@ class AgentCheckpointTest {
                 ).restoreNotice.orEmpty()
             assertTrue(notice.contains("Restored Reader.kt."), notice)
             assertTrue(notice.contains("Commands ran after this message."), notice)
+        }
+
+    @Test
+    fun revertingAnOlderDiffRestoresAllPendingWritesOnlyForItsFile() =
+        runTest {
+            val agent = CheckpointTransport()
+            val viewModel = viewModel(agent)
+            val reader = "/proj/src/Reader.kt"
+            val other = "/proj/src/Other.kt"
+            files[reader] = "original"
+            files[other] = "other original"
+            viewModel.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.SetPermission(PermissionKind.EDIT, PermissionPolicy.AUTO))
+            viewModel.dispatch(AgentIntent.Send("Edit both files"))
+            runCurrent()
+            viewModel.writeTextFile(WriteTextFileRequest("s1", reader, "first"))
+            viewModel.writeTextFile(WriteTextFileRequest("s1", other, "other new"))
+            agent.update(
+                """{"sessionUpdate":"tool_call","toolCallId":"first","title":"Edit","kind":"edit","status":"completed","content":[{"type":"diff","path":"$reader","oldText":"original","newText":"first"},{"type":"diff","path":"$other","oldText":"other original","newText":"other new"}]}""",
+            )
+            runCurrent()
+            viewModel.writeTextFile(WriteTextFileRequest("s1", reader, "second"))
+            agent.update(
+                """{"sessionUpdate":"tool_call","toolCallId":"second","title":"Edit","kind":"edit","status":"completed","content":[{"type":"diff","path":"$reader","oldText":"first","newText":"second"}]}""",
+            )
+            agent.release.complete(Unit)
+            runCurrent()
+            assertEquals(ReviewDelta(1, 1), viewModel.state.value.reviewCounts[reader])
+            assertEquals(2, viewModel.state.value.sessionChanges.size)
+
+            viewModel.dispatch(AgentIntent.RejectDiff("first:diff:0"))
+            runCurrent()
+
+            assertEquals("original", files[reader])
+            assertEquals("other new", files[other])
+            val diffs =
+                viewModel.state.value.turns
+                    .filterIsInstance<Turn.Agent>()
+                    .flatMap { it.blocks }
+                    .filterIsInstance<Block.Diff>()
+            assertTrue(diffs.filter { it.absolutePath == reader }.all { it.decision == DiffDecision.REJECTED })
+            assertEquals(DiffDecision.PROPOSED, diffs.single { it.absolutePath == other }.decision)
+            assertEquals(ReviewDelta(0, 0), viewModel.state.value.reviewCounts[reader])
+            assertEquals(listOf(reader), reloaded)
         }
 
     private fun viewModel(agent: CheckpointTransport): AgentSessionViewModel =

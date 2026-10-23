@@ -19,7 +19,7 @@ class AgentSessionListRowsTest {
                 error = null,
                 live = true,
             )
-        assertEquals(AgentSessionStatus.NEEDS_YOU, streaming.status)
+        assertEquals(AgentSessionStatus.WAITING_APPROVAL, streaming.status)
         assertEquals(4, streaming.addedLines)
         assertEquals(1, streaming.removedLines)
 
@@ -39,7 +39,7 @@ class AgentSessionListRowsTest {
                 error = null,
                 live = true,
             )
-        assertEquals(AgentSessionStatus.NEEDS_YOU, review.status)
+        assertEquals(AgentSessionStatus.REVIEW_READY, review.status)
 
         val failed =
             summarizeSession(
@@ -52,7 +52,7 @@ class AgentSessionListRowsTest {
     }
 
     @Test
-    fun savedSummaryIsIdleOrFailedAndKeepsTheCounts() {
+    fun savedSummaryMarksUnfinishedExecutionAsInterruptedAndKeepsTheCounts() {
         val idle =
             summarizeSession(
                 turns = turns(diff(added = 4, removed = 2)),
@@ -60,7 +60,7 @@ class AgentSessionListRowsTest {
                 error = null,
                 live = false,
             )
-        assertEquals(AgentSessionStatus.IDLE, idle.status)
+        assertEquals(AgentSessionStatus.INTERRUPTED, idle.status)
         assertEquals(4, idle.addedLines)
         assertEquals(2, idle.removedLines)
 
@@ -129,7 +129,7 @@ class AgentSessionListRowsTest {
 
         assertEquals("fresh", rows[0].id)
         assertEquals("Build it", rows[0].title)
-        assertEquals(AgentSessionStatus.NEEDS_YOU, rows[0].status)
+        assertEquals(AgentSessionStatus.REVIEW_READY, rows[0].status)
         assertEquals(9_000, rows[0].savedAtEpochMillis)
         assertEquals("other", rows[1].id)
     }

@@ -9,6 +9,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class AgentPrefsStoreTest {
     private val projectDir: File = Files.createTempDirectory("jetaprog-agent-prefs").toFile()
@@ -47,5 +48,6 @@ class AgentPrefsStoreTest {
             assertEquals("claude-opus-4-8", prefs.modelId)
             assertEquals(PermissionPolicy.AUTO, prefs.permissions[PermissionKind.READ])
             assertEquals(PermissionPolicy.ASK, prefs.permissions[PermissionKind.EDIT])
+            assertNull(prefs.agentId)
         }
 }

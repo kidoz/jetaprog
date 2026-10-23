@@ -319,11 +319,21 @@ internal fun ProposedDiffCard(
                 )
             }
             Spacer(Modifier.weight(1f))
-            Text("+${block.added}", color = LocalIntelliJColors.current.diffAddedGutter, fontSize = 11.sp)
-            Text("−${block.removed}", color = LocalIntelliJColors.current.diffRemovedText, fontSize = 11.sp)
+            if (block.previewAvailable) {
+                Text("+${block.added}", color = LocalIntelliJColors.current.diffAddedGutter, fontSize = 11.sp)
+                Text("−${block.removed}", color = LocalIntelliJColors.current.diffRemovedText, fontSize = 11.sp)
+            }
             DecisionPill(block.decision)
         }
         Column(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs.dp)) {
+            if (!block.previewAvailable) {
+                Text(
+                    "Saved review. Open the file to inspect its current changes.",
+                    color = LocalIntelliJColors.current.textSecondary,
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = Spacing.md.dp),
+                )
+            }
             block.lines.forEach { DiffLineRow(it) }
         }
         Row(
@@ -333,14 +343,14 @@ internal fun ProposedDiffCard(
         ) {
             if (block.decision == DiffDecision.PROPOSED) {
                 PillButton(
-                    "Accept",
+                    "Keep file",
                     Icons.Default.Check,
                     LocalIntelliJColors.current.diffAcceptBackground,
                     Color.White,
                     onAccept,
                 )
                 PillButton(
-                    text = "Reject",
+                    text = "Revert file",
                     icon = Icons.Default.Close,
                     background = LocalIntelliJColors.current.buttonBackground,
                     foreground = LocalIntelliJColors.current.textPrimary,
@@ -411,7 +421,7 @@ private fun DecisionPill(decision: DiffDecision) {
     val (label, color) =
         when (decision) {
             DiffDecision.PROPOSED -> "Proposed" to LocalIntelliJColors.current.agentPillText
-            DiffDecision.ACCEPTED -> "Accepted" to LocalIntelliJColors.current.success
+            DiffDecision.ACCEPTED -> "Kept" to LocalIntelliJColors.current.success
             DiffDecision.REJECTED -> "Reverted" to LocalIntelliJColors.current.textMuted
         }
     Box(
@@ -578,6 +588,7 @@ internal fun GradientButton(
 internal fun SendButton(
     enabled: Boolean,
     onClick: () -> Unit,
+    label: String = "Send",
 ) {
     Box(
         modifier =
@@ -591,7 +602,7 @@ internal fun SendButton(
     ) {
         Icon(
             Icons.Default.ArrowUpward,
-            contentDescription = "Send",
+            contentDescription = label,
             tint = Color.White,
             modifier = Modifier.size(Dimensions.iconLg.dp),
         )
@@ -601,12 +612,12 @@ internal fun SendButton(
 /**
  * Files changed in this session, grouped for a read-only review.
  *
- * Accept keeps a change the agent already wrote. Dismiss reverts it. Close hides the card.
+ * Keep acknowledges existing changes. Revert restores pending edits when safe. Close hides the card.
  * The command does not ask the agent to edit.
  *
  * @param files The session's changed files, in first-seen order.
- * @param onAccept Accepts every still-proposed hunk of that file.
- * @param onDismiss Reverts every still-proposed hunk of that file.
+ * @param onAccept Keeps all pending changes in that file.
+ * @param onDismiss Attempts to revert all pending changes in that file.
  * @param onClose Hides the card.
  * @param modifier Layout modifier for the card.
  */
@@ -617,6 +628,7 @@ internal fun ReviewCard(
     onDismiss: (String) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpen: ((String) -> Unit)? = null,
 ) {
     if (files.isEmpty()) return
     val shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp)
@@ -650,6 +662,11 @@ internal fun ReviewCard(
                         .clickable(onClick = onClose),
             )
         }
+        Text(
+            text = "Net recorded changes. Revert restores all pending edits in a file.",
+            color = colors.textSecondary,
+            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+        )
         files.forEach { file ->
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs.dp)) {
                 Row(
@@ -665,10 +682,15 @@ internal fun ReviewCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    val counts = sessionDiffCountLabel(file.added, file.removed)
-                    if (counts != null) {
-                        Text(text = counts, color = colors.textSecondary, fontSize = 11.sp)
-                    }
+                    val counts =
+                        if (file.added != null &&
+                            file.removed != null
+                        ) {
+                            sessionDiffCountLabel(file.added, file.removed) ?: "No net change"
+                        } else {
+                            "Net diff unavailable"
+                        }
+                    Text(text = counts, color = colors.textSecondary, fontSize = 11.sp)
                 }
                 if (file.pathLabel.isNotBlank()) {
                     Text(
@@ -679,11 +701,28 @@ internal fun ReviewCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                file.conflict?.let { notice ->
+                    Text(
+                        text = notice,
+                        color = colors.textPrimary,
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    )
+                }
+                onOpen?.let { open ->
+                    PillButton(
+                        text = "Open file",
+                        icon = Icons.AutoMirrored.Filled.OpenInNew,
+                        background = colors.buttonBackground,
+                        foreground = colors.textPrimary,
+                        onClick = { open(file.key) },
+                        bordered = true,
+                    )
+                }
                 val status = file.statusLabel
                 if (status != null) {
                     Text(
                         text = status,
-                        color = if (status == "Accepted") colors.success else colors.textSecondary,
+                        color = if (status == "Kept") colors.success else colors.textSecondary,
                         fontSize = 11.sp,
                     )
                 } else {
@@ -692,7 +731,7 @@ internal fun ReviewCard(
                         verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
                     ) {
                         PillButton(
-                            text = "Accept",
+                            text = "Keep",
                             icon = Icons.Filled.Check,
                             background = colors.success.copy(alpha = 0.16f),
                             foreground = colors.success,
@@ -700,7 +739,7 @@ internal fun ReviewCard(
                             bordered = true,
                         )
                         PillButton(
-                            text = "Dismiss",
+                            text = "Revert",
                             icon = Icons.Filled.Close,
                             background = colors.buttonBackground,
                             foreground = colors.textPrimary,

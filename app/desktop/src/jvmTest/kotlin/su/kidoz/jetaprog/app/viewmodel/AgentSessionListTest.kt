@@ -21,16 +21,22 @@ import su.kidoz.jetaprog.acp.protocol.AcpConnection
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import su.kidoz.jetaprog.app.agent.AgentSessionStatus
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
+import su.kidoz.jetaprog.app.ui.agent.Block
+import su.kidoz.jetaprog.app.ui.agent.DiffDecision
+import su.kidoz.jetaprog.app.ui.agent.Turn
 import su.kidoz.jetaprog.platform.filesystem.FileEntry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** A scripted ACP peer whose prompt stays open until [release]. */
-private class SessionListTransport : AcpTransport {
+private class SessionListTransport(
+    private val stopReason: String = "end_turn",
+) : AcpTransport {
     val inbound = Channel<String>(Channel.UNLIMITED)
     val release = CompletableDeferred<Unit>()
     override val incoming: Flow<String> = inbound.receiveAsFlow()
@@ -48,7 +54,7 @@ private class SessionListTransport : AcpTransport {
 
             "session/prompt" -> {
                 release.await()
-                reply(request, """{"stopReason":"end_turn"}""")
+                reply(request, """{"stopReason":"$stopReason"}""")
             }
         }
     }
@@ -113,7 +119,7 @@ class AgentSessionListTest {
     }
 
     @Test
-    fun finishedTurnSavesDiffCountsAndAnIdleStatus() =
+    fun pendingReviewSurvivesTranscriptRestoreAndKeepIsPersisted() =
         runTest {
             val agent = SessionListTransport()
             val viewModel =
@@ -146,6 +152,90 @@ class AgentSessionListTest {
             assertEquals("Build it", record.title)
             assertEquals(1, record.addedLines)
             assertEquals(1, record.removedLines)
-            assertEquals(AgentSessionStatus.IDLE, record.status)
+            assertEquals(AgentSessionStatus.REVIEW_READY, record.status)
+            assertEquals(listOf("/proj/src/Reader.kt"), record.pendingReviews.map { it.path })
+            viewModel.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            val restored =
+                viewModel.state.value.turns
+                    .filterIsInstance<Turn.Agent>()
+                    .flatMap { it.blocks }
+                    .filterIsInstance<Block.Diff>()
+                    .single()
+            assertEquals(DiffDecision.PROPOSED, restored.decision)
+            assertTrue(
+                viewModel.state.value.reviewCounts
+                    .isEmpty(),
+            )
+            viewModel.dispatch(AgentIntent.SetComposerInput("draft stays"))
+            viewModel.dispatch(AgentIntent.ShowReview)
+            runCurrent()
+            assertEquals("draft stays", viewModel.state.value.composerInput)
+            assertTrue(viewModel.state.value.reviewVisible)
+            viewModel.dispatch(AgentIntent.DismissReviewFile("/proj/src/Reader.kt"))
+            runCurrent()
+            assertTrue(
+                viewModel.state.value.reviewConflicts
+                    .isNotEmpty(),
+            )
+            viewModel.dispatch(AgentIntent.AcceptReviewFile("/proj/src/Reader.kt"))
+            runCurrent()
+            viewModel.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            assertTrue(
+                viewModel.state.value.sessionChanges
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun stoppedExecutionIsSavedAndClearedByANewTurn() =
+        runTest {
+            val agent = SessionListTransport()
+            val viewModel =
+                AgentSessionViewModel(
+                    projectPath = "/proj",
+                    fileSystem = fileSystem,
+                    transportFactory = { agent },
+                ).also { viewModels += it }
+            viewModel.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.Send("First"))
+            runCurrent()
+            viewModel.dispatch(AgentIntent.Stop)
+            runCurrent()
+            agent.release.complete(Unit)
+            runCurrent()
+            assertTrue(viewModel.state.value.interrupted)
+            viewModel.dispatch(AgentIntent.ShowHistory)
+            runCurrent()
+            assertEquals(
+                AgentSessionStatus.INTERRUPTED,
+                viewModel.state.value.sessionHistory
+                    .single()
+                    .status,
+            )
+            viewModel.dispatch(AgentIntent.Send("Continue"))
+            runCurrent()
+            assertFalse(viewModel.state.value.interrupted)
+        }
+
+    @Test
+    fun agentCancellationIsNotShownAsNormalCompletion() =
+        runTest {
+            val agent = SessionListTransport("cancelled")
+            agent.release.complete(Unit)
+            val viewModel =
+                AgentSessionViewModel(
+                    projectPath = "/proj",
+                    fileSystem = fileSystem,
+                    transportFactory = { agent },
+                ).also { viewModels += it }
+            viewModel.dispatch(AgentIntent.EnsureConnected)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.Send("First"))
+            runCurrent()
+            assertTrue(viewModel.state.value.interrupted)
+            assertFalse(viewModel.state.value.isStreaming)
         }
 }
