@@ -63,6 +63,7 @@ import su.kidoz.jetaprog.app.keymap.NavigationActions
 import su.kidoz.jetaprog.app.notification.Notification
 import su.kidoz.jetaprog.app.notification.NotificationAction
 import su.kidoz.jetaprog.app.notification.NotificationSeverity
+import su.kidoz.jetaprog.app.ui.agent.AgentCheckoutLoading
 import su.kidoz.jetaprog.app.ui.agent.AgentPerspective
 import su.kidoz.jetaprog.app.ui.agent.AgentToolWindow
 import su.kidoz.jetaprog.app.ui.command.CommandPaletteHost
@@ -817,6 +818,7 @@ private fun MainScreenContent(
 
                 // Left tool window (resizable) — content switches with the activity bar
                 val sidebarItem = selectedActivityItem
+                val restoringCheckouts by session.agentSessionHost.restoring.collectAsState()
                 val agentViewModel by session.agentSessionHost.active.collectAsState()
                 val mainAgentState by session.agentSessionViewModel.state.collectAsState()
                 val worktreeAgent by session.agentSessionHost.worktree.collectAsState()
@@ -878,15 +880,19 @@ private fun MainScreenContent(
                         }
 
                         ActivityBarItem.AGENT -> {
-                            key(agentViewModel) {
-                                AgentToolWindow(
-                                    viewModel = agentViewModel,
-                                    modifier = panelModifier,
-                                    checkoutLabel = checkoutLabel,
-                                    onSwitchCheckout = onSwitchCheckout,
-                                    layoutDocked = mainAgentState.docked,
-                                    mirrorLayout = mirrorLayout,
-                                )
+                            if (restoringCheckouts) {
+                                AgentCheckoutLoading(panelModifier)
+                            } else {
+                                key(agentViewModel) {
+                                    AgentToolWindow(
+                                        viewModel = agentViewModel,
+                                        modifier = panelModifier,
+                                        checkoutLabel = checkoutLabel,
+                                        onSwitchCheckout = onSwitchCheckout,
+                                        layoutDocked = mainAgentState.docked,
+                                        mirrorLayout = mirrorLayout,
+                                    )
+                                }
                             }
                         }
 
@@ -942,15 +948,19 @@ private fun MainScreenContent(
                 // Editor area — replaced by a full perspective when VCS or the Agent is active
                 Column(modifier = Modifier.weight(1f)) {
                     if (agentInPerspective) {
-                        key(agentViewModel) {
-                            AgentPerspective(
-                                viewModel = agentViewModel,
-                                modifier = Modifier.fillMaxSize(),
-                                checkoutLabel = checkoutLabel,
-                                onSwitchCheckout = onSwitchCheckout,
-                                layoutDocked = mainAgentState.docked,
-                                mirrorLayout = mirrorLayout,
-                            )
+                        if (restoringCheckouts) {
+                            AgentCheckoutLoading(Modifier.fillMaxSize())
+                        } else {
+                            key(agentViewModel) {
+                                AgentPerspective(
+                                    viewModel = agentViewModel,
+                                    modifier = Modifier.fillMaxSize(),
+                                    checkoutLabel = checkoutLabel,
+                                    onSwitchCheckout = onSwitchCheckout,
+                                    layoutDocked = mainAgentState.docked,
+                                    mirrorLayout = mirrorLayout,
+                                )
+                            }
                         }
                     } else if (selectedActivityItem == ActivityBarItem.VCS) {
                         VcsMainArea(

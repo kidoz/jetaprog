@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.adapter.EditorServiceBridge
 import su.kidoz.jetaprog.app.agent.AGENT_OTHER_BUSY_NOTICE
 import su.kidoz.jetaprog.app.agent.AgentCheckout
+import su.kidoz.jetaprog.app.agent.AgentCheckoutStore
 import su.kidoz.jetaprog.app.agent.AgentChoice
 import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.GitAgentWorkspaceReviewSource
@@ -681,12 +682,14 @@ public class ProjectSession(
             },
         )
 
-    /**
-     * The main session and, after `/worktree`, the linked checkout's session.
-     */
+    private val agentCheckoutStore = AgentCheckoutStore(fileSystem, processExecutor, projectPath)
+
+    /** The main agent session and the created or restored linked checkout session. */
     public val agentSessionHost: AgentSessionHost =
         AgentSessionHost(
             main = agentSessionViewModel,
+            loadCheckouts = agentCheckoutStore::load,
+            saveCheckouts = agentCheckoutStore::save,
             openWorktree = ::worktreeAgent,
         ).also { agentHostSlot = it }
 
@@ -754,6 +757,7 @@ public class ProjectSession(
      * Registers bundled plugins, activates eager ones, and starts listening for activation triggers.
      */
     public suspend fun initialize() {
+        agentSessionHost.restore()
         // Register the embedded Kotlin language server, backed by the shared
         // symbol index. Navigation prefers LSP answers, so features migrate to
         // the server automatically as it gains capabilities.

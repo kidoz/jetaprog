@@ -1,11 +1,14 @@
 package su.kidoz.jetaprog.app.agent
 
+import kotlinx.serialization.Serializable
+
 /**
  * A linked Git checkout that keeps a second agent session off the main working tree.
  *
  * @property path Absolute path of the linked checkout.
  * @property branch Branch created for that checkout.
  */
+@Serializable
 public data class AgentWorktree(
     val path: String,
     val branch: String,

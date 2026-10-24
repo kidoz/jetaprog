@@ -119,6 +119,14 @@ private val EXAMPLE_PROMPTS =
         "Write tests for the selected file",
     )
 
+/** Holds agent input until the saved checkout pair has been validated. */
+@Composable
+internal fun AgentCheckoutLoading(modifier: Modifier = Modifier) {
+    Box(modifier.padding(Spacing.lg.dp)) {
+        Text("Restoring checkout tabs…", color = LocalIntelliJColors.current.textSecondary, fontSize = 13.sp)
+    }
+}
+
 /**
  * The full-window agent perspective: conversation flanked by a session/permissions rail.
  *

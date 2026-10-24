@@ -375,6 +375,21 @@ public class AgentSessionViewModel(
         }
     }
 
+    /** Waits for checkout-local drafts and agent preferences without starting an agent process. */
+    internal suspend fun awaitInitialization() {
+        prefsLoaded.await()
+    }
+
+    /** Reuses a validated linked checkout for later `/worktree` commands. */
+    internal fun rememberLinkedWorktree(tree: AgentWorktree) {
+        linkedWorktree = tree
+    }
+
+    /** Explains why a saved checkout pair could not be reopened. */
+    internal fun reportCheckoutRestoreFailure(message: String) {
+        _state.update { it.copy(worktreeNotice = message) }
+    }
+
     /** Dispatches a user [intent]. */
     public fun dispatch(intent: AgentIntent) {
         if (
