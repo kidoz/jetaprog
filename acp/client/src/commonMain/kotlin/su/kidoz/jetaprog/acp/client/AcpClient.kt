@@ -16,6 +16,7 @@ import su.kidoz.jetaprog.acp.protocol.AcpNotificationHandler
 import su.kidoz.jetaprog.acp.protocol.AcpRequestException
 import su.kidoz.jetaprog.acp.protocol.AcpRequestHandler
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
+import su.kidoz.jetaprog.acp.protocol.AuthenticateRequest
 import su.kidoz.jetaprog.acp.protocol.CancelNotification
 import su.kidoz.jetaprog.acp.protocol.ClientCapabilities
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
@@ -111,6 +112,16 @@ public class AcpClient(
             withContext(NonCancellable) { runCatching { connection.close() } }
             throw e
         }
+    }
+
+    /**
+     * Authenticates with the agent using an advertised authentication [methodId].
+     */
+    public suspend fun authenticate(methodId: String) {
+        connection.sendRequest(
+            AcpMethod.AUTHENTICATE,
+            encode(AuthenticateRequest.serializer(), AuthenticateRequest(methodId)),
+        )
     }
 
     /**

@@ -7,14 +7,23 @@ import su.kidoz.jetaprog.acp.protocol.AcpError
 import su.kidoz.jetaprog.acp.protocol.AcpMethod
 import su.kidoz.jetaprog.acp.protocol.AcpRequestException
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
+import su.kidoz.jetaprog.acp.protocol.CreateTerminalRequest
+import su.kidoz.jetaprog.acp.protocol.CreateTerminalResponse
+import su.kidoz.jetaprog.acp.protocol.EnvVariable
+import su.kidoz.jetaprog.acp.protocol.KillTerminalRequest
 import su.kidoz.jetaprog.acp.protocol.PermissionOption
 import su.kidoz.jetaprog.acp.protocol.PermissionToolCall
 import su.kidoz.jetaprog.acp.protocol.ReadTextFileRequest
 import su.kidoz.jetaprog.acp.protocol.ReadTextFileResponse
+import su.kidoz.jetaprog.acp.protocol.ReleaseTerminalRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionResponse
 import su.kidoz.jetaprog.acp.protocol.SessionNotification
 import su.kidoz.jetaprog.acp.protocol.SessionUpdate
+import su.kidoz.jetaprog.acp.protocol.TerminalOutputRequest
+import su.kidoz.jetaprog.acp.protocol.TerminalOutputResponse
+import su.kidoz.jetaprog.acp.protocol.WaitForTerminalExitRequest
+import su.kidoz.jetaprog.acp.protocol.WaitForTerminalExitResponse
 import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
 
 /**
@@ -95,6 +104,80 @@ public class AcpAgentSession internal constructor(
             json.encodeToJsonElement(
                 WriteTextFileRequest.serializer(),
                 WriteTextFileRequest(sessionId, path, content),
+            ),
+        )
+    }
+
+    /**
+     * Creates a terminal through the client.
+     */
+    public suspend fun createTerminal(
+        command: String,
+        args: List<String> = emptyList(),
+        cwd: String? = null,
+        env: List<EnvVariable> = emptyList(),
+        outputByteLimit: Int? = null,
+    ): CreateTerminalResponse {
+        val result =
+            connection.sendRequest(
+                AcpMethod.TERMINAL_CREATE,
+                json.encodeToJsonElement(
+                    CreateTerminalRequest.serializer(),
+                    CreateTerminalRequest(sessionId, command, args, cwd, env, outputByteLimit),
+                ),
+            )
+        return decode(CreateTerminalResponse.serializer(), result)
+    }
+
+    /**
+     * Returns the current output of a client terminal.
+     */
+    public suspend fun terminalOutput(terminalId: String): TerminalOutputResponse {
+        val result =
+            connection.sendRequest(
+                AcpMethod.TERMINAL_OUTPUT,
+                json.encodeToJsonElement(
+                    TerminalOutputRequest.serializer(),
+                    TerminalOutputRequest(sessionId, terminalId),
+                ),
+            )
+        return decode(TerminalOutputResponse.serializer(), result)
+    }
+
+    /**
+     * Waits for a client terminal to exit.
+     */
+    public suspend fun waitForTerminalExit(terminalId: String): WaitForTerminalExitResponse {
+        val result =
+            connection.sendRequest(
+                AcpMethod.TERMINAL_WAIT_FOR_EXIT,
+                json.encodeToJsonElement(
+                    WaitForTerminalExitRequest.serializer(),
+                    WaitForTerminalExitRequest(sessionId, terminalId),
+                ),
+            )
+        return decode(WaitForTerminalExitResponse.serializer(), result)
+    }
+
+    /**
+     * Kills a running client terminal.
+     */
+    public suspend fun killTerminal(terminalId: String) {
+        connection.sendRequest(
+            AcpMethod.TERMINAL_KILL,
+            json.encodeToJsonElement(KillTerminalRequest.serializer(), KillTerminalRequest(sessionId, terminalId)),
+        )
+    }
+
+    /**
+     * Releases a client terminal and its resources.
+     */
+    public suspend fun releaseTerminal(terminalId: String) {
+        connection.sendRequest(
+            AcpMethod.TERMINAL_RELEASE,
+            json.encodeToJsonElement(
+                ReleaseTerminalRequest.serializer(),
+                ReleaseTerminalRequest(sessionId, terminalId),
             ),
         )
     }

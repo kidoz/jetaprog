@@ -22,6 +22,7 @@ import su.kidoz.jetaprog.acp.protocol.NewSessionResponse
 import su.kidoz.jetaprog.acp.protocol.PromptRequest
 import su.kidoz.jetaprog.acp.protocol.PromptResponse
 import su.kidoz.jetaprog.acp.protocol.SetSessionModeRequest
+import su.kidoz.jetaprog.acp.protocol.SetSessionModelRequest
 
 /**
  * Serves an [AcpAgent] over an [AcpTransport].
@@ -98,6 +99,11 @@ public class AcpAgentServer(
 
             AcpMethod.SESSION_SET_MODE -> {
                 agent.setMode(decode(SetSessionModeRequest.serializer(), params))
+                empty()
+            }
+
+            AcpMethod.SESSION_SET_MODEL -> {
+                agent.setModel(decode(SetSessionModelRequest.serializer(), params))
                 empty()
             }
 

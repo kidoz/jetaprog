@@ -13,6 +13,7 @@ import su.kidoz.jetaprog.acp.protocol.NewSessionResponse
 import su.kidoz.jetaprog.acp.protocol.PromptRequest
 import su.kidoz.jetaprog.acp.protocol.PromptResponse
 import su.kidoz.jetaprog.acp.protocol.SetSessionModeRequest
+import su.kidoz.jetaprog.acp.protocol.SetSessionModelRequest
 
 /**
  * The Agent side of the Agent Client Protocol.
@@ -59,6 +60,15 @@ public interface AcpAgent {
      */
     public suspend fun setMode(request: SetSessionModeRequest) {
         // Modes are optional.
+    }
+
+    /**
+     * Selects the model for a session. The default does nothing.
+     *
+     * `session/set_model` is unstable in ACP 1, so implementations may reject it.
+     */
+    public suspend fun setModel(request: SetSessionModelRequest) {
+        // Models are optional.
     }
 
     /**
