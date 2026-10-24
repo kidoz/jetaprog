@@ -270,6 +270,7 @@ internal fun AgentSurfaceContent(
             )
             AgentComposer(state, dispatch)
         }
+        if (state.contextVisible) AgentContextInspector(state, dispatch)
     }
 }
 
@@ -852,6 +853,18 @@ private fun AgentComposer(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Text(
+                        text = "Context",
+                        color = LocalIntelliJColors.current.textPrimary,
+                        fontSize = 11.sp,
+                        modifier =
+                            Modifier
+                                .heightIn(min = Dimensions.popupRowHeightCompact.dp)
+                                .agentFocusRing(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                                .semantics { contentDescription = "Inspect next message context" }
+                                .clickable(role = Role.Button) { dispatch(AgentIntent.ShowContext) }
+                                .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
+                    )
                     if (state.agent != null) {
                         AgentPickerChip(state, dispatch)
                     }

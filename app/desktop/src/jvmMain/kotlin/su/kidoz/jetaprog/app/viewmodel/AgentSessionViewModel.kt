@@ -93,9 +93,9 @@ import su.kidoz.jetaprog.app.agent.defaultLaunch
 import su.kidoz.jetaprog.app.agent.discoverAgentCatalog
 import su.kidoz.jetaprog.app.agent.discoverInstalledAgents
 import su.kidoz.jetaprog.app.agent.legacyClaudeLaunch
+import su.kidoz.jetaprog.app.agent.loadProjectInstructions
 import su.kidoz.jetaprog.app.agent.restoredLaunch
 import su.kidoz.jetaprog.app.agent.toModelOption
-import su.kidoz.jetaprog.app.ui.agent.AGENTS_FILE
 import su.kidoz.jetaprog.app.ui.agent.AgentCommand
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
@@ -158,7 +158,6 @@ import su.kidoz.jetaprog.app.ui.agent.goalResumeLabel
 import su.kidoz.jetaprog.app.ui.agent.goalResumePrompt
 import su.kidoz.jetaprog.app.ui.agent.goalWorkPrompt
 import su.kidoz.jetaprog.app.ui.agent.instructionChip
-import su.kidoz.jetaprog.app.ui.agent.instructionText
 import su.kidoz.jetaprog.app.ui.agent.isPlanMode
 import su.kidoz.jetaprog.app.ui.agent.isSafeRelative
 import su.kidoz.jetaprog.app.ui.agent.judgeGoal
@@ -251,6 +250,8 @@ public class AgentSessionViewModel(
     private val navigationLoaded = CompletableDeferred<Unit>()
     private val navigationMutex = Mutex()
     private var navigationSaveJob: Job? = null
+    private var contextReadJob: Job? = null
+    private var contextGeneration: Long = 0
     private val pathGuard = WorkspacePathGuard { projectPath }
 
     private val _state = MutableStateFlow(AgentUiState(workspacePath = projectPath))
@@ -431,6 +432,21 @@ public class AgentSessionViewModel(
 
             AgentIntent.NewChat -> {
                 startNewChat()
+            }
+
+            AgentIntent.ShowContext -> {
+                _state.update { it.copy(contextVisible = true) }
+                refreshContextPreview()
+            }
+
+            AgentIntent.RefreshContext -> {
+                if (_state.value.contextVisible) refreshContextPreview()
+            }
+
+            AgentIntent.HideContext -> {
+                contextGeneration++
+                contextReadJob?.cancel()
+                _state.update { it.copy(contextVisible = false) }
             }
 
             AgentIntent.ShowHistory -> {
@@ -1042,13 +1058,17 @@ public class AgentSessionViewModel(
      * Nested instruction files are not read, and `@import` lines are not expanded.
      * A missing or blank file adds nothing to the turn.
      */
-    private suspend fun readProjectInstructions(): String? {
-        val root = projectPath.trimEnd('/', '\\')
-        if (root.isEmpty()) return null
-        val path = "$root/$AGENTS_FILE"
-        if (!fileSystem.exists(path)) return null
-        val raw = fileSystem.readText(path).getOrNull() ?: return null
-        return instructionText(raw)
+    private suspend fun readProjectInstructions(): String? = loadProjectInstructions(fileSystem, projectPath).text
+
+    private fun refreshContextPreview() {
+        val generation = ++contextGeneration
+        contextReadJob?.cancel()
+        _state.update { it.copy(instructionPreview = it.instructionPreview.copy(loading = true)) }
+        contextReadJob =
+            scope.launch {
+                val preview = loadProjectInstructions(fileSystem, projectPath)
+                if (generation == contextGeneration) _state.update { it.copy(instructionPreview = preview) }
+            }
     }
 
     /**

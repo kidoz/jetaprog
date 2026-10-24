@@ -752,6 +752,71 @@ class AgentComposerQueueTest {
             assertEquals(listOf("Build", "Test", "Change approach"), agent.prompts)
         }
 
+    @Test
+    fun inspectorUsesCheckoutInstructionsAndRefreshesWithoutChangingQueuedContext() =
+        runTest {
+            files["/proj/AGENTS.md"] = " Main rules "
+            files["/wt/AGENTS.md"] = " Worktree rules "
+            val agent = HeldPromptTransport(holdFirstPrompt = true)
+            val vm = viewModel(agent, projectPath = "/wt")
+            vm.dispatch(AgentIntent.SetComposerInput("First"))
+            vm.dispatch(AgentIntent.Send("First"))
+            runCurrent()
+            vm.dispatch(AgentIntent.SetComposerInput("Next"))
+            vm.dispatch(AgentIntent.AttachCurrentSelection)
+            vm.dispatch(AgentIntent.Send("Next"))
+            runCurrent()
+            val queued =
+                vm.state.value.queuedPrompts
+                    .single()
+            vm.dispatch(AgentIntent.SetComposerInput("Draft"))
+            vm.dispatch(AgentIntent.AttachCurrentFile)
+            vm.dispatch(AgentIntent.ShowContext)
+            runCurrent()
+            assertTrue(vm.state.value.contextVisible)
+            assertEquals("Worktree rules", vm.state.value.instructionPreview.text)
+            assertFalse(vm.state.value.instructionPreview.loading)
+            assertEquals(1, agent.prompts.size)
+            files["/wt/AGENTS.md"] = " Refreshed rules "
+            vm.dispatch(AgentIntent.RefreshContext)
+            vm.dispatch(AgentIntent.RemoveAttachment("src/Reader.kt", false))
+            runCurrent()
+            assertEquals("Refreshed rules", vm.state.value.instructionPreview.text)
+            assertTrue(
+                vm.state.value.composerAttachments
+                    .isEmpty(),
+            )
+            assertEquals(
+                queued,
+                vm.state.value.queuedPrompts
+                    .single(),
+            )
+            vm.dispatch(AgentIntent.HideContext)
+            runCurrent()
+            assertFalse(vm.state.value.contextVisible)
+            assertEquals("Draft", vm.state.value.composerInput)
+            agent.release.complete(Unit)
+            runCurrent()
+            assertTrue(agent.prompts.last().contains("Refreshed rules"))
+            assertTrue(agent.prompts.last().contains("Selection in src/Reader.kt:\nval x = 1"))
+        }
+
+    @Test
+    fun inspectingDoesNotCacheInstructionsForSending() =
+        runTest {
+            files["/proj/AGENTS.md"] = "Before inspection"
+            val agent = HeldPromptTransport(holdFirstPrompt = false)
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.ShowContext)
+            runCurrent()
+            assertEquals("Before inspection", vm.state.value.instructionPreview.text)
+            assertTrue(agent.prompts.isEmpty())
+            files["/proj/AGENTS.md"] = "After inspection"
+            vm.dispatch(AgentIntent.Send("Explain this"))
+            runCurrent()
+            assertEquals("Project instructions (AGENTS.md):\nAfter inspection\n\nExplain this", agent.prompts.single())
+        }
+
     private fun viewModel(
         agent: HeldPromptTransport,
         projectPath: String = "/proj",

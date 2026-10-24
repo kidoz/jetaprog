@@ -1,5 +1,20 @@
 package su.kidoz.jetaprog.app.ui.agent
 
+import androidx.compose.runtime.Immutable
+
+/** Snapshot of the root instructions available to the next outgoing message. */
+@Immutable
+public data class ProjectInstructionPreview(
+    /** Whether the snapshot is still being read. */
+    val loading: Boolean = false,
+    /** The exact trimmed and capped text appended by JetaProg, or null when absent. */
+    val text: String? = null,
+    /** Human-readable reason when no text could be read. */
+    val notice: String? = null,
+    /** Whether the source exceeds the prompt's instruction limit. */
+    val truncated: Boolean = false,
+)
+
 /** File name read from the workspace root at the start of a turn. */
 internal const val AGENTS_FILE: String = "AGENTS.md"
 

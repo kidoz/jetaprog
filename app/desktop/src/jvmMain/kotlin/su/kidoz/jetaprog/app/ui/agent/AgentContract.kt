@@ -651,6 +651,10 @@ public data class AgentUiState(
     val sessionHistory: List<AgentSessionRecord> = emptyList(),
     /** Whether the History popup is shown. */
     val historyVisible: Boolean = false,
+    /** Whether the next-message context inspector is open. */
+    val contextVisible: Boolean = false,
+    /** Latest checkout-local instruction snapshot for inspection. */
+    val instructionPreview: ProjectInstructionPreview = ProjectInstructionPreview(),
     /** Per-checkout task organization and unsent drafts, independent of transcript saves. */
     val taskNavigation: AgentNavigationState = AgentNavigationState(),
     /** Id of the open conversation, when one has been claimed. */
@@ -739,6 +743,15 @@ public sealed interface AgentIntent {
 
     /** Open the session History popup (loads persisted conversations). */
     public data object ShowHistory : AgentIntent
+
+    /** Inspect context attached to the current composer draft. */
+    public data object ShowContext : AgentIntent
+
+    /** Close the context inspector. */
+    public data object HideContext : AgentIntent
+
+    /** Reload root instructions from this checkout for the context inspector. */
+    public data object RefreshContext : AgentIntent
 
     /** Close the session History popup. */
     public data object HideHistory : AgentIntent

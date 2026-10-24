@@ -225,3 +225,16 @@ private fun AgentWorkspaceReviewPreview() {
         )
     }
 }
+
+@Suppress("UnusedPrivateMember")
+@Preview
+@Composable
+private fun AgentContextPreview() {
+    JetaProgTheme {
+        su.kidoz.jetaprog.app.ui.agent.AgentContextInspectorContent(
+            su.kidoz.jetaprog.app.ui.agent
+                .AgentUiState(workspacePath = "/projects/jetaprog"),
+            dispatch = {},
+        )
+    }
+}

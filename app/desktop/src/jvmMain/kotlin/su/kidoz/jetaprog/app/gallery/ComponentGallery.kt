@@ -141,6 +141,25 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
             }
         }
 
+        GallerySection("Agent · Message context") {
+            su.kidoz.jetaprog.app.ui.agent.AgentContextInspectorContent(
+                AgentUiState(
+                    workspacePath = "/projects/jetaprog-worktree",
+                    composerInput = "Explain the parser",
+                    composerAttachments =
+                        listOf(
+                            su.kidoz.jetaprog.app.ui.agent
+                                .ComposerAttachment("Parser.kt", "src/Parser.kt"),
+                        ),
+                    instructionPreview =
+                        su.kidoz.jetaprog.app.ui.agent.ProjectInstructionPreview(
+                            text = "Use project conventions.",
+                        ),
+                ),
+                dispatch = {},
+            )
+        }
+
         GallerySection("Agent · Workspace review") {
             Column(Modifier.width(Dimensions.popupSearchWidth.dp)) {
                 AgentReviewPanel(
