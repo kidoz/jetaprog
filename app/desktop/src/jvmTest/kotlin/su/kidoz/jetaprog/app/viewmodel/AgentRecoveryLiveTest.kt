@@ -54,8 +54,21 @@ class AgentRecoveryLiveTest {
                     main,
                     "test_counter.py",
                 ).writeText("from counter import increment\nassert increment(1) == 2\nprint('CHECK PASSED')\n")
+                File(main, "stress_counter.py").writeText(
+                    """
+                    import os
+                    from pathlib import Path
+                    from counter import increment
+
+                    Path("stress-counter.pid").write_text(str(os.getpid()))
+                    print("STRESS STARTED", flush=True)
+                    for value in range(-250_000_000, 250_000_000):
+                        assert increment(value) == value + 1
+                    print("STRESS PASSED", flush=True)
+                    """.trimIndent() + "\n",
+                )
                 git(main, listOf("init", "-q"))
-                git(main, listOf("add", "counter.py", "test_counter.py"))
+                git(main, listOf("add", "counter.py", "test_counter.py", "stress_counter.py"))
                 git(
                     main,
                     listOf(
@@ -110,27 +123,31 @@ class AgentRecoveryLiveTest {
                 AgentIntent.Send(
                     "Recovery test in this disposable checkout only. " +
                         "Add a short docstring to increment in counter.py " +
-                        "using your edit tool. Run python3 test_counter.py, then run sleep 45 " +
-                        "as a separate foreground command " +
+                        "using your edit tool. Run python3 test_counter.py, then run python3 stress_counter.py " +
+                        "as a separate foreground command with a 120000ms timeout " +
                         "so I can test cancellation. Do not access other directories, edit other files, " +
                         "or change Git history.",
                 ),
             )
-            await(first, "running sleep after edit") { vm ->
+            await(first, "running property test after edit") { vm ->
                 File(root, "counter.py").readText().contains("\"\"\"") &&
+                    runningWorkload(root) != null &&
                     vm.state.value.turns
                         .filterIsInstance<Turn.Agent>()
                         .flatMap { it.blocks }
                         .filterIsInstance<Block.Tool>()
                         .any {
                             it.status == ToolStatus.RUNNING &&
-                                (it.args.contains("sleep") || it.name.contains("sleep"))
+                                (it.args.contains("stress_counter.py") || it.name.contains("stress_counter.py"))
                         }
             }
+            val workload = checkNotNull(runningWorkload(root))
             println("RECOVERY: $checkout edit and running command observed")
             first.dispatch(AgentIntent.Stop)
             await(first, "stop") { !it.state.value.isStreaming }
             assertTrue(first.state.value.interrupted)
+            await(first, "workload process exit") { !workload.isAlive }
+            println("RECOVERY: $checkout Stop terminated the workload process")
             val manual = File(root, "counter.py").readText() + "\n# Manual change after Stop\n"
             File(root, "counter.py").writeText(manual)
             first.dispatch(AgentIntent.DismissReviewFile(File(root, "counter.py").path))
@@ -163,6 +180,13 @@ class AgentRecoveryLiveTest {
         } finally {
             models.forEach { it.dispose() }
         }
+    }
+
+    private fun runningWorkload(root: File): ProcessHandle? {
+        val marker = File(root, "stress-counter.pid")
+        if (!marker.exists()) return null
+        val pid = marker.readText().trim().toLongOrNull() ?: return null
+        return ProcessHandle.of(pid).orElse(null)?.takeIf { it.isAlive }
     }
 
     private suspend fun resume(
