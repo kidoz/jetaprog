@@ -35,6 +35,18 @@ public class MviViewModelTest {
             viewModel.dispose()
         }
 
+    @Test
+    public fun performReturnsTheStoredState(): Unit =
+        runTest {
+            val viewModel = OrderedViewModel()
+
+            val stored = viewModel.perform(TestIntent.Store(7))
+
+            assertEquals(listOf(7), stored.values)
+            assertEquals(listOf(7), viewModel.state.value.values)
+            viewModel.dispose()
+        }
+
     private data class TestState(
         val values: List<Int> = emptyList(),
     ) : State
@@ -43,6 +55,10 @@ public class MviViewModelTest {
         data class Append(
             val value: Int,
             val delayMillis: Long,
+        ) : TestIntent
+
+        data class Store(
+            val value: Int,
         ) : TestIntent
     }
 
@@ -53,6 +69,10 @@ public class MviViewModelTest {
             when (intent) {
                 is TestIntent.Append -> {
                     delay(intent.delayMillis)
+                    updateState { copy(values = values + intent.value) }
+                }
+
+                is TestIntent.Store -> {
                     updateState { copy(values = values + intent.value) }
                 }
             }

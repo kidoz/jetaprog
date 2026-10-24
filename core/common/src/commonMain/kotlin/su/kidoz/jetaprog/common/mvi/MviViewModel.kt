@@ -70,6 +70,17 @@ public abstract class MviViewModel<I : Intent, S : State, E : Effect>(
     }
 
     /**
+     * Applies [intent] and returns the state once that change is stored.
+     * Serialized with [dispatch].
+     */
+    public suspend fun perform(intent: I): S {
+        intentMutex.withLock {
+            handleIntent(intent)
+        }
+        return _state.value
+    }
+
+    /**
      * Handles an intent. Override this to implement intent handling logic.
      * @param intent The intent to handle
      */
