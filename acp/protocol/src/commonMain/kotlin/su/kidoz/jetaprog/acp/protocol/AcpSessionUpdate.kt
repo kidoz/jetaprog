@@ -68,6 +68,8 @@ public sealed interface SessionUpdate {
         val locations: List<ToolCallLocation> = emptyList(),
         /** The raw, tool-specific input. */
         val rawInput: JsonElement? = null,
+        /** The raw, tool-specific output. */
+        val rawOutput: JsonElement? = null,
     ) : SessionUpdate
 
     /** Updates the status or output of an existing tool call. */
@@ -80,8 +82,14 @@ public sealed interface SessionUpdate {
         val status: ToolCallStatus? = null,
         /** The updated title, if changed. */
         val title: String? = null,
-        /** Additional or replacement output. */
-        val content: List<ToolCallContent> = emptyList(),
+        /** The updated category, if changed. */
+        val kind: ToolKind? = null,
+        /** Additional or replacement output, or `null` when unchanged. */
+        val content: List<ToolCallContent>? = null,
+        /** Updated file locations, if changed. */
+        val locations: List<ToolCallLocation> = emptyList(),
+        /** The raw, tool-specific input. */
+        val rawInput: JsonElement? = null,
         /** The raw, tool-specific output. */
         val rawOutput: JsonElement? = null,
     ) : SessionUpdate
@@ -126,6 +134,8 @@ public data class ToolCallContent(
     val oldText: String? = null,
     /** The new text, when [type] is `diff`. */
     val newText: String? = null,
+    /** The terminal identifier, when [type] is `terminal`. */
+    val terminalId: String? = null,
 )
 
 /**
