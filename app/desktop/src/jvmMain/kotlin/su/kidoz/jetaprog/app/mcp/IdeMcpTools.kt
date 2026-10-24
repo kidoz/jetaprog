@@ -15,6 +15,18 @@ import su.kidoz.jetaprog.app.navigation.IndexedSymbolLookup
 import su.kidoz.jetaprog.app.ui.debug.DebugIntent
 import su.kidoz.jetaprog.app.ui.debug.DebugUiState
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
+import su.kidoz.jetaprog.configuration.ConfigurationId
+import su.kidoz.jetaprog.configuration.ConfigurationIntent
+import su.kidoz.jetaprog.configuration.ConfigurationSettings
+import su.kidoz.jetaprog.configuration.ConfigurationState
+import su.kidoz.jetaprog.configuration.DockerBuildSettings
+import su.kidoz.jetaprog.configuration.DockerComposeSettings
+import su.kidoz.jetaprog.configuration.DockerRunSettings
+import su.kidoz.jetaprog.configuration.RunConfiguration
+import su.kidoz.jetaprog.configuration.SpringBootDevServerSettings
+import su.kidoz.jetaprog.configuration.SpringBootSettings
+import su.kidoz.jetaprog.configuration.TomcatLocalSettings
+import su.kidoz.jetaprog.configuration.TomcatRemoteSettings
 import su.kidoz.jetaprog.editor.language.LanguageDefinitionRegistry
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.mcp.server.EmbeddedMcpServer
@@ -212,6 +224,23 @@ public fun registerIdeTools(
         ) { args ->
             val session = currentSession() ?: return@Tool text("No project is open.")
             debugAction(session, args, ::resolve)
+        },
+    )
+
+    server.tools.register(
+        Tool(
+            name = "run_configurations",
+            description =
+                "List run configurations or select the active one. Does not start a program.",
+            inputSchema =
+                objectSchema(
+                    "action" to "list or select. Defaults to list.",
+                    "id" to "Configuration id to select.",
+                    required = emptyList(),
+                ),
+        ) { args ->
+            val session = currentSession() ?: return@Tool text("No project is open.")
+            runConfigurationsAction(session, args)
         },
     )
 
@@ -512,6 +541,195 @@ private fun languageOf(path: String): String =
     LanguageDefinitionRegistry.detect(path)?.value
         ?: path.substringAfterLast('.', "").lowercase().ifEmpty { "plaintext" }
 
+private suspend fun runConfigurationsAction(
+    session: ProjectSession,
+    args: JsonObject,
+): ToolResult {
+    val action = args.string("action")?.trim()?.takeIf { it.isNotEmpty() } ?: "list"
+    val configurations = session.configurationViewModel
+    if (action == "list") {
+        return text(formatRunConfigurations(configurations.state.value))
+    }
+    if (action != "select") {
+        return ToolResult.Error("Unknown run configuration action: $action")
+    }
+    val id =
+        args.string("id")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return ToolResult.Error("Pass a configuration id.")
+    val current = configurations.state.value
+    if (current.configurations.none { it.id.value == id }) {
+        return ToolResult.Error("No run configuration has id $id.")
+    }
+    val state = configurations.perform(ConfigurationIntent.SelectConfiguration(ConfigurationId(id)))
+    return text("requested: select\n" + formatRunConfigurations(state))
+}
+
+internal fun formatRunConfigurations(state: ConfigurationState): String {
+    if (state.configurations.isEmpty()) return "No run configurations."
+    val lines =
+        mutableListOf(
+            "active: ${state.activeConfigurationId?.value ?: "none"}",
+            "running: ${state.runningConfigurationId?.value ?: "none"}",
+        )
+    state.error?.takeIf { it.isNotBlank() }?.let { lines += "error: ${oneLine(it)}" }
+    state.configurations.take(MAX_RUN_CONFIGURATIONS).forEach { configuration ->
+        lines += formatRunConfiguration(configuration, state)
+    }
+    return lines.joinToString("\n")
+}
+
+private fun formatRunConfiguration(
+    configuration: RunConfiguration,
+    state: ConfigurationState,
+): String {
+    val flags =
+        buildList {
+            if (configuration.id == state.activeConfigurationId) add("active")
+            if (configuration.id == state.runningConfigurationId) add("running")
+            if (configuration.isTemporary) add("temporary")
+        }
+    val target = oneLine(configurationTarget(configuration.settings)).ifBlank { configuration.type.displayName }
+    val fields =
+        listOf(
+            oneLine(configuration.id.value),
+            oneLine(configuration.name),
+            configuration.type.displayName,
+            target,
+        )
+    val flagsField = flags.joinToString(" ")
+    return if (flagsField.isEmpty()) fields.joinToString("\t") else fields.joinToString("\t") + "\t" + flagsField
+}
+
+private fun configurationTarget(settings: ConfigurationSettings): String =
+    when (settings) {
+        is ConfigurationSettings.Gradle -> {
+            settings.taskPath
+        }
+
+        is ConfigurationSettings.MesonBuild -> {
+            settings.target ?: settings.buildDirectory
+        }
+
+        is ConfigurationSettings.CMakeBuild -> {
+            settings.targets.takeIf { it.isNotEmpty() }?.joinToString(",") ?: settings.buildDirectory
+        }
+
+        is ConfigurationSettings.MesonRun -> {
+            settings.executable
+        }
+
+        is ConfigurationSettings.Python -> {
+            settings.module?.let { "-m $it" } ?: settings.scriptPath
+        }
+
+        is ConfigurationSettings.Poetry -> {
+            settings.command.value
+        }
+
+        is ConfigurationSettings.Uv -> {
+            settings.command.value
+        }
+
+        is ConfigurationSettings.CargoBuild -> {
+            settings.packageName ?: settings.profile.value
+        }
+
+        is ConfigurationSettings.CargoRun -> {
+            settings.bin ?: settings.example ?: settings.profile.value
+        }
+
+        is ConfigurationSettings.CargoTest -> {
+            settings.testName ?: settings.packageName ?: "test"
+        }
+
+        is ConfigurationSettings.CargoClippy -> {
+            settings.packageName ?: "clippy"
+        }
+
+        is ConfigurationSettings.Go -> {
+            "${settings.command.value} ${settings.packagePattern}"
+        }
+
+        is ConfigurationSettings.Node -> {
+            "${settings.packageManager.executable} ${settings.script}"
+        }
+
+        is ConfigurationSettings.Java -> {
+            settings.task.ifBlank { settings.mainClass ?: settings.command.name.lowercase() }
+        }
+
+        is ConfigurationSettings.DotNetBuild -> {
+            settings.targetPath ?: settings.configuration.value
+        }
+
+        is ConfigurationSettings.DotNetRun -> {
+            settings.projectPath ?: settings.launchProfile ?: settings.configuration.value
+        }
+
+        is ConfigurationSettings.DotNetTest -> {
+            settings.filter ?: settings.targetPath ?: settings.configuration.value
+        }
+
+        is ConfigurationSettings.DotNetDebug -> {
+            settings.programPath ?: settings.projectPath ?: settings.configuration.value
+        }
+
+        is ConfigurationSettings.Application -> {
+            settings.executablePath
+        }
+
+        is ConfigurationSettings.ShellScript -> {
+            if (settings.isFile) settings.script else "inline script"
+        }
+
+        is ConfigurationSettings.Compound -> {
+            settings.configurationIds.joinToString(",") { it.value }.ifBlank { "compound" }
+        }
+
+        is TomcatLocalSettings -> {
+            "localhost:${settings.httpPort}${settings.contextPath}"
+        }
+
+        is TomcatRemoteSettings -> {
+            "${settings.host}:${settings.httpPort}${settings.contextPath}"
+        }
+
+        is SpringBootSettings -> {
+            if (settings.useGradleTask) settings.gradleTask else settings.mainClass
+        }
+
+        is SpringBootDevServerSettings -> {
+            configurationTarget(settings.baseSettings)
+        }
+
+        is DockerBuildSettings -> {
+            settings.imageReference
+        }
+
+        is DockerRunSettings -> {
+            settings.imageName
+        }
+
+        is DockerComposeSettings -> {
+            buildString {
+                append(settings.composeFile)
+                append(' ')
+                append(settings.operation.name.lowercase())
+                if (settings.services.isNotEmpty()) {
+                    append(' ')
+                    append(settings.services.joinToString(","))
+                }
+            }
+        }
+    }
+
+private fun oneLine(value: String): String =
+    value
+        .replace('\n', ' ')
+        .replace('\r', ' ')
+        .replace('\t', ' ')
+        .trim()
+
 internal fun formatIndexedSymbols(
     projectPath: String,
     hits: List<IndexedSymbolLookup>,
@@ -533,3 +751,4 @@ private val SEARCH_EXCLUDED_DIRECTORIES = setOf(".git", ".gradle", ".idea", ".je
 private const val MAX_SEARCH_RESULTS = 200
 private const val MAX_INSPECTION_RESULTS = 200
 private const val MAX_DEBUG_LINES = 200
+private const val MAX_RUN_CONFIGURATIONS = 200
