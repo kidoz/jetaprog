@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.agent.AgentChecksSection
+import su.kidoz.jetaprog.app.ui.agent.AgentWorkspaceContext
 import su.kidoz.jetaprog.app.ui.components.BuildStatus
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
@@ -117,6 +119,13 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
                 JetaProgLogo(modifier = Modifier.size(Dimensions.iconMd.dp))
                 JetaProgLogo()
                 JetaProgLogo(modifier = Modifier.size(Dimensions.activityBarWidth.dp))
+            }
+        }
+
+        GallerySection("Agent · Workspace and checks") {
+            Column(Modifier.width(Dimensions.popupSearchWidth.dp)) {
+                AgentWorkspaceContext("/projects/jetaprog-worktree")
+                AgentChecksSection(emptyList(), "/projects/jetaprog-worktree")
             }
         }
 

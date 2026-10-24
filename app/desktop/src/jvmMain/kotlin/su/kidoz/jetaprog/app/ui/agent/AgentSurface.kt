@@ -190,8 +190,13 @@ internal fun AgentSurfaceContent(
     mirrorLayout: ((AgentIntent) -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) { dispatch(AgentIntent.EnsureConnected) }
+    val checks = agentChecks(state.turns, state.workspaceRevision, state.isStreaming, state.hasUnsavedEdits)
+    val workspace = state.workspacePath.ifBlank { "Workspace unavailable" }
+    val files = reviewFiles(state.turns, state.reviewCounts, state.reviewConflicts)
+    val reviewing = state.reviewVisible && files.isNotEmpty()
     Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
         AgentHeader(state, dispatch, checkoutLabel, onSwitchCheckout, layoutDocked, mirrorLayout)
+        AgentWorkspaceContext(state.workspacePath)
         if (state.connection == AgentConnection.ERROR) {
             AgentConnectionError(state, dispatch)
         }
@@ -201,7 +206,7 @@ internal fun AgentSurfaceContent(
                 Column(
                     modifier =
                         Modifier
-                            .weight(1f, fill = false)
+                            .weight(if (reviewing) 2f else 1f, fill = false)
                             .fillMaxWidth()
                             .verticalScroll(rememberScrollState()),
                 ) {
@@ -218,9 +223,9 @@ internal fun AgentSurfaceContent(
                     }
                     val goalNotice = state.goalNotice
                     if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
-                    if (state.reviewVisible) {
+                    if (reviewing) {
                         ReviewCard(
-                            files = reviewFiles(state.turns, state.reviewCounts, state.reviewConflicts),
+                            files = files,
                             onAccept = { key -> dispatch(AgentIntent.AcceptReviewFile(key)) },
                             onDismiss = { key -> dispatch(AgentIntent.DismissReviewFile(key)) },
                             onClose = { dispatch(AgentIntent.HideReview) },
@@ -232,6 +237,7 @@ internal fun AgentSurfaceContent(
                                     .firstOrNull { it.absolutePath == path }
                                     ?.let { dispatch(AgentIntent.OpenDiff(it.id)) }
                             },
+                            verification = { AgentChecksSection(checks, workspace) },
                             modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
                         )
                     }
@@ -248,7 +254,7 @@ internal fun AgentSurfaceContent(
                         )
                     }
                 }
-                Box(modifier = Modifier.weight(2f).fillMaxWidth()) {
+                Box(modifier = Modifier.weight(if (reviewing) 1f else 2f).fillMaxWidth()) {
                     if (state.turns.isEmpty()) {
                         EmptyState(dispatch)
                     } else {
@@ -258,14 +264,17 @@ internal fun AgentSurfaceContent(
             }
             if (showRail) SessionChangesRail(state, dispatch)
         }
-        val checks = agentChecks(state.turns, state.workspaceRevision, state.isStreaming, state.hasUnsavedEdits)
-        if (checks.isNotEmpty() || state.goal != null || state.turns.isEmpty()) {
+        if (!reviewing && (checks.isNotEmpty() || files.isNotEmpty() || state.goal != null || state.turns.isEmpty())) {
             AgentChecksSection(
                 checks = checks,
-                workspace = state.workspacePath.ifBlank { checkoutLabel ?: "Current workspace" },
+                workspace = workspace,
             )
         }
-        AgentAttentionSection(agentAttention(state.turns, state.isStreaming, state.error, state.interrupted), dispatch)
+        AgentAttentionSection(
+            agentAttention(state.turns, state.isStreaming, state.error, state.interrupted),
+            dispatch,
+            reviewVisible = reviewing,
+        )
         AgentPresenceBar(state, dispatch)
         AgentComposer(state, dispatch)
     }

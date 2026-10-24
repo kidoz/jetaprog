@@ -167,8 +167,12 @@ private fun RunOutputPreview() {
 @Composable
 private fun AgentChecksPreview() {
     JetaProgTheme {
-        su.kidoz.jetaprog.app.ui.agent
-            .AgentChecksSection(emptyList(), "/project")
+        androidx.compose.foundation.layout.Column {
+            su.kidoz.jetaprog.app.ui.agent
+                .AgentWorkspaceContext("/projects/jetaprog-worktree")
+            su.kidoz.jetaprog.app.ui.agent
+                .AgentChecksSection(emptyList(), "/projects/jetaprog-worktree")
+        }
     }
 }
 

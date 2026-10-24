@@ -40,6 +40,7 @@ internal fun AgentAttentionSection(
     attention: AgentAttention,
     dispatch: (AgentIntent) -> Unit,
     modifier: Modifier = Modifier,
+    reviewVisible: Boolean = false,
 ) {
     if (attention.status == AgentSessionStatus.IDLE || attention.status == AgentSessionStatus.RUNNING) return
     val approval = attention.approval
@@ -83,8 +84,8 @@ internal fun AgentAttentionSection(
             }
             if (attention.pendingFiles > 0 && attention.execution != AgentExecution.RUNNING) {
                 AttentionButton(
-                    "Review changes (${attention.pendingFiles})",
-                    onClick = { dispatch(AgentIntent.ShowReview) },
+                    if (reviewVisible) "Back to conversation" else "Review changes (${attention.pendingFiles})",
+                    onClick = { dispatch(if (reviewVisible) AgentIntent.HideReview else AgentIntent.ShowReview) },
                 )
             }
         }

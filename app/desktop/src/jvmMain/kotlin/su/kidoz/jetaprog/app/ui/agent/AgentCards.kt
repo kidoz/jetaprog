@@ -654,6 +654,7 @@ internal fun SendButton(
  * @param onDismiss Attempts to revert all pending changes in that file.
  * @param onClose Hides the card.
  * @param modifier Layout modifier for the card.
+ * @param verification Optional command evidence shown before file decisions.
  */
 @Composable
 internal fun ReviewCard(
@@ -663,6 +664,7 @@ internal fun ReviewCard(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     onOpen: ((String) -> Unit)? = null,
+    verification: (@Composable () -> Unit)? = null,
 ) {
     if (files.isEmpty()) return
     val shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp)
@@ -704,10 +706,16 @@ internal fun ReviewCard(
             }
         }
         Text(
-            text = "Net recorded changes. Revert restores all pending edits in a file.",
+            text = "Recorded session changes · ${files.size} ${if (files.size == 1) "file" else "files"}",
+            color = colors.textPrimary,
+            style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+        )
+        Text(
+            text = "Keep acknowledges saved edits. Revert restores pending edits when safe.",
             color = colors.textSecondary,
             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
         )
+        verification?.invoke()
         files.forEach { file ->
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs.dp)) {
                 Row(
