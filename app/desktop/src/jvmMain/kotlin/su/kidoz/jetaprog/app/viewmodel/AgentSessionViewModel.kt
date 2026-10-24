@@ -272,6 +272,10 @@ public class AgentSessionViewModel(
     /** Keeps overlapping history writes in the order they were captured. */
     private val historyMutex = Mutex()
 
+    /** Coalesces streaming updates without postponing the save on every token. */
+    private var recoverySaveJob: Job? = null
+    private var recoverySaveDirty = false
+
     /** Invalidates completions belonging to an abandoned turn. */
     private var turnGeneration = 0
 
@@ -1069,6 +1073,7 @@ public class AgentSessionViewModel(
                     mentionFiles = if (clearComposer) emptyList() else it.mentionFiles,
                 )
             }
+            persistConversation()
             return TurnClaim(acpClient, activeSession, generation)
         } finally {
             sendMutex.unlock()
@@ -1124,6 +1129,8 @@ public class AgentSessionViewModel(
      */
     private fun invalidateTurn() {
         turnGeneration++
+        recoverySaveJob?.cancel()
+        recoverySaveJob = null
         queueDeliveryJob?.cancel()
         queueDeliveryJob = null
         stopFallbackJob?.cancel()
@@ -1133,6 +1140,8 @@ public class AgentSessionViewModel(
     }
 
     private suspend fun endTurn() {
+        recoverySaveJob?.cancel()
+        recoverySaveJob = null
         stopFallbackJob?.cancel()
         stopFallbackJob = null
         cancelPendingApprovals()
@@ -1202,6 +1211,23 @@ public class AgentSessionViewModel(
         scope.launch {
             historyMutex.withLock { historyStore.save(record) }
         }
+    }
+
+    /** Saves partial work after a bounded delay, even when the agent never finishes its turn. */
+    private fun scheduleRecoverySave() {
+        if (!_state.value.isStreaming) return
+        recoverySaveDirty = true
+        if (recoverySaveJob?.isActive == true) return
+        val generation = turnGeneration
+        recoverySaveJob =
+            scope.launch {
+                do {
+                    delay(RECOVERY_SAVE_DELAY_MS)
+                    if (generation != turnGeneration || !_state.value.isStreaming) return@launch
+                    recoverySaveDirty = false
+                    archiveConversation()
+                } while (recoverySaveDirty)
+            }
     }
 
     /** Claims queued input only if Stop, editing, or a session switch has not invalidated it. */
@@ -2999,6 +3025,7 @@ public class AgentSessionViewModel(
         }
         if (notification.sessionId == sessionId && _state.value.isStreaming) {
             applyUpdate(update)
+            scheduleRecoverySave()
             if (update is SessionUpdate.ToolCallStart || update is SessionUpdate.ToolCallProgress) {
                 steerCancelIfIdle()
             }
@@ -3072,6 +3099,7 @@ public class AgentSessionViewModel(
         publishReviewCounts()
         checkpoints.noteWrite(path, before, request.content)
         publishCheckpointFlags()
+        scheduleRecoverySave()
         onWorkspaceFilesChanged(listOf(path))
     }
 
@@ -3541,6 +3569,7 @@ public class AgentSessionViewModel(
     private fun now(): Long = System.currentTimeMillis()
 
     private companion object {
+        private const val RECOVERY_SAVE_DELAY_MS = 1_000L
         private const val MAX_RESULT_CHARS = 4000
         private const val MAX_DIFF_BODY_LINES = 10
         private const val CONTEXT_LINES = 2

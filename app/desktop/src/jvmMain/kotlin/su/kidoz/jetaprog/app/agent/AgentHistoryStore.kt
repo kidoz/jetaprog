@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.agent
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -155,39 +156,60 @@ public class AgentHistoryStore(
         }
     private val dir = "$projectPath/.jetaprog/agent-history"
 
-    /** Persists [record], ignoring any I/O failure. */
+    /** Saves [record], retaining the previous valid version if an overwrite is interrupted. */
     public suspend fun save(record: AgentSessionRecord) {
-        runCatching {
-            if (!fileSystem.exists(dir)) fileSystem.createDirectory(dir)
-            fileSystem.writeText(
-                "$dir/${record.id}.json",
-                json.encodeToString(AgentSessionRecord.serializer(), record),
-            )
+        ignoringIoFailure {
+            if (!fileSystem.exists(dir)) fileSystem.createDirectory(dir).getOrThrow()
+            val path = "$dir/${record.id}.json"
+            val previous = readRecord(path)
+            if (previous != null) {
+                fileSystem
+                    .writeText("$path.bak", json.encodeToString(AgentSessionRecord.serializer(), previous))
+                    .getOrThrow()
+            }
+            fileSystem
+                .writeText(
+                    path,
+                    json.encodeToString(AgentSessionRecord.serializer(), record),
+                ).getOrThrow()
         }
     }
 
-    /** Lists all persisted sessions, most recently saved first. */
+    /** Lists sessions, recovering a backup only when the current record cannot be read. */
     public suspend fun list(): List<AgentSessionRecord> =
-        runCatching {
-            if (!fileSystem.exists(dir)) return@runCatching emptyList()
+        ignoringIoFailure {
+            if (!fileSystem.exists(dir)) return@ignoringIoFailure emptyList()
             fileSystem
                 .listDirectory(dir)
-                .getOrDefault(emptyList())
-                .filter { it.isFile && it.name.endsWith(".json") }
-                .mapNotNull { entry ->
-                    runCatching {
-                        json.decodeFromString(
-                            AgentSessionRecord.serializer(),
-                            fileSystem.readText(entry.path).getOrThrow(),
-                        )
-                    }.getOrNull()
-                }.sortedByDescending { it.savedAtEpochMillis }
-        }.getOrDefault(emptyList())
+                .getOrThrow()
+                .filter { it.isFile && (it.name.endsWith(".json") || it.name.endsWith(".json.bak")) }
+                .sortedBy { it.name.endsWith(".bak") }
+                .mapNotNull { readRecord(it.path) }
+                .distinctBy { it.id }
+                .sortedByDescending { it.savedAtEpochMillis }
+        } ?: emptyList()
 
     /** Deletes the session with [id], ignoring any I/O failure. */
     public suspend fun remove(id: String) {
-        runCatching {
-            fileSystem.delete("$dir/$id.json")
+        ignoringIoFailure {
+            val backup = "$dir/$id.json.bak"
+            // Remove the fallback first so a failed delete cannot resurrect an older version.
+            if (fileSystem.exists(backup)) fileSystem.delete(backup).getOrThrow()
+            fileSystem.delete("$dir/$id.json").getOrThrow()
         }
     }
+
+    private suspend fun readRecord(path: String): AgentSessionRecord? =
+        ignoringIoFailure {
+            json.decodeFromString(AgentSessionRecord.serializer(), fileSystem.readText(path).getOrThrow())
+        }
+
+    private suspend fun <T> ignoringIoFailure(block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
 }

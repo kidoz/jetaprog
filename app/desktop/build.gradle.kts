@@ -89,6 +89,7 @@ tasks.register<Test>("uiTest") {
 // Real provider calls are explicitly opt-in and use disposable Git checkouts.
 tasks.named<Test>("jvmTest") {
     exclude("**/AgentRecoveryLiveTest*")
+    doFirst { systemProperty("jetaprog.recovery.classpath", classpath.asPath) }
 }
 
 tasks.register<Test>("liveAgentRecoveryTest") {

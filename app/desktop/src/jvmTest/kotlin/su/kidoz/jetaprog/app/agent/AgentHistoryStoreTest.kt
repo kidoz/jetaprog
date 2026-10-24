@@ -1,6 +1,10 @@
 package su.kidoz.jetaprog.app.agent
 
+import io.mockk.coEvery
+import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
+import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
 import java.io.File
 import java.nio.file.Files
@@ -8,6 +12,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -51,6 +56,55 @@ class AgentHistoryStoreTest {
 
             val listed = store.list()
             assertEquals(listOf(record), listed)
+        }
+
+    @Test
+    fun interruptedOverwriteRecoversThePreviousCompleteRecord() =
+        runTest {
+            val previous = AgentSessionRecord(id = "recovery", title = "First snapshot")
+            store.save(previous)
+            store.save(previous.copy(title = "Next snapshot"))
+            File(projectDir, ".jetaprog/agent-history/recovery.json").writeText("{\"id\":")
+
+            assertEquals(listOf(previous), store.list())
+            store.save(previous.copy(title = "Recovered"))
+            assertEquals("Recovered", store.list().single().title)
+            // Repair must not replace the valid fallback with the corrupt current file.
+            File(projectDir, ".jetaprog/agent-history/recovery.json").delete()
+            assertEquals(listOf(previous), store.list())
+        }
+
+    @Test
+    fun completeCurrentRecordWinsAndDeleteRemovesItsBackup() =
+        runTest {
+            val previous = AgentSessionRecord(id = "recovery", savedAtEpochMillis = 200)
+            val current = previous.copy(title = "Latest write", savedAtEpochMillis = 100)
+            store.save(previous)
+            store.save(current)
+            assertEquals(listOf(current), store.list())
+            store.remove(current.id)
+            assertTrue(store.list().isEmpty())
+            assertTrue(File(projectDir, ".jetaprog/agent-history").listFiles()!!.isEmpty())
+        }
+
+    @Test
+    fun backupFailureLeavesCurrentRecordUntouched() =
+        runTest {
+            val previous = AgentSessionRecord(id = "recovery", title = "Do not lose this")
+            store.save(previous)
+            File(projectDir, ".jetaprog/agent-history/recovery.json.bak").mkdir()
+            store.save(previous.copy(title = "Cannot safely overwrite"))
+            assertEquals(listOf(previous), store.list())
+        }
+
+    @Test
+    fun cancelledWriteDoesNotContinueSaving() =
+        runTest {
+            val interrupted = mockk<FileSystem>()
+            coEvery { interrupted.exists(any()) } throws CancellationException("Stopped")
+            assertFailsWith<CancellationException> {
+                AgentHistoryStore(interrupted, projectDir.path).save(AgentSessionRecord())
+            }
         }
 
     @Test

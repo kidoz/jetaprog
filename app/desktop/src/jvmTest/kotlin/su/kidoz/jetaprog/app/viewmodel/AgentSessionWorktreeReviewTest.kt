@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -107,6 +108,14 @@ private class ReviewTransport(
                 """{"sessionUpdate":"tool_call","toolCallId":"edit","title":"Edit","kind":"edit",""" +
                 """"status":"completed","content":[{"type":"diff","path":"$path",""" +
                 """"oldText":"old","newText":"new"}]}}}""",
+        )
+    }
+
+    suspend fun text(chunk: String) {
+        val encoded = AcpConnection.defaultJson.encodeToString(chunk)
+        inbound.send(
+            """{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":""" +
+                """{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":$encoded}}}}""",
         )
     }
 
@@ -686,6 +695,64 @@ class AgentSessionWorktreeReviewTest {
             assertFalse(original.state.value.isStreaming)
             assertTrue(original.state.value.queuePaused)
             assertTrue(agent.prompts.isEmpty())
+        }
+
+    @Test
+    fun continuousUpdatesDoNotPostponeRecoveryAndCompletionWins() =
+        runTest {
+            val agent = ReviewTransport(holdFrom = 1)
+            val original = model(agent)
+            connect(original)
+            original.dispatch(AgentIntent.Send("Stream a response"))
+            runCurrent()
+            val store = AgentHistoryStore(fileSystem, "/proj")
+            assertTrue(store.list().single().interrupted)
+            repeat(4) {
+                agent.text("part $it ")
+                runCurrent()
+                advanceTimeBy(250)
+            }
+            runCurrent()
+            assertEquals(
+                "part 0 part 1 part 2 part 3 ",
+                store
+                    .list()
+                    .single()
+                    .messages
+                    .last()
+                    .text,
+            )
+            agent.text("finished")
+            runCurrent()
+            agent.allow()
+            advanceUntilIdle()
+            assertFalse(store.list().single().interrupted)
+            assertEquals(
+                "part 0 part 1 part 2 part 3 finished",
+                store
+                    .list()
+                    .single()
+                    .messages
+                    .last()
+                    .text,
+            )
+        }
+
+    @Test
+    fun firstTurnRecoveryDoesNotDependOnGracefulShutdown() =
+        runTest {
+            val original = model(ReviewTransport(holdFrom = 1, onPrompt = { it.diff() }))
+            connect(original)
+            original.dispatch(AgentIntent.Send("Edit before a crash"))
+            advanceUntilIdle()
+            assertTrue(original.state.value.isStreaming)
+            // Emergency disposal performs no final history save.
+            original.dispose()
+            runCurrent()
+            val saved = AgentHistoryStore(fileSystem, "/proj").list().single()
+            assertTrue(saved.interrupted)
+            assertEquals("Edit before a crash", saved.messages.first().text)
+            assertEquals("/proj/src/Reader.kt", saved.pendingReviews.single().path)
         }
 
     @Test
