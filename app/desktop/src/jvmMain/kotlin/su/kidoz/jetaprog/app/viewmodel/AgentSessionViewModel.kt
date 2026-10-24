@@ -62,6 +62,8 @@ import su.kidoz.jetaprog.app.agent.AgentBroughtChange
 import su.kidoz.jetaprog.app.agent.AgentCatalogEntry
 import su.kidoz.jetaprog.app.agent.AgentCheckout
 import su.kidoz.jetaprog.app.agent.AgentChoice
+import su.kidoz.jetaprog.app.agent.AgentDraft
+import su.kidoz.jetaprog.app.agent.AgentDraftAttachment
 import su.kidoz.jetaprog.app.agent.AgentFileReview
 import su.kidoz.jetaprog.app.agent.AgentGoal
 import su.kidoz.jetaprog.app.agent.AgentGoalStatus
@@ -70,10 +72,12 @@ import su.kidoz.jetaprog.app.agent.AgentHistoryRole
 import su.kidoz.jetaprog.app.agent.AgentHistoryStore
 import su.kidoz.jetaprog.app.agent.AgentLaunch
 import su.kidoz.jetaprog.app.agent.AgentMessageCheckpoints
+import su.kidoz.jetaprog.app.agent.AgentNavigationStore
 import su.kidoz.jetaprog.app.agent.AgentPendingReview
 import su.kidoz.jetaprog.app.agent.AgentPrefs
 import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.agent.AgentTaskNavigation
 import su.kidoz.jetaprog.app.agent.AgentWorkspaceReviewSource
 import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.AgentWorktreeLauncher
@@ -243,6 +247,10 @@ public class AgentSessionViewModel(
     private var installedAgents: List<AgentLaunch> = emptyList()
     private val prefsStore = AgentPrefsStore(fileSystem, projectPath)
     private val historyStore = AgentHistoryStore(fileSystem, projectPath)
+    private val navigationStore = AgentNavigationStore(fileSystem, projectPath)
+    private val navigationLoaded = CompletableDeferred<Unit>()
+    private val navigationMutex = Mutex()
+    private var navigationSaveJob: Job? = null
     private val pathGuard = WorkspacePathGuard { projectPath }
 
     private val _state = MutableStateFlow(AgentUiState(workspacePath = projectPath))
@@ -335,6 +343,10 @@ public class AgentSessionViewModel(
 
     init {
         scope.launch {
+            val navigation = navigationStore.load()
+            _state.update { it.copy(taskNavigation = navigation) }
+            applyDraft(navigation.newChatDraft)
+            navigationLoaded.complete(Unit)
             val prefs = prefsStore.load()
             legacyModelId = prefs.modelId
             modelIds.putAll(prefs.modelIds)
@@ -376,6 +388,7 @@ public class AgentSessionViewModel(
     }
 
     private suspend fun handle(intent: AgentIntent) {
+        navigationLoaded.await()
         when (intent) {
             AgentIntent.EnsureConnected -> {
                 sendMutex.withLock {
@@ -421,11 +434,21 @@ public class AgentSessionViewModel(
             }
 
             AgentIntent.ShowHistory -> {
+                rememberDraft()
+                archiveConversation()
                 _state.update { it.copy(sessionHistory = historyStore.list(), historyVisible = true) }
             }
 
             AgentIntent.HideHistory -> {
                 _state.update { it.copy(historyVisible = false) }
+            }
+
+            is AgentIntent.SetSessionPinned -> {
+                organizeTask(intent.recordId) { it.copy(pinned = intent.pinned) }
+            }
+
+            is AgentIntent.SetSessionArchived -> {
+                organizeTask(intent.recordId) { it.copy(archived = intent.archived) }
             }
 
             is AgentIntent.RestoreSession -> {
@@ -598,6 +621,7 @@ public class AgentSessionViewModel(
                 decideReviewFile(intent.key, accept = false)
             }
         }
+        rememberDraft()
     }
 
     // ------------------------------------------------------------------------
@@ -667,6 +691,8 @@ public class AgentSessionViewModel(
         launch: AgentLaunch,
         reconnect: Boolean,
     ) {
+        rememberDraft()
+        saveNavigation()
         clearQueuedPrompt()
         freezeGoalPaused(notice = null, keepNotice = true)
         archiveConversation()
@@ -695,6 +721,8 @@ public class AgentSessionViewModel(
                 agent = AgentOption(launch.id, launch.label),
             )
         }
+        // Changing providers carries the visible prompt into the new provider's chat.
+        rememberDraft()
         publishAgents(installedAgents)
         if (reconnect && ensureConnected()) {
             client?.let { ensureSession(it) }
@@ -1044,6 +1072,7 @@ public class AgentSessionViewModel(
             if (_state.value.isStreaming || !canDeliverQueued(queuedId, expectedQueueVersion)) return null
             if (!ensureConnected()) return null
             val acpClient = client ?: return null
+            val draftOwner = recordId
             val activeSession = ensureSession(acpClient) ?: return null
             if (!canDeliverQueued(queuedId, expectedQueueVersion)) return null
             if (!captureWorkspaceBaseline() || !canDeliverQueued(queuedId, expectedQueueVersion)) return null
@@ -1072,6 +1101,12 @@ public class AgentSessionViewModel(
                     composerAttachments = if (clearComposer) emptyList() else it.composerAttachments,
                     mentionFiles = if (clearComposer) emptyList() else it.mentionFiles,
                 )
+            }
+            if (clearComposer) rememberDraft(draftOwner)
+            if (draftOwner == null) {
+                // Text typed during connection setup belongs to this newly claimed conversation.
+                _state.update { it.copy(taskNavigation = it.taskNavigation.copy(newChatDraft = AgentDraft())) }
+                rememberDraft()
             }
             persistConversation()
             return TurnClaim(acpClient, activeSession, generation)
@@ -1270,6 +1305,7 @@ public class AgentSessionViewModel(
                                 )
                             }
                         }
+                        rememberDraft()
                         disarmQueue()
                         break
                     }
@@ -1343,6 +1379,7 @@ public class AgentSessionViewModel(
                 mentionFiles = if (clearComposer) emptyList() else st.mentionFiles,
             )
         }
+        rememberDraft()
         if (steer && _state.value.isStreaming) steerCancelIfIdle()
         startQueueDelivery()
     }
@@ -2073,6 +2110,7 @@ public class AgentSessionViewModel(
                 mentionFiles = if (query.isNullOrEmpty()) emptyList() else st.mentionFiles,
             )
         }
+        rememberDraft()
         if (query.isNullOrEmpty()) {
             mentionGeneration++
             return
@@ -2130,6 +2168,7 @@ public class AgentSessionViewModel(
                 mentionFiles = emptyList(),
             )
         }
+        rememberDraft()
     }
 
     private fun addAttachment(
@@ -2151,6 +2190,7 @@ public class AgentSessionViewModel(
                     st.composerAttachments.filterNot { it.path == path && (it.excerpt != null) == selection },
             )
         }
+        rememberDraft()
     }
 
     private fun cancelPendingApprovals() {
@@ -2166,6 +2206,68 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
     // Session history
     // ------------------------------------------------------------------------
+
+    private fun rememberDraft(owner: String? = recordId) {
+        val state = _state.value
+        val draft =
+            AgentDraft(
+                state.composerInput,
+                state.composerAttachments.map { AgentDraftAttachment(it.label, it.path, it.excerpt) },
+            )
+        val navigation = state.taskNavigation
+        val updated =
+            if (owner == null) {
+                navigation.copy(newChatDraft = draft)
+            } else {
+                val task = navigation.tasks[owner] ?: AgentTaskNavigation()
+                navigation.copy(tasks = navigation.tasks + (owner to task.copy(draft = draft)))
+            }
+        if (navigation == updated) return
+        _state.update { it.copy(taskNavigation = updated) }
+        navigationSaveJob?.cancel()
+        navigationSaveJob =
+            scope.launch {
+                delay(RECOVERY_SAVE_DELAY_MS)
+                saveNavigation()
+            }
+    }
+
+    private fun applyDraft(draft: AgentDraft) {
+        mentionGeneration++
+        _state.update {
+            it.copy(
+                composerInput = draft.text,
+                composerAttachments =
+                    draft.attachments.map { item ->
+                        ComposerAttachment(item.label, item.path, item.excerpt)
+                    },
+                mentionFiles = emptyList(),
+            )
+        }
+    }
+
+    private suspend fun saveNavigation() {
+        navigationMutex.withLock { navigationStore.save(_state.value.taskNavigation) }
+    }
+
+    private suspend fun organizeTask(
+        id: String,
+        change: (AgentTaskNavigation) -> AgentTaskNavigation,
+    ) {
+        if (id != recordId && _state.value.sessionHistory.none { it.id == id }) return
+        rememberDraft()
+        _state.update {
+            val navigation = it.taskNavigation
+            it.copy(
+                taskNavigation =
+                    navigation.copy(
+                        tasks =
+                            navigation.tasks + (id to change(navigation.tasks[id] ?: AgentTaskNavigation())),
+                    ),
+            )
+        }
+        saveNavigation()
+    }
 
     /**
      * Persists the conversation text and its message checkpoints.
@@ -2233,6 +2335,8 @@ public class AgentSessionViewModel(
 
     /** Starts a fresh chat, cancelling the current turn and abandoning its ACP session. */
     private suspend fun startNewChat() {
+        rememberDraft()
+        saveNavigation()
         clearQueuedPrompt()
         freezeGoalPaused(notice = null, keepNotice = true)
         val acpClient = client
@@ -2264,6 +2368,7 @@ public class AgentSessionViewModel(
                 reviewNotice = null,
             )
         }
+        applyDraft(_state.value.taskNavigation.newChatDraft)
         alignWithChosenAgent()
     }
 
@@ -2275,6 +2380,16 @@ public class AgentSessionViewModel(
 
     private suspend fun deleteSessionRecord(recordIdToDelete: String) {
         historyMutex.withLock { historyStore.remove(recordIdToDelete) }
+        _state.update {
+            it.copy(
+                taskNavigation =
+                    it.taskNavigation.copy(
+                        tasks =
+                            it.taskNavigation.tasks - recordIdToDelete,
+                    ),
+            )
+        }
+        saveNavigation()
         if (recordIdToDelete != recordId) {
             _state.update { it.copy(sessionHistory = historyStore.list()) }
             return
@@ -2310,6 +2425,7 @@ public class AgentSessionViewModel(
                 reviewNotice = null,
             )
         }
+        applyDraft(_state.value.taskNavigation.newChatDraft)
     }
 
     /**
@@ -2318,6 +2434,8 @@ public class AgentSessionViewModel(
      */
     private suspend fun restoreSession(recordIdToRestore: String) {
         val record = historyStore.list().firstOrNull { it.id == recordIdToRestore } ?: return
+        rememberDraft()
+        saveNavigation()
         clearQueuedPrompt()
         val acpClient = client
         val previousSession = sessionId
@@ -2374,6 +2492,10 @@ public class AgentSessionViewModel(
                 reviewNotice = null,
             )
         }
+        applyDraft(
+            _state.value.taskNavigation.tasks[record.id]
+                ?.draft ?: AgentDraft(),
+        )
         checkpoints.loadPersisted(record.checkpoints, record.checkpointDisk)
         publishCheckpointFlags()
         if (!prepareRestoredAgent(record)) {
@@ -3263,6 +3385,9 @@ public class AgentSessionViewModel(
      * Project close must use this suspending path; [dispose] is emergency cleanup only.
      */
     public suspend fun shutdown() {
+        navigationLoaded.await()
+        rememberDraft()
+        val navigation = _state.value.taskNavigation
         val record = conversationRecord()
         val openClient = client
         client = null
@@ -3270,6 +3395,7 @@ public class AgentSessionViewModel(
         withContext(NonCancellable) {
             try {
                 if (record != null) historyMutex.withLock { historyStore.save(record) }
+                navigationMutex.withLock { navigationStore.save(navigation) }
             } finally {
                 runCatching { openClient?.close() }
             }

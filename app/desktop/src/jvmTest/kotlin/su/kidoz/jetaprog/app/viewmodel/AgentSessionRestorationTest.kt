@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.app.viewmodel
 
 import io.mockk.coEvery
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -23,10 +24,12 @@ import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
 import su.kidoz.jetaprog.app.agent.AgentHistoryRole
 import su.kidoz.jetaprog.app.agent.AgentHistoryStore
+import su.kidoz.jetaprog.app.agent.AgentNavigationStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.Block
+import su.kidoz.jetaprog.app.ui.agent.EditorSnippet
 import su.kidoz.jetaprog.app.ui.agent.SessionRestoration
 import su.kidoz.jetaprog.app.ui.agent.Turn
 import su.kidoz.jetaprog.platform.filesystem.FileEntry
@@ -494,8 +497,162 @@ class AgentSessionRestorationTest {
             assertEquals(SessionRestoration.Resumed, viewModel.state.value.restoration)
         }
 
+    @Test
+    fun switchingTasksKeepsSeparateDraftsAndSelectionContextAcrossRestart() =
+        runTest {
+            val first = savedRecord()
+            val second = first.copy(id = "second", agentSessionId = "second-session")
+            history.save(first)
+            history.save(second)
+            val viewModel = viewModel(RestoringAgentTransport())
+            viewModel.dispatch(AgentIntent.SetComposerInput("New task draft"))
+            runCurrent()
+            viewModel.dispatch(AgentIntent.RestoreSession(first.id))
+            runCurrent()
+            assertEquals("", viewModel.state.value.composerInput)
+            viewModel.dispatch(AgentIntent.SetComposerInput("First task draft"))
+            viewModel.dispatch(AgentIntent.AttachCurrentSelection)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.RestoreSession(second.id))
+            runCurrent()
+            assertEquals("", viewModel.state.value.composerInput)
+            assertTrue(
+                viewModel.state.value.composerAttachments
+                    .isEmpty(),
+            )
+            viewModel.dispatch(AgentIntent.SetComposerInput("Second task draft"))
+            runCurrent()
+            viewModel.dispatch(AgentIntent.RestoreSession(first.id))
+            runCurrent()
+            assertEquals("First task draft", viewModel.state.value.composerInput)
+            assertEquals(
+                "/project/Main.kt",
+                viewModel.state.value.composerAttachments
+                    .single()
+                    .path,
+            )
+            viewModel.shutdown()
+
+            val restarted = viewModel(RestoringAgentTransport())
+            runCurrent()
+            assertEquals("New task draft", restarted.state.value.composerInput)
+            restarted.dispatch(AgentIntent.RestoreSession(second.id))
+            runCurrent()
+            assertEquals("Second task draft", restarted.state.value.composerInput)
+            restarted.dispatch(AgentIntent.RestoreSession(first.id))
+            runCurrent()
+            assertEquals("First task draft", restarted.state.value.composerInput)
+            assertEquals(
+                "/project/Main.kt",
+                restarted.state.value.composerAttachments
+                    .single()
+                    .path,
+            )
+            restarted.dispatch(AgentIntent.NewChat)
+            runCurrent()
+            assertEquals("New task draft", restarted.state.value.composerInput)
+        }
+
+    @Test
+    fun pinAndArchiveSurviveTranscriptUpdatesAndDeletionRemovesNavigation() =
+        runTest {
+            val record = savedRecord()
+            history.save(record)
+            val viewModel = viewModel(RestoringAgentTransport())
+            viewModel.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            viewModel.dispatch(AgentIntent.SetSessionPinned(record.id, true))
+            viewModel.dispatch(AgentIntent.SetSessionArchived(record.id, true))
+            runCurrent()
+            assertEquals(record.id, viewModel.state.value.activeRecordId)
+            assertEquals(SessionRestoration.Resumed, viewModel.state.value.restoration)
+            viewModel.dispatch(AgentIntent.Send("Continue this archived task"))
+            runCurrent()
+            val navigation = AgentNavigationStore(fileSystem, "/project").load()
+            assertTrue(navigation.tasks.getValue(record.id).pinned)
+            assertTrue(navigation.tasks.getValue(record.id).archived)
+            assertTrue(
+                history
+                    .list()
+                    .single()
+                    .messages
+                    .any { it.text == "Continue this archived task" },
+            )
+            viewModel.dispatch(AgentIntent.DeleteSession(record.id))
+            runCurrent()
+            assertFalse(AgentNavigationStore(fileSystem, "/project").load().tasks.containsKey(record.id))
+        }
+
+    @Test
+    fun submittedDraftDoesNotReappearInNewChatOrOriginalTranscript() =
+        runTest {
+            val record = savedRecord()
+            history.save(record)
+            val viewModel = viewModel(RestoringAgentTransport(canLoad = false))
+            viewModel.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            viewModel.dispatch(AgentIntent.SetComposerInput("A fresh continuation"))
+            runCurrent()
+            viewModel.dispatch(AgentIntent.Send("A fresh continuation"))
+            runCurrent()
+            assertEquals("", viewModel.state.value.composerInput)
+            viewModel.dispatch(AgentIntent.NewChat)
+            runCurrent()
+            assertEquals("", viewModel.state.value.composerInput)
+            viewModel.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            assertEquals("", viewModel.state.value.composerInput)
+            assertEquals(record, history.list().single { it.id == record.id })
+        }
+
+    @Test
+    fun textTypedDuringInitialConnectionMovesToTheNewConversation() =
+        runTest {
+            val ready = CompletableDeferred<Unit>()
+            val agent = RestoringAgentTransport()
+            val viewModel =
+                AgentSessionViewModel("/project", fileSystem, transportFactory = {
+                    ready.await()
+                    agent
+                }).also { viewModels += it }
+            viewModel.dispatch(AgentIntent.Send("First question"))
+            runCurrent()
+            viewModel.dispatch(AgentIntent.SetComposerInput("Follow up draft"))
+            runCurrent()
+            ready.complete(Unit)
+            runCurrent()
+            val id = viewModel.state.value.activeRecordId!!
+            assertEquals("Follow up draft", viewModel.state.value.composerInput)
+            assertEquals(
+                "Follow up draft",
+                viewModel.state.value.taskNavigation.tasks
+                    .getValue(id)
+                    .draft.text,
+            )
+            viewModel.dispatch(AgentIntent.NewChat)
+            runCurrent()
+            assertEquals("", viewModel.state.value.composerInput)
+            viewModel.dispatch(AgentIntent.RestoreSession(id))
+            runCurrent()
+            assertEquals("Follow up draft", viewModel.state.value.composerInput)
+        }
+
+    @Test
+    fun editingAnUnsentDraftIsSavedWithoutNeedingTaskSwitchOrShutdown() =
+        runTest {
+            val viewModel = viewModel(RestoringAgentTransport())
+            viewModel.dispatch(AgentIntent.SetComposerInput("Persist while typing"))
+            advanceUntilIdle()
+            assertEquals("Persist while typing", AgentNavigationStore(fileSystem, "/project").load().newChatDraft.text)
+        }
+
     private fun viewModel(agent: RestoringAgentTransport): AgentSessionViewModel =
-        AgentSessionViewModel("/project", fileSystem, transportFactory = { agent }).also { viewModels += it }
+        AgentSessionViewModel(
+            "/project",
+            fileSystem,
+            transportFactory = { agent },
+            editorContext = { EditorSnippet("Main.kt", "/project/Main.kt", "val savedSelection = 1") },
+        ).also { viewModels += it }
 
     private fun savedRecord(): AgentSessionRecord =
         AgentSessionRecord(

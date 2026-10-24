@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.app.ui.agent
 
 import androidx.compose.runtime.Immutable
 import su.kidoz.jetaprog.app.agent.AgentGoal
+import su.kidoz.jetaprog.app.agent.AgentNavigationState
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 
 /** Lifecycle of the connection to the backing ACP agent. */
@@ -650,6 +651,8 @@ public data class AgentUiState(
     val sessionHistory: List<AgentSessionRecord> = emptyList(),
     /** Whether the History popup is shown. */
     val historyVisible: Boolean = false,
+    /** Per-checkout task organization and unsent drafts, independent of transcript saves. */
+    val taskNavigation: AgentNavigationState = AgentNavigationState(),
     /** Id of the open conversation, when one has been claimed. */
     val activeRecordId: String? = null,
     /** The session objective. A saved active goal is paused when the chat is reopened. */
@@ -739,6 +742,18 @@ public sealed interface AgentIntent {
 
     /** Close the session History popup. */
     public data object HideHistory : AgentIntent
+
+    /** Pins or unpins a saved task without changing its conversation. */
+    public data class SetSessionPinned(
+        val recordId: String,
+        val pinned: Boolean,
+    ) : AgentIntent
+
+    /** Moves a task between Recent and Archived without stopping or deleting it. */
+    public data class SetSessionArchived(
+        val recordId: String,
+        val archived: Boolean,
+    ) : AgentIntent
 
     /** Restore the persisted conversation with [recordId] into the surface. */
     public data class RestoreSession(

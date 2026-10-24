@@ -51,6 +51,7 @@ import su.kidoz.jetaprog.app.ui.theme.Spacing
  * @param enabled whether the input accepts interaction.
  * @param singleLine whether the input is restricted to one line.
  * @param visualTransformation visual transformation applied to the displayed value.
+ * @param inputModifier Modifier for the editable field, including focus and accessibility semantics.
  * @param trailingContent optional action or indicator displayed inside the input at its trailing edge.
  */
 @Composable
@@ -64,6 +65,7 @@ public fun IntelliJTextField(
     enabled: Boolean = true,
     singleLine: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    inputModifier: Modifier = Modifier,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -126,7 +128,7 @@ public fun IntelliJTextField(
                 ),
             cursorBrush = SolidColor(LocalIntelliJColors.current.accent),
             modifier =
-                Modifier
+                inputModifier
                     .fillMaxWidth()
                     .heightIn(min = Dimensions.inputHeight.dp)
                     .background(backgroundColor, shape)

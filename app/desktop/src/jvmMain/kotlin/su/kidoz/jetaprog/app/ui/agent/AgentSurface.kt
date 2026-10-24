@@ -32,12 +32,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +56,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
@@ -83,6 +88,7 @@ import androidx.compose.ui.window.PopupProperties
 import su.kidoz.jetaprog.app.agent.AgentSessionStatus
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
+import su.kidoz.jetaprog.app.ui.components.IntelliJTextField
 import su.kidoz.jetaprog.app.ui.components.PopupChromeMenu
 import su.kidoz.jetaprog.app.ui.components.PopupListRow
 import su.kidoz.jetaprog.app.ui.components.popupChrome
@@ -370,12 +376,15 @@ private fun AgentHeader(
                         error = state.error,
                         now = System.currentTimeMillis(),
                         interrupted = state.interrupted,
+                        navigation = state.taskNavigation.tasks,
                     ),
                 offsetY = headerHeightPx,
                 onRestore = { id ->
                     if (id != state.activeRecordId) dispatch(AgentIntent.RestoreSession(id))
                     dispatch(AgentIntent.HideHistory)
                 },
+                onPin = { id, pinned -> dispatch(AgentIntent.SetSessionPinned(id, pinned)) },
+                onArchive = { id, archived -> dispatch(AgentIntent.SetSessionArchived(id, archived)) },
                 onDeleteRequest = { pendingDelete = it },
                 onDismiss = { dispatch(AgentIntent.HideHistory) },
             )
@@ -1509,25 +1518,81 @@ internal fun AgentHistoryPopup(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     now: Long = System.currentTimeMillis(),
+    onPin: (String, Boolean) -> Unit = { _, _ -> },
+    onArchive: (String, Boolean) -> Unit = { _, _ -> },
 ) {
+    var query by remember { mutableStateOf("") }
+    var archived by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val visibleRows = remember(rows, query, archived) { filterSessionRows(rows, query, archived) }
     PopupChromeMenu(
         expanded = true,
         onDismissRequest = onDismiss,
-        modifier = modifier.width((Dimensions.menuWidth + Spacing.xxl).dp),
+        modifier = modifier.width(Dimensions.popupListWidth.dp),
         offsetY = offsetY,
     ) {
-        if (rows.isEmpty()) {
+        IntelliJTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = "Search tasks and conversations",
+            modifier = Modifier.fillMaxWidth().padding(Spacing.sm.dp),
+            inputModifier =
+                Modifier
+                    .focusRequester(focusRequester)
+                    .semantics { contentDescription = "Search tasks" }
+                    .onPreviewKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
+                            visibleRows.firstOrNull()?.let { onRestore(it.id) }
+                            true
+                        } else {
+                            false
+                        }
+                    },
+        )
+        Row(
+            modifier = Modifier.padding(horizontal = Spacing.sm.dp),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
+        ) {
+            IntelliJButton(
+                "Recent",
+                onClick = { archived = false },
+                style = if (!archived) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY,
+                modifier =
+                    Modifier.semantics {
+                        selected = !archived
+                        role = Role.Tab
+                    },
+            )
+            IntelliJButton(
+                "Archived",
+                onClick = { archived = true },
+                style = if (archived) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY,
+                modifier =
+                    Modifier.semantics {
+                        selected = archived
+                        role = Role.Tab
+                    },
+            )
+        }
+        if (visibleRows.isEmpty()) {
             Text(
-                text = "No saved sessions yet.",
+                text =
+                    when {
+                        query.isNotBlank() -> "No matching tasks."
+                        archived -> "No archived tasks."
+                        rows.isEmpty() -> "No saved sessions yet."
+                        else -> "No recent tasks."
+                    },
                 color = LocalIntelliJColors.current.textMuted,
                 fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
+                modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
             )
         } else {
-            for (row in rows) {
-                SessionListPopupRow(row, now, onRestore, onDeleteRequest)
+            for (row in visibleRows) {
+                SessionListPopupRow(row, now, onRestore, onDeleteRequest, onPin, onArchive)
             }
         }
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
     }
 }
 
@@ -1537,6 +1602,8 @@ private fun SessionListPopupRow(
     now: Long,
     onRestore: (String) -> Unit,
     onDeleteRequest: (SessionListRow) -> Unit,
+    onPin: (String, Boolean) -> Unit,
+    onArchive: (String, Boolean) -> Unit,
 ) {
     val colors = LocalIntelliJColors.current
     PopupListRow(
@@ -1560,14 +1627,38 @@ private fun SessionListPopupRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "${sessionStatusLabel(row.status)} · ${relativeSessionTime(row.savedAtEpochMillis, now)}",
-                color = colors.textMuted,
+                text =
+                    "${sessionStatusLabel(row.status)} · ${relativeSessionTime(row.savedAtEpochMillis, now)}" +
+                        if (row.hasDraft) " · Draft" else "",
+                color = if (row.current) colors.textSecondary else colors.textMuted,
                 fontSize = 10.sp,
                 maxLines = 1,
             )
         }
         sessionDiffCountLabel(row.addedLines, row.removedLines)?.let { counts ->
             Text(counts, color = colors.textSecondary, fontSize = 11.sp, maxLines = 1)
+        }
+        IconButton(
+            onClick = { onPin(row.id, !row.pinned) },
+            modifier = Modifier.size(Dimensions.toolbarIcon.dp).agentFocusRing(CircleShape),
+        ) {
+            Icon(
+                Icons.Default.PushPin,
+                contentDescription = if (row.pinned) "Unpin task" else "Pin task",
+                tint = if (row.pinned) colors.accent else colors.textSecondary,
+                modifier = Modifier.size(Dimensions.iconSm.dp),
+            )
+        }
+        IconButton(
+            onClick = { onArchive(row.id, !row.archived) },
+            modifier = Modifier.size(Dimensions.toolbarIcon.dp).agentFocusRing(CircleShape),
+        ) {
+            Icon(
+                if (row.archived) Icons.Default.Unarchive else Icons.Default.Archive,
+                contentDescription = if (row.archived) "Unarchive task" else "Archive task",
+                tint = colors.textSecondary,
+                modifier = Modifier.size(Dimensions.iconSm.dp),
+            )
         }
         IconButton(
             onClick = { onDeleteRequest(row) },

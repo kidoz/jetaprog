@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.app.ui.agent
 
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 import su.kidoz.jetaprog.app.agent.AgentSessionStatus
+import su.kidoz.jetaprog.app.agent.AgentTaskNavigation
 
 /**
  * One row in the session list.
@@ -22,6 +23,10 @@ internal data class SessionListRow(
     val addedLines: Int,
     val removedLines: Int,
     val current: Boolean,
+    val searchText: String = title,
+    val pinned: Boolean = false,
+    val archived: Boolean = false,
+    val hasDraft: Boolean = false,
 )
 
 /** Line counts and status derived from the turns currently on the surface. */
@@ -143,6 +148,7 @@ internal fun sessionListRows(
     error: String?,
     now: Long,
     interrupted: Boolean = false,
+    navigation: Map<String, AgentTaskNavigation> = emptyMap(),
 ): List<SessionListRow> {
     val liveTitle = sessionTitle(turns)
     val live = summarizeSession(turns, isStreaming, error, live = true, interrupted = interrupted)
@@ -171,13 +177,22 @@ internal fun sessionListRows(
                     addedLines = live.addedLines,
                     removedLines = live.removedLines,
                     current = true,
+                    searchText = turns.filterIsInstance<Turn.User>().joinToString("\n") { it.text },
                 ),
             ) + listed
         } else {
             listed
         }
-    val currentRow = withCurrent.firstOrNull { it.current } ?: return withCurrent
-    return listOf(currentRow) + withCurrent.filter { it.id != currentRow.id }
+    return withCurrent
+        .map { row ->
+            val task = navigation[row.id]
+            row.copy(
+                searchText = row.searchText + "\n" + task?.draft?.text.orEmpty(),
+                pinned = task?.pinned == true,
+                archived = task?.archived == true,
+                hasDraft = task?.draft?.let { it.text.isNotBlank() || it.attachments.isNotEmpty() } == true,
+            )
+        }.sortedByDescending { it.current }
 }
 
 private fun AgentSessionRecord.asRow(
@@ -194,4 +209,24 @@ private fun AgentSessionRecord.asRow(
         addedLines = addedLines,
         removedLines = removedLines,
         current = current,
+        searchText = title + "\n" + messages.joinToString("\n") { it.text },
     )
+
+/** Searches conversation text and drafts within the selected history tab. */
+internal fun filterSessionRows(
+    rows: List<SessionListRow>,
+    query: String,
+    archived: Boolean,
+): List<SessionListRow> =
+    rows
+        .filter {
+            it.archived == archived &&
+                (
+                    it.title.contains(query.trim(), ignoreCase = true) ||
+                        it.searchText.contains(query.trim(), ignoreCase = true)
+                )
+        }.sortedWith(
+            compareByDescending<SessionListRow> {
+                it.current
+            }.thenByDescending { it.pinned }.thenByDescending { it.savedAtEpochMillis },
+        )

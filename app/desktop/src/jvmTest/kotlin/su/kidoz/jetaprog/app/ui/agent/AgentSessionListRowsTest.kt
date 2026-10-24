@@ -1,7 +1,9 @@
 package su.kidoz.jetaprog.app.ui.agent
 
+import su.kidoz.jetaprog.app.agent.AgentDraft
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
 import su.kidoz.jetaprog.app.agent.AgentSessionStatus
+import su.kidoz.jetaprog.app.agent.AgentTaskNavigation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -10,6 +12,35 @@ import kotlin.test.assertTrue
 
 /** Session list rows: live status, diff counts, and saved-session fallbacks. */
 class AgentSessionListRowsTest {
+    @Test
+    fun currentThenPinnedThenRecentAndArchivedTasksStaySearchable() {
+        val records =
+            listOf(
+                AgentSessionRecord(id = "new", title = "Recent", savedAtEpochMillis = 4),
+                AgentSessionRecord(id = "pin", title = "Pinned", savedAtEpochMillis = 1),
+                AgentSessionRecord(id = "archived", title = "Archived", savedAtEpochMillis = 3),
+                AgentSessionRecord(id = "current", title = "Current", savedAtEpochMillis = 2),
+            )
+        val rows =
+            sessionListRows(
+                records,
+                "current",
+                listOf(Turn.User("user", "Current", "now")),
+                false,
+                null,
+                5,
+                navigation =
+                    mapOf(
+                        "pin" to AgentTaskNavigation(pinned = true, draft = AgentDraft("Investigate Unicode поиск")),
+                        "archived" to AgentTaskNavigation(archived = true),
+                    ),
+            )
+        assertEquals(listOf("current", "pin", "new"), filterSessionRows(rows, "", false).map { it.id })
+        assertEquals(listOf("archived"), filterSessionRows(rows, "ARCH", true).map { it.id })
+        assertEquals(listOf("pin"), filterSessionRows(rows, " ПОИСК ", false).map { it.id })
+        assertTrue(rows.single { it.id == "pin" }.hasDraft)
+    }
+
     @Test
     fun liveStatusPrefersApprovalThenRunningThenReview() {
         val streaming =
