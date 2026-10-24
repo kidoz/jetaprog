@@ -809,6 +809,7 @@ private fun AgentComposer(
                         Modifier
                             .fillMaxWidth()
                             .heightIn(min = Dimensions.inputHeight.dp)
+                            .semantics { contentDescription = "Agent prompt" }
                             .onPreviewKeyEvent { event ->
                                 val nextMode = nextCycledModeId(state.mode?.id, state.availableModes)
                                 val cycleMode =
