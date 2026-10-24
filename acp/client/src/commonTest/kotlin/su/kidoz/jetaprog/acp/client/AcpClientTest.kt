@@ -5,7 +5,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerializationException
@@ -190,6 +192,40 @@ class AcpClientTest {
             gate.complete(Unit)
             load.await()
             assertEquals(listOf("previous answer"), received)
+            client.close()
+        }
+
+    @Test
+    fun blockedOptionalCollectorDoesNotStallPromptAfterBufferFills() =
+        runTest {
+            val transport = ClientTestTransport()
+            val received = mutableListOf<String>()
+            val handler =
+                object : AcpClientHandler {
+                    override suspend fun sessionUpdate(notification: SessionNotification) {
+                        val update = assertIs<SessionUpdate.AgentMessageChunk>(notification.update)
+                        received += assertIs<ContentBlock.Text>(update.content).text
+                    }
+                }
+            val client = AcpClient(transport, backgroundScope, handler = handler)
+            client.initialize()
+            val collectorBlocked = CompletableDeferred<Unit>()
+            val collectorStarted = CompletableDeferred<Unit>()
+            backgroundScope.launch {
+                collectorStarted.complete(Unit)
+                client.sessionUpdates.collect { collectorBlocked.await() }
+            }
+            collectorStarted.await()
+            runCurrent()
+            val prompt = async { client.promptText("s", "hello") }
+            runCurrent()
+
+            repeat(128) { transport.update("chunk-$it") }
+            transport.respond("""{"stopReason":"end_turn"}""")
+
+            assertEquals(StopReason.END_TURN, prompt.await().stopReason)
+            assertEquals(List(128) { "chunk-$it" }, received)
+            assertFalse(collectorBlocked.isCompleted)
             client.close()
         }
 

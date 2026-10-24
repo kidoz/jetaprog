@@ -61,9 +61,13 @@ public class AcpClient(
     private val _sessionUpdates = MutableSharedFlow<SessionNotification>(extraBufferCapacity = 64)
 
     /**
-     * Streamed `session/update` notifications for observers. Collection is buffered;
-     * use [AcpClientHandler.sessionUpdate] for state that must be applied before
-     * [prompt] or [loadSession] completes.
+     * Best-effort stream of `session/update` notifications for optional observers.
+     *
+     * Up to 64 updates are buffered per slow collector; once that buffer is full,
+     * new updates are dropped for every collector so observation never stalls the
+     * connection. Updates are not replayed to new collectors. Use
+     * [AcpClientHandler.sessionUpdate] for reliable, wire-ordered handling that must
+     * finish before [prompt] or [loadSession] completes.
      */
     public val sessionUpdates: SharedFlow<SessionNotification> = _sessionUpdates.asSharedFlow()
 
@@ -300,7 +304,7 @@ public class AcpClient(
         if (method == AcpMethod.SESSION_UPDATE && params != null) {
             val notification = decode(SessionNotification.serializer(), params)
             handler.sessionUpdate(notification)
-            _sessionUpdates.emit(notification)
+            _sessionUpdates.tryEmit(notification)
         }
     }
 
