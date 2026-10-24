@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Delete
@@ -51,6 +52,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -76,15 +78,18 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import su.kidoz.jetaprog.app.agent.AgentConversationView
 import su.kidoz.jetaprog.app.agent.AgentSessionStatus
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
@@ -518,54 +523,94 @@ private fun Conversation(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
 ) {
-    val listState = remember(state.activeRecordId) { LazyListState() }
-    var followOutput by remember(state.activeRecordId) { mutableStateOf(true) }
+    val saved = state.taskNavigation.tasks[state.activeRecordId]?.view ?: AgentConversationView()
+    val listState =
+        remember(state.workspacePath, state.activeRecordId) {
+            val anchor =
+                state.turns.indexOfFirst { it.id == saved.turnId }.takeIf { it >= 0 }
+                    ?: saved.index.coerceIn(0, state.turns.lastIndex.coerceAtLeast(0))
+            LazyListState(anchor, saved.offset.coerceAtLeast(0))
+        }
+    val turns by rememberUpdatedState(state.turns)
+    var followOutput by remember(listState) { mutableStateOf(saved.followOutput) }
+    var autoScrolling by remember(listState) { mutableStateOf(false) }
     LaunchedEffect(listState) {
         snapshotFlow {
-            val layout = listState.layoutInfo
-            val atLatest =
-                layout.visibleItemsInfo
-                    .lastOrNull()
-                    ?.index
-                    ?.let { it >= layout.totalItemsCount - 1 } ?: true
-            listState.isScrollInProgress to atLatest
-        }.collect { (scrolling, atLatest) ->
-            if (atLatest) {
-                followOutput = true
-            } else if (scrolling) {
-                followOutput = false
+            val measured = listState.layoutInfo.totalItemsCount > 0
+            val atLatest = !listState.canScrollForward
+            val view =
+                AgentConversationView(
+                    turns.getOrNull(listState.firstVisibleItemIndex)?.id,
+                    listState.firstVisibleItemIndex,
+                    listState.firstVisibleItemScrollOffset,
+                    followOutput,
+                )
+            Triple(measured && !autoScrolling, listState.isScrollInProgress to atLatest, view)
+        }.collect { (ready, scroll, view) ->
+            if (ready) {
+                val (scrolling, atLatest) = scroll
+                if (atLatest) {
+                    followOutput = true
+                } else if (scrolling) {
+                    followOutput = false
+                }
+                state.activeRecordId?.let { id ->
+                    dispatch(AgentIntent.SaveConversationView(id, view.copy(followOutput = followOutput)))
+                }
             }
         }
     }
     LaunchedEffect(listState, state.turns, followOutput) {
         if (followOutput && state.turns.isNotEmpty()) {
-            listState.scrollToItem(state.turns.lastIndex)
+            autoScrolling = true
+            try {
+                listState.scrollToItem(state.turns.lastIndex, Int.MAX_VALUE)
+            } finally {
+                autoScrolling = false
+            }
         }
     }
-    LazyColumn(
-        state = listState,
-        modifier =
-            Modifier.fillMaxSize().semantics {
-                contentDescription = "Conversation"
-                stateDescription = if (followOutput) "Following output" else "Scroll paused"
-            },
-        contentPadding = PaddingValues(vertical = Spacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
-    ) {
-        items(state.turns, key = { it.id }) { turn ->
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                Column(
-                    modifier =
-                        Modifier
-                            .widthIn(max = CONVERSATION_MAX_WIDTH.dp)
-                            .fillMaxWidth()
-                            .padding(horizontal = Spacing.xl.dp - 2.dp),
-                ) {
-                    when (turn) {
-                        is Turn.User -> UserTurnView(turn, state.isStreaming, dispatch)
-                        is Turn.Agent -> AgentTurnView(turn, dispatch)
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (!followOutput) {
+                            Modifier.padding(
+                                end = (Dimensions.toolbarIcon + Spacing.xs).dp,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    ).semantics {
+                        contentDescription = "Conversation"
+                        stateDescription = if (followOutput) "Following output" else "Scroll paused"
+                    },
+            contentPadding = PaddingValues(vertical = Spacing.lg.dp),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
+        ) {
+            items(state.turns, key = { it.id }) { turn ->
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                    Column(
+                        modifier =
+                            Modifier
+                                .widthIn(max = CONVERSATION_MAX_WIDTH.dp)
+                                .fillMaxWidth()
+                                .padding(horizontal = Spacing.xl.dp - 2.dp),
+                    ) {
+                        when (turn) {
+                            is Turn.User -> UserTurnView(turn, state.isStreaming, dispatch)
+                            is Turn.Agent -> AgentTurnView(turn, dispatch)
+                        }
                     }
                 }
+            }
+        }
+        if (!followOutput) {
+            Box(Modifier.align(Alignment.BottomEnd).padding(bottom = Spacing.sm.dp)) {
+                HeaderIcon(Icons.Default.ArrowDownward, "Jump to latest") { followOutput = true }
             }
         }
     }
@@ -759,6 +804,21 @@ private fun AgentComposer(
     dispatch: (AgentIntent) -> Unit,
 ) {
     val input = state.composerInput
+    val selection = state.composerSelection.takeIf { state.composerSelectionText == input }
+    var editingValue by remember(state.workspacePath, state.activeRecordId) {
+        mutableStateOf(TextFieldValue(input, selection ?: TextRange(input.length)))
+    }
+    val fieldValue =
+        if (editingValue.text ==
+            input
+        ) {
+            editingValue
+        } else {
+            TextFieldValue(input, selection ?: TextRange(input.length))
+        }
+    LaunchedEffect(input, selection) {
+        editingValue = fieldValue.copy(selection = selection ?: fieldValue.selection)
+    }
     val canSubmit = input.isNotBlank() && state.restoration != SessionRestoration.Loading
     val send: () -> Unit = {
         if (canSubmit) dispatch(AgentIntent.Send(input.trim()))
@@ -804,8 +864,11 @@ private fun AgentComposer(
                     )
                 }
                 BasicTextField(
-                    value = input,
-                    onValueChange = { dispatch(AgentIntent.SetComposerInput(it)) },
+                    value = fieldValue,
+                    onValueChange = {
+                        editingValue = it
+                        dispatch(AgentIntent.SetComposerInput(it.text, it.selection.start, it.selection.end))
+                    },
                     textStyle =
                         TextStyle(
                             color = LocalIntelliJColors.current.textPrimary,

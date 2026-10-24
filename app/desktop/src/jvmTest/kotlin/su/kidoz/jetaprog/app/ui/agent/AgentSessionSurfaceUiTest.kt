@@ -170,8 +170,8 @@ class AgentSessionSurfaceUiTest {
                 }
                 onNodeWithText("Restore").assertIsDisplayed()
                 onNodeWithText("Open").assertIsDisplayed()
-                onNodeWithText("Restore").performClick()
-                onNodeWithText("Open").performClick()
+                onNodeWithText("Restore").performScrollTo().performClick()
+                onNodeWithText("Open").performScrollTo().performClick()
                 if (dark) onRoot().saveUiArtifacts("agent-checkpoint-diff")
             }
             assertEquals(

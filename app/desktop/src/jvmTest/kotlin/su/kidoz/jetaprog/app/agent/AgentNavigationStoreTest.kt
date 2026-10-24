@@ -14,6 +14,19 @@ class AgentNavigationStoreTest {
     private val draft =
         AgentDraft("Explain this selection", listOf(AgentDraftAttachment("Main.kt", "/project/Main.kt", "val x = 1")))
 
+    @Test
+    fun oldNavigationDefaultsToFollowingOutputAndPlacesCaretAtEnd() =
+        runTest {
+            File(project, ".jetaprog").mkdirs()
+            File(project, ".jetaprog/agent-navigation.json").writeText(
+                """{"tasks":{"old":{"draft":{"text":"existing draft"}}}}""",
+            )
+            val task = store.load().tasks.getValue("old")
+            assertEquals(AgentConversationView(), task.view)
+            assertEquals(task.draft.text.length, task.draft.selectionStart)
+            assertEquals(task.draft.selectionStart, task.draft.selectionEnd)
+        }
+
     @AfterTest
     fun cleanUp() {
         project.deleteRecursively()
@@ -22,7 +35,19 @@ class AgentNavigationStoreTest {
     @Test
     fun navigationAndDraftsSurviveFreshStoreAndStayCheckoutLocal() =
         runTest {
-            val navigation = AgentNavigationState(mapOf("task" to AgentTaskNavigation(true, true, draft)), draft)
+            val navigation =
+                AgentNavigationState(
+                    mapOf(
+                        "task" to
+                            AgentTaskNavigation(
+                                true,
+                                true,
+                                draft.copy(selectionStart = 9, selectionEnd = 2),
+                                AgentConversationView("turn", 4, 27, false),
+                            ),
+                    ),
+                    draft,
+                )
             store.save(navigation)
             assertEquals(navigation, AgentNavigationStore(JvmFileSystem(), project.absolutePath).load())
             assertEquals(

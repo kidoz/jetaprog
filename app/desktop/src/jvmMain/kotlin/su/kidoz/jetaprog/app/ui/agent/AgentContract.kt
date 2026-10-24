@@ -1,6 +1,8 @@
 package su.kidoz.jetaprog.app.ui.agent
 
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.text.TextRange
+import su.kidoz.jetaprog.app.agent.AgentConversationView
 import su.kidoz.jetaprog.app.agent.AgentGoal
 import su.kidoz.jetaprog.app.agent.AgentNavigationState
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
@@ -641,6 +643,10 @@ public data class AgentUiState(
     val docked: Boolean = false,
     val error: String? = null,
     val composerInput: String = "",
+    /** Selection in [composerSelectionText]; ignored after a programmatic text replacement. */
+    val composerSelection: TextRange = TextRange.Zero,
+    /** Text version to which the composer selection belongs. */
+    val composerSelectionText: String = "",
     val composerAttachments: List<ComposerAttachment> = emptyList(),
     val queuedPrompts: List<QueuedFollowUp> = emptyList(),
     /** Delivery is paused after Stop, failure, or an explicit pause. */
@@ -883,6 +889,16 @@ public sealed interface AgentIntent {
     /** Update the composer input text. */
     public data class SetComposerInput(
         val text: String,
+        /** Selection anchor; defaults to the end for programmatic insertion. */
+        val selectionStart: Int = text.length,
+        /** Selection focus, including reversed selections. */
+        val selectionEnd: Int = selectionStart,
+    ) : AgentIntent
+
+    /** Save a reading position for its explicit task, even if another task is now open. */
+    public data class SaveConversationView(
+        val recordId: String,
+        val view: AgentConversationView,
     ) : AgentIntent
 
     /** Attach the editor's current file. Does nothing when no file is open. */

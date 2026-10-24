@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import androidx.compose.ui.text.TextRange
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -21,6 +22,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import su.kidoz.jetaprog.acp.protocol.AcpConnection
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
+import su.kidoz.jetaprog.app.agent.AgentConversationView
 import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
 import su.kidoz.jetaprog.app.agent.AgentHistoryRole
 import su.kidoz.jetaprog.app.agent.AgentHistoryStore
@@ -644,6 +646,48 @@ class AgentSessionRestorationTest {
             viewModel.dispatch(AgentIntent.SetComposerInput("Persist while typing"))
             advanceUntilIdle()
             assertEquals("Persist while typing", AgentNavigationStore(fileSystem, "/project").load().newChatDraft.text)
+        }
+
+    @Test
+    fun taskReadingPositionAndReverseDraftSelectionSurviveRestartAndIgnoreLateDeletedUpdates() =
+        runTest {
+            val first = savedRecord()
+            val second = first.copy(id = "second", agentSessionId = "second-session")
+            history.save(first)
+            history.save(second)
+            val vm = viewModel(RestoringAgentTransport())
+            vm.dispatch(AgentIntent.RestoreSession(first.id))
+            runCurrent()
+            vm.dispatch(AgentIntent.SetComposerInput("alpha beta", 10, 6))
+            val view = AgentConversationView("message", 3, 24, false)
+            vm.dispatch(AgentIntent.SaveConversationView(first.id, view))
+            runCurrent()
+            vm.dispatch(AgentIntent.RestoreSession(second.id))
+            runCurrent()
+            vm.dispatch(AgentIntent.SetComposerInput("alpha beta", 0, 0))
+            runCurrent()
+            vm.shutdown()
+            val restarted = viewModel(RestoringAgentTransport())
+            restarted.dispatch(AgentIntent.RestoreSession(first.id))
+            runCurrent()
+            assertEquals(TextRange(10, 6), restarted.state.value.composerSelection)
+            assertEquals(
+                view,
+                restarted.state.value.taskNavigation.tasks
+                    .getValue(first.id)
+                    .view,
+            )
+            restarted.dispatch(AgentIntent.RestoreSession(second.id))
+            runCurrent()
+            assertEquals(TextRange(0), restarted.state.value.composerSelection)
+            restarted.dispatch(AgentIntent.DeleteSession(first.id))
+            runCurrent()
+            restarted.dispatch(AgentIntent.SaveConversationView(first.id, view))
+            runCurrent()
+            assertFalse(
+                restarted.state.value.taskNavigation.tasks
+                    .containsKey(first.id),
+            )
         }
 
     private fun viewModel(agent: RestoringAgentTransport): AgentSessionViewModel =

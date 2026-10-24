@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import androidx.compose.ui.text.TextRange
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -552,8 +553,32 @@ public class AgentSessionViewModel(
                 persist()
             }
 
+            is AgentIntent.SaveConversationView -> {
+                val navigation = _state.value.taskNavigation
+                if (intent.recordId == recordId || intent.recordId in navigation.tasks) {
+                    val task = navigation.tasks[intent.recordId] ?: AgentTaskNavigation()
+                    val view =
+                        intent.view.copy(
+                            index = intent.view.index.coerceAtLeast(0),
+                            offset = intent.view.offset.coerceAtLeast(0),
+                        )
+                    if (view != task.view) {
+                        _state.update {
+                            it.copy(
+                                taskNavigation =
+                                    it.taskNavigation.copy(
+                                        tasks =
+                                            it.taskNavigation.tasks + (intent.recordId to task.copy(view = view)),
+                                    ),
+                            )
+                        }
+                        scheduleNavigationSave()
+                    }
+                }
+            }
+
             is AgentIntent.SetComposerInput -> {
-                updateComposerInput(intent.text)
+                updateComposerInput(intent.text, intent.selectionStart, intent.selectionEnd)
             }
 
             AgentIntent.AttachCurrentFile -> {
@@ -2122,15 +2147,27 @@ public class AgentSessionViewModel(
             .joinToString("\n") { it.text }
     }
 
-    private fun updateComposerInput(text: String) {
+    private fun updateComposerInput(
+        text: String,
+        selectionStart: Int,
+        selectionEnd: Int,
+    ) {
+        val textChanged = _state.value.composerInput != text
         val query = mentionQuery(text)
         _state.update { st ->
             st.copy(
                 composerInput = text,
+                composerSelection =
+                    TextRange(
+                        selectionStart.coerceIn(0, text.length),
+                        selectionEnd.coerceIn(0, text.length),
+                    ),
+                composerSelectionText = text,
                 mentionFiles = if (query.isNullOrEmpty()) emptyList() else st.mentionFiles,
             )
         }
         rememberDraft()
+        if (!textChanged) return
         if (query.isNullOrEmpty()) {
             mentionGeneration++
             return
@@ -2233,6 +2270,12 @@ public class AgentSessionViewModel(
             AgentDraft(
                 state.composerInput,
                 state.composerAttachments.map { AgentDraftAttachment(it.label, it.path, it.excerpt) },
+                selectionStart =
+                    state.composerSelection.takeIf { state.composerSelectionText == state.composerInput }?.start
+                        ?: state.composerInput.length,
+                selectionEnd =
+                    state.composerSelection.takeIf { state.composerSelectionText == state.composerInput }?.end
+                        ?: state.composerInput.length,
             )
         val navigation = state.taskNavigation
         val updated =
@@ -2244,6 +2287,10 @@ public class AgentSessionViewModel(
             }
         if (navigation == updated) return
         _state.update { it.copy(taskNavigation = updated) }
+        scheduleNavigationSave()
+    }
+
+    private fun scheduleNavigationSave() {
         navigationSaveJob?.cancel()
         navigationSaveJob =
             scope.launch {
@@ -2257,6 +2304,12 @@ public class AgentSessionViewModel(
         _state.update {
             it.copy(
                 composerInput = draft.text,
+                composerSelection =
+                    TextRange(
+                        draft.selectionStart.coerceIn(0, draft.text.length),
+                        draft.selectionEnd.coerceIn(0, draft.text.length),
+                    ),
+                composerSelectionText = draft.text,
                 composerAttachments =
                     draft.attachments.map { item ->
                         ComposerAttachment(item.label, item.path, item.excerpt)

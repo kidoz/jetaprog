@@ -23,6 +23,23 @@ public data class AgentDraft(
     val text: String = "",
     /** Attached files and selections. */
     val attachments: List<AgentDraftAttachment> = emptyList(),
+    /** Caret or selection anchor in the draft, in UTF-16 offsets. */
+    val selectionStart: Int = text.length,
+    /** Selection focus, preserving reverse selections. */
+    val selectionEnd: Int = selectionStart,
+)
+
+/** A durable reading position; message identity takes priority over its fallback index. */
+@Serializable
+public data class AgentConversationView(
+    /** First visible turn, when available in the restored transcript. */
+    val turnId: String? = null,
+    /** Fallback when transcript reconstruction removes the anchor. */
+    val index: Int = 0,
+    /** Pixel offset into the first visible turn. */
+    val offset: Int = 0,
+    /** Whether new output should keep the viewport at the end. */
+    val followOutput: Boolean = true,
 )
 
 /** Organization and draft state for a saved conversation. */
@@ -34,6 +51,8 @@ public data class AgentTaskNavigation(
     val archived: Boolean = false,
     /** Unsent prompt for this task. */
     val draft: AgentDraft = AgentDraft(),
+    /** Last reading position and follow-output choice for this conversation. */
+    val view: AgentConversationView = AgentConversationView(),
 )
 
 /** Navigation state belonging only to one checkout. */
