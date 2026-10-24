@@ -208,3 +208,20 @@ private fun AgentQueuePreview() {
         )
     }
 }
+
+@Suppress("UnusedPrivateMember")
+@Preview
+@Composable
+private fun AgentWorkspaceReviewPreview() {
+    JetaProgTheme {
+        su.kidoz.jetaprog.app.ui.agent.AgentReviewPanel(
+            state =
+                su.kidoz.jetaprog.app.ui.agent.AgentUiState(
+                    reviewScope = su.kidoz.jetaprog.app.ui.agent.ReviewScope.WORKSPACE,
+                ),
+            dispatch = {},
+            files = emptyList(),
+            checks = emptyList(),
+        )
+    }
+}

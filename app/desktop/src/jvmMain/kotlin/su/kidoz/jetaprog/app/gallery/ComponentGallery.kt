@@ -32,12 +32,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.agent.WorkspaceChange
 import su.kidoz.jetaprog.app.ui.agent.AgentChecksSection
+import su.kidoz.jetaprog.app.ui.agent.AgentReviewPanel
 import su.kidoz.jetaprog.app.ui.agent.AgentTaskDetails
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
 import su.kidoz.jetaprog.app.ui.agent.AgentWorkspaceContext
 import su.kidoz.jetaprog.app.ui.agent.PlanStep
 import su.kidoz.jetaprog.app.ui.agent.PlanStepStatus
+import su.kidoz.jetaprog.app.ui.agent.ReviewScope
+import su.kidoz.jetaprog.app.ui.agent.WorkspaceReviewState
 import su.kidoz.jetaprog.app.ui.components.BuildStatus
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
@@ -134,6 +138,27 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
                     dispatch = {},
                 )
                 AgentChecksSection(emptyList(), "/projects/jetaprog-worktree")
+            }
+        }
+
+        GallerySection("Agent · Workspace review") {
+            Column(Modifier.width(Dimensions.popupSearchWidth.dp)) {
+                AgentReviewPanel(
+                    state =
+                        AgentUiState(
+                            workspacePath = "/projects/jetaprog",
+                            reviewScope = ReviewScope.WORKSPACE,
+                            workspaceReview =
+                                WorkspaceReviewState(
+                                    files = listOf(WorkspaceChange("generated.kt", '?', '?')),
+                                    revision = 0,
+                                    preExistingPaths = emptySet(),
+                                ),
+                        ),
+                    dispatch = {},
+                    files = emptyList(),
+                    checks = emptyList(),
+                )
             }
         }
 

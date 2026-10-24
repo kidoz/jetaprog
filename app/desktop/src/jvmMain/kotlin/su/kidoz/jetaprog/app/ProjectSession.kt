@@ -31,6 +31,7 @@ import su.kidoz.jetaprog.app.agent.AGENT_OTHER_BUSY_NOTICE
 import su.kidoz.jetaprog.app.agent.AgentCheckout
 import su.kidoz.jetaprog.app.agent.AgentChoice
 import su.kidoz.jetaprog.app.agent.AgentWorktree
+import su.kidoz.jetaprog.app.agent.GitAgentWorkspaceReviewSource
 import su.kidoz.jetaprog.app.agent.GitAgentWorktreeLauncher
 import su.kidoz.jetaprog.app.agent.legacyClaudeLaunch
 import su.kidoz.jetaprog.app.build.WorkspaceBuildModelService
@@ -648,6 +649,7 @@ public class ProjectSession(
         AgentSessionViewModel(
             projectPath = projectPath,
             fileSystem = fileSystem,
+            workspaceReviewSource = GitAgentWorkspaceReviewSource(processExecutor, projectPath),
             ideMcpEndpoint = ideMcpEndpoint,
             editorContext = { editorSnippet(projectPath, editorViewModel.state.value) },
             mentionSearch = { query ->
@@ -1161,6 +1163,7 @@ public class ProjectSession(
         AgentSessionViewModel(
             projectPath = tree.path,
             fileSystem = fileSystem,
+            workspaceReviewSource = GitAgentWorkspaceReviewSource(processExecutor, tree.path),
             ideMcpEndpoint = { null },
             editorContext = { null },
             mentionSearch = { emptyList() },

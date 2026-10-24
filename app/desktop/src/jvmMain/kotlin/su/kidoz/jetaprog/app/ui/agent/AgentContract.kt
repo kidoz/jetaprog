@@ -658,6 +658,10 @@ public data class AgentUiState(
     val goalNotice: String? = null,
     /** Whether `/review` is showing this session's files. */
     val reviewVisible: Boolean = false,
+    /** Which review source is currently selected. */
+    val reviewScope: ReviewScope = ReviewScope.AGENT,
+    /** Read-only Git review of the active checkout. */
+    val workspaceReview: WorkspaceReviewState = WorkspaceReviewState(),
     /** Exact net counts for files with complete IDE-observed baselines. */
     val reviewCounts: Map<String, ReviewDelta> = emptyMap(),
     /** File-specific reasons a revert could not safely proceed. */
@@ -921,6 +925,19 @@ public sealed interface AgentIntent {
 
     /** Opens local file review without sending or clearing the composer. */
     public data object ShowReview : AgentIntent
+
+    /** Switches between agent-reported edits and all local Git changes. */
+    public data class SetReviewScope(
+        val scope: ReviewScope,
+    ) : AgentIntent
+
+    /** Rescans the checkout without modifying files or the Git index. */
+    public data object RefreshWorkspaceReview : AgentIntent
+
+    /** Loads a read-only preview for a path in the latest workspace scan. */
+    public data class PreviewWorkspaceChange(
+        val path: String,
+    ) : AgentIntent
 
     /**
      * Keep all pending changes of the reviewed file [key].

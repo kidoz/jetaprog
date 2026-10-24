@@ -655,6 +655,7 @@ internal fun SendButton(
  * @param onClose Hides the card.
  * @param modifier Layout modifier for the card.
  * @param verification Optional command evidence shown before file decisions.
+ * @param showHeader Whether to show the standalone header when not hosted in a review scope panel.
  */
 @Composable
 internal fun ReviewCard(
@@ -665,6 +666,7 @@ internal fun ReviewCard(
     modifier: Modifier = Modifier,
     onOpen: ((String) -> Unit)? = null,
     verification: (@Composable () -> Unit)? = null,
+    showHeader: Boolean = true,
 ) {
     if (files.isEmpty()) return
     val shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp)
@@ -679,30 +681,32 @@ internal fun ReviewCard(
                 .padding(Spacing.md.dp),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "Review",
-                color = colors.textMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f),
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .size(Dimensions.toolbarIcon.dp)
-                        .agentFocusRing(CircleShape)
-                        .clip(CircleShape)
-                        .semantics { contentDescription = "Close review" }
-                        .clickable(role = Role.Button, onClick = onClose),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = null,
-                    tint = colors.textSecondary,
-                    modifier = Modifier.size(Dimensions.iconSm.dp),
+        if (showHeader) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Review",
+                    color = colors.textMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f),
                 )
+                Box(
+                    modifier =
+                        Modifier
+                            .size(Dimensions.toolbarIcon.dp)
+                            .agentFocusRing(CircleShape)
+                            .clip(CircleShape)
+                            .semantics { contentDescription = "Close review" }
+                            .clickable(role = Role.Button, onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = null,
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(Dimensions.iconSm.dp),
+                    )
+                }
             }
         }
         Text(

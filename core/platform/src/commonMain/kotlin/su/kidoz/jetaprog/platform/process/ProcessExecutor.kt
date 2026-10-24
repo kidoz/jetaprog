@@ -132,6 +132,14 @@ public interface RunningProcess {
  */
 public interface ProcessExecutor {
     /**
+     * Executes a command while preserving stdout and stderr whitespace and line endings.
+     * Required for framed formats such as Git's NUL-delimited status output.
+     * Implementations without raw-output support fail rather than silently normalize data.
+     */
+    public suspend fun executeRaw(config: ProcessConfig): Result<ProcessResult> =
+        Result.failure(UnsupportedOperationException("Raw process output is unavailable."))
+
+    /**
      * Executes a command and waits for it to complete.
      * @param command The command and arguments to execute
      * @param workingDirectory The working directory (null for current directory)

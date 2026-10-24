@@ -74,6 +74,7 @@ import su.kidoz.jetaprog.app.agent.AgentPendingReview
 import su.kidoz.jetaprog.app.agent.AgentPrefs
 import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.agent.AgentWorkspaceReviewSource
 import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.AgentWorktreeLauncher
 import su.kidoz.jetaprog.app.agent.CLAUDE_AGENT_ID
@@ -130,7 +131,7 @@ import su.kidoz.jetaprog.app.ui.agent.PlanStepStatus
 import su.kidoz.jetaprog.app.ui.agent.Presence
 import su.kidoz.jetaprog.app.ui.agent.QueuedFollowUp
 import su.kidoz.jetaprog.app.ui.agent.REVIEW_BUSY_NOTICE
-import su.kidoz.jetaprog.app.ui.agent.REVIEW_EMPTY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.ReviewScope
 import su.kidoz.jetaprog.app.ui.agent.SessionRestoration
 import su.kidoz.jetaprog.app.ui.agent.ToolStatus
 import su.kidoz.jetaprog.app.ui.agent.Turn
@@ -138,6 +139,7 @@ import su.kidoz.jetaprog.app.ui.agent.WORKTREE_ALREADY_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.WORKTREE_BUSY_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.WORKTREE_OPENING_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.WORKTREE_UNAVAILABLE_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.WorkspaceReviewState
 import su.kidoz.jetaprog.app.ui.agent.bringableRelativePaths
 import su.kidoz.jetaprog.app.ui.agent.chipLabel
 import su.kidoz.jetaprog.app.ui.agent.commandExitCode
@@ -207,6 +209,7 @@ import java.util.UUID
  * @param onAgentSwitch Tells the other checkout to adopt [AgentLaunch]. Returns a notice to refuse
  *   the change, or null when this chat may switch.
  * @param remembersAgentChoice When true, the selected agent is saved as the project default.
+ * @param workspaceReviewSource Read-only Git inspection for this checkout; null reports unavailable.
  */
 public class AgentSessionViewModel(
     private val projectPath: String,
@@ -230,6 +233,7 @@ public class AgentSessionViewModel(
     private val agentChoice: AgentChoice = AgentChoice(legacyClaudeLaunch(defaultAgentCommand)),
     private val onAgentSwitch: (suspend (AgentLaunch) -> String?)? = null,
     private val remembersAgentChoice: Boolean = true,
+    private val workspaceReviewSource: AgentWorkspaceReviewSource? = null,
 ) : Disposable,
     AcpClientHandler {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -303,6 +307,9 @@ public class AgentSessionViewModel(
 
     /** Full-file baselines and expected contents used by Keep and Revert. */
     private val fileReview = AgentFileReview()
+    private var workspaceReviewEpoch = 0
+    private var workspaceRequest = 0
+    private var workspaceBaselineAttempted = false
 
     /** File baselines taken at each user message. Not persisted. */
     private val checkpoints = AgentMessageCheckpoints()
@@ -386,6 +393,19 @@ public class AgentSessionViewModel(
 
             AgentIntent.ShowReview -> {
                 showReview(clearComposer = false)
+            }
+
+            is AgentIntent.SetReviewScope -> {
+                _state.update { it.copy(reviewScope = intent.scope) }
+                if (intent.scope == ReviewScope.WORKSPACE) refreshWorkspaceReview()
+            }
+
+            AgentIntent.RefreshWorkspaceReview -> {
+                refreshWorkspaceReview()
+            }
+
+            is AgentIntent.PreviewWorkspaceChange -> {
+                previewWorkspaceChange(intent.path)
             }
 
             AgentIntent.Stop -> {
@@ -1020,6 +1040,7 @@ public class AgentSessionViewModel(
             val acpClient = client ?: return null
             val activeSession = ensureSession(acpClient) ?: return null
             if (!canDeliverQueued(queuedId, expectedQueueVersion)) return null
+            if (!captureWorkspaceBaseline() || !canDeliverQueued(queuedId, expectedQueueVersion)) return null
             val generation = ++turnGeneration
             if (clearComposer) mentionGeneration++
             val userId = nextId("usr")
@@ -1394,16 +1415,109 @@ public class AgentSessionViewModel(
      *
      * The command is local. It does not send a prompt, so the agent cannot edit from the review.
      */
-    private fun showReview(clearComposer: Boolean) {
+    private suspend fun showReview(clearComposer: Boolean) {
         val files = reviewFiles(_state.value.turns)
         _state.update {
             it.copy(
-                reviewVisible = files.isNotEmpty(),
-                reviewNotice = if (files.isEmpty()) REVIEW_EMPTY_NOTICE else null,
+                reviewVisible = true,
+                reviewScope = if (files.isEmpty()) ReviewScope.WORKSPACE else ReviewScope.AGENT,
+                reviewNotice = null,
                 composerInput = if (clearComposer) "" else it.composerInput,
             )
         }
+        if (files.isEmpty()) refreshWorkspaceReview()
     }
+
+    private suspend fun captureWorkspaceBaseline(): Boolean {
+        if (workspaceBaselineAttempted || _state.value.turns.isNotEmpty()) return true
+        workspaceBaselineAttempted = true
+        val epoch = workspaceReviewEpoch
+        val baseline =
+            workspaceRead { workspaceReviewSource?.changes() ?: unavailableWorkspaceReview() }
+                .getOrNull()
+                ?.map { it.path }
+                ?.toSet()
+        if (epoch != workspaceReviewEpoch) return false
+        _state.update { it.copy(workspaceReview = it.workspaceReview.copy(preExistingPaths = baseline)) }
+        return true
+    }
+
+    private suspend fun refreshWorkspaceReview() {
+        val request = ++workspaceRequest
+        val revision = _state.value.workspaceRevision
+        _state.update {
+            it.copy(
+                workspaceReview =
+                    it.workspaceReview.copy(
+                        loading = true,
+                        error = null,
+                        preview = null,
+                        previewPath = null,
+                    ),
+            )
+        }
+        val result = workspaceRead { workspaceReviewSource?.changes() ?: unavailableWorkspaceReview() }
+        if (request != workspaceRequest) return
+        _state.update {
+            it.copy(
+                workspaceReview =
+                    it.workspaceReview.copy(
+                        files = result.getOrNull().orEmpty(),
+                        loading = false,
+                        revision = revision,
+                        error =
+                            result.exceptionOrNull()?.let { error ->
+                                error.message ?: "Workspace inspection failed."
+                            },
+                    ),
+            )
+        }
+    }
+
+    private suspend fun previewWorkspaceChange(path: String) {
+        val change =
+            _state.value.workspaceReview.files
+                .firstOrNull { it.path == path } ?: return
+        val request = ++workspaceRequest
+        _state.update {
+            it.copy(
+                workspaceReview =
+                    it.workspaceReview.copy(
+                        loading = true,
+                        error = null,
+                        previewPath = path,
+                        preview = null,
+                    ),
+            )
+        }
+        val result = workspaceRead { workspaceReviewSource?.preview(change) ?: unavailableWorkspaceReview() }
+        if (request != workspaceRequest) return
+        _state.update {
+            it.copy(
+                workspaceReview =
+                    it.workspaceReview.copy(
+                        loading = false,
+                        preview = result.getOrNull(),
+                        error =
+                            result.exceptionOrNull()?.let { error ->
+                                error.message ?: "Workspace inspection failed."
+                            },
+                    ),
+            )
+        }
+    }
+
+    private fun <T> unavailableWorkspaceReview(): Result<T> =
+        Result.failure(IllegalStateException("Workspace review is unavailable for this checkout."))
+
+    private suspend fun <T> workspaceRead(read: suspend () -> Result<T>): Result<T> =
+        try {
+            read()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
 
     /** Accepts or dismisses every still-proposed hunk of the reviewed file [key]. */
     private suspend fun decideReviewFile(
@@ -2814,6 +2928,10 @@ public class AgentSessionViewModel(
     }
 
     private fun clearFileMemory() {
+        workspaceReviewEpoch++
+        workspaceRequest++
+        workspaceBaselineAttempted = false
+        _state.update { it.copy(workspaceReview = WorkspaceReviewState(), reviewScope = ReviewScope.AGENT) }
         fileReview.clear()
         _state.update { it.copy(reviewCounts = emptyMap(), reviewConflicts = emptyMap()) }
         checkpoints.clear()

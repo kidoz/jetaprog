@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloseFullscreen
@@ -188,7 +189,8 @@ internal fun AgentSurfaceContent(
     val checks = agentChecks(state.turns, state.workspaceRevision, state.isStreaming, state.hasUnsavedEdits)
     val workspace = state.workspacePath.ifBlank { "Workspace unavailable" }
     val files = reviewFiles(state.turns, state.reviewCounts, state.reviewConflicts)
-    val reviewing = state.reviewVisible && files.isNotEmpty()
+    val reviewing = state.reviewVisible
+    val workspaceReview = reviewing && state.reviewScope == ReviewScope.WORKSPACE
     val attention = agentAttention(state.turns, state.isStreaming, state.error, state.interrupted)
     var expandedPanel by remember(state.activeRecordId, attention.approval?.id) { mutableStateOf<TaskPanel?>(null) }
     val showChecks =
@@ -206,26 +208,19 @@ internal fun AgentSurfaceContent(
                             Modifier
                                 .weight(if (reviewing) 2f else 1f, fill = false)
                                 .fillMaxWidth()
-                                .verticalScroll(rememberScrollState()),
+                                .then(
+                                    if (workspaceReview) Modifier else Modifier.verticalScroll(rememberScrollState()),
+                                ),
                     ) {
                         val goalNotice = state.goalNotice
                         if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
                         if (reviewing) {
-                            ReviewCard(
-                                files = files,
-                                onAccept = { key -> dispatch(AgentIntent.AcceptReviewFile(key)) },
-                                onDismiss = { key -> dispatch(AgentIntent.DismissReviewFile(key)) },
-                                onClose = { dispatch(AgentIntent.HideReview) },
-                                onOpen = { path ->
-                                    state.turns
-                                        .filterIsInstance<Turn.Agent>()
-                                        .flatMap { it.blocks }
-                                        .filterIsInstance<Block.Diff>()
-                                        .firstOrNull { it.absolutePath == path }
-                                        ?.let { dispatch(AgentIntent.OpenDiff(it.id)) }
-                                },
-                                verification = { AgentChecksSection(checks, workspace) },
-                                modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
+                            AgentReviewPanel(
+                                state,
+                                dispatch,
+                                files,
+                                checks,
+                                modifier = if (workspaceReview) Modifier.weight(1f, fill = false) else Modifier,
                             )
                         }
                         val reviewNotice = state.reviewNotice
@@ -234,7 +229,7 @@ internal fun AgentSurfaceContent(
                         if (!worktreeNotice.isNullOrBlank()) AgentStatusMessage(worktreeNotice)
                         val agentNotice = state.agentNotice
                         if (!agentNotice.isNullOrBlank()) AgentStatusMessage(agentNotice)
-                        AgentTaskDetails(state, dispatch)
+                        if (!workspaceReview) AgentTaskDetails(state, dispatch)
                     }
                     Box(modifier = Modifier.weight(if (reviewing) 1f else 2f).fillMaxWidth()) {
                         if (state.turns.isEmpty()) {
@@ -244,7 +239,9 @@ internal fun AgentSurfaceContent(
                         }
                     }
                 }
-                if (showRail) SessionChangesRail(state, dispatch)
+                if (showRail && !workspaceReview) {
+                    SessionChangesRail(state, dispatch)
+                }
             }
             if (showChecks) {
                 AgentChecksSection(
@@ -346,6 +343,7 @@ private fun AgentHeader(
             if (checkoutLabel != null && onSwitchCheckout != null) {
                 CheckoutChip(checkoutLabel, onSwitchCheckout)
             }
+            HeaderIcon(Icons.AutoMirrored.Filled.CompareArrows, "Review changes") { dispatch(AgentIntent.ShowReview) }
             HeaderIcon(Icons.Default.History, "History") { dispatch(AgentIntent.ShowHistory) }
             HeaderIcon(Icons.Default.Add, "New chat") { dispatch(AgentIntent.NewChat) }
             val docked = layoutDocked ?: state.docked

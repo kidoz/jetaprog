@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.app.viewmodel
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -23,8 +24,10 @@ import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import su.kidoz.jetaprog.app.agent.AgentBringOutcome
 import su.kidoz.jetaprog.app.agent.AgentBroughtChange
 import su.kidoz.jetaprog.app.agent.AgentCheckout
+import su.kidoz.jetaprog.app.agent.AgentWorkspaceReviewSource
 import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.AgentWorktreeLauncher
+import su.kidoz.jetaprog.app.agent.WorkspaceChange
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.BRING_BUSY_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.BRING_DIRTY_NOTICE
@@ -35,7 +38,7 @@ import su.kidoz.jetaprog.app.ui.agent.BRING_UNAVAILABLE_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.Block
 import su.kidoz.jetaprog.app.ui.agent.DiffDecision
 import su.kidoz.jetaprog.app.ui.agent.REVIEW_BUSY_NOTICE
-import su.kidoz.jetaprog.app.ui.agent.REVIEW_EMPTY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.ReviewScope
 import su.kidoz.jetaprog.app.ui.agent.Turn
 import su.kidoz.jetaprog.app.ui.agent.WORKTREE_ALREADY_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.WORKTREE_BUSY_NOTICE
@@ -163,8 +166,13 @@ class AgentSessionWorktreeReviewTest {
             viewModel.dispatch(AgentIntent.Send("/review"))
             runCurrent()
 
-            assertEquals(REVIEW_EMPTY_NOTICE, viewModel.state.value.reviewNotice)
-            assertFalse(viewModel.state.value.reviewVisible)
+            assertNull(viewModel.state.value.reviewNotice)
+            assertTrue(viewModel.state.value.reviewVisible)
+            assertEquals(ReviewScope.WORKSPACE, viewModel.state.value.reviewScope)
+            assertEquals(
+                "Workspace review is unavailable for this checkout.",
+                viewModel.state.value.workspaceReview.error,
+            )
         }
 
     @Test
@@ -547,6 +555,101 @@ class AgentSessionWorktreeReviewTest {
             assertFalse(files.containsKey("/proj/src/New.kt"))
         }
 
+    @Test
+    fun workspaceBaselinePrecedesPromptAndSurvivesSubsequentPrompts() =
+        runTest {
+            val workspace = FakeWorkspace()
+            workspace.files = listOf(WorkspaceChange("manual.kt", ' ', 'M'))
+            val agent = ReviewTransport { workspace.files = workspace.files + WorkspaceChange("script.kt", '?', '?') }
+            val viewModel = model(agent, workspace = workspace)
+            connect(viewModel)
+            viewModel.dispatch(AgentIntent.Send("Run the script"))
+            runCurrent()
+            assertEquals(setOf("manual.kt"), viewModel.state.value.workspaceReview.preExistingPaths)
+            viewModel.dispatch(AgentIntent.Send("Continue"))
+            runCurrent()
+            assertEquals(setOf("manual.kt"), viewModel.state.value.workspaceReview.preExistingPaths)
+            viewModel.dispatch(AgentIntent.ShowReview)
+            runCurrent()
+            assertEquals(workspace.files, viewModel.state.value.workspaceReview.files)
+            assertEquals(ReviewScope.WORKSPACE, viewModel.state.value.reviewScope)
+            viewModel.dispatch(AgentIntent.PreviewWorkspaceChange("script.kt"))
+            runCurrent()
+            assertEquals("preview: script.kt", viewModel.state.value.workspaceReview.preview)
+            viewModel.dispatch(AgentIntent.NewChat)
+            runCurrent()
+            assertNull(viewModel.state.value.workspaceReview.preExistingPaths)
+            assertTrue(
+                viewModel.state.value.workspaceReview.files
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun delayedWorkspaceScanCannotPopulateANewConversation() =
+        runTest {
+            val workspace = FakeWorkspace()
+            val gate = CompletableDeferred<Unit>()
+            workspace.beforeScan = { gate.await() }
+            workspace.files = listOf(WorkspaceChange("old.kt", '?', '?'))
+            val viewModel = model(workspace = workspace)
+            viewModel.dispatch(AgentIntent.ShowReview)
+            runCurrent()
+            assertTrue(viewModel.state.value.workspaceReview.loading)
+            viewModel.dispatch(AgentIntent.NewChat)
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+            assertTrue(
+                viewModel.state.value.workspaceReview.files
+                    .isEmpty(),
+            )
+            assertNull(viewModel.state.value.workspaceReview.revision)
+            assertFalse(viewModel.state.value.workspaceReview.loading)
+        }
+
+    @Test
+    fun newerRefreshWinsAndAnExceptionIsNotACleanWorkspace() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val workspace = FakeWorkspace()
+            var calls = 0
+            workspace.beforeScan = { if (++calls == 1) gate.await() }
+            val viewModel = model(workspace = workspace)
+            viewModel.dispatch(AgentIntent.RefreshWorkspaceReview)
+            runCurrent()
+            workspace.files = listOf(WorkspaceChange("new.kt", '?', '?'))
+            viewModel.dispatch(AgentIntent.RefreshWorkspaceReview)
+            runCurrent()
+            workspace.files = emptyList()
+            gate.complete(Unit)
+            runCurrent()
+            assertEquals(
+                "new.kt",
+                viewModel.state.value.workspaceReview.files
+                    .single()
+                    .path,
+            )
+            workspace.beforeScan = { throw IllegalStateException() }
+            viewModel.dispatch(AgentIntent.RefreshWorkspaceReview)
+            runCurrent()
+            assertEquals("Workspace inspection failed.", viewModel.state.value.workspaceReview.error)
+            assertFalse(viewModel.state.value.workspaceReview.loading)
+        }
+
+    private class FakeWorkspace : AgentWorkspaceReviewSource {
+        var files: List<WorkspaceChange> = emptyList()
+        var beforeScan: suspend () -> Unit = {}
+
+        override suspend fun changes(): Result<List<WorkspaceChange>> {
+            beforeScan()
+            return Result.success(files)
+        }
+
+        override suspend fun preview(change: WorkspaceChange): Result<String> =
+            Result.success("preview: ${change.path}")
+    }
+
     private fun model(
         agent: ReviewTransport = ReviewTransport(),
         checkout: AgentCheckout = AgentCheckout.MAIN,
@@ -555,6 +658,7 @@ class AgentSessionWorktreeReviewTest {
         projectPath: String = "/proj",
         onBringBack: (suspend (List<AgentBroughtChange>) -> AgentBringOutcome)? = null,
         editorDirty: (String) -> Boolean = { false },
+        workspace: AgentWorkspaceReviewSource? = null,
     ): AgentSessionViewModel =
         AgentSessionViewModel(
             projectPath = projectPath,
@@ -565,6 +669,7 @@ class AgentSessionWorktreeReviewTest {
             worktreeLauncher = launcher,
             onWorktreeReady = onReady,
             onBringBack = onBringBack,
+            workspaceReviewSource = workspace,
         ).also { viewModels += it }
 
     private fun kotlinx.coroutines.test.TestScope.connect(viewModel: AgentSessionViewModel) {

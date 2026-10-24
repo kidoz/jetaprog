@@ -18,17 +18,27 @@ import java.util.concurrent.TimeoutException
  * JVM implementation of ProcessExecutor using Java ProcessBuilder.
  */
 public class JvmProcessExecutor : ProcessExecutor {
+    override suspend fun executeRaw(config: ProcessConfig): Result<ProcessResult> = executeCaptured(config, raw = true)
+
     override suspend fun execute(
         command: List<String>,
         workingDirectory: String?,
         environment: Map<String, String>,
         timeoutMillis: Long,
     ): Result<ProcessResult> =
+        executeCaptured(ProcessConfig(command, workingDirectory, environment, timeoutMillis), raw = false)
+
+    private suspend fun executeCaptured(
+        config: ProcessConfig,
+        raw: Boolean,
+    ): Result<ProcessResult> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val processBuilder = ProcessBuilder(command)
-                workingDirectory?.let { processBuilder.directory(File(it)) }
-                processBuilder.environment().putAll(environment)
+                val processBuilder = ProcessBuilder(config.command)
+                config.workingDirectory?.let { processBuilder.directory(File(it)) }
+                processBuilder.environment().putAll(config.environment)
+                processBuilder.redirectErrorStream(config.redirectErrorStream)
+                val timeoutMillis = config.timeoutMillis
 
                 val process = processBuilder.start()
 
@@ -38,13 +48,25 @@ public class JvmProcessExecutor : ProcessExecutor {
                 val stdoutThread =
                     Thread {
                         BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
-                            reader.lineSequence().forEach { stdout.appendLine(it) }
+                            if (raw) {
+                                stdout.append(
+                                    reader.readText(),
+                                )
+                            } else {
+                                reader.lineSequence().forEach { stdout.appendLine(it) }
+                            }
                         }
                     }
                 val stderrThread =
                     Thread {
                         BufferedReader(InputStreamReader(process.errorStream)).use { reader ->
-                            reader.lineSequence().forEach { stderr.appendLine(it) }
+                            if (raw) {
+                                stderr.append(
+                                    reader.readText(),
+                                )
+                            } else {
+                                reader.lineSequence().forEach { stderr.appendLine(it) }
+                            }
                         }
                     }
 
@@ -67,8 +89,8 @@ public class JvmProcessExecutor : ProcessExecutor {
 
                 ProcessResult(
                     exitCode = exitCode,
-                    stdout = stdout.toString().trimEnd(),
-                    stderr = stderr.toString().trimEnd(),
+                    stdout = stdout.toString().let { if (raw) it else it.trimEnd() },
+                    stderr = stderr.toString().let { if (raw) it else it.trimEnd() },
                 )
             }
         }

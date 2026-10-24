@@ -8,9 +8,6 @@ internal const val REVIEW_COMMAND: String = "review"
 /** Menu text used when the agent does not advertise its own review command. */
 internal const val REVIEW_COMMAND_DESCRIPTION: String = "Review the diff"
 
-/** Shown when `/review` finds no file changes in this session. */
-internal const val REVIEW_EMPTY_NOTICE: String = "No session changes to review."
-
 /** Shown when Keep or Revert is used while a turn is still running. */
 internal const val REVIEW_BUSY_NOTICE: String = "Finish the running task before keeping or reverting changes."
 

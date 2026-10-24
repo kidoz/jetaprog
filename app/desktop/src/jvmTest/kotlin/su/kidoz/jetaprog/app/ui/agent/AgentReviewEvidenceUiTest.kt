@@ -84,7 +84,7 @@ class AgentReviewEvidenceUiTest {
                 JetaProgTheme {
                     Box(Modifier.size(420.dp, 640.dp)) {
                         AgentSurfaceContent(
-                            state = reviewState().copy(workspacePath = "", turns = emptyList()),
+                            state = reviewState().copy(workspacePath = "", turns = emptyList(), reviewVisible = false),
                             dispatch = {},
                             showRail = false,
                             checkoutLabel = "Worktree",
