@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
@@ -59,9 +60,11 @@ internal fun AgentQueueSection(
                 style = MaterialTheme.typography.labelMedium,
                 modifier =
                     Modifier
-                        .weight(
-                            1f,
-                        ).clickable(role = Role.Button) { expanded = !expanded }
+                        .weight(1f)
+                        .agentFocusRing(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                        .semantics {
+                            stateDescription = if (expanded) "Expanded" else "Collapsed"
+                        }.clickable(role = Role.Button) { expanded = !expanded }
                         .padding(Spacing.sm.dp),
             )
             QueueButton(

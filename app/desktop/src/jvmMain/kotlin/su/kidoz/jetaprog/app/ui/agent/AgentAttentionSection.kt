@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.agent.AgentSessionStatus
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
@@ -74,7 +75,11 @@ internal fun AgentAttentionSection(
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
             if (approval != null) {
-                AttentionButton(if (expanded) "Hide request" else "Review request", onClick = { expanded = !expanded })
+                AttentionButton(
+                    if (expanded) "Hide request" else "Review request",
+                    expanded = expanded,
+                    onClick = { expanded = !expanded },
+                )
             }
             if (attention.pendingFiles > 0 && attention.execution != AgentExecution.RUNNING) {
                 AttentionButton(
@@ -97,6 +102,7 @@ internal fun AgentAttentionSection(
 @Composable
 private fun AttentionButton(
     text: String,
+    expanded: Boolean? = null,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -106,8 +112,12 @@ private fun AttentionButton(
         modifier =
             Modifier
                 .onFocusChanged { focused = it.hasFocus }
-                .semantics { role = Role.Button }
-                .border(
+                .semantics {
+                    role = Role.Button
+                    expanded?.let {
+                        stateDescription = if (it) "Expanded" else "Collapsed"
+                    }
+                }.border(
                     Spacing.xxs.dp,
                     if (focused) LocalIntelliJColors.current.accent else Color.Transparent,
                     RoundedCornerShape(Dimensions.cornerRadius.dp),

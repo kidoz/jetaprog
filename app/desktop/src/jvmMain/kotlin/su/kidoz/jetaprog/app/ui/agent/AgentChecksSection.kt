@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
@@ -49,8 +50,10 @@ internal fun AgentChecksSection(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
-                        .clickable(
+                        .agentFocusRing(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                        .semantics {
+                            stateDescription = if (expanded) "Expanded" else "Collapsed"
+                        }.clickable(
                             role = Role.Button,
                             onClickLabel = "Show or hide check evidence",
                         ) { expanded = !expanded }

@@ -7,7 +7,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -107,7 +109,7 @@ class AgentAttentionSectionUiTest {
                 }
             }
             onNodeWithText("Review request").assertIsDisplayed().performClick()
-            onNodeWithText("Allow once").assertIsDisplayed()
+            onAllNodesWithText("Allow once").assertCountEquals(2)[1].assertIsDisplayed()
             onRoot().saveUiArtifacts("agent-attention-docked-${if (dark) "dark" else "light"}")
         }
 }

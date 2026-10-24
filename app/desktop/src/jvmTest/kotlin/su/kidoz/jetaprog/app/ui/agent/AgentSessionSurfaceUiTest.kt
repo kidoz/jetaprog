@@ -509,7 +509,8 @@ class AgentSessionSurfaceUiTest {
                 }
                 onNodeWithText("Claude").performClick()
                 onNodeWithText("codex was not found.").performClick()
-                onNodeWithText("Install").performClick()
+                onNodeWithText("Copy install command").assertIsDisplayed().performClick()
+                onNodeWithText("Install").assertDoesNotExist()
             }
         } finally {
             copyAgentInstallText = original

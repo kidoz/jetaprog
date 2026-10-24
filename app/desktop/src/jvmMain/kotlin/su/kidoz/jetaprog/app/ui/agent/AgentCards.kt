@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,11 +56,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,6 +84,16 @@ internal fun agentGradient(): Brush =
     Brush.linearGradient(
         listOf(LocalIntelliJColors.current.brandGradientStart, LocalIntelliJColors.current.brandGradientEnd),
     )
+
+@Composable
+internal fun Modifier.agentFocusRing(shape: Shape): Modifier {
+    var focused by remember { mutableStateOf(false) }
+    return onFocusChanged { focused = it.hasFocus }.border(
+        Spacing.xxs.dp,
+        if (focused) LocalIntelliJColors.current.accent else Color.Transparent,
+        shape,
+    )
+}
 
 /** A rounded gradient tile with the [AutoAwesome] glyph — the agent's avatar. */
 @Composable
@@ -159,8 +174,12 @@ internal fun ToolCallCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(34.dp)
-                    .clickable(onClick = onToggle)
+                    .heightIn(min = Dimensions.popupRowHeightCompact.dp)
+                    .agentFocusRing(shape)
+                    .semantics {
+                        contentDescription = "${block.name} tool call"
+                        stateDescription = if (block.expanded) "Expanded" else "Collapsed"
+                    }.clickable(role = Role.Button, onClick = onToggle)
                     .padding(horizontal = Spacing.md.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
@@ -552,12 +571,13 @@ internal fun PillButton(
     Row(
         modifier =
             Modifier
-                .height(28.dp)
+                .heightIn(min = Dimensions.popupRowHeightCompact.dp)
+                .agentFocusRing(shape)
                 .clip(shape)
                 .background(background)
                 .then(if (bordered) Modifier.border(1.dp, LocalIntelliJColors.current.border, shape) else Modifier)
-                .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.md.dp),
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
     ) {
@@ -579,11 +599,12 @@ internal fun GradientButton(
     Row(
         modifier =
             Modifier
-                .height(28.dp)
+                .heightIn(min = Dimensions.popupRowHeightCompact.dp)
+                .agentFocusRing(shape)
                 .clip(shape)
                 .background(agentGradient())
-                .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.md.dp),
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
     ) {
@@ -598,20 +619,24 @@ internal fun SendButton(
     enabled: Boolean,
     onClick: () -> Unit,
     label: String = "Send",
+    modifier: Modifier = Modifier,
 ) {
+    val shape = RoundedCornerShape(Dimensions.cornerRadiusLarge.dp)
     Box(
         modifier =
-            Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(Dimensions.cornerRadiusLarge.dp))
+            modifier
+                .size(Dimensions.buttonHeight.dp)
+                .agentFocusRing(shape)
+                .clip(shape)
                 .background(agentGradient())
                 .alpha(if (enabled) 1f else 0.5f)
-                .clickable(enabled = enabled, onClick = onClick),
+                .semantics { contentDescription = label }
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             Icons.Default.ArrowUpward,
-            contentDescription = label,
+            contentDescription = null,
             tint = Color.White,
             modifier = Modifier.size(Dimensions.iconLg.dp),
         )
@@ -660,16 +685,23 @@ internal fun ReviewCard(
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f),
             )
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = "Close review",
-                tint = colors.textSecondary,
+            Box(
                 modifier =
                     Modifier
-                        .size(Dimensions.iconSm.dp)
+                        .size(Dimensions.toolbarIcon.dp)
+                        .agentFocusRing(CircleShape)
                         .clip(CircleShape)
-                        .clickable(onClick = onClose),
-            )
+                        .semantics { contentDescription = "Close review" }
+                        .clickable(role = Role.Button, onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = null,
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(Dimensions.iconSm.dp),
+                )
+            }
         }
         Text(
             text = "Net recorded changes. Revert restores all pending edits in a file.",

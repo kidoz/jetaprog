@@ -12,6 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -51,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -67,8 +70,12 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -191,49 +198,57 @@ internal fun AgentSurfaceContent(
         state.restoration?.let { AgentRestorationNotice(it) }
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                val goal = state.goal
-                if (goal != null) {
-                    GoalCard(
-                        goal = goal,
-                        onPause = { dispatch(AgentIntent.PauseGoal) },
-                        onResume = { dispatch(AgentIntent.ResumeGoal) },
-                        onReplace = { dispatch(AgentIntent.ReplaceGoal) },
-                        onClear = { dispatch(AgentIntent.ClearGoal) },
-                        modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
-                    )
+                Column(
+                    modifier =
+                        Modifier
+                            .weight(1f, fill = false)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                ) {
+                    val goal = state.goal
+                    if (goal != null) {
+                        GoalCard(
+                            goal = goal,
+                            onPause = { dispatch(AgentIntent.PauseGoal) },
+                            onResume = { dispatch(AgentIntent.ResumeGoal) },
+                            onReplace = { dispatch(AgentIntent.ReplaceGoal) },
+                            onClear = { dispatch(AgentIntent.ClearGoal) },
+                            modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
+                        )
+                    }
+                    val goalNotice = state.goalNotice
+                    if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
+                    if (state.reviewVisible) {
+                        ReviewCard(
+                            files = reviewFiles(state.turns, state.reviewCounts, state.reviewConflicts),
+                            onAccept = { key -> dispatch(AgentIntent.AcceptReviewFile(key)) },
+                            onDismiss = { key -> dispatch(AgentIntent.DismissReviewFile(key)) },
+                            onClose = { dispatch(AgentIntent.HideReview) },
+                            onOpen = { path ->
+                                state.turns
+                                    .filterIsInstance<Turn.Agent>()
+                                    .flatMap { it.blocks }
+                                    .filterIsInstance<Block.Diff>()
+                                    .firstOrNull { it.absolutePath == path }
+                                    ?.let { dispatch(AgentIntent.OpenDiff(it.id)) }
+                            },
+                            modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
+                        )
+                    }
+                    val reviewNotice = state.reviewNotice
+                    if (!reviewNotice.isNullOrBlank()) AgentStatusMessage(reviewNotice)
+                    val worktreeNotice = state.worktreeNotice
+                    if (!worktreeNotice.isNullOrBlank()) AgentStatusMessage(worktreeNotice)
+                    val agentNotice = state.agentNotice
+                    if (!agentNotice.isNullOrBlank()) AgentStatusMessage(agentNotice)
+                    if (state.plan.isNotEmpty()) {
+                        PlanCard(
+                            steps = state.plan,
+                            modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
+                        )
+                    }
                 }
-                val goalNotice = state.goalNotice
-                if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
-                if (state.reviewVisible) {
-                    ReviewCard(
-                        files = reviewFiles(state.turns, state.reviewCounts, state.reviewConflicts),
-                        onAccept = { key -> dispatch(AgentIntent.AcceptReviewFile(key)) },
-                        onDismiss = { key -> dispatch(AgentIntent.DismissReviewFile(key)) },
-                        onClose = { dispatch(AgentIntent.HideReview) },
-                        onOpen = { path ->
-                            state.turns
-                                .filterIsInstance<Turn.Agent>()
-                                .flatMap { it.blocks }
-                                .filterIsInstance<Block.Diff>()
-                                .firstOrNull { it.absolutePath == path }
-                                ?.let { dispatch(AgentIntent.OpenDiff(it.id)) }
-                        },
-                        modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
-                    )
-                }
-                val reviewNotice = state.reviewNotice
-                if (!reviewNotice.isNullOrBlank()) AgentStatusMessage(reviewNotice)
-                val worktreeNotice = state.worktreeNotice
-                if (!worktreeNotice.isNullOrBlank()) AgentStatusMessage(worktreeNotice)
-                val agentNotice = state.agentNotice
-                if (!agentNotice.isNullOrBlank()) AgentStatusMessage(agentNotice)
-                if (state.plan.isNotEmpty()) {
-                    PlanCard(
-                        steps = state.plan,
-                        modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
-                    )
-                }
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Box(modifier = Modifier.weight(2f).fillMaxWidth()) {
                     if (state.turns.isEmpty()) {
                         EmptyState(dispatch)
                     } else {
@@ -333,15 +348,15 @@ private fun AgentHeader(
     Box(
         modifier = Modifier.onSizeChanged { headerHeightPx = it.height },
     ) {
-        Row(
+        FlowRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .heightIn(min = Dimensions.activityBarWidth.dp)
                     .background(LocalIntelliJColors.current.background)
-                    .padding(horizontal = Spacing.md.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
         ) {
             AgentAvatar(tileSize = 26, iconSize = 16, cornerRadius = 7)
             Column {
@@ -351,13 +366,12 @@ private fun AgentHeader(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(subtitleFor(state), color = subtitleColor(state), fontSize = 10.sp)
+                Text(subtitleFor(state), color = subtitleColor(state), fontSize = 10.sp, maxLines = 1)
             }
             ModelChip(state)
             if (checkoutLabel != null && onSwitchCheckout != null) {
                 CheckoutChip(checkoutLabel, onSwitchCheckout)
             }
-            Spacer(Modifier.weight(1f))
             HeaderIcon(Icons.Default.History, "History") { dispatch(AgentIntent.ShowHistory) }
             HeaderIcon(Icons.Default.Add, "New chat") { dispatch(AgentIntent.NewChat) }
             val docked = layoutDocked ?: state.docked
@@ -450,17 +464,24 @@ private fun HeaderIcon(
     label: String,
     onClick: () -> Unit,
 ) {
-    Icon(
-        imageVector = icon,
-        contentDescription = label,
-        tint = LocalIntelliJColors.current.textSecondary,
+    val shape = RoundedCornerShape(Dimensions.cornerRadiusSmall.dp)
+    Box(
         modifier =
             Modifier
-                .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
-                .clickable(onClick = onClick)
-                .padding(Spacing.xxs.dp)
-                .size(Dimensions.iconLg.dp),
-    )
+                .size(Dimensions.toolbarIcon.dp)
+                .agentFocusRing(shape)
+                .clip(shape)
+                .semantics { contentDescription = label }
+                .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = LocalIntelliJColors.current.textSecondary,
+            modifier = Modifier.size(Dimensions.iconLg.dp),
+        )
+    }
 }
 
 @Composable
@@ -468,18 +489,18 @@ private fun CheckoutChip(
     label: String,
     onClick: () -> Unit,
 ) {
+    val shape = RoundedCornerShape(Dimensions.cornerRadius.dp)
     Text(
         text = label,
         color = LocalIntelliJColors.current.accent,
         fontSize = 11.sp,
         modifier =
             Modifier
-                .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .border(
-                    1.dp,
-                    LocalIntelliJColors.current.agentCardBorder,
-                    RoundedCornerShape(Dimensions.cornerRadius.dp),
-                ).clickable(onClick = onClick)
+                .heightIn(min = Dimensions.popupRowHeightCompact.dp)
+                .agentFocusRing(shape)
+                .clip(shape)
+                .border(1.dp, LocalIntelliJColors.current.agentCardBorder, shape)
+                .clickable(role = Role.Button, onClick = onClick)
                 .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
     )
 }
@@ -515,8 +536,37 @@ private fun Conversation(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
 ) {
+    val listState = remember(state.activeRecordId) { LazyListState() }
+    var followOutput by remember(state.activeRecordId) { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            val atLatest =
+                layout.visibleItemsInfo
+                    .lastOrNull()
+                    ?.index
+                    ?.let { it >= layout.totalItemsCount - 1 } ?: true
+            listState.isScrollInProgress to atLatest
+        }.collect { (scrolling, atLatest) ->
+            if (atLatest) {
+                followOutput = true
+            } else if (scrolling) {
+                followOutput = false
+            }
+        }
+    }
+    LaunchedEffect(listState, state.turns, followOutput) {
+        if (followOutput && state.turns.isNotEmpty()) {
+            listState.scrollToItem(state.turns.lastIndex)
+        }
+    }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        state = listState,
+        modifier =
+            Modifier.fillMaxSize().semantics {
+                contentDescription = "Conversation"
+                stateDescription = if (followOutput) "Following output" else "Scroll paused"
+            },
         contentPadding = PaddingValues(vertical = Spacing.lg.dp),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg.dp),
     ) {
@@ -884,19 +934,25 @@ private fun AgentComposer(
                             },
                 )
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
-            ) {
-                if (state.agent != null) {
-                    AgentPickerChip(state, dispatch)
-                }
-                if (state.mode != null) {
-                    ModePickerChip(state, dispatch)
-                }
-                Spacer(Modifier.weight(1f))
-                if (state.availableModels.isNotEmpty()) {
-                    ModelPickerChip(state, dispatch)
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(end = Dimensions.inputHeight.dp)
+                            .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (state.agent != null) {
+                        AgentPickerChip(state, dispatch)
+                    }
+                    if (state.mode != null) {
+                        ModePickerChip(state, dispatch)
+                    }
+                    if (state.availableModels.isNotEmpty()) {
+                        ModelPickerChip(state, dispatch)
+                    }
                 }
                 SendButton(
                     enabled =
@@ -904,6 +960,7 @@ private fun AgentComposer(
                             state.restoration != SessionRestoration.Loading,
                     onClick = send,
                     label = if (state.isStreaming || state.queuedPrompts.isNotEmpty()) "Queue message" else "Send",
+                    modifier = Modifier.align(Alignment.BottomEnd),
                 )
             }
         }
@@ -1056,12 +1113,23 @@ private fun AttachmentChip(
     ) {
         FileBadge(attachment.label)
         Text(name, color = LocalIntelliJColors.current.textSecondary, fontSize = 11.sp, maxLines = 1)
-        Icon(
-            Icons.Default.Close,
-            contentDescription = "Remove $name",
-            tint = LocalIntelliJColors.current.textMuted,
-            modifier = Modifier.size(Dimensions.iconSm.dp).clickable(onClick = onRemove),
-        )
+        Box(
+            modifier =
+                Modifier
+                    .size(Dimensions.toolbarIcon.dp)
+                    .agentFocusRing(CircleShape)
+                    .clip(CircleShape)
+                    .semantics { contentDescription = "Remove $name" }
+                    .clickable(role = Role.Button, onClick = onRemove),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = null,
+                tint = LocalIntelliJColors.current.textMuted,
+                modifier = Modifier.size(Dimensions.iconSm.dp),
+            )
+        }
     }
 }
 
@@ -1084,16 +1152,19 @@ private fun AgentPickerChip(
     val ready = sections.first
     val blocked = sections.second
     Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
+        val shape = RoundedCornerShape(Dimensions.cornerRadius.dp)
         Row(
             modifier =
                 Modifier
-                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                    .heightIn(min = Dimensions.popupRowHeightCompact.dp)
+                    .agentFocusRing(shape)
+                    .clip(shape)
                     .background(LocalIntelliJColors.current.background)
-                    .border(
-                        1.dp,
-                        LocalIntelliJColors.current.agentCardBorder,
-                        RoundedCornerShape(Dimensions.cornerRadius.dp),
-                    ).clickable {
+                    .border(1.dp, LocalIntelliJColors.current.agentCardBorder, shape)
+                    .semantics {
+                        contentDescription = "Agent: ${agent.name}"
+                        stateDescription = if (open) "Expanded" else "Collapsed"
+                    }.clickable(role = Role.DropdownList) {
                         dispatch(AgentIntent.RefreshAgents)
                         open = true
                     }.padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
@@ -1103,7 +1174,7 @@ private fun AgentPickerChip(
             Text(agent.name, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
             Icon(
                 Icons.Default.KeyboardArrowDown,
-                contentDescription = "Agent",
+                contentDescription = null,
                 tint = LocalIntelliJColors.current.textMuted,
                 modifier = Modifier.size(Dimensions.iconSm.dp),
             )
@@ -1178,7 +1249,7 @@ private fun AgentMenuEntry(
         }
         if (row.installCommand != null) {
             Text(
-                text = "Install",
+                text = "Copy install command",
                 color = colors.accent,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(start = Spacing.sm.dp),
@@ -1197,16 +1268,19 @@ private fun ModePickerChip(
     var anchorHeightPx by remember { mutableStateOf(0) }
     val canSwitch = state.availableModes.size > 1
     Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
+        val shape = RoundedCornerShape(Dimensions.cornerRadius.dp)
         Row(
             modifier =
                 Modifier
-                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                    .heightIn(min = Dimensions.popupRowHeightCompact.dp)
+                    .agentFocusRing(shape)
+                    .clip(shape)
                     .background(LocalIntelliJColors.current.background)
-                    .border(
-                        1.dp,
-                        LocalIntelliJColors.current.agentCardBorder,
-                        RoundedCornerShape(Dimensions.cornerRadius.dp),
-                    ).clickable(enabled = canSwitch) { open = true }
+                    .border(1.dp, LocalIntelliJColors.current.agentCardBorder, shape)
+                    .semantics {
+                        contentDescription = "Session mode: ${mode.name}"
+                        stateDescription = if (open) "Expanded" else "Collapsed"
+                    }.clickable(enabled = canSwitch, role = Role.DropdownList) { open = true }
                     .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
@@ -1215,7 +1289,7 @@ private fun ModePickerChip(
             if (canSwitch) {
                 Icon(
                     Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Session mode",
+                    contentDescription = null,
                     tint = LocalIntelliJColors.current.textMuted,
                     modifier = Modifier.size(Dimensions.iconSm.dp),
                 )
@@ -1251,16 +1325,19 @@ private fun ModelPickerChip(
     var open by remember { mutableStateOf(false) }
     var anchorHeightPx by remember { mutableStateOf(0) }
     Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
+        val shape = RoundedCornerShape(Dimensions.cornerRadius.dp)
         Row(
             modifier =
                 Modifier
-                    .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
+                    .heightIn(min = Dimensions.popupRowHeightCompact.dp)
+                    .agentFocusRing(shape)
+                    .clip(shape)
                     .background(LocalIntelliJColors.current.background)
-                    .border(
-                        1.dp,
-                        LocalIntelliJColors.current.agentCardBorder,
-                        RoundedCornerShape(Dimensions.cornerRadius.dp),
-                    ).clickable { open = true }
+                    .border(1.dp, LocalIntelliJColors.current.agentCardBorder, shape)
+                    .semantics {
+                        contentDescription = "Model: ${model.shortName}"
+                        stateDescription = if (open) "Expanded" else "Collapsed"
+                    }.clickable(role = Role.DropdownList) { open = true }
                     .padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
@@ -1422,45 +1499,82 @@ private fun PermissionRow(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
 ) {
-    val on = state.permissions[kind] == PermissionPolicy.AUTO
+    val policy = state.permissions[kind] ?: PermissionPolicy.ASK
+    var open by remember { mutableStateOf(false) }
+    var anchorHeightPx by remember { mutableStateOf(0) }
     Row(
-        modifier = Modifier.fillMaxWidth().height(30.dp).padding(horizontal = Spacing.md.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(
+                    min = Dimensions.popupRowHeight.dp,
+                ).padding(horizontal = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
-        Text(label, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
-        Spacer(Modifier.weight(1f))
-        PermissionToggle(on) {
-            dispatch(AgentIntent.SetPermission(kind, if (on) PermissionPolicy.ASK else PermissionPolicy.AUTO))
+        Text(label, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
+            val shape = RoundedCornerShape(Dimensions.cornerRadius.dp)
+            Row(
+                modifier =
+                    Modifier
+                        .heightIn(min = Dimensions.popupRowHeightCompact.dp)
+                        .agentFocusRing(shape)
+                        .clip(shape)
+                        .clickable(role = Role.DropdownList) { open = true }
+                        .semantics {
+                            contentDescription = "$label permission"
+                            stateDescription = "${permissionPolicyLabel(policy)} policy"
+                        }.padding(horizontal = Spacing.sm.dp, vertical = Spacing.xs.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
+            ) {
+                Text(permissionPolicyLabel(policy), color = LocalIntelliJColors.current.accent, fontSize = 11.sp)
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = LocalIntelliJColors.current.textMuted,
+                    modifier = Modifier.size(Dimensions.iconSm.dp),
+                )
+            }
+            PopupChromeMenu(
+                expanded = open,
+                onDismissRequest = { open = false },
+                offsetY = anchorHeightPx,
+            ) {
+                PermissionPolicy.entries.forEach { option ->
+                    PopupListRow(
+                        selected = option == policy,
+                        height = Dimensions.popupRowHeightCompact.dp,
+                        modifier =
+                            Modifier.semantics {
+                                contentDescription = "$label permission: ${permissionPolicyLabel(option)}"
+                                role = Role.RadioButton
+                                selected = option == policy
+                            },
+                        onClick = {
+                            dispatch(AgentIntent.SetPermission(kind, option))
+                            open = false
+                        },
+                    ) {
+                        Text(
+                            permissionPolicyLabel(option),
+                            color = LocalIntelliJColors.current.textPrimary,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
-@Composable
-private fun PermissionToggle(
-    on: Boolean,
-    onToggle: () -> Unit,
-) {
-    Box(
-        modifier =
-            Modifier
-                .width(34.dp)
-                .height(18.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(if (on) LocalIntelliJColors.current.success else LocalIntelliJColors.current.divider)
-                .clickable(onClick = onToggle),
-        contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .padding(horizontal = 2.dp)
-                    .size(14.dp)
-                    .clip(CircleShape)
-                    .background(Color.White),
-        )
+private fun permissionPolicyLabel(policy: PermissionPolicy): String =
+    when (policy) {
+        PermissionPolicy.ASK -> "Ask"
+        PermissionPolicy.AUTO -> "Auto"
+        PermissionPolicy.NEVER -> "Never"
     }
-}
 
 private fun subtitleFor(state: AgentUiState): String =
     when (state.connection) {
@@ -1560,7 +1674,7 @@ private fun SessionListPopupRow(
         }
         IconButton(
             onClick = { onDeleteRequest(row) },
-            modifier = Modifier.size(Dimensions.iconLg.dp),
+            modifier = Modifier.size(Dimensions.toolbarIcon.dp).agentFocusRing(CircleShape),
         ) {
             Icon(
                 imageVector = Icons.Default.Delete,
