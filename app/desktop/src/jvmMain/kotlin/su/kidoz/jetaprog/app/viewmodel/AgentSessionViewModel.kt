@@ -1033,7 +1033,9 @@ public class AgentSessionViewModel(
         queuedId: String? = null,
         expectedQueueVersion: Long = 0,
     ): TurnClaim? {
-        if (!sendMutex.tryLock()) return null
+        // Connection setup can still own the mutex after CONNECTED is published.
+        // Keep the prompt queued until setup finishes; cancellation intents remain dispatchable.
+        sendMutex.lock()
         try {
             if (_state.value.isStreaming || !canDeliverQueued(queuedId, expectedQueueVersion)) return null
             if (!ensureConnected()) return null

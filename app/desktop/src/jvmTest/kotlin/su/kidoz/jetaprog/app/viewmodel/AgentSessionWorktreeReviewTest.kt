@@ -58,6 +58,7 @@ import kotlin.test.assertTrue
 /** A scripted ACP peer. The prompt at [holdFrom] waits until [allow]. */
 private class ReviewTransport(
     private val holdFrom: Int = Int.MAX_VALUE,
+    private val sessionReady: CompletableDeferred<Unit>? = null,
     private val onPrompt: suspend (ReviewTransport) -> Unit = {},
 ) : AcpTransport {
     val inbound = Channel<String>(Channel.UNLIMITED)
@@ -78,6 +79,7 @@ private class ReviewTransport(
             }
 
             "session/new" -> {
+                sessionReady?.await()
                 reply(request, """{"sessionId":"s1"}""")
             }
 
@@ -651,6 +653,40 @@ class AgentSessionWorktreeReviewTest {
         override suspend fun preview(change: WorkspaceChange): Result<String> =
             Result.success("preview: ${change.path}")
     }
+
+    @Test
+    fun promptSubmittedDuringSessionCreationWaitsUntilReady() =
+        runTest {
+            val ready = CompletableDeferred<Unit>()
+            val agent = ReviewTransport(holdFrom = 1, sessionReady = ready)
+            val original = model(agent)
+            connect(original)
+            original.dispatch(AgentIntent.Send("Start as soon as ready"))
+            runCurrent()
+            assertFalse(original.state.value.queuePaused)
+            ready.complete(Unit)
+            runCurrent()
+            assertTrue(original.state.value.isStreaming)
+            assertEquals(listOf("Start as soon as ready"), agent.prompts)
+        }
+
+    @Test
+    fun stoppingDuringSessionCreationDoesNotSendQueuedPrompt() =
+        runTest {
+            val ready = CompletableDeferred<Unit>()
+            val agent = ReviewTransport(holdFrom = 1, sessionReady = ready)
+            val original = model(agent)
+            connect(original)
+            original.dispatch(AgentIntent.Send("Wait for setup"))
+            runCurrent()
+            original.dispatch(AgentIntent.Stop)
+            runCurrent()
+            ready.complete(Unit)
+            runCurrent()
+            assertFalse(original.state.value.isStreaming)
+            assertTrue(original.state.value.queuePaused)
+            assertTrue(agent.prompts.isEmpty())
+        }
 
     @Test
     fun closingDuringTheFirstTurnPreservesInterruptedHistoryAndPendingReview() =
