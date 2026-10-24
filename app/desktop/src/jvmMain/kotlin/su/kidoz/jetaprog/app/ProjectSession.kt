@@ -1220,6 +1220,7 @@ public class ProjectSession(
      * Shuts down all project-scoped services in order.
      */
     public suspend fun shutdown() {
+        agentSessionHost.shutdown()
         gradleExecutionService.cancel()
         executionOrchestrator.dispose()
         saveWorkspaceState()
@@ -1231,7 +1232,6 @@ public class ProjectSession(
         commandPaletteViewModel.dispose()
         terminalViewModel.dispose()
         gradleViewModel.dispose()
-        agentSessionHost.dispose()
         textSearchViewModel.dispose()
         gitViewModel.dispose()
         configurationViewModel.dispose()

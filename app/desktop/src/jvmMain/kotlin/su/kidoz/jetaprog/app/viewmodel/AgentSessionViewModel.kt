@@ -3227,6 +3227,25 @@ public class AgentSessionViewModel(
         return true
     }
 
+    /**
+     * Captures an interrupted in-flight conversation and awaits its final history write.
+     * Stops session writers before saving so an older queued snapshot cannot replace it.
+     * Project close must use this suspending path; [dispose] is emergency cleanup only.
+     */
+    public suspend fun shutdown() {
+        val record = conversationRecord()
+        val openClient = client
+        client = null
+        dispose()
+        withContext(NonCancellable) {
+            try {
+                if (record != null) historyMutex.withLock { historyStore.save(record) }
+            } finally {
+                runCatching { openClient?.close() }
+            }
+        }
+    }
+
     override fun dispose() {
         // The agent is a child process: close it off the caller's thread so the UI
         // does not block on process teardown during a project switch.

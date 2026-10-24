@@ -9,6 +9,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -24,6 +25,7 @@ import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import su.kidoz.jetaprog.app.agent.AgentBringOutcome
 import su.kidoz.jetaprog.app.agent.AgentBroughtChange
 import su.kidoz.jetaprog.app.agent.AgentCheckout
+import su.kidoz.jetaprog.app.agent.AgentHistoryStore
 import su.kidoz.jetaprog.app.agent.AgentWorkspaceReviewSource
 import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.AgentWorktreeLauncher
@@ -649,6 +651,86 @@ class AgentSessionWorktreeReviewTest {
         override suspend fun preview(change: WorkspaceChange): Result<String> =
             Result.success("preview: ${change.path}")
     }
+
+    @Test
+    fun closingDuringTheFirstTurnPreservesInterruptedHistoryAndPendingReview() =
+        runTest {
+            val agent = ReviewTransport(holdFrom = 1, onPrompt = { it.diff() })
+            val original = model(agent)
+            connect(original)
+            original.dispatch(AgentIntent.Send("Edit and verify the reader"))
+            runCurrent()
+            assertTrue(original.state.value.isStreaming)
+            original.shutdown()
+            runCurrent()
+            val record = AgentHistoryStore(fileSystem, "/proj").list().single()
+            assertTrue(record.interrupted)
+            assertEquals("Edit and verify the reader", record.messages.first().text)
+            assertEquals("/proj/src/Reader.kt", record.pendingReviews.single().path)
+        }
+
+    @Test
+    fun shutdownSavesBothCheckoutsAndRestoredReviewPreservesManualEdits() =
+        runTest {
+            val main = model(ReviewTransport(holdFrom = 1, onPrompt = { it.diff() }))
+            val tree =
+                model(
+                    ReviewTransport(holdFrom = 1, onPrompt = { it.diff("/tree/src/Reader.kt") }),
+                    checkout = AgentCheckout.WORKTREE,
+                    projectPath = "/tree",
+                )
+            val host = AgentSessionHost(main) { tree }
+            host.attach(AgentWorktree("/tree", "recovery"))
+            connect(main)
+            connect(tree)
+            main.dispatch(AgentIntent.Send("Edit main"))
+            tree.dispatch(AgentIntent.Send("Edit worktree"))
+            runCurrent()
+            host.shutdown()
+            runCurrent()
+            val mainRecord = AgentHistoryStore(fileSystem, "/proj").list().single()
+            val treeRecord = AgentHistoryStore(fileSystem, "/tree").list().single()
+            assertEquals("/proj", mainRecord.projectPath)
+            assertEquals("/tree", treeRecord.projectPath)
+            assertTrue(mainRecord.interrupted && treeRecord.interrupted)
+            files["/proj/src/Reader.kt"] = "manual edit after shutdown"
+            val restarted = model()
+            restarted.dispatch(AgentIntent.RestoreSession(mainRecord.id))
+            runCurrent()
+            assertTrue(restarted.state.value.interrupted)
+            assertNull(restarted.state.value.workspaceReview.preExistingPaths)
+            restarted.dispatch(AgentIntent.DismissReviewFile("/proj/src/Reader.kt"))
+            runCurrent()
+            assertEquals("manual edit after shutdown", files["/proj/src/Reader.kt"])
+            assertTrue(
+                restarted.state.value.reviewConflicts
+                    .isNotEmpty(),
+            )
+        }
+
+    @Test
+    fun shutdownAwaitsTheFinalHistoryWrite() =
+        runTest {
+            val writing = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            coEvery { fileSystem.writeText(match { it.contains("agent-history") }, any(), any()) } coAnswers {
+                writing.complete(Unit)
+                release.await()
+                files[firstArg()] = secondArg()
+                Result.success(Unit)
+            }
+            val original = model(ReviewTransport(holdFrom = 1))
+            connect(original)
+            original.dispatch(AgentIntent.Send("Long task"))
+            runCurrent()
+            val closing = launch { original.shutdown() }
+            runCurrent()
+            assertTrue(writing.isCompleted)
+            assertTrue(closing.isActive)
+            release.complete(Unit)
+            closing.join()
+            assertTrue(AgentHistoryStore(fileSystem, "/proj").list().single().interrupted)
+        }
 
     private fun model(
         agent: ReviewTransport = ReviewTransport(),

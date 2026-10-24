@@ -86,6 +86,26 @@ tasks.register<Test>("uiTest") {
     outputs.dir(artifacts)
 }
 
+// Real provider calls are explicitly opt-in and use disposable Git checkouts.
+tasks.named<Test>("jvmTest") {
+    exclude("**/AgentRecoveryLiveTest*")
+}
+
+tasks.register<Test>("liveAgentRecoveryTest") {
+    group = "verification"
+    description = "Exercises Stop, restore and continuation using the installed Claude ACP agent."
+    val desktopTests = tasks.named<Test>("jvmTest").get()
+    testClassesDirs = desktopTests.testClassesDirs
+    classpath = desktopTests.classpath
+    javaLauncher.set(desktopTests.javaLauncher)
+    useJUnitPlatform()
+    filter { includeTestsMatching("*AgentRecoveryLiveTest") }
+    maxParallelForks = 1
+    outputs.upToDateWhen { false }
+    testLogging.showStandardStreams = true
+    doFirst { systemProperty("jetaprog.recovery.classpath", classpath.asPath) }
+}
+
 compose.desktop {
     application {
         mainClass = "su.kidoz.jetaprog.app.MainKt"

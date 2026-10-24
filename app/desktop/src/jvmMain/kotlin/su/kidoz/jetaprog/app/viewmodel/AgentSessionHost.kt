@@ -50,6 +50,16 @@ public class AgentSessionHost(
         worktreeSession?.let(::show)
     }
 
+    /** Saves both checkouts' active conversations before project shutdown completes. */
+    public suspend fun shutdown() {
+        try {
+            worktreeSession?.shutdown()
+        } finally {
+            worktreeSession = null
+            main.shutdown()
+        }
+    }
+
     override fun dispose() {
         worktreeSession?.dispose()
         worktreeSession = null
