@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
@@ -71,8 +72,12 @@ internal fun AgentChecksSection(
     checks: List<AgentCheck>,
     workspace: String,
     modifier: Modifier = Modifier,
+    expanded: Boolean? = null,
+    onExpandedChange: ((Boolean) -> Unit)? = null,
+    detailMaxHeight: Dp = Dimensions.popupCompletionMaxHeight.dp,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var localExpanded by remember { mutableStateOf(false) }
+    val showingDetails = expanded ?: localExpanded
     CompositionLocalProvider(LocalContentColor provides LocalIntelliJColors.current.textPrimary) {
         Column(modifier.fillMaxWidth().background(LocalIntelliJColors.current.toolCardBackground)) {
             Row(
@@ -81,22 +86,27 @@ internal fun AgentChecksSection(
                         .fillMaxWidth()
                         .agentFocusRing(RoundedCornerShape(Dimensions.cornerRadius.dp))
                         .semantics {
-                            stateDescription = if (expanded) "Expanded" else "Collapsed"
+                            stateDescription = if (showingDetails) "Expanded" else "Collapsed"
                         }.clickable(
                             role = Role.Button,
                             onClickLabel = "Show or hide check evidence",
-                        ) { expanded = !expanded }
-                        .padding(Spacing.sm.dp),
+                        ) {
+                            localExpanded = !showingDetails
+                            onExpandedChange?.invoke(localExpanded)
+                        }.padding(Spacing.sm.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
             ) {
-                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
+                Icon(
+                    if (showingDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                )
                 Text("Checks", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                 Text(checkSummary(checks), style = MaterialTheme.typography.labelMedium)
             }
-            if (expanded) {
+            if (showingDetails) {
                 LazyColumn(
-                    Modifier.heightIn(max = Dimensions.popupCompletionMaxHeight.dp).padding(horizontal = Spacing.md.dp),
+                    Modifier.heightIn(max = detailMaxHeight).padding(horizontal = Spacing.md.dp),
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
                 ) {
                     item {

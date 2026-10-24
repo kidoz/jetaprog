@@ -1,16 +1,12 @@
 package su.kidoz.jetaprog.app.ui.agent
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -41,7 +37,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.OpenInFull
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,7 +51,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -85,7 +79,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import kotlinx.coroutines.delay
 import su.kidoz.jetaprog.app.agent.AgentSessionStatus
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
@@ -178,6 +171,8 @@ public fun AgentToolWindow(
     )
 }
 
+private enum class TaskPanel { CHECKS, APPROVAL }
+
 @Composable
 internal fun AgentSurfaceContent(
     state: AgentUiState,
@@ -194,114 +189,84 @@ internal fun AgentSurfaceContent(
     val workspace = state.workspacePath.ifBlank { "Workspace unavailable" }
     val files = reviewFiles(state.turns, state.reviewCounts, state.reviewConflicts)
     val reviewing = state.reviewVisible && files.isNotEmpty()
-    Column(modifier = modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
-        AgentHeader(state, dispatch, checkoutLabel, onSwitchCheckout, layoutDocked, mirrorLayout)
-        AgentWorkspaceContext(state.workspacePath)
-        if (state.connection == AgentConnection.ERROR) {
-            AgentConnectionError(state, dispatch)
-        }
-        state.restoration?.let { AgentRestorationNotice(it) }
-        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                Column(
-                    modifier =
-                        Modifier
-                            .weight(if (reviewing) 2f else 1f, fill = false)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
-                ) {
-                    val goal = state.goal
-                    if (goal != null) {
-                        GoalCard(
-                            goal = goal,
-                            onPause = { dispatch(AgentIntent.PauseGoal) },
-                            onResume = { dispatch(AgentIntent.ResumeGoal) },
-                            onReplace = { dispatch(AgentIntent.ReplaceGoal) },
-                            onClear = { dispatch(AgentIntent.ClearGoal) },
-                            modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
-                        )
+    val attention = agentAttention(state.turns, state.isStreaming, state.error, state.interrupted)
+    var expandedPanel by remember(state.activeRecordId, attention.approval?.id) { mutableStateOf<TaskPanel?>(null) }
+    val showChecks =
+        !reviewing && (checks.isNotEmpty() || files.isNotEmpty() || state.goal != null || state.turns.isEmpty())
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val detailMaxHeight = maxHeight / 4
+        Column(modifier = Modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
+            AgentHeader(state, dispatch, checkoutLabel, onSwitchCheckout, layoutDocked, mirrorLayout)
+            AgentWorkspaceContext(state.workspacePath)
+            state.restoration?.let { AgentRestorationNotice(it) }
+            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    Column(
+                        modifier =
+                            Modifier
+                                .weight(if (reviewing) 2f else 1f, fill = false)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                    ) {
+                        val goalNotice = state.goalNotice
+                        if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
+                        if (reviewing) {
+                            ReviewCard(
+                                files = files,
+                                onAccept = { key -> dispatch(AgentIntent.AcceptReviewFile(key)) },
+                                onDismiss = { key -> dispatch(AgentIntent.DismissReviewFile(key)) },
+                                onClose = { dispatch(AgentIntent.HideReview) },
+                                onOpen = { path ->
+                                    state.turns
+                                        .filterIsInstance<Turn.Agent>()
+                                        .flatMap { it.blocks }
+                                        .filterIsInstance<Block.Diff>()
+                                        .firstOrNull { it.absolutePath == path }
+                                        ?.let { dispatch(AgentIntent.OpenDiff(it.id)) }
+                                },
+                                verification = { AgentChecksSection(checks, workspace) },
+                                modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
+                            )
+                        }
+                        val reviewNotice = state.reviewNotice
+                        if (!reviewNotice.isNullOrBlank()) AgentStatusMessage(reviewNotice)
+                        val worktreeNotice = state.worktreeNotice
+                        if (!worktreeNotice.isNullOrBlank()) AgentStatusMessage(worktreeNotice)
+                        val agentNotice = state.agentNotice
+                        if (!agentNotice.isNullOrBlank()) AgentStatusMessage(agentNotice)
+                        AgentTaskDetails(state, dispatch)
                     }
-                    val goalNotice = state.goalNotice
-                    if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
-                    if (reviewing) {
-                        ReviewCard(
-                            files = files,
-                            onAccept = { key -> dispatch(AgentIntent.AcceptReviewFile(key)) },
-                            onDismiss = { key -> dispatch(AgentIntent.DismissReviewFile(key)) },
-                            onClose = { dispatch(AgentIntent.HideReview) },
-                            onOpen = { path ->
-                                state.turns
-                                    .filterIsInstance<Turn.Agent>()
-                                    .flatMap { it.blocks }
-                                    .filterIsInstance<Block.Diff>()
-                                    .firstOrNull { it.absolutePath == path }
-                                    ?.let { dispatch(AgentIntent.OpenDiff(it.id)) }
-                            },
-                            verification = { AgentChecksSection(checks, workspace) },
-                            modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
-                        )
-                    }
-                    val reviewNotice = state.reviewNotice
-                    if (!reviewNotice.isNullOrBlank()) AgentStatusMessage(reviewNotice)
-                    val worktreeNotice = state.worktreeNotice
-                    if (!worktreeNotice.isNullOrBlank()) AgentStatusMessage(worktreeNotice)
-                    val agentNotice = state.agentNotice
-                    if (!agentNotice.isNullOrBlank()) AgentStatusMessage(agentNotice)
-                    if (state.plan.isNotEmpty()) {
-                        PlanCard(
-                            steps = state.plan,
-                            modifier = Modifier.padding(horizontal = Spacing.md.dp, vertical = Spacing.sm.dp),
-                        )
+                    Box(modifier = Modifier.weight(if (reviewing) 1f else 2f).fillMaxWidth()) {
+                        if (state.turns.isEmpty()) {
+                            EmptyState(dispatch)
+                        } else {
+                            Conversation(state, dispatch)
+                        }
                     }
                 }
-                Box(modifier = Modifier.weight(if (reviewing) 1f else 2f).fillMaxWidth()) {
-                    if (state.turns.isEmpty()) {
-                        EmptyState(dispatch)
-                    } else {
-                        Conversation(state, dispatch)
-                    }
-                }
+                if (showRail) SessionChangesRail(state, dispatch)
             }
-            if (showRail) SessionChangesRail(state, dispatch)
-        }
-        if (!reviewing && (checks.isNotEmpty() || files.isNotEmpty() || state.goal != null || state.turns.isEmpty())) {
-            AgentChecksSection(
-                checks = checks,
-                workspace = workspace,
+            if (showChecks) {
+                AgentChecksSection(
+                    checks = checks,
+                    workspace = workspace,
+                    expanded = expandedPanel == TaskPanel.CHECKS,
+                    onExpandedChange = { expandedPanel = if (it) TaskPanel.CHECKS else null },
+                    detailMaxHeight = detailMaxHeight,
+                )
+            }
+            AgentAttentionSection(
+                attention,
+                dispatch,
+                reviewVisible = reviewing,
+                presence = state.presence,
+                connectionFailed = state.connection == AgentConnection.ERROR,
+                detailMaxHeight = detailMaxHeight,
+                requestExpanded = expandedPanel == TaskPanel.APPROVAL,
+                onRequestExpandedChange = { expandedPanel = if (it) TaskPanel.APPROVAL else null },
             )
+            AgentComposer(state, dispatch)
         }
-        AgentAttentionSection(
-            agentAttention(state.turns, state.isStreaming, state.error, state.interrupted),
-            dispatch,
-            reviewVisible = reviewing,
-        )
-        AgentPresenceBar(state, dispatch)
-        AgentComposer(state, dispatch)
-    }
-}
-
-@Composable
-private fun AgentConnectionError(
-    state: AgentUiState,
-    dispatch: (AgentIntent) -> Unit,
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(LocalIntelliJColors.current.surface)
-                .padding(Spacing.md.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md.dp),
-    ) {
-        Text(
-            text =
-                "Could not connect to the agent. Check the agent command and sign-in, then retry. " +
-                    state.error.orEmpty(),
-            color = LocalIntelliJColors.current.textSecondary,
-            modifier = Modifier.weight(1f),
-        )
-        IntelliJButton("Retry", onClick = { dispatch(AgentIntent.EnsureConnected) })
     }
 }
 
@@ -778,80 +743,6 @@ private fun EmptyState(dispatch: (AgentIntent) -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun AgentPresenceBar(
-    state: AgentUiState,
-    dispatch: (AgentIntent) -> Unit,
-) {
-    val presence = state.presence ?: return
-    var elapsed by remember(presence.startedAtEpochMillis) { mutableStateOf(0L) }
-    LaunchedEffect(presence.startedAtEpochMillis) {
-        while (true) {
-            elapsed = (System.currentTimeMillis() - presence.startedAtEpochMillis) / 1000
-            delay(1000)
-        }
-    }
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(36.dp)
-                .background(LocalIntelliJColors.current.brandGradientEnd.copy(alpha = 0.10f))
-                .padding(horizontal = Spacing.lg.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
-    ) {
-        val attention = agentAttention(state.turns, state.isStreaming, state.error, state.interrupted)
-        if (attention.approval == null) PulsingDot()
-        Text(
-            if (attention.approval !=
-                null
-            ) {
-                "Waiting"
-            } else {
-                presence.action
-            },
-            color = LocalIntelliJColors.current.editorIdentifier,
-            fontSize = 12.sp,
-        )
-        presence.fileName?.let { ContextChip(it) }
-        Text(
-            text = "· ${formatElapsed(elapsed)}",
-            color = LocalIntelliJColors.current.textMuted,
-            fontSize = 11.sp,
-        )
-        Spacer(Modifier.weight(1f))
-        PillButton(
-            text = "Stop",
-            icon = Icons.Default.Stop,
-            background = LocalIntelliJColors.current.buttonBackground,
-            foreground = LocalIntelliJColors.current.agentStopText,
-            onClick = { dispatch(AgentIntent.Stop) },
-            iconTint = LocalIntelliJColors.current.agentStopText,
-            bordered = true,
-        )
-    }
-}
-
-@Composable
-private fun PulsingDot() {
-    val transition = rememberInfiniteTransition(label = "pulse")
-    val a by transition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0.35f,
-        animationSpec = infiniteRepeatable(animation = tween(1200), repeatMode = RepeatMode.Reverse),
-        label = "pulse-alpha",
-    )
-    Box(
-        modifier =
-            Modifier
-                .size(9.dp)
-                .alpha(a)
-                .clip(CircleShape)
-                .background(LocalIntelliJColors.current.brandGradientEnd),
-    )
 }
 
 @Composable
@@ -1602,8 +1493,6 @@ private fun subtitleColor(state: AgentUiState): Color =
     } else {
         LocalIntelliJColors.current.textMuted
     }
-
-private fun formatElapsed(seconds: Long): String = "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
 
 /**
  * Session list. Each row shows the title, a status, a relative time, and the

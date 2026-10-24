@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -56,12 +57,13 @@ class AgentSessionSurfaceUiTest {
                         }
                     }
                 }
+                onNodeWithText("Task details").assertIsDisplayed().performClick()
                 onNodeWithText("Plan").assertIsDisplayed()
                 onNodeWithText("Read the project").assertIsDisplayed()
                 onNodeWithText("Done").assertIsDisplayed()
                 onNodeWithText("Edit the composer").assertIsDisplayed()
                 onNodeWithText("In progress").assertIsDisplayed()
-                onNodeWithText("Wait").assertIsDisplayed()
+                onNodeWithText("Wait").performScrollTo().assertIsDisplayed()
                 onNodeWithText("Unknown").assertIsDisplayed()
                 onNodeWithText("/review").assertIsDisplayed()
                 onNodeWithText("Review the diff").assertIsDisplayed()
@@ -240,7 +242,7 @@ class AgentSessionSurfaceUiTest {
                     }
                 }
             }
-            onNodeWithText("resolved").assertIsDisplayed()
+            onNodeWithText("resolved").performScrollTo().assertIsDisplayed()
             onNodeWithText("Allow once").assertDoesNotExist()
             onNodeWithText("Allow always").assertDoesNotExist()
         }

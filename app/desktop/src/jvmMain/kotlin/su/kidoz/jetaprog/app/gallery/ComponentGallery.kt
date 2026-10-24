@@ -33,7 +33,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import su.kidoz.jetaprog.app.ui.agent.AgentChecksSection
+import su.kidoz.jetaprog.app.ui.agent.AgentTaskDetails
+import su.kidoz.jetaprog.app.ui.agent.AgentUiState
 import su.kidoz.jetaprog.app.ui.agent.AgentWorkspaceContext
+import su.kidoz.jetaprog.app.ui.agent.PlanStep
+import su.kidoz.jetaprog.app.ui.agent.PlanStepStatus
 import su.kidoz.jetaprog.app.ui.components.BuildStatus
 import su.kidoz.jetaprog.app.ui.components.ButtonStyle
 import su.kidoz.jetaprog.app.ui.components.IntelliJButton
@@ -125,6 +129,10 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
         GallerySection("Agent · Workspace and checks") {
             Column(Modifier.width(Dimensions.popupSearchWidth.dp)) {
                 AgentWorkspaceContext("/projects/jetaprog-worktree")
+                AgentTaskDetails(
+                    AgentUiState(plan = listOf(PlanStep("Verify the task layout", PlanStepStatus.IN_PROGRESS))),
+                    dispatch = {},
+                )
                 AgentChecksSection(emptyList(), "/projects/jetaprog-worktree")
             }
         }

@@ -183,7 +183,7 @@ private fun AgentAttentionPreview() {
     JetaProgTheme {
         su.kidoz.jetaprog.app.ui.agent.AgentAttentionSection(
             su.kidoz.jetaprog.app.ui.agent.AgentAttention(
-                su.kidoz.jetaprog.app.ui.agent.AgentExecution.INTERRUPTED,
+                su.kidoz.jetaprog.app.ui.agent.AgentExecution.RUNNING,
                 approval = null,
                 pendingFiles = 2,
                 failure = null,
