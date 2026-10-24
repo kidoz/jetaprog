@@ -97,7 +97,7 @@ public class StdioAcpTransport(
                         while (isActive) {
                             val line = reader.readLine() ?: break
                             if (line.isNotBlank()) {
-                                logger.debug { "ACP <- $line" }
+                                logger.debug { "ACP <- message (${line.length} chars)" }
                                 incomingChannel.send(line)
                             }
                         }
@@ -133,7 +133,7 @@ public class StdioAcpTransport(
                     throw IllegalStateException("ACP agent process is not running")
                 }
                 val target = writer ?: throw IllegalStateException("Transport not started")
-                logger.debug { "ACP -> $line" }
+                logger.debug { "ACP -> message (${line.length} chars)" }
                 target.write(line)
                 target.write("\n")
                 target.flush()

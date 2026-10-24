@@ -59,7 +59,7 @@ public class StdioServerTransport(
                 while (isActive) {
                     val line = reader.readLine() ?: break
                     if (line.isNotBlank()) {
-                        logger.debug { "ACP <- $line" }
+                        logger.debug { "ACP <- message (${line.length} chars)" }
                         incomingChannel.send(line)
                     }
                 }
@@ -76,7 +76,7 @@ public class StdioServerTransport(
         sendMutex.withLock {
             check(!closed) { "Transport is closed" }
             withContext(Dispatchers.IO) {
-                logger.debug { "ACP -> $line" }
+                logger.debug { "ACP -> message (${line.length} chars)" }
                 writer.write(line)
                 writer.write("\n")
                 writer.flush()
