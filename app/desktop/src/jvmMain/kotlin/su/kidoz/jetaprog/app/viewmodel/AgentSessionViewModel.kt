@@ -791,7 +791,6 @@ public class AgentSessionViewModel(
         }
 
     private suspend fun resetConnection() {
-        disarmQueue()
         val openClient = client
         client = null
         sessionId = null
@@ -890,7 +889,8 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
 
     /**
-     * Sends [prompt] immediately, or queues it when a turn is already running.
+     * Serializes [prompt] through the follow-up queue so connection and instruction
+     * preparation cannot reorder concurrent submissions.
      *
      * [steer] cancels that turn at the next tool boundary so the follow-up is delivered sooner.
      * Composer chips are included only when [prompt] is the current draft.
@@ -922,11 +922,7 @@ public class AgentSessionViewModel(
             return
         }
         val attachments = attachmentsFor(text, contextLabels)
-        if (_state.value.isStreaming || _state.value.queuedPrompts.isNotEmpty()) {
-            queueFollowUp(text, attachments, steer, clearComposer)
-        } else {
-            handleSend(text, attachments, clearComposer)
-        }
+        queueFollowUp(text, attachments, steer, clearComposer)
     }
 
     private fun attachmentsFor(
@@ -1092,6 +1088,8 @@ public class AgentSessionViewModel(
                 if (_state.value.isStreaming) {
                     stopFallbackJob = null
                     invalidateTurn()
+                    resetConnection()
+                    _state.update { it.copy(connection = AgentConnection.DISCONNECTED) }
                     endTurn()
                 }
             }
@@ -1124,7 +1122,35 @@ public class AgentSessionViewModel(
             val turns =
                 st.turns.map { turn ->
                     if (turn is Turn.Agent) {
-                        turn.copy(blocks = turn.blocks.map { if (it is Block.Text) it.copy(streaming = false) else it })
+                        turn.copy(
+                            blocks =
+                                turn.blocks.map { block ->
+                                    when (block) {
+                                        is Block.Text -> {
+                                            block.copy(streaming = false)
+                                        }
+
+                                        is Block.Tool -> {
+                                            if (block.status == ToolStatus.RUNNING) {
+                                                block.copy(
+                                                    status =
+                                                        if (state.interrupted) {
+                                                            ToolStatus.INTERRUPTED
+                                                        } else {
+                                                            ToolStatus.FAILED
+                                                        },
+                                                )
+                                            } else {
+                                                block
+                                            }
+                                        }
+
+                                        else -> {
+                                            block
+                                        }
+                                    }
+                                },
+                        )
                     } else {
                         turn
                     }
@@ -1185,6 +1211,16 @@ public class AgentSessionViewModel(
                             expectedQueueVersion = version,
                         )
                     if (!sent && version == queueVersion) {
+                        if (queued.restoreComposerOnFailure && _state.value.composerInput.isBlank()) {
+                            _state.update {
+                                it.copy(
+                                    composerInput = queued.prompt,
+                                    composerAttachments = queued.attachments,
+                                    queuedPrompts =
+                                        it.queuedPrompts.filterNot { item -> item.id == queued.id },
+                                )
+                            }
+                        }
                         disarmQueue()
                         break
                     }
@@ -1227,7 +1263,14 @@ public class AgentSessionViewModel(
         steer: Boolean,
         clearComposer: Boolean,
     ) {
-        val entry = QueuedFollowUp(text, attachments, steer, id = nextId("queued"))
+        val entry =
+            QueuedFollowUp(
+                text,
+                attachments,
+                steer,
+                id = nextId("queued"),
+                restoreComposerOnFailure = clearComposer,
+            )
         val wasEmpty = _state.value.queuedPrompts.isEmpty()
         if (wasEmpty || steer) {
             deliverQueuedPrompt = true
@@ -1989,7 +2032,7 @@ public class AgentSessionViewModel(
      * Creates the record on first use and upserts afterwards.
      */
     private suspend fun archiveConversation() {
-        conversationRecord()?.let { historyStore.save(it) }
+        conversationRecord()?.let { record -> historyMutex.withLock { historyStore.save(record) } }
     }
 
     /** Captures only live conversations; viewing saved history must not rewrite it. */
@@ -2089,7 +2132,7 @@ public class AgentSessionViewModel(
     }
 
     private suspend fun deleteSessionRecord(recordIdToDelete: String) {
-        historyStore.remove(recordIdToDelete)
+        historyMutex.withLock { historyStore.remove(recordIdToDelete) }
         if (recordIdToDelete != recordId) {
             _state.update { it.copy(sessionHistory = historyStore.list()) }
             return
@@ -2299,7 +2342,7 @@ public class AgentSessionViewModel(
                     content = update.content,
                     location = update.locations.firstOrNull()?.path,
                     rawInput = update.rawInput,
-                    rawOutput = null,
+                    rawOutput = update.rawOutput,
                 )
             }
 
@@ -2307,11 +2350,11 @@ public class AgentSessionViewModel(
                 applyToolCall(
                     id = update.toolCallId,
                     title = update.title,
-                    kind = null,
+                    kind = update.kind,
                     status = update.status,
-                    content = update.content,
-                    location = null,
-                    rawInput = null,
+                    content = update.content.orEmpty(),
+                    location = update.locations.firstOrNull()?.path,
+                    rawInput = update.rawInput,
                     rawOutput = update.rawOutput,
                 )
             }
@@ -2382,7 +2425,10 @@ public class AgentSessionViewModel(
                         it[index] =
                             existing.copy(
                                 name = title ?: existing.name,
+                                kind = kind?.value ?: existing.kind,
+                                args = rawInput?.let(::summarizeArgs) ?: existing.args,
                                 status = if (status == null) existing.status else toolStatus,
+                                command = stringField(rawInput, "command", "cmd") ?: existing.command,
                                 exitCode = commandExitCode(rawOutput) ?: existing.exitCode,
                                 result = mergeResult(existing.result, resultText),
                             )
@@ -2840,6 +2886,7 @@ public class AgentSessionViewModel(
     }
 
     override suspend fun readTextFile(request: ReadTextFileRequest): ReadTextFileResponse {
+        requireActiveTurn(request.sessionId)
         val path = guardedPath(request.path)
         when (_state.value.permissions[PermissionKind.READ] ?: PermissionPolicy.ASK) {
             PermissionPolicy.AUTO -> {
@@ -2877,7 +2924,16 @@ public class AgentSessionViewModel(
     }
 
     override suspend fun writeTextFile(request: WriteTextFileRequest) {
+        requireActiveTurn(request.sessionId)
         val path = guardedPath(request.path)
+        if (isEditorDirty(path)) {
+            throw AcpRequestException(
+                code = AcpError.INVALID_REQUEST,
+                message = "${File(
+                    path,
+                ).name} has unsaved editor changes. Save or revert them before the agent writes it.",
+            )
+        }
         // A permission request for this edit was already granted, in which case the
         // fs callback must not ask a second time. Otherwise apply the Edit policy as
         // a backstop for agents that write without asking.
@@ -2896,6 +2952,16 @@ public class AgentSessionViewModel(
         publishReviewCounts()
         checkpoints.noteWrite(path, before, request.content)
         publishCheckpointFlags()
+        onWorkspaceFilesChanged(listOf(path))
+    }
+
+    private fun requireActiveTurn(requestSessionId: String) {
+        if (requestSessionId != sessionId || !_state.value.isStreaming) {
+            throw AcpRequestException(
+                code = AcpError.INVALID_REQUEST,
+                message = "The agent session or turn is no longer active",
+            )
+        }
     }
 
     /**
@@ -2980,6 +3046,7 @@ public class AgentSessionViewModel(
     }
 
     override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
+        requireActiveTurn(request.sessionId)
         val kind = AgentPermissionPolicy.kindFor(request.toolCall)
         // Unknown kinds are never auto-approved: fall back to asking the user.
         val policy = kind?.let { _state.value.permissions[it] } ?: PermissionPolicy.ASK
@@ -3511,8 +3578,8 @@ public class AgentSessionViewModel(
             oldText: String?,
             newText: String,
         ): Triple<List<DiffLine>, Int, Int> {
-            val oldLines = oldText?.split("\n").orEmpty()
-            val newLines = newText.split("\n")
+            val oldLines = oldText?.takeIf { it.isNotEmpty() }?.split("\n").orEmpty()
+            val newLines = newText.takeIf { it.isNotEmpty() }?.split("\n").orEmpty()
             var prefix = 0
             while (prefix < oldLines.size && prefix < newLines.size && oldLines[prefix] == newLines[prefix]) prefix++
             var suffix = 0
@@ -3523,8 +3590,8 @@ public class AgentSessionViewModel(
             ) {
                 suffix++
             }
-            val removed = oldLines.subList(prefix, oldLines.size - suffix).take(MAX_DIFF_BODY_LINES)
-            val added = newLines.subList(prefix, newLines.size - suffix).take(MAX_DIFF_BODY_LINES)
+            val removed = oldLines.subList(prefix, oldLines.size - suffix)
+            val added = newLines.subList(prefix, newLines.size - suffix)
             val before = oldLines.subList(maxOf(0, prefix - CONTEXT_LINES), prefix)
 
             val lines = mutableListOf<DiffLine>()
@@ -3535,8 +3602,8 @@ public class AgentSessionViewModel(
                 oldNo++
                 newNo++
             }
-            removed.forEach { lines += DiffLine(oldNo++, '-', it, DiffLineKind.REMOVED) }
-            added.forEach { lines += DiffLine(newNo++, '+', it, DiffLineKind.ADDED) }
+            removed.take(MAX_DIFF_BODY_LINES).forEach { lines += DiffLine(oldNo++, '-', it, DiffLineKind.REMOVED) }
+            added.take(MAX_DIFF_BODY_LINES).forEach { lines += DiffLine(newNo++, '+', it, DiffLineKind.ADDED) }
             return Triple(lines, added.size, removed.size)
         }
     }

@@ -189,6 +189,84 @@ class AgentSessionListTest {
         }
 
     @Test
+    fun pendingSaveCannotRecreateADeletedSession() =
+        runTest {
+            val saveStarted = CompletableDeferred<Unit>()
+            val allowSave = CompletableDeferred<Unit>()
+            coEvery { fileSystem.writeText(match { it.contains("/agent-history/") }, any(), any()) } coAnswers {
+                saveStarted.complete(Unit)
+                allowSave.await()
+                files[firstArg()] = secondArg()
+                Result.success(Unit)
+            }
+            val agent = SessionListTransport()
+            val viewModel =
+                AgentSessionViewModel(
+                    projectPath = "/proj",
+                    fileSystem = fileSystem,
+                    transportFactory = { agent },
+                ).also { viewModels += it }
+            viewModel.dispatch(AgentIntent.Send("Build it"))
+            runCurrent()
+            val recordId = viewModel.state.value.activeRecordId!!
+            agent.release.complete(Unit)
+            runCurrent()
+            assertTrue(saveStarted.isCompleted)
+
+            viewModel.dispatch(AgentIntent.DeleteSession(recordId))
+            runCurrent()
+            allowSave.complete(Unit)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.ShowHistory)
+            runCurrent()
+            assertTrue(
+                viewModel.state.value.sessionHistory
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun largeDiffCountsAreNotLimitedByThePreview() =
+        runTest {
+            val agent = SessionListTransport()
+            val viewModel =
+                AgentSessionViewModel(
+                    projectPath = "/proj",
+                    fileSystem = fileSystem,
+                    transportFactory = { agent },
+                ).also { viewModels += it }
+            viewModel.dispatch(AgentIntent.Send("Build it"))
+            runCurrent()
+            val oldText = (1..12).joinToString("\\n") { "old-$it" }
+            val newText = (1..14).joinToString("\\n") { "new-$it" }
+            agent.update(
+                """{"sessionUpdate":"tool_call","toolCallId":"edit","title":"Edit","kind":"edit",""" +
+                    """"status":"completed","content":[{"type":"diff","path":"/proj/src/Reader.kt",""" +
+                    """"oldText":"$oldText","newText":"$newText"}]}""",
+            )
+            runCurrent()
+            agent.release.complete(Unit)
+            runCurrent()
+            viewModel.dispatch(AgentIntent.ShowHistory)
+            runCurrent()
+
+            val record =
+                viewModel.state.value.sessionHistory
+                    .single()
+            assertEquals(14, record.addedLines)
+            assertEquals(12, record.removedLines)
+            val diff =
+                viewModel.state.value.turns
+                    .filterIsInstance<Turn.Agent>()
+                    .flatMap { it.blocks }
+                    .filterIsInstance<Block.Diff>()
+                    .single()
+            assertEquals(14, diff.added)
+            assertEquals(12, diff.removed)
+            assertEquals(10, diff.lines.count { it.kind == su.kidoz.jetaprog.app.ui.agent.DiffLineKind.ADDED })
+        }
+
+    @Test
     fun stoppedExecutionIsSavedAndClearedByANewTurn() =
         runTest {
             val agent = SessionListTransport()

@@ -250,6 +250,15 @@ private fun ToolStatusIndicator(status: ToolStatus) {
                 modifier = Modifier.size(15.dp),
             )
         }
+
+        ToolStatus.INTERRUPTED -> {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "Interrupted",
+                tint = LocalIntelliJColors.current.textSecondary,
+                modifier = Modifier.size(15.dp),
+            )
+        }
     }
 }
 

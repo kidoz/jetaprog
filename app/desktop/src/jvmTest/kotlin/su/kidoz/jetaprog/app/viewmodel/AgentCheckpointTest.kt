@@ -40,7 +40,7 @@ import kotlin.test.assertTrue
 /** A scripted ACP peer whose prompt stays open until [release]. */
 private class CheckpointTransport : AcpTransport {
     val inbound = Channel<String>(Channel.UNLIMITED)
-    val release = CompletableDeferred<Unit>()
+    var release = CompletableDeferred<Unit>()
     override val incoming: Flow<String> = inbound.receiveAsFlow()
 
     override suspend fun send(line: String) {
@@ -159,6 +159,7 @@ class AgentCheckpointTest {
 
             agent.release.complete(Unit)
             runCurrent()
+            reloaded.clear()
             viewModel.dispatch(AgentIntent.RestoreCheckpoint(user.id))
             runCurrent()
 
@@ -201,6 +202,7 @@ class AgentCheckpointTest {
             dirty = { it.endsWith("Other.kt") }
             agent.release.complete(Unit)
             runCurrent()
+            reloaded.clear()
 
             val user =
                 viewModel.state.value.turns
@@ -243,9 +245,11 @@ class AgentCheckpointTest {
                     .isEmpty(),
             )
 
+            agent.release = CompletableDeferred()
             viewModel.dispatch(AgentIntent.Send("Next"))
             runCurrent()
             viewModel.writeTextFile(WriteTextFileRequest("s1", "/proj/src/Other.kt", "created"))
+            agent.release.complete(Unit)
             runCurrent()
 
             val user =
@@ -347,6 +351,7 @@ class AgentCheckpointTest {
             runCurrent()
             assertEquals(ReviewDelta(1, 1), viewModel.state.value.reviewCounts[reader])
             assertEquals(2, viewModel.state.value.sessionChanges.size)
+            reloaded.clear()
 
             viewModel.dispatch(AgentIntent.RejectDiff("first:diff:0"))
             runCurrent()

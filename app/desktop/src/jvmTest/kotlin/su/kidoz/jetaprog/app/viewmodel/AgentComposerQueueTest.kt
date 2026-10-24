@@ -644,7 +644,54 @@ class AgentComposerQueueTest {
         }
 
     @Test
-    fun unacknowledgedStopDoesNotLeaveTheQueueRunnerStuck() =
+    fun stoppedRunningToolIsMarkedInterrupted() =
+        runTest {
+            val agent = HeldPromptTransport(true, firstStopReason = "cancelled")
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            runCurrent()
+            agent.tool("in_progress", update = false)
+            runCurrent()
+            vm.dispatch(AgentIntent.Stop)
+            agent.release.complete(Unit)
+            runCurrent()
+
+            val tool =
+                vm.state.value.turns
+                    .filterIsInstance<Turn.Agent>()
+                    .flatMap { it.blocks }
+                    .filterIsInstance<su.kidoz.jetaprog.app.ui.agent.Block.Tool>()
+                    .single()
+            assertEquals(su.kidoz.jetaprog.app.ui.agent.ToolStatus.INTERRUPTED, tool.status)
+        }
+
+    @Test
+    fun rapidInitialSendsAreDeliveredInOrder() =
+        runTest {
+            val agent = HeldPromptTransport(true)
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            vm.dispatch(AgentIntent.Send("Test"))
+            vm.dispatch(AgentIntent.Send("Document"))
+            runCurrent()
+            assertEquals(listOf("Build"), agent.prompts)
+            assertEquals(
+                listOf("Test", "Document"),
+                vm.state.value.queuedPrompts
+                    .map { it.prompt },
+            )
+
+            agent.release.complete(Unit)
+            runCurrent()
+            assertEquals(listOf("Build", "Test", "Document"), agent.prompts)
+            assertTrue(
+                vm.state.value.queuedPrompts
+                    .isEmpty(),
+            )
+        }
+
+    @Test
+    fun unacknowledgedStopClosesConnectionWithoutStartingOverlappingPrompt() =
         runTest {
             val agent = HeldPromptTransport(true, holdSecondPrompt = true)
             val vm = viewModel(agent)
@@ -662,18 +709,13 @@ class AgentComposerQueueTest {
             runCurrent()
             assertFalse(vm.state.value.isStreaming)
             assertTrue(vm.state.value.queuePaused)
+            assertEquals(su.kidoz.jetaprog.app.ui.agent.AgentConnection.DISCONNECTED, vm.state.value.connection)
+            assertEquals(listOf("Build", "Test"), agent.prompts)
             assertEquals(
                 "Document",
                 vm.state.value.queuedPrompts
                     .single()
                     .prompt,
-            )
-            vm.dispatch(AgentIntent.ResumeQueue)
-            runCurrent()
-            assertEquals(listOf("Build", "Test", "Document"), agent.prompts)
-            assertTrue(
-                vm.state.value.queuedPrompts
-                    .isEmpty(),
             )
         }
 

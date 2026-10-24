@@ -288,8 +288,7 @@ class AgentApprovalTest {
     @Test
     fun autoAndNeverStillPickOneOptionWithoutACard() =
         runTest {
-            val viewModel = viewModel(ApprovalTransport())
-            runCurrent()
+            val viewModel = streamingViewModel()
             viewModel.dispatch(AgentIntent.SetPermission(PermissionKind.RUN, PermissionPolicy.AUTO))
             runCurrent()
             val allowed =
@@ -305,8 +304,54 @@ class AgentApprovalTest {
             assertTrue(approvalIds(viewModel).isEmpty())
         }
 
-    private fun TestScope.streamingViewModel(agent: ApprovalTransport = ApprovalTransport()): AgentSessionViewModel {
-        val viewModel = viewModel(agent)
+    @Test
+    fun staleSessionCallbacksAreRejectedBeforeAccess() =
+        runTest {
+            val viewModel = streamingViewModel()
+            files["/proj/src/Reader.kt"] = "old"
+            val staleWrite = WriteTextFileRequest("old-session", "/proj/src/Reader.kt", "new")
+            kotlin.test.assertFailsWith<su.kidoz.jetaprog.acp.protocol.AcpRequestException> {
+                viewModel.writeTextFile(staleWrite)
+            }
+            kotlin.test.assertFailsWith<su.kidoz.jetaprog.acp.protocol.AcpRequestException> {
+                viewModel.requestPermission(runRequest("stale").copy(sessionId = "old-session"))
+            }
+            assertEquals("old", files["/proj/src/Reader.kt"])
+            assertTrue(approvalIds(viewModel).isEmpty())
+        }
+
+    @Test
+    fun writesProtectDirtyEditorsAndReloadCleanBuffers() =
+        runTest {
+            val path = "/proj/src/Reader.kt"
+            files[path] = "old"
+            val reloaded = mutableListOf<List<String>>()
+            var dirty = true
+            val viewModel =
+                streamingViewModel(
+                    isEditorDirty = { dirty },
+                    onWorkspaceFilesChanged = { reloaded += it },
+                )
+            viewModel.dispatch(AgentIntent.SetPermission(PermissionKind.EDIT, PermissionPolicy.AUTO))
+            runCurrent()
+            kotlin.test.assertFailsWith<su.kidoz.jetaprog.acp.protocol.AcpRequestException> {
+                viewModel.writeTextFile(WriteTextFileRequest("s1", path, "dirty overwrite"))
+            }
+            assertEquals("old", files[path])
+            assertTrue(reloaded.isEmpty())
+
+            dirty = false
+            viewModel.writeTextFile(WriteTextFileRequest("s1", path, "agent content"))
+            assertEquals("agent content", files[path])
+            assertEquals(listOf(listOf(path)), reloaded)
+        }
+
+    private fun TestScope.streamingViewModel(
+        agent: ApprovalTransport = ApprovalTransport(),
+        isEditorDirty: (String) -> Boolean = { false },
+        onWorkspaceFilesChanged: (List<String>) -> Unit = {},
+    ): AgentSessionViewModel {
+        val viewModel = viewModel(agent, isEditorDirty, onWorkspaceFilesChanged)
         viewModel.dispatch(AgentIntent.EnsureConnected)
         runCurrent()
         viewModel.dispatch(AgentIntent.Send("Build it"))
@@ -315,11 +360,17 @@ class AgentApprovalTest {
         return viewModel
     }
 
-    private fun viewModel(agent: ApprovalTransport): AgentSessionViewModel =
+    private fun viewModel(
+        agent: ApprovalTransport,
+        isEditorDirty: (String) -> Boolean = { false },
+        onWorkspaceFilesChanged: (List<String>) -> Unit = {},
+    ): AgentSessionViewModel =
         AgentSessionViewModel(
             projectPath = "/proj",
             fileSystem = fileSystem,
             transportFactory = { agent },
+            isEditorDirty = isEditorDirty,
+            onWorkspaceFilesChanged = onWorkspaceFilesChanged,
         ).also { viewModels += it }
 
     private fun approval(

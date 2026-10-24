@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -136,10 +137,11 @@ class AgentSessionRestorationTest {
     private val files = mutableMapOf<String, String>()
     private val history = AgentHistoryStore(fileSystem, "/project")
     private val viewModels = mutableListOf<AgentSessionViewModel>()
+    private val mainDispatcher = StandardTestDispatcher()
 
     @BeforeTest
     fun setUp() {
-        Dispatchers.setMain(StandardTestDispatcher())
+        Dispatchers.setMain(mainDispatcher)
         coEvery { fileSystem.exists(any()) } answers
             { files.containsKey(firstArg()) || firstArg<String>().endsWith("agent-history") }
         coEvery { fileSystem.createDirectory(any()) } returns Result.success(Unit)
@@ -165,6 +167,7 @@ class AgentSessionRestorationTest {
     @AfterTest
     fun tearDown() {
         viewModels.forEach { it.dispose() }
+        mainDispatcher.scheduler.advanceUntilIdle()
         Dispatchers.resetMain()
     }
 

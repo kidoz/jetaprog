@@ -44,6 +44,9 @@ public enum class ToolStatus {
 
     /** The tool call failed. */
     FAILED,
+
+    /** The tool call was interrupted before it finished. */
+    INTERRUPTED,
 }
 
 /** The user's decision on a proposed diff. */
@@ -266,6 +269,7 @@ public data class EditorSnippet(
  * @property prompt The trimmed follow-up text.
  * @property attachments Context captured when the follow-up was queued.
  * @property steer Whether the running turn should be cancelled at the next tool boundary.
+ * @property restoreComposerOnFailure Whether an unsent submission should restore the cleared draft.
  */
 @Immutable
 public data class QueuedFollowUp(
@@ -274,6 +278,7 @@ public data class QueuedFollowUp(
     val steer: Boolean = false,
     /** Stable identity for queue actions, independent of the prompt text or position. */
     val id: String,
+    val restoreComposerOnFailure: Boolean = false,
 )
 
 /**
