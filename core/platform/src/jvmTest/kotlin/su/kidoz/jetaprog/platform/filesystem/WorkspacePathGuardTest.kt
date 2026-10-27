@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.platform.filesystem
 
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -32,7 +33,9 @@ class WorkspacePathGuardTest {
 
     @Test
     fun rejectsAbsolutePathsOutsideTheWorkspace() {
-        assertFailsWith<WorkspacePathException> { guard.resolve("/etc/passwd") }
+        val outside = File(workspace.parentFile, "outside.txt")
+
+        assertFailsWith<WorkspacePathException> { guard.resolve(outside.path) }
     }
 
     @Test
@@ -40,7 +43,8 @@ class WorkspacePathGuardTest {
         val outside = Files.createTempDirectory("outside").toFile().canonicalFile
         val secret = File(outside, "secret.txt").apply { writeText("secret") }
         val link = File(workspace, "escape")
-        Files.createSymbolicLink(link.toPath(), outside.toPath())
+        val symlinkCreated = runCatching { Files.createSymbolicLink(link.toPath(), outside.toPath()) }.isSuccess
+        assumeTrue(symlinkCreated, "Symbolic links are unavailable on this platform")
 
         assertFailsWith<WorkspacePathException> { guard.resolve("escape/secret.txt") }
         assertTrue(secret.exists())
