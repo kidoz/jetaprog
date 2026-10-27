@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import su.kidoz.jetaprog.configuration.BeforeLaunchTask
 import su.kidoz.jetaprog.configuration.ConfigurationId
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationType
@@ -19,6 +20,8 @@ import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.platform.process.ProcessOutput
 import su.kidoz.jetaprog.platform.process.ProcessResult
 import su.kidoz.jetaprog.platform.process.RunningProcess
+import java.io.File
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -87,6 +90,64 @@ class JavaExecutionOrchestratorTest {
             assertTrue(process.killCalled)
         }
 
+    @Test
+    fun `Gradle run uses the platform wrapper from the workspace`() =
+        runTest {
+            val project = Files.createTempDirectory("jetaprog-gradle").toFile()
+            File(project, "gradlew").writeText("#!/bin/sh")
+            File(project, "gradlew.bat").writeText("@echo off")
+            val executor = CapturingProcessExecutor(ImmediateProcess())
+            val orchestrator = ExecutionOrchestrator(executor, this)
+            val configuration =
+                javaConfiguration(
+                    ConfigurationSettings.Java(
+                        command = JavaCommand.RUN,
+                        buildTool = JavaBuildTool.GRADLE,
+                        task = "run",
+                    ),
+                )
+
+            val session = orchestrator.execute(configuration, project.absolutePath)
+            assertIs<ExecutionResult.Success>(session.result.filterNotNull().first())
+
+            val wrapperName =
+                if (System.getProperty("os.name").startsWith("win", ignoreCase = true)) {
+                    "gradlew.bat"
+                } else {
+                    "gradlew"
+                }
+            assertEquals(File(project, wrapperName).absolutePath, executor.lastConfig?.command?.first())
+        }
+
+    @Test
+    fun `Gradle before-launch task uses the platform wrapper`() =
+        runTest {
+            val project = Files.createTempDirectory("jetaprog-gradle-task").toFile()
+            File(project, "gradlew").writeText("#!/bin/sh")
+            File(project, "gradlew.bat").writeText("@echo off")
+            val executor = CapturingProcessExecutor(ImmediateProcess())
+            val orchestrator = ExecutionOrchestrator(executor, this)
+            val configuration =
+                javaConfiguration(
+                    ConfigurationSettings.Java(
+                        command = JavaCommand.RUN,
+                        buildTool = JavaBuildTool.GRADLE,
+                        task = "run",
+                    ),
+                ).copy(beforeLaunch = listOf(BeforeLaunchTask.GradleTask("test")))
+
+            val session = orchestrator.execute(configuration, project.absolutePath)
+            assertIs<ExecutionResult.Success>(session.result.filterNotNull().first())
+
+            val wrapperName =
+                if (System.getProperty("os.name").startsWith("win", ignoreCase = true)) {
+                    "gradlew.bat"
+                } else {
+                    "gradlew"
+                }
+            assertEquals(listOf(File(project, wrapperName).absolutePath, "test"), executor.configs.first().command)
+        }
+
     private fun javaConfiguration(settings: ConfigurationSettings.Java): RunConfiguration =
         RunConfiguration(
             id = ConfigurationId("java-test"),
@@ -98,14 +159,25 @@ class JavaExecutionOrchestratorTest {
     private class CapturingProcessExecutor(
         private val process: RunningProcess,
     ) : ProcessExecutor {
-        var lastConfig: ProcessConfig? = null
+        val configs = mutableListOf<ProcessConfig>()
+        val lastConfig: ProcessConfig? get() = configs.lastOrNull()
 
         override suspend fun execute(
             command: List<String>,
             workingDirectory: String?,
             environment: Map<String, String>,
             timeoutMillis: Long,
-        ): Result<ProcessResult> = Result.failure(UnsupportedOperationException())
+        ): Result<ProcessResult> {
+            configs.add(
+                ProcessConfig(
+                    command = command,
+                    workingDirectory = workingDirectory,
+                    environment = environment,
+                    timeoutMillis = timeoutMillis,
+                ),
+            )
+            return Result.success(ProcessResult(exitCode = 0, stdout = "", stderr = ""))
+        }
 
         override suspend fun executeShell(
             command: String,
@@ -115,7 +187,7 @@ class JavaExecutionOrchestratorTest {
         ): Result<ProcessResult> = Result.failure(UnsupportedOperationException())
 
         override suspend fun start(config: ProcessConfig): Result<RunningProcess> {
-            lastConfig = config
+            configs.add(config)
             return Result.success(process)
         }
     }

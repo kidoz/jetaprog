@@ -17,6 +17,8 @@ import su.kidoz.jetaprog.configuration.SpringBootDevServerSettings
 import su.kidoz.jetaprog.configuration.SpringBootSettings
 import su.kidoz.jetaprog.configuration.TomcatLocalSettings
 import su.kidoz.jetaprog.configuration.TomcatRemoteSettings
+import su.kidoz.jetaprog.configuration.gradleCommand
+import su.kidoz.jetaprog.configuration.mavenCommand
 import su.kidoz.jetaprog.platform.process.ProcessConfig
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.platform.process.ProcessOutput
@@ -303,9 +305,10 @@ public class ExecutionOrchestrator(
         settings: ConfigurationSettings.Gradle,
         workspacePath: String,
     ): ProcessConfig {
+        val workingDirectory = settings.workingDirectory ?: workspacePath
         val command =
             buildList {
-                add("./gradlew")
+                add(gradleCommand(workingDirectory))
                 add(settings.taskPath)
                 addAll(settings.arguments)
                 settings.jvmArguments.forEach { add("-D$it") }
@@ -313,7 +316,7 @@ public class ExecutionOrchestrator(
 
         return ProcessConfig(
             command = command,
-            workingDirectory = settings.workingDirectory ?: workspacePath,
+            workingDirectory = workingDirectory,
             environment = settings.environment,
         )
     }
@@ -611,10 +614,16 @@ public class ExecutionOrchestrator(
         settings: ConfigurationSettings.Java,
         workspacePath: String,
     ): ProcessConfig {
+        val workingDirectory = settings.workingDirectory ?: workspacePath
         val command =
             when (settings.buildTool) {
-                su.kidoz.jetaprog.configuration.JavaBuildTool.GRADLE -> buildGradleJavaCommand(settings)
-                su.kidoz.jetaprog.configuration.JavaBuildTool.MAVEN -> buildMavenJavaCommand(settings)
+                su.kidoz.jetaprog.configuration.JavaBuildTool.GRADLE -> {
+                    buildGradleJavaCommand(settings, workingDirectory)
+                }
+
+                su.kidoz.jetaprog.configuration.JavaBuildTool.MAVEN -> {
+                    buildMavenJavaCommand(settings, workingDirectory)
+                }
             }
         val environment = settings.environment.toMutableMap()
         if (
@@ -630,14 +639,17 @@ public class ExecutionOrchestrator(
 
         return ProcessConfig(
             command = command,
-            workingDirectory = settings.workingDirectory ?: workspacePath,
+            workingDirectory = workingDirectory,
             environment = environment,
         )
     }
 
-    private fun buildGradleJavaCommand(settings: ConfigurationSettings.Java): List<String> =
+    private fun buildGradleJavaCommand(
+        settings: ConfigurationSettings.Java,
+        workingDirectory: String,
+    ): List<String> =
         buildList {
-            add(settings.executable ?: "./gradlew")
+            add(gradleCommand(workingDirectory, settings.executable))
             addAll(settings.task.split(' ').filter(String::isNotBlank))
             addAll(settings.buildArguments)
             settings.testFilter?.takeIf { it.isNotBlank() }?.let {
@@ -650,9 +662,12 @@ public class ExecutionOrchestrator(
             settings.jvmArguments.forEach { add("-D$it") }
         }
 
-    private fun buildMavenJavaCommand(settings: ConfigurationSettings.Java): List<String> =
+    private fun buildMavenJavaCommand(
+        settings: ConfigurationSettings.Java,
+        workingDirectory: String,
+    ): List<String> =
         buildList {
-            add(settings.executable ?: settings.buildTool.defaultExecutable)
+            add(mavenCommand(workingDirectory, settings.executable))
             addAll(settings.task.split(' ').filter(String::isNotBlank))
             addAll(settings.buildArguments)
             settings.mainClass?.takeIf { it.isNotBlank() }?.let { add("-Dexec.mainClass=$it") }
@@ -792,11 +807,12 @@ public class ExecutionOrchestrator(
         settings: SpringBootSettings,
         workspacePath: String,
     ): ProcessConfig {
+        val workingDirectory = settings.workingDirectory ?: workspacePath
         // If using Gradle task, delegate to Gradle
         if (settings.useGradleTask) {
             val command =
                 buildList {
-                    add("./gradlew")
+                    add(gradleCommand(workingDirectory))
                     add(settings.gradleTask)
                     if (settings.activeProfiles.isNotEmpty()) {
                         add("-Dspring.profiles.active=${settings.activeProfiles.joinToString(",")}")
@@ -805,7 +821,7 @@ public class ExecutionOrchestrator(
 
             return ProcessConfig(
                 command = command,
-                workingDirectory = settings.workingDirectory ?: workspacePath,
+                workingDirectory = workingDirectory,
                 environment = settings.environment,
             )
         }
@@ -856,7 +872,7 @@ public class ExecutionOrchestrator(
 
         return ProcessConfig(
             command = command,
-            workingDirectory = settings.workingDirectory ?: workspacePath,
+            workingDirectory = workingDirectory,
             environment = settings.environment,
         )
     }

@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.configuration.execution
 
 import su.kidoz.jetaprog.configuration.BeforeLaunchTask
 import su.kidoz.jetaprog.configuration.CargoProfileType
+import su.kidoz.jetaprog.configuration.gradleCommand
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 
 /**
@@ -85,7 +86,7 @@ public class TaskExecutor(
 
         val command =
             when (buildFile) {
-                "build.gradle.kts", "build.gradle" -> listOf("./gradlew", "build")
+                "build.gradle.kts", "build.gradle" -> listOf(gradleCommand(workspacePath), "build")
                 "Cargo.toml" -> listOf("cargo", "build")
                 "meson.build" -> listOf("meson", "compile", "-C", "builddir")
                 "pyproject.toml" -> listOf("python", "-m", "build")
@@ -99,7 +100,7 @@ public class TaskExecutor(
         task: BeforeLaunchTask.GradleTask,
         workspacePath: String,
     ): TaskResult {
-        val command = listOf("./gradlew", task.taskPath)
+        val command = listOf(gradleCommand(workspacePath), task.taskPath)
         return executeCommand(command, workspacePath)
     }
 

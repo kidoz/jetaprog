@@ -278,8 +278,8 @@ public sealed interface ConfigurationSettings {
     public data class Python(
         /** Path to the Python script to run. */
         val scriptPath: String,
-        /** Python interpreter path (e.g., "python3", "/usr/bin/python"). */
-        val pythonInterpreter: String = "python3",
+        /** Python interpreter path (e.g., "python3", "python", "/usr/bin/python"). */
+        val pythonInterpreter: String = defaultPythonInterpreter(),
         /** Script arguments. */
         val scriptArguments: List<String> = emptyList(),
         /** Python interpreter arguments (before script). */
