@@ -4,6 +4,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.document.LanguageId
+import su.kidoz.jetaprog.platform.process.withResolvedExecutable
 import su.kidoz.jetaprog.plugins.api.services.FormattingOptions
 import su.kidoz.jetaprog.plugins.api.services.TextEdit
 import java.io.File
@@ -56,7 +57,7 @@ public class ExternalStdioFormatter(
         try {
             require(command.isNotEmpty()) { "Formatter command must not be empty" }
             val process =
-                ProcessBuilder(command)
+                ProcessBuilder(command.withResolvedExecutable())
                     .directory(workingDirectory?.let(::File)?.takeIf(File::isDirectory))
                     .start()
             val output = StringBuilder(content.length)

@@ -22,6 +22,7 @@ import su.kidoz.jetaprog.lsp.protocol.JsonRpcMessage
 import su.kidoz.jetaprog.lsp.protocol.JsonRpcNotification
 import su.kidoz.jetaprog.lsp.protocol.JsonRpcRequest
 import su.kidoz.jetaprog.lsp.protocol.JsonRpcResponse
+import su.kidoz.jetaprog.platform.process.withResolvedExecutable
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
@@ -64,7 +65,7 @@ public class StdioTransport(
             logger.info { "Starting language server: ${config.command.joinToString(" ")}" }
 
             val processBuilder =
-                ProcessBuilder(config.command).apply {
+                ProcessBuilder(config.command.withResolvedExecutable(config.environment)).apply {
                     config.workingDirectory?.let { directory(File(it)) }
                     environment().putAll(config.environment)
                     redirectErrorStream(false)

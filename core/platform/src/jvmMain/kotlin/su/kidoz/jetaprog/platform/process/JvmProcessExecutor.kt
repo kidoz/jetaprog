@@ -34,7 +34,7 @@ public class JvmProcessExecutor : ProcessExecutor {
     ): Result<ProcessResult> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val processBuilder = ProcessBuilder(config.command)
+                val processBuilder = ProcessBuilder(config.command.withResolvedExecutable(config.environment))
                 config.workingDirectory?.let { processBuilder.directory(File(it)) }
                 processBuilder.environment().putAll(config.environment)
                 processBuilder.redirectErrorStream(config.redirectErrorStream)
@@ -113,7 +113,7 @@ public class JvmProcessExecutor : ProcessExecutor {
     override suspend fun start(config: ProcessConfig): Result<RunningProcess> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val processBuilder = ProcessBuilder(config.command)
+                val processBuilder = ProcessBuilder(config.command.withResolvedExecutable(config.environment))
                 config.workingDirectory?.let { processBuilder.directory(File(it)) }
                 processBuilder.environment().putAll(config.environment)
                 if (config.redirectErrorStream) {
