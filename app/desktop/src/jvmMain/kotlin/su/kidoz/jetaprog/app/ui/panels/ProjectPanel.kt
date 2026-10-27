@@ -147,7 +147,7 @@ public fun ProjectPanel(
             when (val result = operation()) {
                 is FileActionResult.Success -> {
                     // The watcher refreshes too, but this keeps the tree instant.
-                    result.path.substringBeforeLast('/').let(reloadDirectory)
+                    File(result.path).parentFile?.path?.let(reloadDirectory)
                 }
 
                 is FileActionResult.Failure -> {
@@ -170,7 +170,7 @@ public fun ProjectPanel(
 
     val commitRename: (String, String) -> Unit = { path, newName ->
         renamingPath = null
-        if (newName != path.substringAfterLast('/')) {
+        if (newName != File(path).name) {
             fileActions?.let { actions ->
                 runAction {
                     actions.rename(path, newName).also { result ->

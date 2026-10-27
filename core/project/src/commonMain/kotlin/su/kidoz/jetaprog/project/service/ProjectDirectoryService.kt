@@ -70,7 +70,7 @@ public class ProjectDirectoryService(
                 // Create default project.json if it doesn't exist
                 val projectConfigPath = "$projectDirectoryPath/${ProjectDirectoryConstants.PROJECT_CONFIG_FILE}"
                 if (!fileOps.exists(projectConfigPath)) {
-                    val projectName = projectRoot.substringAfterLast('/')
+                    val projectName = projectRoot.substringAfterLast('/').substringAfterLast('\\')
                     val defaultConfig = ProjectConfig.default(projectName)
                     saveProjectConfig(defaultConfig)
                 }

@@ -32,6 +32,7 @@ import su.kidoz.jetaprog.plugins.kotlin.SymbolKind
 import su.kidoz.jetaprog.plugins.kotlin.Visibility
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinReference
 import su.kidoz.jetaprog.plugins.kotlin.analysis.KotlinSemanticAnalyzer
+import java.io.File
 
 /**
  * Navigation service that layers the regex-based [KotlinSymbolIndex] on top of a
@@ -113,7 +114,7 @@ public class KotlinIndexNavigationService(
         val symbol = symbolIndex.getSymbolAt(location.filePath, location.position)
         return symbol?.toNavigationTarget()
             ?: NavigationTarget(
-                name = location.filePath.substringAfterLast('/'),
+                name = File(location.filePath).name,
                 qualifiedName = location.filePath,
                 kind = NavigationSymbolKind.UNKNOWN,
                 filePath = location.filePath,
@@ -253,7 +254,7 @@ public class KotlinIndexNavigationService(
                 val lines = fileContent.lines()
                 UsageGroup(
                     filePath = path,
-                    fileName = path.substringAfterLast('/'),
+                    fileName = File(path).name,
                     usages =
                         refs
                             .map { reference ->
@@ -300,7 +301,7 @@ public class KotlinIndexNavigationService(
         textMatches.map { file ->
             UsageGroup(
                 filePath = file.filePath,
-                fileName = file.filePath.substringAfterLast('/'),
+                fileName = File(file.filePath).name,
                 usages =
                     file.matches.map { match ->
                         UsageInfo(

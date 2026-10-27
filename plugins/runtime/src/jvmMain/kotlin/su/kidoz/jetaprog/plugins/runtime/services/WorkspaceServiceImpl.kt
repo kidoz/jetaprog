@@ -13,6 +13,7 @@ import su.kidoz.jetaprog.platform.filesystem.FileSystemEvent
 import su.kidoz.jetaprog.plugins.api.services.SettingsAccessService
 import su.kidoz.jetaprog.plugins.api.services.WorkspaceFolder
 import su.kidoz.jetaprog.plugins.api.services.WorkspaceService
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
 
@@ -30,7 +31,7 @@ public class WorkspaceServiceImpl(
 
     override val rootPath: String? = workspacePath
 
-    override val name: String? = workspacePath.substringAfterLast('/')
+    override val name: String? = File(workspacePath).name
 
     override suspend fun getWorkspaceFolders(): List<WorkspaceFolder> =
         listOf(
@@ -91,7 +92,7 @@ public class WorkspaceServiceImpl(
         // Watch the workspace root recursively and filter by pattern
         return fileSystem
             .watch(workspacePath, recursive = true)
-            .filter { event -> matchesPattern(event.path.substringAfterLast('/'), pattern) }
+            .filter { event -> matchesPattern(File(event.path).name, pattern) }
     }
 
     override fun onDidChangeWatchedFiles(

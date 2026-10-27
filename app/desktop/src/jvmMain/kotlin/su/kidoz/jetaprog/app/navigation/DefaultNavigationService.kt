@@ -43,6 +43,7 @@ import su.kidoz.jetaprog.lsp.server.EmbeddedLspServer
 import su.kidoz.jetaprog.lsp.server.EmbeddedServerRegistry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.plugins.support.LanguageRegistry
+import java.io.File
 import su.kidoz.jetaprog.plugins.api.language.Location as ProviderLocation
 import su.kidoz.jetaprog.plugins.api.services.TextDocument as ProviderTextDocument
 
@@ -491,7 +492,7 @@ public class DefaultNavigationService(
         val breadcrumbs = mutableListOf<BreadcrumbItem>()
 
         // Add file as first breadcrumb
-        val fileName = filePath.substringAfterLast('/')
+        val fileName = File(filePath).name
         breadcrumbs.add(
             BreadcrumbItem(
                 name = fileName,

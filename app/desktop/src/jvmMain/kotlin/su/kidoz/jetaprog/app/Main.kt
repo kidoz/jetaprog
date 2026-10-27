@@ -56,6 +56,7 @@ import su.kidoz.jetaprog.settings.model.AppearanceSettings
 import su.kidoz.jetaprog.settings.model.Theme
 import java.awt.Cursor
 import java.awt.Window
+import java.io.File
 import kotlin.math.roundToInt
 
 /**
@@ -256,7 +257,7 @@ private fun windowTitle(app: JetaProgApplication): String {
 @Composable
 private fun sessionTitle(session: ProjectSession): String {
     val editorState by session.editorViewModel.state.collectAsState()
-    val project = session.projectPath.substringAfterLast('/')
+    val project = File(session.projectPath).name
     val fileName = editorState.activeTab?.name
     return if (fileName != null) "$project — $fileName" else project
 }
