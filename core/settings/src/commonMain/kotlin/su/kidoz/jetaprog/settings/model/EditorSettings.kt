@@ -27,6 +27,8 @@ public data class EditorSettings(
      * Wrap long lines at the viewport edge.
      */
     val wordWrap: Boolean = false,
+    /** Collapse static import and include blocks when opening a document. */
+    val collapseImportsByDefault: Boolean = true,
     /**
      * Show whitespace characters (spaces, tabs).
      */

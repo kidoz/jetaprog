@@ -189,6 +189,11 @@ public sealed interface SettingsIntent : Intent {
         val show: Boolean,
     ) : SettingsIntent
 
+    /** Controls the default visual folding of dependency declarations. */
+    public data class SetCollapseImportsByDefault(
+        val collapse: Boolean,
+    ) : SettingsIntent
+
     public data class SetWordWrap(
         val wrap: Boolean,
     ) : SettingsIntent

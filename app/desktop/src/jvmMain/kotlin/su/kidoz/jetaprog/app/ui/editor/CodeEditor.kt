@@ -27,8 +27,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -61,6 +63,8 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextDecoration
@@ -78,6 +82,7 @@ import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.editing.CommentSyntax
 import su.kidoz.jetaprog.editor.editing.EditResult
 import su.kidoz.jetaprog.editor.editing.TextEditingOps
+import su.kidoz.jetaprog.editor.folding.DependencyFolding
 import su.kidoz.jetaprog.editor.search.FindMatch
 import su.kidoz.jetaprog.editor.state.DiagnosticSeverity
 import su.kidoz.jetaprog.editor.state.EditorIntent
@@ -183,11 +188,57 @@ public fun CodeEditor(
         mutableStateOf(TextFieldValue(state.content, selection = TextRange(caret)))
     }
 
+    val documentKey = state.activeDocumentUri?.value.orEmpty()
+    val expandedByDocument = remember { mutableStateMapOf<String, Set<String>>() }
+    val dependencyFolds =
+        remember(textFieldValue.text, state.languageId, settings.collapseImportsByDefault) {
+            if (settings.collapseImportsByDefault) {
+                DependencyFolding.detect(
+                    textFieldValue.text,
+                    state.languageId,
+                )
+            } else {
+                emptyList()
+            }
+        }
+    val expandedFolds = expandedByDocument[documentKey].orEmpty()
+    val projection =
+        remember(textFieldValue.text, dependencyFolds, expandedFolds) {
+            FoldProjection(textFieldValue.text, dependencyFolds.filterNot { it.key in expandedFolds })
+        }
+    val liveProjection by rememberUpdatedState(projection)
+    val expandFolds: (Set<String>) -> Unit = { keys ->
+        if (keys.isNotEmpty()) expandedByDocument[documentKey] = expandedByDocument[documentKey].orEmpty() + keys
+    }
+    val revealRange: (Int, Int) -> Unit = { start, end ->
+        expandFolds(
+            projection.folds
+                .filter {
+                    if (start == end) start >= it.start && start < it.end else start < it.end && end > it.start
+                }.map { it.key }
+                .toSet(),
+        )
+    }
+    val revealedLine: (Int) -> Int = { line ->
+        FoldProjection(
+            textFieldValue.text,
+            projection.folds.filterNot {
+                it.key in expandedByDocument[documentKey].orEmpty()
+            },
+        ).visualLine(line)
+    }
+
     // Track last known content to detect external changes (file reload, undo from outside, etc.)
     var lastKnownContent by remember(state.activeDocumentUri) { mutableStateOf(state.content) }
 
     // Apply a text-editing operation result to the field and propagate the change
-    val applyEdit: (EditResult) -> Unit = { result ->
+    val applyEdit: (EditResult) -> Unit = edit@{ result ->
+        revealRange(textFieldValue.selection.min, textFieldValue.selection.max)
+        val hidden = projection.hiddenDeletion(result.text)
+        if (textFieldValue.selection.collapsed && hidden.isNotEmpty()) {
+            expandFolds(hidden)
+            return@edit
+        }
         lastKnownContent = result.text
         textFieldValue =
             TextFieldValue(
@@ -226,9 +277,10 @@ public fun CodeEditor(
         if (state.caretSyncVersion == 0L) return@LaunchedEffect
         val start = offsetOfPosition(textFieldValue.text, state.cursor.selectionStart)
         val end = offsetOfPosition(textFieldValue.text, state.cursor.selectionEnd)
+        revealRange(minOf(start, end), maxOf(start, end))
         textFieldValue = textFieldValue.copy(selection = TextRange(start, end))
         val lineHeight = with(density) { Dimensions.lineHeightCode.sp.roundToPx() }
-        val target = (state.cursor.position.line * lineHeight).coerceAtLeast(0)
+        val target = (revealedLine(state.cursor.position.line) * lineHeight).coerceAtLeast(0)
         verticalScrollState.animateScrollTo(target)
     }
 
@@ -238,13 +290,21 @@ public fun CodeEditor(
         val length = textFieldValue.text.length
         if (match.start > length || match.end > length) return@LaunchedEffect
 
+        revealRange(match.start, match.end)
         textFieldValue = textFieldValue.copy(selection = TextRange(match.start, match.end))
 
         // Scroll the match into view, roughly centered
         val matchLine = offsetToPosition(textFieldValue.text, match.start).line
         val lineHeight = with(density) { Dimensions.lineHeightCode.sp.roundToPx() }
-        val target = (matchLine * lineHeight - verticalScrollState.viewportSize / 2).coerceAtLeast(0)
+        val target = (revealedLine(matchLine) * lineHeight - verticalScrollState.viewportSize / 2).coerceAtLeast(0)
         verticalScrollState.animateScrollTo(target)
+    }
+
+    LaunchedEffect(state.activeDocumentUri, debug?.executionLine) {
+        debug?.executionLine?.let { line ->
+            val offset = offsetOfPosition(textFieldValue.text, TextPosition((line - 1).coerceAtLeast(0), 0))
+            revealRange(offset, offset)
+        }
     }
 
     // Diagnostic ranges converted to character offsets for underline rendering
@@ -315,7 +375,7 @@ public fun CodeEditor(
     // scroll offsets must be subtracted or the popup stays pinned to the document rather
     // than the viewport and sails off screen as soon as the file is scrolled.
     val anchorPopup: (TextPosition, Boolean) -> IntOffset = { position, below ->
-        val row = if (below) position.line + 1 else position.line
+        val row = projection.visualLine(position.line) + if (below) 1 else 0
         IntOffset(
             x =
                 editorPaddingStartPx + (position.column * charWidthPx).roundToInt() -
@@ -349,6 +409,25 @@ public fun CodeEditor(
                         executionLine = debug?.executionLine,
                         onToggleBreakpoint = { line -> debug?.onToggleBreakpoint?.invoke(line) },
                         lineChangeMarkers = state.lineChangeMarkers,
+                        visibleSourceLines = projection.visibleSourceLines,
+                        foldRegions =
+                            dependencyFolds.map { fold ->
+                                FoldRegion(
+                                    fold.startLine + 1,
+                                    fold.endLine + 1,
+                                    fold.key !in expandedFolds,
+                                    "${fold.label} (${fold.declarationCount})",
+                                )
+                            },
+                        onToggleFold = { region ->
+                            val fold = dependencyFolds.first { it.startLine + 1 == region.startLine }
+                            expandedByDocument[documentKey] =
+                                if (region.isFolded) expandedFolds + fold.key else expandedFolds - fold.key
+                            if (!region.isFolded && textFieldValue.selection.end in fold.start until fold.end) {
+                                textFieldValue = textFieldValue.copy(selection = TextRange(fold.start))
+                                onCursorMove(offsetToPosition(textFieldValue.text, fold.start))
+                            }
+                        },
                     )
                 }
 
@@ -379,7 +458,7 @@ public fun CodeEditor(
                                                 if (event.buttons.isPrimaryPressed) continue
                                                 val pointer =
                                                     event.changes.firstOrNull()?.position ?: continue
-                                                val text = textFieldValue.text
+                                                val text = liveProjection.text
                                                 if (text != cachedText) {
                                                     cachedText = text
                                                     cachedLines = text.lines()
@@ -393,10 +472,19 @@ public fun CodeEditor(
                                                         lineHeightPx = lineHeightPxF,
                                                         charWidthPx = charWidthPx,
                                                     )
-                                                if (position != lastHoverPosition) {
-                                                    lastHoverPosition = position
-                                                    if (position != null) {
-                                                        onHoverRequest(position)
+                                                val sourcePosition =
+                                                    position
+                                                        ?.let(liveProjection::sourcePosition)
+                                                        ?.takeUnless { pos ->
+                                                            liveProjection.folds.any {
+                                                                it.startLine ==
+                                                                    pos.line
+                                                            }
+                                                        }
+                                                if (sourcePosition != lastHoverPosition) {
+                                                    lastHoverPosition = sourcePosition
+                                                    if (sourcePosition != null) {
+                                                        onHoverRequest(sourcePosition)
                                                     } else {
                                                         onHoverDismiss()
                                                     }
@@ -416,13 +504,33 @@ public fun CodeEditor(
                                             // landed on whatever line was under the pointer by then.
                                             PointerEventType.Press -> {
                                                 val modifiers = event.keyboardModifiers
+                                                val pointer = event.changes.firstOrNull()?.position ?: continue
+                                                val visualLine =
+                                                    (
+                                                        (
+                                                            pointer.y + verticalScrollState.value -
+                                                                editorPaddingTopPx
+                                                        ) /
+                                                            lineHeightPxF
+                                                    ).toInt()
+                                                val sourceLine = liveProjection.visibleSourceLines.getOrNull(visualLine)
+                                                val folded =
+                                                    liveProjection.folds.firstOrNull {
+                                                        it.startLine ==
+                                                            sourceLine
+                                                    }
+                                                if (folded != null && event.buttons.isPrimaryPressed) {
+                                                    expandedByDocument[documentKey] =
+                                                        expandedByDocument[documentKey].orEmpty() + folded.key
+                                                    event.changes.forEach { it.consume() }
+                                                    swallowRelease = true
+                                                    continue
+                                                }
                                                 if (!modifiers.isCtrlPressed && !modifiers.isMetaPressed) continue
-                                                val pointer =
-                                                    event.changes.firstOrNull()?.position ?: continue
                                                 val position =
                                                     pointerTextPosition(
                                                         pointer = pointer,
-                                                        lines = textFieldValue.text.lines(),
+                                                        lines = liveProjection.text.lines(),
                                                         scrollY = verticalScrollState.value - editorPaddingTopPx,
                                                         scrollX = horizontalScrollState.value - editorPaddingStartPx,
                                                         lineHeightPx = lineHeightPxF,
@@ -430,7 +538,7 @@ public fun CodeEditor(
                                                     ) ?: continue
                                                 event.changes.forEach { it.consume() }
                                                 swallowRelease = true
-                                                onGoToDefinition(position)
+                                                onGoToDefinition(liveProjection.sourcePosition(position))
                                             }
                                         }
                                     }
@@ -457,7 +565,9 @@ public fun CodeEditor(
                     // Current line highlight (behind the text layer)
                     if (settings.highlightCurrentLine && textFieldValue.selection.collapsed) {
                         val caretLine =
-                            offsetToPosition(textFieldValue.text, textFieldValue.selection.start).line
+                            projection.visualLine(
+                                offsetToPosition(textFieldValue.text, textFieldValue.selection.start).line,
+                            )
                         Box(
                             modifier =
                                 Modifier
@@ -481,7 +591,8 @@ public fun CodeEditor(
                                     .offset {
                                         IntOffset(
                                             0,
-                                            editorPaddingTopPx + ((execLine - 1) * lineHeightPxF).roundToInt() -
+                                            editorPaddingTopPx +
+                                                (projection.visualLine(execLine - 1) * lineHeightPxF).roundToInt() -
                                                 verticalScrollState.value,
                                         )
                                     }.fillMaxWidth()
@@ -505,7 +616,8 @@ public fun CodeEditor(
                                         IntOffset(
                                             editorPaddingStartPx + ((column + 2) * charWidthPx).roundToInt() -
                                                 horizontalScrollState.value,
-                                            editorPaddingTopPx + (lineIndex * lineHeightPxF).roundToInt() -
+                                            editorPaddingTopPx +
+                                                (projection.visualLine(lineIndex) * lineHeightPxF).roundToInt() -
                                                 verticalScrollState.value,
                                         )
                                     },
@@ -533,7 +645,12 @@ public fun CodeEditor(
                                                 editorPaddingStartPx +
                                                     (position.column * charWidthPx).roundToInt() -
                                                     horizontalScrollState.value,
-                                                editorPaddingTopPx + (position.line * lineHeightPxF).roundToInt() -
+                                                editorPaddingTopPx +
+                                                    (
+                                                        projection.visualLine(
+                                                            position.line,
+                                                        ) * lineHeightPxF
+                                                    ).roundToInt() -
                                                     verticalScrollState.value,
                                             )
                                         }.size(width = charWidthDp, height = lineHeightDp)
@@ -545,7 +662,13 @@ public fun CodeEditor(
                     ProvideEditorBringIntoViewSpec(bringIntoViewSpec) {
                         BasicTextField(
                             value = textFieldValue,
-                            onValueChange = { newValue ->
+                            onValueChange = change@{ newValue ->
+                                revealRange(newValue.selection.min, newValue.selection.max)
+                                val hidden = projection.hiddenDeletion(newValue.text)
+                                if (textFieldValue.selection.collapsed && hidden.isNotEmpty()) {
+                                    expandFolds(hidden)
+                                    return@change
+                                }
                                 val oldText = textFieldValue.text
                                 val oldSelection = textFieldValue.selection
 
@@ -617,6 +740,10 @@ public fun CodeEditor(
                                     // Keep the input layer invisible so the highlighted layer shows through.
                                     color = Color.Transparent,
                                 ),
+                            visualTransformation =
+                                VisualTransformation { text ->
+                                    TransformedText(projection.project(text), projection)
+                                },
                             cursorBrush = SolidColor(effectiveSyntaxTheme.cursor.toComposeColor()),
                             modifier =
                                 Modifier
@@ -645,6 +772,27 @@ public fun CodeEditor(
                                             ctrlOrMeta && !keyEvent.isAltPressed && !keyEvent.isShiftPressed
 
                                         when {
+                                            ctrlOrMeta && keyEvent.isShiftPressed &&
+                                                keyEvent.key == Key.LeftBracket -> {
+                                                expandedByDocument[documentKey] = emptySet()
+                                                dependencyFolds
+                                                    .firstOrNull {
+                                                        textFieldValue.selection.end in
+                                                            it.start until it.end
+                                                    }?.let { fold ->
+                                                        textFieldValue =
+                                                            textFieldValue.copy(selection = TextRange(fold.start))
+                                                        onCursorMove(offsetToPosition(textFieldValue.text, fold.start))
+                                                    }
+                                                true
+                                            }
+
+                                            ctrlOrMeta && keyEvent.isShiftPressed &&
+                                                keyEvent.key == Key.RightBracket -> {
+                                                expandFolds(dependencyFolds.map { it.key }.toSet())
+                                                true
+                                            }
+
                                             // Format document shortcut
                                             isFormatShortcut -> {
                                                 onFormatDocument()
@@ -892,7 +1040,7 @@ public fun CodeEditor(
                                 Box {
                                     // Render syntax-highlighted text as visual layer
                                     Text(
-                                        text = annotatedString,
+                                        text = projection.project(annotatedString),
                                         // Same style object as the input layer: two separately
                                         // declared styles can silently drift out of alignment.
                                         style =
@@ -961,7 +1109,7 @@ public fun CodeEditor(
                 }
                 if (settings.showMinimap) {
                     EditorMinimap(
-                        text = textFieldValue.text,
+                        text = projection.text,
                         scrollState = verticalScrollState,
                     )
                 }

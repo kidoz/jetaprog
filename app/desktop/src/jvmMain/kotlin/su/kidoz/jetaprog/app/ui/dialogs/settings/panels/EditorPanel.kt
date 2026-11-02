@@ -163,6 +163,18 @@ public fun EditorPanel(
             }
         }
 
+        SettingSection(title = "CODE FOLDING") {
+            SettingRow(
+                label = "Collapse imports by default",
+                description = "Display import and include blocks on one line",
+            ) {
+                IntelliJCheckbox(
+                    checked = settings.collapseImportsByDefault,
+                    onCheckedChange = { onIntent(SettingsIntent.SetCollapseImportsByDefault(it)) },
+                )
+            }
+        }
+
         // Editing section
         SettingSection(title = "EDITING") {
             SettingRow(

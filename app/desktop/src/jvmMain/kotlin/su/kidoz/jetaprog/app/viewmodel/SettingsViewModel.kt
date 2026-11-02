@@ -99,6 +99,10 @@ public class SettingsViewModel(
                 updateEditor { copy(wordWrap = intent.wrap) }
             }
 
+            is SettingsIntent.SetCollapseImportsByDefault -> {
+                updateEditor { copy(collapseImportsByDefault = intent.collapse) }
+            }
+
             is SettingsIntent.SetShowWhitespace -> {
                 updateEditor { copy(showWhitespace = intent.show) }
             }

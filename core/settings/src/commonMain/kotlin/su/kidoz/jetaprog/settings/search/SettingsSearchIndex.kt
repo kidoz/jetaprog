@@ -204,6 +204,15 @@ public class SettingsSearchIndex {
         )
         addEntry(
             SettingsSearchEntry(
+                "editor.collapseImportsByDefault",
+                "Collapse imports by default",
+                "Display import and include blocks on one line",
+                "editor",
+                listOf("fold", "collapse", "import", "include"),
+            ),
+        )
+        addEntry(
+            SettingsSearchEntry(
                 "editor.wordWrap",
                 "Word Wrap",
                 "Wrap long lines at the viewport edge",

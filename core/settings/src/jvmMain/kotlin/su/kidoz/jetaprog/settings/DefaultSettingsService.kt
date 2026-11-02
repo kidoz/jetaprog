@@ -268,6 +268,12 @@ public class DefaultSettingsService(
                     user.showMinimap
                 },
             wordWrap = if (workspace.wordWrap != defaults.wordWrap) workspace.wordWrap else user.wordWrap,
+            collapseImportsByDefault =
+                if (workspace.collapseImportsByDefault != defaults.collapseImportsByDefault) {
+                    workspace.collapseImportsByDefault
+                } else {
+                    user.collapseImportsByDefault
+                },
             showWhitespace =
                 if (workspace.showWhitespace !=
                     defaults.showWhitespace

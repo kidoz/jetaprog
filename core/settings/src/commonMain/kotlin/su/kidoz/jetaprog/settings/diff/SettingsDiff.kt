@@ -130,6 +130,10 @@ public data class SettingsDiff(
                 fields.add("editor.showMinimap")
                 changed = true
             }
+            if (old.collapseImportsByDefault != new.collapseImportsByDefault) {
+                fields.add("editor.collapseImportsByDefault")
+                changed = true
+            }
             if (old.wordWrap != new.wordWrap) {
                 fields.add("editor.wordWrap")
                 changed = true

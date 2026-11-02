@@ -47,6 +47,8 @@ public data class FoldRegion(
     val startLine: Int,
     val endLine: Int,
     val isFolded: Boolean = false,
+    /** Accessible name of the folded declaration block. */
+    val label: String = "",
 )
 
 /**
@@ -64,6 +66,7 @@ public fun LineNumbers(
     executionLine: Int? = null,
     onToggleBreakpoint: (Int) -> Unit = {},
     lineChangeMarkers: Map<Int, LineChangeMarker> = emptyMap(),
+    visibleSourceLines: List<Int> = (0 until lineCount).toList(),
 ) {
     // Calculate width based on number of digits
     val digits = lineCount.toString().length.coerceAtLeast(3)
@@ -79,9 +82,9 @@ public fun LineNumbers(
     val lineHeightPxF = with(density) { Dimensions.lineHeightCode.sp.toPx() }
     val rowHeight = with(density) { lineHeightPxF.toDp() }
 
-    LaunchedEffect(scrollState.value, lineCount) {
+    LaunchedEffect(scrollState.value, visibleSourceLines) {
         val firstVisibleLine = (scrollState.value / lineHeightPxF).toInt()
-        if (firstVisibleLine in 0 until lineCount) {
+        if (firstVisibleLine in visibleSourceLines.indices) {
             val remainderPx = (scrollState.value - firstVisibleLine * lineHeightPxF).roundToInt()
             listState.scrollToItem(firstVisibleLine, remainderPx)
         }
@@ -101,8 +104,8 @@ public fun LineNumbers(
                     .fillMaxHeight(),
         ) {
             LazyColumn(state = listState) {
-                items(lineCount) { index ->
-                    val lineNumber = index + 1
+                items(visibleSourceLines.size) { index ->
+                    val lineNumber = visibleSourceLines[index] + 1
                     val foldRegion = foldRegions.find { it.startLine == lineNumber }
 
                     Box(
@@ -131,7 +134,12 @@ public fun LineNumbers(
                                         } else {
                                             Icons.Default.KeyboardArrowDown
                                         },
-                                    contentDescription = if (foldRegion.isFolded) "Expand" else "Collapse",
+                                    contentDescription =
+                                        (if (foldRegion.isFolded) "Expand" else "Collapse") +
+                                            foldRegion.label
+                                                .takeIf { it.isNotEmpty() }
+                                                ?.let { " $it" }
+                                                .orEmpty(),
                                     tint =
                                         if (isHovered) {
                                             LocalIntelliJColors.current.textPrimary
@@ -184,8 +192,8 @@ public fun LineNumbers(
             state = listState,
             modifier = Modifier.weight(1f),
         ) {
-            items(lineCount) { index ->
-                val lineNumber = index + 1
+            items(visibleSourceLines.size) { index ->
+                val lineNumber = visibleSourceLines[index] + 1
                 val isCurrentLine = lineNumber == currentLine
 
                 Box(
@@ -202,7 +210,7 @@ public fun LineNumbers(
                             ),
                     contentAlignment = Alignment.CenterEnd,
                 ) {
-                    lineChangeMarkers[index]?.let { marker ->
+                    lineChangeMarkers[lineNumber - 1]?.let { marker ->
                         Box(
                             modifier =
                                 Modifier

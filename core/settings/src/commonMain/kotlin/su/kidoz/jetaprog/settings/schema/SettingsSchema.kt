@@ -218,6 +218,14 @@ public object SettingsSchemaGenerator {
         fields.add(SettingsFieldSchema("editor.showMinimap", SchemaType.BOOLEAN, "Show minimap", "true"))
         fields.add(SettingsFieldSchema("editor.wordWrap", SchemaType.BOOLEAN, "Enable word wrap", "false"))
         fields.add(
+            SettingsFieldSchema(
+                "editor.collapseImportsByDefault",
+                SchemaType.BOOLEAN,
+                "Collapse import and include blocks by default",
+                "true",
+            ),
+        )
+        fields.add(
             SettingsFieldSchema("editor.showWhitespace", SchemaType.BOOLEAN, "Show whitespace characters", "false"),
         )
         fields.add(
