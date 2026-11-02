@@ -71,6 +71,10 @@ public sealed interface EditorEffect : Effect {
         val onConfirm: () -> Unit,
         val onCancel: () -> Unit,
         val onSave: (() -> Unit)? = null,
+        /** Dialog heading; defaults to the close-tab confirmation. */
+        val title: String = "Unsaved changes",
+        /** Label for the explicitly destructive action. */
+        val confirmLabel: String = "Discard",
     ) : EditorEffect
 
     /**

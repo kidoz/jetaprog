@@ -17,7 +17,10 @@ public object GitStatusParser {
         var behind = 0
         val changes = mutableListOf<GitChange>()
 
-        for (line in output.split('\n')) {
+        val nulDelimited = output.contains('\u0000')
+        val records = output.split(if (nulDelimited) '\u0000' else '\n').iterator()
+        while (records.hasNext()) {
+            val line = records.next()
             if (line.isEmpty()) continue
             if (line.startsWith("## ")) {
                 val header = line.removePrefix("## ")
@@ -35,7 +38,10 @@ public object GitStatusParser {
                 continue
             }
             if (line.length < MIN_ENTRY_LENGTH) continue
-            parseEntry(line, changes)
+            parseEntry(line, changes, nulDelimited)
+            if (nulDelimited && (line[0] in "RC" || line[1] in "RC") && records.hasNext()) {
+                records.next() // In -z format the destination precedes the original path.
+            }
         }
 
         return GitRepositoryStatus(branch = branch, ahead = ahead, behind = behind, changes = changes)
@@ -54,11 +60,22 @@ public object GitStatusParser {
     private fun parseEntry(
         line: String,
         changes: MutableList<GitChange>,
+        nulDelimited: Boolean,
     ) {
         val index = line[0]
         val workTree = line[1]
         val rawPath = line.substring(MIN_ENTRY_LENGTH)
-        val path = rawPath.substringAfter(" -> ", rawPath).trim()
+        val path =
+            if (!nulDelimited && (index in "RC" || workTree in "RC")) {
+                rawPath.substringAfter(" -> ", rawPath)
+            } else {
+                rawPath
+            }
+
+        if (line.take(2) in setOf("DD", "AU", "UD", "UA", "DU", "AA", "UU")) {
+            changes += GitChange(path, GitChangeType.CONFLICTED, staged = false)
+            return
+        }
 
         if (index == '?' && workTree == '?') {
             changes += GitChange(path, GitChangeType.UNTRACKED, staged = false)

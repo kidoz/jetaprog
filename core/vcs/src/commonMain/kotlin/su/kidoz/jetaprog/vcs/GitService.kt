@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.vcs
 
+import su.kidoz.jetaprog.platform.process.ProcessConfig
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 
 /**
@@ -92,7 +93,7 @@ public class DefaultGitService(
     }
 
     override suspend fun status(): Result<GitRepositoryStatus> =
-        run("status", "--porcelain=v1", "--branch").mapCatching { result ->
+        runRaw(listOf("status", "--porcelain=v1", "-z", "--branch")).mapCatching { result ->
             if (!result.isSuccess) error(result.stderr.ifBlank { "git status failed" })
             GitStatusParser.parse(result.stdout)
         }
@@ -100,19 +101,32 @@ public class DefaultGitService(
     override suspend fun diff(
         path: String,
         staged: Boolean,
-    ): Result<String> {
-        val args =
-            buildList {
-                add("diff")
-                if (staged) add("--cached")
-                add("--")
-                add(path)
-            }
-        return run(args).mapCatching { result ->
-            if (!result.isSuccess) error(result.stderr.ifBlank { "git diff failed" })
-            result.stdout
+    ): Result<String> =
+        runCatching {
+            val untracked =
+                !staged &&
+                    status().getOrThrow().unstaged.any {
+                        it.path == path && it.type == GitChangeType.UNTRACKED
+                    }
+            val args =
+                buildList {
+                    add("diff")
+                    add("--no-ext-diff")
+                    add("--no-textconv")
+                    if (untracked) add("--no-index")
+                    if (staged) add("--cached")
+                    add("--")
+                    if (untracked) add("/dev/null")
+                    add(path)
+                }
+            runRaw(args)
+                .mapCatching { result ->
+                    if (!result.isSuccess && !(untracked && result.exitCode == 1)) {
+                        error(result.stderr.ifBlank { "git diff failed" })
+                    }
+                    result.stdout
+                }.getOrThrow()
         }
-    }
 
     override suspend fun stage(paths: List<String>): Result<Unit> = mutate("add", paths)
 
@@ -187,10 +201,16 @@ public class DefaultGitService(
 
     override suspend fun discard(paths: List<String>): Result<Unit> {
         if (paths.isEmpty()) return Result.success(Unit)
-        // Tracked paths: restore working tree (and index) to HEAD. Untracked
-        // paths fail `checkout HEAD --`, so clean them afterwards instead.
-        run(listOf("checkout", "HEAD", "--") + paths)
-        return mutate("clean", paths, "-f", "-q")
+        return runCatching {
+            val changes = status().getOrThrow().changes
+            val selected = changes.filter { it.path in paths }
+            val untracked = selected.filter { it.type == GitChangeType.UNTRACKED }.map { it.path }.distinct()
+            val added = selected.filter { it.staged && it.type == GitChangeType.ADDED }.map { it.path }.distinct()
+            val tracked = paths.distinct() - untracked.toSet() - added.toSet()
+            mutate("checkout", tracked, "HEAD").getOrThrow()
+            mutate("rm", added, "--cached", "-f").getOrThrow()
+            mutate("clean", untracked + added, "-f", "-q").getOrThrow()
+        }
     }
 
     override suspend fun deleteBranch(name: String): Result<String> =
@@ -232,11 +252,21 @@ public class DefaultGitService(
         }
     }
 
+    private suspend fun runRaw(args: List<String>) =
+        processExecutor.executeRaw(
+            ProcessConfig(
+                command = listOf("git") + args,
+                workingDirectory = repositoryPath,
+                environment = mapOf("GIT_LITERAL_PATHSPECS" to "1"),
+            ),
+        )
+
     private suspend fun run(vararg args: String) = run(args.asList())
 
     private suspend fun run(args: List<String>) =
         processExecutor.execute(
             command = listOf("git") + args,
             workingDirectory = repositoryPath,
+            environment = mapOf("GIT_LITERAL_PATHSPECS" to "1"),
         )
 }

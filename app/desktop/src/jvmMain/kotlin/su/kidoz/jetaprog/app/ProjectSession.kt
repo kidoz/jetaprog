@@ -10,12 +10,9 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -773,7 +770,9 @@ public class ProjectSession(
             .onSuccess { lintService.setConfiguration(it) }
 
         // Initialize Gradle with current project
-        gradleViewModel.dispatch(GradleIntent.Initialize(projectPath))
+        if (gradleImportCoordinator.isGradleProject()) {
+            gradleViewModel.dispatch(GradleIntent.Initialize(projectPath))
+        }
 
         // Initialize configuration manager
         configurationViewModel.dispatch(ConfigurationIntent.Initialize(projectPath))
@@ -967,22 +966,17 @@ public class ProjectSession(
      * dropped index updates for every file but the last.
      */
     private suspend fun observeProjectFileEvents() =
-        coroutineScope {
-            var gitRefresh: Job? = null
-            fileSystem
-                .watch(projectPath, recursive = true)
-                .collect { event ->
-                    if (!event.isDirectory && isCheckInput(projectPath, event.path)) {
-                        agentSessionViewModel.invalidateCheckEvidence()
-                    }
-                    reindexChangedFile(event)
-                    gitRefresh?.cancel()
-                    gitRefresh =
-                        launch {
-                            delay(PROJECT_WATCH_REFRESH_DEBOUNCE_MS)
-                            gitViewModel.refreshIfIdle()
-                        }
-                }
+        observeProjectFiles(
+            projectPath = projectPath,
+            fileSystem = fileSystem,
+            editor = editorViewModel,
+            refreshGit = gitViewModel::refreshIfIdle,
+            debounceMillis = PROJECT_WATCH_REFRESH_DEBOUNCE_MS,
+        ) { event ->
+            if (!event.isDirectory && isCheckInput(projectPath, event.path)) {
+                agentSessionViewModel.invalidateCheckEvidence()
+            }
+            reindexChangedFile(event)
         }
 
     /**
@@ -1143,6 +1137,7 @@ public class ProjectSession(
     }
 
     private suspend fun loadKotlinClasspath() {
+        if (!gradleImportCoordinator.isGradleProject()) return
         gradleImportCoordinator
             .importModel()
             .onSuccess { model ->

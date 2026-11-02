@@ -54,7 +54,7 @@ public object FindMatcher {
         if (query.isEmpty()) return emptyList()
 
         val base = if (options.regex) query else Regex.escape(query)
-        val pattern = if (options.wholeWord) "\\b$base\\b" else base
+        val pattern = if (options.wholeWord) "\\b(?:$base)\\b" else base
 
         val regex =
             try {

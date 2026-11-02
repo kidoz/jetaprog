@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.app.viewmodel
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -12,6 +13,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
 import su.kidoz.jetaprog.vcs.DefaultGitService
@@ -84,6 +87,10 @@ public class GitViewModel(
 
     private val _state = MutableStateFlow(GitState())
 
+    private val refreshMutex = Mutex()
+    private var diffJob: Job? = null
+    private var diffRequest = 0L
+
     private var lastHeadSha: String? = null
     private var lastRefsKey: String = ""
 
@@ -103,13 +110,18 @@ public class GitViewModel(
 
     /** Reloads repository status. */
     public fun refresh() {
-        scope.launch {
+        scope.launch { refreshStatus() }
+    }
+
+    private suspend fun refreshStatus(keepBusy: Boolean = false) =
+        refreshMutex.withLock {
             // The `.git` reader doubles as the repository check: reading HEAD
             // is a couple of file reads, cheaper than `git rev-parse`.
             val localInfo = readLocalInfo()
             if (localInfo == null && !service.isRepository()) {
                 _state.update { it.copy(isRepository = false) }
-                return@launch
+                clearSelection()
+                return@withLock
             }
             _state.update { it.copy(isBusy = true, error = null) }
             service
@@ -118,7 +130,7 @@ public class GitViewModel(
                     _state.update {
                         it.copy(
                             isRepository = true,
-                            isBusy = false,
+                            isBusy = keepBusy,
                             branch = localInfo?.currentBranch ?: status.branch,
                             ahead = status.ahead,
                             behind = status.behind,
@@ -126,10 +138,16 @@ public class GitViewModel(
                             unstaged = status.unstaged,
                         )
                     }
+                    val selected = _state.value.selected
+                    if (selected != null) {
+                        val current =
+                            status.changes.firstOrNull { it.path == selected.path && it.staged == selected.staged }
+                                ?: status.changes.firstOrNull { it.path == selected.path }
+                        if (current == null) clearSelection() else select(current)
+                    }
                     refreshHistoryAndBranches(localInfo)
                 }.onFailure { error -> fail(error) }
         }
-    }
 
     /**
      * Refreshes only when no git operation is in flight; used by the
@@ -198,20 +216,32 @@ public class GitViewModel(
                             error = if (match == null) "No Git diff for $normalized" else null,
                         )
                     }
-                    if (match != null) select(match)
+                    if (match != null) select(match) else clearSelection()
                 }.onFailure { error -> fail(error) }
         }
     }
 
     /** Selects a change and loads its diff. */
     public fun select(change: GitChange) {
-        _state.update { it.copy(selected = change, diff = "") }
-        scope.launch {
-            service
-                .diff(change.path, change.staged)
-                .onSuccess { diff -> _state.update { it.copy(diff = diff) } }
-                .onFailure { error -> fail(error) }
-        }
+        diffJob?.cancel()
+        val request = ++diffRequest
+        _state.update { it.copy(selected = change, diff = "", error = null) }
+        diffJob =
+            scope.launch {
+                service
+                    .diff(change.path, change.staged)
+                    .onSuccess { diff ->
+                        if (request == diffRequest) _state.update { it.copy(diff = diff) }
+                    }.onFailure { error ->
+                        if (request == diffRequest) fail(error)
+                    }
+            }
+    }
+
+    private fun clearSelection() {
+        diffJob?.cancel()
+        diffRequest++
+        _state.update { it.copy(selected = null, diff = "") }
     }
 
     /** Stages [change]. */
@@ -291,7 +321,8 @@ public class GitViewModel(
             service
                 .commit(message, amend)
                 .onSuccess {
-                    _state.update { it.copy(commitMessage = "", amendMode = false, diff = "", selected = null) }
+                    clearSelection()
+                    _state.update { it.copy(commitMessage = "", amendMode = false) }
                     refresh()
                 }.onFailure { error -> fail(error) }
         }
@@ -307,11 +338,15 @@ public class GitViewModel(
             service
                 .commit(message, amend)
                 .onSuccess {
-                    _state.update { it.copy(commitMessage = "", amendMode = false, diff = "", selected = null) }
+                    clearSelection()
+                    _state.update { it.copy(commitMessage = "", amendMode = false) }
+                    refreshStatus(keepBusy = true)
                     service
                         .push()
-                        .onSuccess { refresh() }
-                        .onFailure { error -> fail(error) }
+                        .onSuccess { refreshStatus() }
+                        .onFailure { error ->
+                            fail(IllegalStateException("Committed locally, but push failed: ${error.message}", error))
+                        }
                 }.onFailure { error -> fail(error) }
         }
     }

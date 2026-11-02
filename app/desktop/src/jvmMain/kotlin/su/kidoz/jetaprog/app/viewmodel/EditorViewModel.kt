@@ -129,6 +129,7 @@ public class EditorViewModel(
         val scrollLine: Int = 0,
         val lineChangeMarkers: Map<Int, LineChangeMarker> = emptyMap(),
         val version: Int = 1,
+        val diskContent: String = content,
     )
 
     /**
@@ -240,7 +241,7 @@ public class EditorViewModel(
             }
 
             is EditorIntent.ReloadFile -> {
-                reloadFile(intent.path)
+                reloadFile(intent.path, intent.discardChanges)
             }
 
             is EditorIntent.SaveAs -> {
@@ -687,24 +688,38 @@ public class EditorViewModel(
 
     /**
      * Re-reads an open document from disk after an external change (Replace in
-     * Files, external editor). Dirty buffers are never reloaded — unsaved user
-     * edits win — and undo history is dropped for reloaded documents, since
+     * Files, external editor). Dirty buffers require explicit discard confirmation,
+     * and undo history is dropped for reloaded documents, since
      * undoing across an external rewrite would resurrect stale content.
      */
-    private suspend fun reloadFile(path: String) {
+    private suspend fun reloadFile(
+        path: String,
+        discardChanges: Boolean,
+    ) {
         val uri = DocumentUri.file(path)
         val index = currentState.tabs.indexOfFirst { it.uri == uri }
-        if (index < 0 || currentState.tabs[index].isDirty) return
+        if (index < 0 || (currentState.tabs[index].isDirty && !discardChanges)) return
 
+        val previous = documentSessions[uri.value] ?: return
         val content =
             withContext(Dispatchers.IO) {
                 fileSystem.readText(path).getOrNull()
             } ?: return
+        val tabIndex = currentState.tabs.indexOfFirst { it.uri == uri }
+        if (tabIndex < 0 || (currentState.tabs[tabIndex].isDirty && !discardChanges) ||
+            documentSessions[uri.value] != previous
+        ) {
+            return
+        }
+        if (content == previous.content && !discardChanges) return
+        updateState {
+            copy(tabs = tabs.map { if (it.uri == uri) it.copy(isDirty = false) else it }, error = null)
+        }
         val languageId = detectLanguage(File(path).name)
         undoManagers.remove(uri.value)
         incrementalTokenizers.remove(uri.value)
 
-        if (index == currentState.activeTabIndex) {
+        if (tabIndex == currentState.activeTabIndex) {
             reloadActiveDocument(uri, languageId, content)
         } else {
             snapshotActiveDocument()
@@ -780,11 +795,14 @@ public class EditorViewModel(
         }
     }
 
+    private class ExternalFileChangeException : IllegalStateException("File changed on disk")
+
     private suspend fun saveCurrentFile() {
         val activeTab = currentState.activeTab ?: return
         val path = activeTab.uri.toPath() ?: return
         val uri = activeTab.uri
         val languageId = currentState.languageId
+        val diskContent = documentSessions[uri.value]?.diskContent ?: return
         val contentToSave = prepareContentForSave(currentState.content)
         if (contentToSave != currentState.content) {
             updateContent(contentToSave, coalesceUndo = false)
@@ -794,8 +812,11 @@ public class EditorViewModel(
 
         try {
             withContext(Dispatchers.IO) {
+                val currentDiskContent = fileSystem.readText(path).getOrThrow()
+                if (currentDiskContent != diskContent) throw ExternalFileChangeException()
                 fileSystem.writeText(path, contentToSave).getOrThrow()
             }
+            documentSessions.computeIfPresent(uri.value) { _, session -> session.copy(diskContent = contentToSave) }
 
             updateState {
                 val updatedTabs =
@@ -814,9 +835,35 @@ public class EditorViewModel(
             syncDocumentSaved(uri, languageId, contentToSave)
             scheduleLint(uri, languageId, contentToSave, LintTrigger.SAVE)
             emitEffect(EditorEffect.ShowNotification("File saved", NotificationType.SUCCESS))
-        } catch (e: Exception) {
-            updateState { copy(isSaving = false, error = "Failed to save: ${e.message}") }
-            emitEffect(EditorEffect.ShowError("Failed to save file: ${e.message}"))
+        } catch (error: ExternalFileChangeException) {
+            markSaveFailed(uri, error)
+            emitEffect(
+                EditorEffect.ShowConfirmation(
+                    title = "File changed on disk",
+                    message =
+                        "${activeTab.name} has external changes. Reload discards your editor changes. " +
+                            "Cancel to keep editing, or use Save As to preserve a separate copy.",
+                    confirmLabel = "Reload from disk",
+                    onConfirm = { dispatch(EditorIntent.ReloadFile(path, discardChanges = true)) },
+                    onCancel = {},
+                ),
+            )
+        } catch (error: Exception) {
+            markSaveFailed(uri, error)
+            emitEffect(EditorEffect.ShowError("Failed to save file: ${error.message}"))
+        }
+    }
+
+    private fun markSaveFailed(
+        uri: DocumentUri,
+        error: Exception,
+    ) {
+        updateState {
+            copy(
+                isSaving = false,
+                error = "Failed to save: ${error.message}",
+                tabs = tabs.map { if (it.uri == uri) it.copy(isDirty = true) else it },
+            )
         }
     }
 
@@ -852,6 +899,10 @@ public class EditorViewModel(
         }
         val fileName = File(path).name
         val uri = DocumentUri.file(path)
+        if (uri == sourceUri) {
+            saveCurrentFile()
+            return
+        }
         if (currentState.tabs.any { it.uri == uri && it.uri != sourceUri }) {
             emitEffect(EditorEffect.ShowError("A tab for $fileName is already open"))
             return
@@ -871,6 +922,7 @@ public class EditorViewModel(
             documentSessions[uri.value] =
                 oldSession.copy(
                     content = contentToSave,
+                    diskContent = contentToSave,
                     languageId = languageId,
                     version = oldSession.version + 1,
                 )
@@ -1361,26 +1413,40 @@ public class EditorViewModel(
         updateState { copy(findReplaceState = findReplaceState.copy(currentMatchIndex = previous)) }
     }
 
-    private fun replaceCurrent() {
-        val findState = currentState.findReplaceState
-        val match = findState.currentMatch ?: return
-        val newContent =
-            currentState.content.replaceRange(match.start, match.end, findState.replaceText)
+    private suspend fun replacementTexts(): Map<su.kidoz.jetaprog.editor.search.FindMatch, String>? {
+        val find = currentState.findReplaceState
+        return try {
+            if (find.options.regex) {
+                regexReplacementTexts(currentState.content, find.query, find.options, find.replaceText)
+            } else {
+                find.matches.associateWith { find.replaceText }
+            }
+        } catch (error: IllegalArgumentException) {
+            emitEffect(EditorEffect.ShowError("Invalid replacement: ${error.message}"))
+            null
+        } catch (error: IndexOutOfBoundsException) {
+            emitEffect(EditorEffect.ShowError("Invalid replacement: ${error.message}"))
+            null
+        }
+    }
+
+    private suspend fun replaceCurrent() {
+        val match = currentState.findReplaceState.currentMatch ?: return
+        val replacement = replacementTexts()?.get(match) ?: return
+        val newContent = currentState.content.replaceRange(match.start, match.end, replacement)
         updateContent(newContent, coalesceUndo = false)
-        // Anchor past the replacement so a self-matching replacement does not get stuck.
-        refreshFindMatches(anchorOffset = match.start + findState.replaceText.length)
+        refreshFindMatches(anchorOffset = match.start + replacement.length)
     }
 
     private suspend fun replaceAll() {
         val findState = currentState.findReplaceState
         if (findState.matches.isEmpty()) return
-
+        val replacements = replacementTexts() ?: return
         var content = currentState.content
         findState.matches.asReversed().forEach { match ->
-            content = content.replaceRange(match.start, match.end, findState.replaceText)
+            content = content.replaceRange(match.start, match.end, replacements.getValue(match))
         }
         val count = findState.matches.size
-
         updateContent(content, coalesceUndo = false)
         emitEffect(
             EditorEffect.ShowNotification(

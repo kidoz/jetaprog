@@ -1420,9 +1420,9 @@ private fun MainScreenContent(
 
         editorConfirmation?.let { confirmation ->
             ConfirmationDialog(
-                title = "Unsaved changes",
+                title = confirmation.title,
                 message = confirmation.message,
-                confirmLabel = "Discard",
+                confirmLabel = confirmation.confirmLabel,
                 onConfirm = {
                     editorConfirmation = null
                     confirmation.onConfirm()

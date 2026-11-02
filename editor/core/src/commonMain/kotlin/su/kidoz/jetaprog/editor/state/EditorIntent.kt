@@ -44,11 +44,13 @@ public sealed interface EditorIntent : Intent {
      * Reload an open tab from disk after the file changed externally
      * (e.g. Replace in Files).
      *
-     * Dirty buffers are never reloaded — unsaved user edits win — and paths
-     * without an open tab are ignored.
+     * Dirty buffers are retained unless the user explicitly confirms [discardChanges].
+     * Paths without an open tab are ignored.
      */
     public data class ReloadFile(
         val path: String,
+        /** Whether the user has explicitly confirmed discarding unsaved edits. */
+        val discardChanges: Boolean = false,
     ) : EditorIntent
 
     /**

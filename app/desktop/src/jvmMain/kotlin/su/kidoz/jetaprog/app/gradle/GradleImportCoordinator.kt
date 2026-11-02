@@ -55,6 +55,11 @@ public class GradleImportCoordinator(
     /** Observable synchronization state for status and error reporting. */
     public val state: StateFlow<GradleSyncState> = mutableState.asStateFlow()
 
+    /** Whether the workspace root declares a Gradle build. */
+    public suspend fun isGradleProject(): Boolean =
+        listOf("settings.gradle.kts", "settings.gradle", "build.gradle.kts", "build.gradle")
+            .any { fileSystem.exists("$projectPath/$it") }
+
     /**
      * Imports the Gradle model only, without reconciliation.
      */
