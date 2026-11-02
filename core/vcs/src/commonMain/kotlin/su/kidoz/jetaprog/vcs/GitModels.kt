@@ -23,6 +23,8 @@ public data class GitChange(
     val type: GitChangeType,
     /** Whether this change is staged (in the index). */
     val staged: Boolean,
+    /** Original repository-relative path for a rename or copy, when reported by Git. */
+    val originalPath: String? = null,
 )
 
 /**

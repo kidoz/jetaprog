@@ -38,10 +38,13 @@ public object GitStatusParser {
                 continue
             }
             if (line.length < MIN_ENTRY_LENGTH) continue
-            parseEntry(line, changes, nulDelimited)
-            if (nulDelimited && (line[0] in "RC" || line[1] in "RC") && records.hasNext()) {
-                records.next() // In -z format the destination precedes the original path.
-            }
+            val originalPath =
+                if (nulDelimited && (line[0] in "RC" || line[1] in "RC") && records.hasNext()) {
+                    records.next() // In -z format the destination precedes the original path.
+                } else {
+                    null
+                }
+            parseEntry(line, changes, nulDelimited, originalPath)
         }
 
         return GitRepositoryStatus(branch = branch, ahead = ahead, behind = behind, changes = changes)
@@ -61,6 +64,7 @@ public object GitStatusParser {
         line: String,
         changes: MutableList<GitChange>,
         nulDelimited: Boolean,
+        originalPath: String?,
     ) {
         val index = line[0]
         val workTree = line[1]
@@ -82,10 +86,21 @@ public object GitStatusParser {
             return
         }
         if (index != ' ') {
-            changes += GitChange(path, changeType(index), staged = true)
+            changes +=
+                GitChange(path, changeType(index), staged = true, originalPath = originalPath.takeIf { index in "RC" })
         }
         if (workTree != ' ') {
-            changes += GitChange(path, changeType(workTree), staged = false)
+            changes +=
+                GitChange(
+                    path,
+                    changeType(workTree),
+                    staged = false,
+                    originalPath =
+                        originalPath.takeIf {
+                            workTree in
+                                "RC"
+                        },
+                )
         }
     }
 

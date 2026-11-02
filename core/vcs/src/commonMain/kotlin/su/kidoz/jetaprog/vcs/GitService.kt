@@ -205,8 +205,14 @@ public class DefaultGitService(
             val changes = status().getOrThrow().changes
             val selected = changes.filter { it.path in paths }
             val untracked = selected.filter { it.type == GitChangeType.UNTRACKED }.map { it.path }.distinct()
-            val added = selected.filter { it.staged && it.type == GitChangeType.ADDED }.map { it.path }.distinct()
-            val tracked = paths.distinct() - untracked.toSet() - added.toSet()
+            val added =
+                selected
+                    .filter {
+                        it.staged && it.type in setOf(GitChangeType.ADDED, GitChangeType.RENAMED, GitChangeType.COPIED)
+                    }.map { it.path }
+                    .distinct()
+            val renameSources = selected.filter { it.type == GitChangeType.RENAMED }.mapNotNull { it.originalPath }
+            val tracked = (paths + renameSources).distinct() - untracked.toSet() - added.toSet()
             mutate("checkout", tracked, "HEAD").getOrThrow()
             mutate("rm", added, "--cached", "-f").getOrThrow()
             mutate("clean", untracked + added, "-f", "-q").getOrThrow()

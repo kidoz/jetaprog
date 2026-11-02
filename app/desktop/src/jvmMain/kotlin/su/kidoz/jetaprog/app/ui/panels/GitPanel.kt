@@ -37,6 +37,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerKeyboardModifiers
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -100,6 +110,43 @@ public fun GitPanel(
     val stageSelection = changes.stageSelection()
     var collapsedDirectories by remember { mutableStateOf(emptySet<String>()) }
     var pendingRollback by remember { mutableStateOf<List<GitChange>?>(null) }
+    var selectedPaths by remember { mutableStateOf(setOfNotNull(state.selected?.path)) }
+    var selectionAnchor by remember { mutableStateOf(state.selected?.path) }
+    val currentPaths = changes.map { it.path }.toSet()
+    LaunchedEffect(currentPaths) { selectedPaths = selectedPaths.intersect(currentPaths) }
+    val treeItems = buildGitChangeTreeItems(changes, collapsedDirectories)
+    val visiblePaths =
+        if (state.changesViewMode == GitChangesViewMode.FLAT) {
+            changes.map { it.path }.distinct()
+        } else {
+            treeItems.filterIsInstance<GitChangeTreeItem.File>().map { it.change.path }.distinct()
+        }
+    val selectFile: (GitChange, Boolean, Boolean) -> Unit = { change, toggle, extend ->
+        val anchorIndex = visiblePaths.indexOf(selectionAnchor)
+        val clickedIndex = visiblePaths.indexOf(change.path)
+        selectedPaths =
+            when {
+                extend && anchorIndex >= 0 && clickedIndex >= 0 -> {
+                    val range =
+                        visiblePaths
+                            .subList(
+                                minOf(anchorIndex, clickedIndex),
+                                maxOf(anchorIndex, clickedIndex) + 1,
+                            ).toSet()
+                    if (toggle) selectedPaths + range else range
+                }
+
+                toggle -> {
+                    if (change.path in selectedPaths) selectedPaths - change.path else selectedPaths + change.path
+                }
+
+                else -> {
+                    setOf(change.path)
+                }
+            }
+        if (!extend) selectionAnchor = change.path
+        viewModel.select(change)
+    }
 
     Column(
         modifier =
@@ -134,6 +181,13 @@ public fun GitPanel(
             },
         )
 
+        IntelliJButton(
+            text = "Revert",
+            enabled = !state.isBusy && changes.any { it.path in selectedPaths },
+            onClick = { pendingRollback = changes.filter { it.path in selectedPaths } },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
+        )
+
         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (changes.isEmpty()) {
                 item { EmptyChanges() }
@@ -142,15 +196,15 @@ public fun GitPanel(
                 items(changes, key = { "${it.staged}:${it.path}" }) { change ->
                     ChangeRow(
                         change = change,
-                        isSelected = state.selected == change,
+                        isSelected = change.path in selectedPaths,
                         showParentPath = true,
                         onToggle = { viewModel.toggleStage(change) },
-                        onClick = { viewModel.select(change) },
-                        onRollback = { pendingRollback = listOf(change) },
+                        onClick = { toggle, extend -> selectFile(change, toggle, extend) },
+                        onRollback = { pendingRollback = changes.filter { it.path == change.path } },
+                        canRevert = !state.isBusy,
                     )
                 }
             } else {
-                val treeItems = buildGitChangeTreeItems(changes, collapsedDirectories)
                 items(treeItems, key = GitChangeTreeItem::key) { item ->
                     when (item) {
                         is GitChangeTreeItem.Directory -> {
@@ -175,12 +229,13 @@ public fun GitPanel(
                         is GitChangeTreeItem.File -> {
                             ChangeRow(
                                 change = item.change,
-                                isSelected = state.selected == item.change,
+                                isSelected = item.change.path in selectedPaths,
                                 depth = item.depth,
                                 showParentPath = false,
                                 onToggle = { viewModel.toggleStage(item.change) },
-                                onClick = { viewModel.select(item.change) },
-                                onRollback = { pendingRollback = listOf(item.change) },
+                                onClick = { toggle, extend -> selectFile(item.change, toggle, extend) },
+                                onRollback = { pendingRollback = changes.filter { it.path == item.change.path } },
+                                canRevert = !state.isBusy,
                             )
                         }
                     }
@@ -210,11 +265,10 @@ public fun GitPanel(
 
     pendingRollback?.let { rollbackTargets ->
         ConfirmationDialog(
-            title = "Rollback changes?",
+            title = "Revert uncommitted changes?",
             message =
-                "Revert ${rollbackTargets.distinctBy { it.path }.size} file(s) to HEAD. " +
-                    "Untracked files will be deleted. This cannot be undone.",
-            confirmLabel = "Rollback",
+                revertChangesMessage(rollbackTargets),
+            confirmLabel = "Revert changes",
             onConfirm = {
                 viewModel.discardChanges(rollbackTargets.distinctBy { it.path })
                 pendingRollback = null
@@ -223,6 +277,19 @@ public fun GitPanel(
         )
     }
 }
+
+/** Describes the exact paths and both index/worktree effects of a confirmed revert. */
+internal fun revertChangesMessage(changes: List<GitChange>): String {
+    val paths = changes.flatMap { listOfNotNull(it.originalPath, it.path) }.distinct()
+    val preview = paths.take(REVERT_PREVIEW_LIMIT).joinToString("\n")
+    val remaining = paths.size - REVERT_PREVIEW_LIMIT
+    return "Discard staged and unstaged changes in ${paths.size} file(s)?\n\n" +
+        preview + (if (remaining > 0) "\n…and $remaining more" else "") +
+        "\n\nTracked files will be restored to HEAD. Newly added and untracked files will be deleted. " +
+        "This cannot be undone."
+}
+
+private const val REVERT_PREVIEW_LIMIT = 8
 
 @Composable
 private fun CommitHeader(
@@ -375,11 +442,13 @@ private fun ChangeRow(
     depth: Int = 0,
     showParentPath: Boolean,
     onToggle: () -> Unit,
-    onClick: () -> Unit,
+    onClick: (toggle: Boolean, extend: Boolean) -> Unit,
     onRollback: () -> Unit,
+    canRevert: Boolean,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    var clickModifiers by remember { mutableStateOf(PointerKeyboardModifiers()) }
     val backgroundColor =
         when {
             isSelected -> LocalIntelliJColors.current.treeSelectionBackground
@@ -394,9 +463,20 @@ private fun ChangeRow(
                     .fillMaxWidth()
                     .height(Dimensions.gitChangeRowHeight.dp)
                     .background(backgroundColor)
+                    .semantics { selected = isSelected }
                     .hoverable(interactionSource)
-                    .clickable(onClick = onClick)
-                    .padding(start = (Spacing.md + depth * Spacing.lg).dp, end = Spacing.sm.dp),
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.type == PointerEventType.Press) clickModifiers = event.keyboardModifiers
+                            }
+                        }
+                    }.clickable {
+                        val modifiers = clickModifiers
+                        clickModifiers = PointerKeyboardModifiers()
+                        onClick(modifiers.isCtrlPressed || modifiers.isMetaPressed, modifiers.isShiftPressed)
+                    }.padding(start = (Spacing.md + depth * Spacing.lg).dp, end = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
@@ -425,11 +505,11 @@ private fun ChangeRow(
             } else {
                 Box(modifier = Modifier.weight(1f))
             }
-            if (isHovered) {
-                IconButton(onClick = onRollback, modifier = Modifier.size(20.dp)) {
+            if (isHovered || isSelected) {
+                IconButton(onClick = onRollback, enabled = canRevert, modifier = Modifier.size(Dimensions.iconLg.dp)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "Rollback changes to HEAD",
+                        contentDescription = "Revert uncommitted changes in ${change.path}",
                         tint = LocalIntelliJColors.current.textSecondary,
                         modifier = Modifier.size(Dimensions.iconSm.dp),
                     )

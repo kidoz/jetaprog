@@ -262,6 +262,49 @@ class GitWorkflowRegressionTest {
         }
 
     @Test
+    fun revertStagedAndUnstagedEditsAndNewFiles() =
+        runBlocking {
+            val dir = repo()
+            val svc = service(dir)
+            dir.resolve("tracked.txt").writeText("staged edit\n")
+            dir.resolve("added.txt").writeText("new staged file\n")
+            svc.stage(listOf("tracked.txt", "added.txt")).getOrThrow()
+            dir.resolve("tracked.txt").writeText("unstaged edit\n")
+            dir.resolve("untracked.txt").writeText("new untracked file\n")
+            svc
+                .discard(
+                    svc
+                        .status()
+                        .getOrThrow()
+                        .changes
+                        .map { it.path },
+                ).getOrThrow()
+            assertEquals("original\n", dir.resolve("tracked.txt").readText())
+            assertTrue(!dir.resolve("added.txt").exists())
+            assertTrue(!dir.resolve("untracked.txt").exists())
+            assertTrue(svc.status().getOrThrow().isClean)
+        }
+
+    @Test
+    fun revertRenameRestoresOriginalPathAndRemovesDestination() =
+        runBlocking {
+            val dir = repo()
+            git(dir, "mv", "tracked.txt", "renamed.txt")
+            val svc = service(dir)
+            val change =
+                svc
+                    .status()
+                    .getOrThrow()
+                    .changes
+                    .single()
+            assertEquals("tracked.txt", change.originalPath)
+            svc.discard(listOf(change.path)).getOrThrow()
+            assertEquals("original\n", dir.resolve("tracked.txt").readText())
+            assertTrue(!dir.resolve("renamed.txt").exists())
+            assertTrue(svc.status().getOrThrow().isClean)
+        }
+
+    @Test
     fun addAddConflictIsReportedAsConflict() {
         val status = GitStatusParser.parse("## main\nAA conflict.txt\n")
         assertTrue(
