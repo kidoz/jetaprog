@@ -38,6 +38,9 @@ public object AcpMethod {
     /** Notification: streams incremental updates from the agent to the client. */
     public const val SESSION_UPDATE: String = "session/update"
 
+    /** Changes an advertised session configuration option. */
+    public const val SESSION_SET_CONFIG_OPTION: String = "session/set_config_option"
+
     // Client-provided capabilities (agent -> client)
 
     /** Asks the client to authorize a tool call. */

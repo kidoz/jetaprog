@@ -73,6 +73,16 @@ private class ClientTestTransport(
 @OptIn(ExperimentalCoroutinesApi::class)
 class AcpClientTest {
     @Test
+    fun booleanSettingsRequireAdvertisedCapability() =
+        runTest {
+            val transport = ClientTestTransport()
+            val client = AcpClient(transport, backgroundScope)
+            assertFailsWith<IllegalStateException> { client.setConfigOption("s1", "compact", true) }
+            assertTrue(transport.sent.isEmpty())
+            client.close()
+        }
+
+    @Test
     fun initializesWithAnIndependentPeer() =
         runTest {
             val transport = ClientTestTransport()

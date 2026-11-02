@@ -59,6 +59,8 @@ public data class ClientCapabilities(
     val fs: FileSystemCapability = FileSystemCapability(),
     /** Whether the client can host terminals for the agent. */
     val terminal: Boolean = false,
+    /** Optional session features; omitted by clients that do not implement them. */
+    val session: ClientSessionCapabilities? = null,
 )
 
 /**
@@ -128,3 +130,21 @@ public data class McpCapabilities(
     /** Whether legacy SSE server configurations are accepted. */
     val sse: Boolean = false,
 )
+
+/** Optional session features supported by a client. */
+@Serializable
+public data class ClientSessionCapabilities(
+    /** Supported configuration extensions. */
+    val configOptions: SessionConfigCapabilities? = null,
+)
+
+/** Configuration controls beyond the baseline select type. */
+@Serializable
+public data class SessionConfigCapabilities(
+    /** Presence advertises support for boolean settings; absence does not. */
+    val boolean: SessionConfigBooleanCapability? = null,
+)
+
+/** Empty capability object required by ACP to opt into boolean settings. */
+@Serializable
+public data object SessionConfigBooleanCapability

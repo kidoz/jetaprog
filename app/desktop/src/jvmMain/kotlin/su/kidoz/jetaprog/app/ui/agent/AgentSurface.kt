@@ -285,6 +285,7 @@ internal fun AgentSurfaceContent(
                 requestExpanded = expandedPanel == TaskPanel.APPROVAL,
                 onRequestExpandedChange = { expandedPanel = if (it) TaskPanel.APPROVAL else null },
             )
+            state.configError?.let { AgentStatusMessage(it) }
             AgentComposer(state, dispatch)
         }
         if (state.contextVisible) AgentContextInspector(state, dispatch)
@@ -527,7 +528,16 @@ private fun CheckoutChip(
 
 @Composable
 private fun ModelChip(state: AgentUiState) {
-    val model = state.model ?: return
+    val config = state.configOptions?.firstOrNull { it.category == "model" && it.booleanValue == null }
+    val name =
+        if (state.configOptions != null) {
+            config?.let { option ->
+                option.values.firstOrNull { it.value == option.currentValue }?.name
+                    ?: option.currentValue
+            }
+        } else {
+            state.model?.shortName
+        } ?: return
     Row(
         modifier =
             Modifier
@@ -542,7 +552,7 @@ private fun ModelChip(state: AgentUiState) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 2.dp),
     ) {
         GradientDot()
-        Text(model.shortName, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
+        Text(name, color = LocalIntelliJColors.current.textPrimary, fontSize = 11.sp)
     }
 }
 
@@ -950,11 +960,13 @@ private fun AgentComposer(
                 )
             }
             Box(modifier = Modifier.fillMaxWidth()) {
+                val hasConfig = !state.configOptions.isNullOrEmpty()
+                val settingsWidth = if (hasConfig) Dimensions.inputHeight + Spacing.sm else 0
                 Row(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(end = Dimensions.inputHeight.dp)
+                            .padding(end = (Dimensions.inputHeight + settingsWidth).dp)
                             .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -974,11 +986,24 @@ private fun AgentComposer(
                     if (state.agent != null) {
                         AgentPickerChip(state, dispatch)
                     }
-                    if (state.mode != null) {
+                    if (state.configOptions == null && state.mode != null) {
                         ModePickerChip(state, dispatch)
                     }
-                    if (state.availableModels.isNotEmpty()) {
+                    if (state.configOptions == null && state.availableModels.isNotEmpty()) {
                         ModelPickerChip(state, dispatch)
+                    }
+                }
+                if (hasConfig) {
+                    androidx.compose.runtime.key(state.workspacePath, state.activeRecordId) {
+                        AgentConfigMenu(
+                            options = state.configOptions.orEmpty(),
+                            enabled = state.changingConfigId == null && state.connection == AgentConnection.CONNECTED,
+                            dispatch = dispatch,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = (Dimensions.inputHeight + Spacing.sm).dp),
+                        )
                     }
                 }
                 SendButton(

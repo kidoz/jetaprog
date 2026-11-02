@@ -637,6 +637,12 @@ public data class AgentUiState(
             PermissionKind.EDIT to PermissionPolicy.ASK,
             PermissionKind.RUN to PermissionPolicy.ASK,
         ),
+    /** Null selects legacy model/mode controls; an empty list is authoritative. */
+    val configOptions: List<AgentConfigOption>? = null,
+    /** Identifier of the configuration request awaiting confirmation. */
+    val changingConfigId: String? = null,
+    /** Configuration failure kept separate from execution failures. */
+    val configError: String? = null,
     val availableModels: List<ModelOption> = emptyList(),
     val model: ModelOption? = null,
     val availableModes: List<ModeOption> = emptyList(),
@@ -716,6 +722,22 @@ public data class AgentUiState(
 
 /** User intents for the agent surface. */
 public sealed interface AgentIntent {
+    /** Requests a new value for an advertised boolean setting. */
+    public data class SetBooleanConfigOption(
+        /** Setting identifier. */
+        val configId: String,
+        /** Desired boolean value. */
+        val value: Boolean,
+    ) : AgentIntent
+
+    /** Requests one of the agent's advertised select values. */
+    public data class SetConfigOption(
+        /** Setting identifier. */
+        val configId: String,
+        /** Advertised choice identifier. */
+        val value: String,
+    ) : AgentIntent
+
     /**
      * Send a prompt, optionally with attached context file names.
      *

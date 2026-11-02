@@ -249,3 +249,40 @@ private fun AgentResumeConversationPreview() {
         )
     }
 }
+
+// Entry point used by the IDE preview renderer.
+@Suppress("UnusedPrivateMember")
+@Preview
+@Composable
+private fun AgentConfigOptionsPreview() {
+    var value by remember { mutableStateOf("balanced") }
+    var autoCompact by remember { mutableStateOf(false) }
+    JetaProgTheme {
+        su.kidoz.jetaprog.app.ui.agent.AgentConfigMenu(
+            options =
+                listOf(
+                    su.kidoz.jetaprog.app.ui.agent.AgentConfigOption(
+                        id = "reasoning",
+                        name = "Reasoning",
+                        currentValue = value,
+                        values =
+                            listOf(
+                                su.kidoz.jetaprog.app.ui.agent
+                                    .AgentConfigValue("balanced", "Balanced"),
+                                su.kidoz.jetaprog.app.ui.agent
+                                    .AgentConfigValue("deep", "Deep", "More detailed analysis"),
+                            ),
+                        description = "Choose the session reasoning level",
+                    ),
+                ),
+            enabled = true,
+            dispatch = {
+                when (it) {
+                    is su.kidoz.jetaprog.app.ui.agent.AgentIntent.SetConfigOption -> value = it.value
+                    is su.kidoz.jetaprog.app.ui.agent.AgentIntent.SetBooleanConfigOption -> autoCompact = it.value
+                    else -> Unit
+                }
+            },
+        )
+    }
+}

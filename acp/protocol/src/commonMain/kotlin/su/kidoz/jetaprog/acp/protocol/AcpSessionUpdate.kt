@@ -110,6 +110,14 @@ public sealed interface SessionUpdate {
         val availableCommands: List<AvailableCommand> = emptyList(),
     ) : SessionUpdate
 
+    /** Replaces all agent-provided session configuration options. */
+    @Serializable
+    @SerialName("config_option_update")
+    public data class ConfigOptionUpdate(
+        /** Complete current configuration, in display order. */
+        val configOptions: List<SessionConfigOption>,
+    ) : SessionUpdate
+
     /** Announces a change to the active session mode. */
     @Serializable
     @SerialName("current_mode_update")

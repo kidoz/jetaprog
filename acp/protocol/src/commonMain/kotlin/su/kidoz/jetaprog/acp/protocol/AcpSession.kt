@@ -39,6 +39,8 @@ public data class NewSessionResponse(
     val models: SessionModelState? = null,
     /** The initial mode state, when the agent supports modes. */
     val modes: SessionModeState? = null,
+    /** Preferred configuration surface; null means the legacy fields apply. */
+    val configOptions: List<SessionConfigOption>? = null,
 )
 
 /**
@@ -65,6 +67,8 @@ public data class LoadSessionResponse(
     val models: SessionModelState? = null,
     /** The current mode state, when the agent supports modes. */
     val modes: SessionModeState? = null,
+    /** Preferred configuration surface; null means the legacy fields apply. */
+    val configOptions: List<SessionConfigOption>? = null,
 )
 
 /**

@@ -23,6 +23,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import su.kidoz.jetaprog.acp.client.AcpClient
 import su.kidoz.jetaprog.acp.client.AcpClientHandler
@@ -33,6 +34,7 @@ import su.kidoz.jetaprog.acp.protocol.AcpRequestException
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import su.kidoz.jetaprog.acp.protocol.AvailableCommand
 import su.kidoz.jetaprog.acp.protocol.ClientCapabilities
+import su.kidoz.jetaprog.acp.protocol.ClientSessionCapabilities
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
 import su.kidoz.jetaprog.acp.protocol.FileSystemCapability
 import su.kidoz.jetaprog.acp.protocol.HttpHeader
@@ -47,6 +49,9 @@ import su.kidoz.jetaprog.acp.protocol.ReadTextFileRequest
 import su.kidoz.jetaprog.acp.protocol.ReadTextFileResponse
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionResponse
+import su.kidoz.jetaprog.acp.protocol.SessionConfigBooleanCapability
+import su.kidoz.jetaprog.acp.protocol.SessionConfigCapabilities
+import su.kidoz.jetaprog.acp.protocol.SessionConfigOption
 import su.kidoz.jetaprog.acp.protocol.SessionMode
 import su.kidoz.jetaprog.acp.protocol.SessionModeState
 import su.kidoz.jetaprog.acp.protocol.SessionModelState
@@ -175,6 +180,7 @@ import su.kidoz.jetaprog.app.ui.agent.restoredGoalNotice
 import su.kidoz.jetaprog.app.ui.agent.reviewFiles
 import su.kidoz.jetaprog.app.ui.agent.sessionTitle
 import su.kidoz.jetaprog.app.ui.agent.summarizeSession
+import su.kidoz.jetaprog.app.ui.agent.toAgentConfigOption
 import su.kidoz.jetaprog.app.ui.agent.withoutMentionToken
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -268,6 +274,9 @@ public class AgentSessionViewModel(
      * Flushed once `session/new` returns that session.
      */
     private var pendingSurface: PendingSurface? = null
+    private var configRevision = 0L
+    private var surfaceGeneration = 0L
+    private var configMutex = Mutex()
 
     /** The transcript's agent session, retained when its connection closes. */
     private var conversationSessionId: String? = null
@@ -545,6 +554,14 @@ public class AgentSessionViewModel(
             is AgentIntent.SetPermission -> {
                 _state.update { it.copy(permissions = it.permissions + (intent.kind to intent.policy)) }
                 persist()
+            }
+
+            is AgentIntent.SetBooleanConfigOption -> {
+                setSessionConfig(intent.configId, JsonPrimitive(intent.value))
+            }
+
+            is AgentIntent.SetConfigOption -> {
+                setConfigOption(intent.configId, intent.value)
             }
 
             is AgentIntent.SetModel -> {
@@ -944,6 +961,10 @@ public class AgentSessionViewModel(
                     ClientCapabilities(
                         fs = FileSystemCapability(readTextFile = true, writeTextFile = true),
                         terminal = false,
+                        session =
+                            ClientSessionCapabilities(
+                                configOptions = SessionConfigCapabilities(boolean = SessionConfigBooleanCapability),
+                            ),
                     ),
                 clientInfo = Implementation("JetaProg", "1.0"),
                 handler = this,
@@ -994,7 +1015,13 @@ public class AgentSessionViewModel(
             }
             applySessionModels(session.models)
             applySessionModes(session.modes)
-            flushPendingSurface(session.sessionId, applyMode = session.modes == null)
+            applySessionConfig(session.configOptions)
+            flushPendingSurface(
+                session.sessionId,
+                applyMode = session.modes == null,
+                applyConfig =
+                    session.configOptions == null,
+            )
             applyPreferredModel(acpClient, session.sessionId)
             session.sessionId
         } catch (e: CancellationException) {
@@ -2689,7 +2716,13 @@ public class AgentSessionViewModel(
             conversationSessionId = savedSession
             applySessionModels(loaded.models)
             applySessionModes(loaded.modes)
-            flushPendingSurface(savedSession, applyMode = loaded.modes == null)
+            applySessionConfig(loaded.configOptions)
+            flushPendingSurface(
+                savedSession,
+                applyMode = loaded.modes == null,
+                applyConfig =
+                    loaded.configOptions == null,
+            )
             _state.update { it.copy(restoration = SessionRestoration.Resumed, error = null) }
         } catch (e: CancellationException) {
             throw e
@@ -2766,6 +2799,10 @@ public class AgentSessionViewModel(
 
             is SessionUpdate.AvailableCommandsUpdate -> {
                 _state.update { it.copy(commands = update.availableCommands.mapNotNull(::toAgentCommand)) }
+            }
+
+            is SessionUpdate.ConfigOptionUpdate -> {
+                applySessionConfig(update.configOptions)
             }
 
             is SessionUpdate.CurrentModeUpdate -> {
@@ -3573,12 +3610,114 @@ public class AgentSessionViewModel(
         )
     }
 
+    private fun applySessionConfig(options: List<SessionConfigOption>?) {
+        if (options == null) return
+        configRevision++
+        val controls = options.mapNotNull { it.toAgentConfigOption() }
+        val mode = controls.firstOrNull { it.category == "mode" && it.booleanValue == null }
+        val currentMode =
+            mode?.let { config ->
+                ModeOption(
+                    config.currentValue,
+                    config.values.firstOrNull { it.value == config.currentValue }?.name ?: config.currentValue,
+                )
+            }
+        _state.update {
+            it.copy(
+                configOptions = controls,
+                configError = null,
+                availableModels = emptyList(),
+                model = null,
+                availableModes = mode?.values?.map { value -> ModeOption(value.value, value.name) } ?: emptyList(),
+                mode = currentMode,
+            )
+        }
+        if (isPlanMode(currentMode) && _state.value.goal?.status == AgentGoalStatus.ACTIVE) {
+            freezeGoalPaused(notice = GOAL_PLAN_NOTICE, keepNotice = false)
+        }
+    }
+
+    private suspend fun setConfigOption(
+        configId: String,
+        value: String,
+    ) {
+        setSessionConfig(configId, JsonPrimitive(value))
+    }
+
+    private suspend fun setSessionConfig(
+        configId: String,
+        value: JsonPrimitive,
+    ) {
+        val requestMutex = configMutex
+        if (!requestMutex.tryLock()) return
+        val generation = surfaceGeneration
+        try {
+            val option = _state.value.configOptions?.firstOrNull { it.id == configId } ?: return
+            if (value.isString) {
+                if (option.booleanValue != null || option.currentValue == value.content ||
+                    option.values.none { it.value == value.content }
+                ) {
+                    return
+                }
+            } else {
+                val desired = value.booleanOrNull ?: return
+                if (option.booleanValue == null || option.booleanValue == desired) return
+            }
+            val acpClient = client ?: return
+            val activeSession = sessionId ?: return
+            if (!acpClient.isOpen) return
+            val revision = configRevision
+            _state.update { it.copy(changingConfigId = configId, configError = null) }
+            try {
+                val response =
+                    withTimeoutOrNull(
+                        MODE_SELECT_TIMEOUT_MS,
+                    ) {
+                        if (value.isString) {
+                            acpClient.setConfigOption(activeSession, configId, value.content)
+                        } else {
+                            acpClient.setConfigOption(activeSession, configId, requireNotNull(value.booleanOrNull))
+                        }
+                    }
+                if (surfaceGeneration != generation || client !== acpClient || sessionId != activeSession) return
+                if (response == null) {
+                    _state.update {
+                        it.copy(
+                            configError = "The agent did not confirm the change. Select the value again to retry.",
+                        )
+                    }
+                } else if (revision == configRevision) {
+                    applySessionConfig(response.configOptions)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (surfaceGeneration == generation) {
+                    _state.update {
+                        it.copy(
+                            configError = "Could not change ${option.name}. Try selecting the value again.",
+                        )
+                    }
+                }
+            }
+        } finally {
+            if (surfaceGeneration == generation) _state.update { it.copy(changingConfigId = null) }
+            requestMutex.unlock()
+        }
+    }
+
     /**
      * Selects [modelId] for the active session and remembers it for this agent.
      * The ACP call is authoritative; state changes only after the agent accepts it.
      * An id the agent did not advertise is ignored.
      */
     private suspend fun setModel(modelId: String) {
+        if (_state.value.configOptions != null) {
+            _state.value.configOptions
+                ?.firstOrNull { it.category == "model" && it.booleanValue == null }
+                ?.let { setConfigOption(it.id, modelId) }
+            return
+        }
         val option = _state.value.availableModels.firstOrNull { it.id == modelId } ?: return
         val acpClient = client
         val activeSession = sessionId
@@ -3617,6 +3756,12 @@ public class AgentSessionViewModel(
      * State changes only after the agent accepts the mode.
      */
     private suspend fun setMode(modeId: String) {
+        if (_state.value.configOptions != null) {
+            _state.value.configOptions
+                ?.firstOrNull { it.category == "mode" && it.booleanValue == null }
+                ?.let { setConfigOption(it.id, modeId) }
+            return
+        }
         val option = _state.value.availableModes.firstOrNull { it.id == modeId } ?: return
         if (_state.value.mode?.id == modeId) return
         val acpClient = client
@@ -3658,6 +3803,7 @@ public class AgentSessionViewModel(
 
     /** Points the mode chip at [modeId] without changing the selectable list. */
     private fun applyCurrentMode(modeId: String) {
+        if (_state.value.configOptions != null) return
         val options = _state.value.availableModes
         val current = options.firstOrNull { it.id == modeId } ?: ModeOption(id = modeId, name = modeId)
         _state.update {
@@ -3690,6 +3836,7 @@ public class AgentSessionViewModel(
         acpClient: AcpClient,
         activeSession: String,
     ) {
+        if (_state.value.configOptions != null) return
         val preferred = modelIds[activeLaunch.id] ?: return
         val option = _state.value.availableModels.firstOrNull { it.id == preferred } ?: return
         if (_state.value.model?.id == preferred) return
@@ -3717,9 +3864,15 @@ public class AgentSessionViewModel(
 
     /** Clears the session-scoped model, mode, plan, and commands, keeping the user's model preference. */
     private fun clearSessionSurface() {
+        surfaceGeneration++
+        configRevision++
+        configMutex = Mutex()
         pendingSurface = null
         _state.update {
             it.copy(
+                configOptions = null,
+                changingConfigId = null,
+                configError = null,
                 availableModels = emptyList(),
                 model = null,
                 availableModes = emptyList(),
@@ -3749,6 +3902,10 @@ public class AgentSessionViewModel(
                     base.copy(modeId = update.currentModeId)
                 }
 
+                is SessionUpdate.ConfigOptionUpdate -> {
+                    base.copy(configOptions = update.configOptions)
+                }
+
                 else -> {
                     base
                 }
@@ -3766,6 +3923,7 @@ public class AgentSessionViewModel(
                 is SessionUpdate.Plan -> pending.copy(plan = null)
                 is SessionUpdate.AvailableCommandsUpdate -> pending.copy(commands = null)
                 is SessionUpdate.CurrentModeUpdate -> pending.copy(modeId = null)
+                is SessionUpdate.ConfigOptionUpdate -> pending.copy(configOptions = null)
                 else -> pending
             }
         pendingSurface = remaining.takeUnless { it.isEmpty() }
@@ -3780,6 +3938,7 @@ public class AgentSessionViewModel(
     private fun flushPendingSurface(
         session: String,
         applyMode: Boolean,
+        applyConfig: Boolean,
     ) {
         val pending = pendingSurface
         pendingSurface = null
@@ -3790,6 +3949,7 @@ public class AgentSessionViewModel(
                 commands = pending.commands ?: state.commands,
             )
         }
+        if (applyConfig) applySessionConfig(pending.configOptions)
         if (applyMode) pending.modeId?.let(::applyCurrentMode)
     }
 
@@ -3873,7 +4033,8 @@ public class AgentSessionViewModel(
         fun isSessionSurface(update: SessionUpdate): Boolean =
             update is SessionUpdate.Plan ||
                 update is SessionUpdate.AvailableCommandsUpdate ||
-                update is SessionUpdate.CurrentModeUpdate
+                update is SessionUpdate.CurrentModeUpdate ||
+                update is SessionUpdate.ConfigOptionUpdate
 
         fun toPlanStep(entry: PlanEntry): PlanStep =
             PlanStep(
@@ -4078,9 +4239,10 @@ private data class PendingSurface(
     val plan: List<PlanStep>? = null,
     val commands: List<AgentCommand>? = null,
     val modeId: String? = null,
+    val configOptions: List<SessionConfigOption>? = null,
 ) {
     /** Whether every stashed field has already been applied or was never set. */
-    fun isEmpty(): Boolean = plan == null && commands == null && modeId == null
+    fun isEmpty(): Boolean = plan == null && commands == null && modeId == null && configOptions == null
 }
 
 private fun SessionMode.toModeOption(): ModeOption = ModeOption(id = id, name = name.ifBlank { id })

@@ -36,6 +36,9 @@ import su.kidoz.jetaprog.acp.protocol.ReadTextFileRequest
 import su.kidoz.jetaprog.acp.protocol.ReleaseTerminalRequest
 import su.kidoz.jetaprog.acp.protocol.RequestPermissionRequest
 import su.kidoz.jetaprog.acp.protocol.SessionNotification
+import su.kidoz.jetaprog.acp.protocol.SetSessionBooleanConfigRequest
+import su.kidoz.jetaprog.acp.protocol.SetSessionConfigRequest
+import su.kidoz.jetaprog.acp.protocol.SetSessionConfigResponse
 import su.kidoz.jetaprog.acp.protocol.SetSessionModeRequest
 import su.kidoz.jetaprog.acp.protocol.SetSessionModelRequest
 import su.kidoz.jetaprog.acp.protocol.TerminalOutputRequest
@@ -213,6 +216,40 @@ public class AcpClient(
             AcpMethod.SESSION_SET_MODEL,
             encode(SetSessionModelRequest.serializer(), SetSessionModelRequest(sessionId, modelId)),
         )
+    }
+
+    /** Changes one select setting and returns the complete authoritative configuration. */
+    public suspend fun setConfigOption(
+        sessionId: String,
+        configId: String,
+        value: String,
+    ): SetSessionConfigResponse {
+        val result =
+            connection.sendRequest(
+                AcpMethod.SESSION_SET_CONFIG_OPTION,
+                encode(SetSessionConfigRequest.serializer(), SetSessionConfigRequest(sessionId, configId, value)),
+            )
+        return decode(SetSessionConfigResponse.serializer(), result)
+    }
+
+    /** Changes a boolean setting; requires the client boolean configuration capability. */
+    public suspend fun setConfigOption(
+        sessionId: String,
+        configId: String,
+        value: Boolean,
+    ): SetSessionConfigResponse {
+        check(
+            capabilities.session?.configOptions?.boolean != null,
+        ) { "Boolean configuration support was not advertised" }
+        val result =
+            connection.sendRequest(
+                AcpMethod.SESSION_SET_CONFIG_OPTION,
+                encode(
+                    SetSessionBooleanConfigRequest.serializer(),
+                    SetSessionBooleanConfigRequest(sessionId, configId, value),
+                ),
+            )
+        return decode(SetSessionConfigResponse.serializer(), result)
     }
 
     /**
