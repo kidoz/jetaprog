@@ -219,7 +219,11 @@ internal fun AgentSurfaceContent(
         Column(modifier = Modifier.fillMaxSize().background(LocalIntelliJColors.current.background)) {
             AgentHeader(state, dispatch, checkoutLabel, onSwitchCheckout, layoutDocked, mirrorLayout)
             AgentWorkspaceContext(state.workspacePath)
-            state.restoration?.let { AgentRestorationNotice(it) }
+            state.restoration?.let { restoration ->
+                AgentRestorationNotice(restoration) {
+                    state.activeRecordId?.let { dispatch(AgentIntent.RestoreSession(it)) }
+                }
+            }
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     Column(
@@ -307,9 +311,16 @@ private fun AgentStatusMessage(message: String) {
 }
 
 @Composable
-internal fun AgentRestorationNotice(restoration: SessionRestoration) {
+internal fun AgentRestorationNotice(
+    restoration: SessionRestoration,
+    onResume: () -> Unit = {},
+) {
     val message =
         when (restoration) {
+            SessionRestoration.Pending -> {
+                "Saved conversation. Resume to reconnect the agent."
+            }
+
             SessionRestoration.Loading -> {
                 "Restoring conversation…"
             }
@@ -322,7 +333,21 @@ internal fun AgentRestorationNotice(restoration: SessionRestoration) {
                 "Transcript only. ${restoration.reason} Your next message starts a new chat."
             }
         }
-    AgentStatusMessage(message)
+    Column {
+        AgentStatusMessage(message)
+        if (restoration == SessionRestoration.Pending) {
+            IntelliJButton(
+                "Resume conversation",
+                onClick = onResume,
+                modifier =
+                    Modifier
+                        .padding(
+                            horizontal = Spacing.md.dp,
+                            vertical = Spacing.xs.dp,
+                        ).agentFocusRing(RoundedCornerShape(Dimensions.cornerRadius.dp)),
+            )
+        }
+    }
 }
 
 @Composable
@@ -528,6 +553,14 @@ private fun GradientDot(diameter: Int = 8) {
 
 @Composable
 private fun Conversation(
+    state: AgentUiState,
+    dispatch: (AgentIntent) -> Unit,
+) {
+    RestoredConversationContent(state) { ConversationList(state, dispatch) }
+}
+
+@Composable
+private fun ConversationList(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
 ) {
@@ -827,7 +860,9 @@ private fun AgentComposer(
     LaunchedEffect(input, selection) {
         editingValue = fieldValue.copy(selection = selection ?: fieldValue.selection)
     }
-    val canSubmit = input.isNotBlank() && state.restoration != SessionRestoration.Loading
+    val canSubmit =
+        input.isNotBlank() && state.restoration != SessionRestoration.Loading &&
+            state.restoration != SessionRestoration.Pending
     val send: () -> Unit = {
         if (canSubmit) dispatch(AgentIntent.Send(input.trim()))
     }
@@ -949,7 +984,8 @@ private fun AgentComposer(
                 SendButton(
                     enabled =
                         input.isNotBlank() && state.connection != AgentConnection.CONNECTING &&
-                            state.restoration != SessionRestoration.Loading,
+                            state.restoration != SessionRestoration.Loading &&
+                            state.restoration != SessionRestoration.Pending,
                     onClick = send,
                     label = if (state.isStreaming || state.queuedPrompts.isNotEmpty()) "Queue message" else "Send",
                     modifier = Modifier.align(Alignment.BottomEnd),

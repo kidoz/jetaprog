@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.test.waitUntilExactlyOneExists
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.agent.AgentConversationView
@@ -209,6 +211,62 @@ class AgentTaskContinuityUiTest {
             field.assertTextEquals("alpha gamma")
             field.performTextInputSelection(TextRange(0, 5))
             runOnIdle { assertEquals(TextRange(0, 5), state.value.composerSelection) }
+        }
+
+    @Test
+    fun restoredMarkdownKeepsItsAnchorWhileTheInitialContentIsParsed() =
+        runComposeUiTest {
+            val expected = AgentConversationView("reply", 1, 600, false)
+            var recorded = expected
+            val navigation =
+                mutableStateOf(
+                    AgentNavigationState(
+                        tasks =
+                            mapOf("saved" to AgentTaskNavigation(view = expected)),
+                    ),
+                )
+            setContent {
+                JetaProgTheme {
+                    Box(Modifier.size(480.dp, 520.dp)) {
+                        AgentSurfaceContent(
+                            state =
+                                AgentUiState(
+                                    activeRecordId = "saved",
+                                    restoration = SessionRestoration.Pending,
+                                    taskNavigation = navigation.value,
+                                    turns =
+                                        listOf(
+                                            Turn.User("question", "Explain the saved result", ""),
+                                            Turn.Agent(
+                                                "reply",
+                                                "",
+                                                listOf(
+                                                    Block.Text(
+                                                        "markdown",
+                                                        (1..100).joinToString("\n\n") { "Reading anchor $it" },
+                                                    ),
+                                                ),
+                                            ),
+                                        ),
+                                ),
+                            dispatch = {
+                                if (it is AgentIntent.SaveConversationView) {
+                                    recorded = it.view
+                                    navigation.value =
+                                        AgentNavigationState(
+                                            tasks =
+                                                mapOf("saved" to AgentTaskNavigation(view = it.view)),
+                                        )
+                                }
+                            },
+                            showRail = false,
+                        )
+                    }
+                }
+            }
+            waitUntilExactlyOneExists(hasText("Reading anchor 100"))
+            waitForIdle()
+            runOnIdle { assertEquals(expected, recorded) }
         }
 
     private fun conversation(

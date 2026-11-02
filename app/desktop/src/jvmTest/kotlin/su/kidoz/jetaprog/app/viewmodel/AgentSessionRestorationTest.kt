@@ -23,11 +23,16 @@ import kotlinx.serialization.json.jsonPrimitive
 import su.kidoz.jetaprog.acp.protocol.AcpConnection
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
 import su.kidoz.jetaprog.app.agent.AgentConversationView
+import su.kidoz.jetaprog.app.agent.AgentDraft
+import su.kidoz.jetaprog.app.agent.AgentGoal
+import su.kidoz.jetaprog.app.agent.AgentGoalStatus
 import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
 import su.kidoz.jetaprog.app.agent.AgentHistoryRole
 import su.kidoz.jetaprog.app.agent.AgentHistoryStore
+import su.kidoz.jetaprog.app.agent.AgentNavigationState
 import su.kidoz.jetaprog.app.agent.AgentNavigationStore
 import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.agent.AgentTaskNavigation
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.Block
@@ -537,7 +542,8 @@ class AgentSessionRestorationTest {
 
             val restarted = viewModel(RestoringAgentTransport())
             runCurrent()
-            assertEquals("New task draft", restarted.state.value.composerInput)
+            assertEquals("First task draft", restarted.state.value.composerInput)
+            assertEquals(SessionRestoration.Pending, restarted.state.value.restoration)
             restarted.dispatch(AgentIntent.RestoreSession(second.id))
             runCurrent()
             assertEquals("Second task draft", restarted.state.value.composerInput)
@@ -688,6 +694,105 @@ class AgentSessionRestorationTest {
                 restarted.state.value.taskNavigation.tasks
                     .containsKey(first.id),
             )
+        }
+
+    @Test
+    fun reopeningSelectedConversationIsLocalUntilExplicitResumeAndNeverReplaysPrompts() =
+        runTest {
+            val record = savedRecord().copy(goal = AgentGoal("Finish the task", AgentGoalStatus.PAUSED))
+            history.save(record)
+            val view = AgentConversationView("old-user", 1, 23, false)
+            AgentNavigationStore(fileSystem, "/project").save(
+                AgentNavigationState(
+                    tasks =
+                        mapOf(
+                            record.id to
+                                AgentTaskNavigation(
+                                    draft = AgentDraft("Keep draft", selectionStart = 7, selectionEnd = 2),
+                                    view = view,
+                                ),
+                        ),
+                    selectedRecordId = record.id,
+                ),
+            )
+            val agent = RestoringAgentTransport()
+            val vm = viewModel(agent)
+            runCurrent()
+            assertEquals(record.id, vm.state.value.activeRecordId)
+            assertEquals(SessionRestoration.Pending, vm.state.value.restoration)
+            assertEquals(listOf("Old question", "Old answer"), transcript(vm))
+            assertEquals("Keep draft", vm.state.value.composerInput)
+            assertEquals(TextRange(7, 2), vm.state.value.composerSelection)
+            assertEquals(
+                view,
+                vm.state.value.taskNavigation.tasks
+                    .getValue(record.id)
+                    .view,
+            )
+            vm.dispatch(AgentIntent.ResumeGoal)
+            vm.dispatch(AgentIntent.EnsureConnected)
+            vm.dispatch(AgentIntent.Send("Keep draft"))
+            runCurrent()
+            assertTrue(agent.methods.isEmpty())
+            assertEquals(
+                AgentGoalStatus.PAUSED,
+                vm.state.value.goal
+                    ?.status,
+            )
+            assertEquals("Keep draft", vm.state.value.composerInput)
+            vm.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            assertEquals(listOf("initialize", "session/load"), agent.methods)
+            assertEquals(SessionRestoration.Resumed, vm.state.value.restoration)
+            assertEquals("Keep draft", vm.state.value.composerInput)
+            assertEquals(record, history.list().single())
+        }
+
+    @Test
+    fun missingSelectedConversationFallsBackToNewDraftWithoutStartingAnAgent() =
+        runTest {
+            AgentNavigationStore(fileSystem, "/project").save(
+                AgentNavigationState(newChatDraft = AgentDraft("New draft"), selectedRecordId = "missing"),
+            )
+            val agent = RestoringAgentTransport()
+            val vm = viewModel(agent)
+            runCurrent()
+            assertNull(vm.state.value.activeRecordId)
+            assertEquals("New draft", vm.state.value.composerInput)
+            assertTrue(
+                vm.state.value.agentNotice!!
+                    .contains("unavailable"),
+            )
+            assertTrue(agent.methods.isEmpty())
+        }
+
+    @Test
+    fun newChatSelectionSurvivesRestartAndDeletingSelectedHistoryDoesNotResurrectIt() =
+        runTest {
+            val record = savedRecord()
+            history.save(record)
+            val vm = viewModel(RestoringAgentTransport())
+            vm.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            vm.dispatch(AgentIntent.NewChat)
+            runCurrent()
+            vm.dispatch(AgentIntent.SetComposerInput("Unsent new task"))
+            runCurrent()
+            vm.shutdown()
+            val restarted = viewModel(RestoringAgentTransport())
+            runCurrent()
+            assertNull(restarted.state.value.activeRecordId)
+            assertEquals("Unsent new task", restarted.state.value.composerInput)
+            restarted.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            restarted.dispatch(AgentIntent.DeleteSession(record.id))
+            runCurrent()
+            restarted.shutdown()
+            val afterDelete = viewModel(RestoringAgentTransport())
+            runCurrent()
+            assertNull(afterDelete.state.value.activeRecordId)
+            assertTrue(history.list().isEmpty())
+            assertNull(AgentNavigationStore(fileSystem, "/project").load().selectedRecordId)
         }
 
     private fun viewModel(agent: RestoringAgentTransport): AgentSessionViewModel =

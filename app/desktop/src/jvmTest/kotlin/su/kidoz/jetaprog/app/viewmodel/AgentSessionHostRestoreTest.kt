@@ -11,12 +11,20 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import su.kidoz.jetaprog.app.agent.AgentCheckoutState
+import su.kidoz.jetaprog.app.agent.AgentConversationView
 import su.kidoz.jetaprog.app.agent.AgentDraft
+import su.kidoz.jetaprog.app.agent.AgentHistoryMessage
+import su.kidoz.jetaprog.app.agent.AgentHistoryRole
+import su.kidoz.jetaprog.app.agent.AgentHistoryStore
 import su.kidoz.jetaprog.app.agent.AgentNavigationState
 import su.kidoz.jetaprog.app.agent.AgentNavigationStore
+import su.kidoz.jetaprog.app.agent.AgentSessionRecord
+import su.kidoz.jetaprog.app.agent.AgentTaskNavigation
 import su.kidoz.jetaprog.app.agent.AgentWorktree
 import su.kidoz.jetaprog.app.agent.AgentWorktreeLauncher
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
+import su.kidoz.jetaprog.app.ui.agent.SessionRestoration
+import su.kidoz.jetaprog.app.ui.agent.Turn
 import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
 import java.io.File
 import java.nio.file.Files
@@ -167,6 +175,63 @@ class AgentSessionHostRestoreTest {
             advanceUntilIdle()
             assertTrue(restore.isCancelled)
             assertEquals(AgentCheckoutState(tree, true), saved.last())
+            assertEquals(0, launches)
+        }
+
+    @Test
+    fun eachCheckoutRestoresItsSelectedTranscriptDraftAndReadingPositionWithoutLaunchingAgents() =
+        runTest {
+            val recordId = "same-id-in-each-checkout"
+            for ((path, label) in listOf(mainPath to "Main", tree.path to "Linked")) {
+                AgentHistoryStore(fileSystem, path).save(
+                    AgentSessionRecord(
+                        id = recordId,
+                        projectPath = path,
+                        messages = listOf(AgentHistoryMessage(AgentHistoryRole.USER, "$label question")),
+                    ),
+                )
+                AgentNavigationStore(fileSystem, path).save(
+                    AgentNavigationState(
+                        tasks =
+                            mapOf(
+                                recordId to
+                                    AgentTaskNavigation(
+                                        draft = AgentDraft("$label draft"),
+                                        view = AgentConversationView(label, 1, 15, false),
+                                    ),
+                            ),
+                        selectedRecordId = recordId,
+                    ),
+                )
+            }
+            val host = host(load = { Result.success(AgentCheckoutState(tree, true)) })
+            host.restore()
+            assertSame(host.worktree.value, host.active.value)
+            for ((vm, label) in listOf(host.main to "Main", host.worktree.value!! to "Linked")) {
+                assertEquals(recordId, vm.state.value.activeRecordId)
+                assertEquals(SessionRestoration.Pending, vm.state.value.restoration)
+                assertEquals(
+                    "$label question",
+                    (
+                        vm.state.value.turns
+                            .single() as Turn.User
+                    ).text,
+                )
+                assertEquals("$label draft", vm.state.value.composerInput)
+                assertEquals(
+                    label,
+                    vm.state.value.taskNavigation.tasks
+                        .getValue(recordId)
+                        .view.turnId,
+                )
+            }
+            host.showMain()
+            host.showWorktree()
+            host.shutdown()
+            val reopened = host(load = { Result.success(AgentCheckoutState(tree, true)) })
+            reopened.restore()
+            assertEquals("Main draft", reopened.main.state.value.composerInput)
+            assertEquals("Linked draft", reopened.active.value.state.value.composerInput)
             assertEquals(0, launches)
         }
 

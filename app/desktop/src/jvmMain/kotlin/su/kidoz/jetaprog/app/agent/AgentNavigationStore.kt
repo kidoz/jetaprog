@@ -62,6 +62,8 @@ public data class AgentNavigationState(
     val tasks: Map<String, AgentTaskNavigation> = emptyMap(),
     /** Draft for the new, not-yet-submitted conversation. */
     val newChatDraft: AgentDraft = AgentDraft(),
+    /** Selected conversation in this checkout; null explicitly selects a new chat. */
+    val selectedRecordId: String? = null,
 )
 
 /** Stores navigation separately so transcript snapshots cannot overwrite organization or drafts. */

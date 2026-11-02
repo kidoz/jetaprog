@@ -348,7 +348,19 @@ public class AgentSessionViewModel(
             val navigation = navigationStore.load()
             _state.update { it.copy(taskNavigation = navigation) }
             applyDraft(navigation.newChatDraft)
-            navigationLoaded.complete(Unit)
+            val selected = navigation.selectedRecordId
+            if (selected != null) {
+                val history = historyStore.list()
+                _state.update { it.copy(sessionHistory = history) }
+                val record = history.firstOrNull { it.id == selected }
+                if (record != null) {
+                    restoreTranscript(record, SessionRestoration.Pending)
+                } else {
+                    _state.update {
+                        it.copy(agentNotice = "Saved conversation is unavailable. New chat is open.")
+                    }
+                }
+            }
             val prefs = prefsStore.load()
             legacyModelId = prefs.modelId
             modelIds.putAll(prefs.modelIds)
@@ -371,7 +383,13 @@ public class AgentSessionViewModel(
                     docked = prefs.docked,
                 )
             }
+            if (_state.value.restoration == SessionRestoration.Pending) {
+                _state.value.sessionHistory
+                    .firstOrNull { it.id == recordId }
+                    ?.let { prepareRestoredAgent(it) }
+            }
             prefsLoaded.complete(prefs)
+            navigationLoaded.complete(Unit)
         }
     }
 
@@ -410,6 +428,7 @@ public class AgentSessionViewModel(
             AgentIntent.EnsureConnected -> {
                 sendMutex.withLock {
                     prefsLoaded.await()
+                    if (_state.value.restoration == SessionRestoration.Pending) return@withLock
                     publishAgents(discoverAgents())
                     if (ensureConnected() && _state.value.restoration !is SessionRestoration.TranscriptOnly) {
                         client?.let { ensureSession(it) }
@@ -873,6 +892,7 @@ public class AgentSessionViewModel(
 
     private suspend fun ensureConnected(): Boolean =
         connectionMutex.withLock {
+            if (_state.value.restoration == SessionRestoration.Pending) return false
             val current = client
             if (current != null && current.isOpen && _state.value.connection == AgentConnection.CONNECTED) return true
             if (current != null) resetConnection()
@@ -1010,7 +1030,11 @@ public class AgentSessionViewModel(
     ) {
         val text = prompt.trim()
         if (text.isEmpty()) return
-        if (_state.value.restoration is SessionRestoration.Loading) return
+        if (_state.value.restoration is SessionRestoration.Loading ||
+            _state.value.restoration == SessionRestoration.Pending
+        ) {
+            return
+        }
         val goalCommand = parseGoalCommand(text)
         if (goalCommand != null) {
             applyGoalCommand(goalCommand, clearComposer = _state.value.composerInput.trim() == text)
@@ -1166,8 +1190,8 @@ public class AgentSessionViewModel(
             if (draftOwner == null) {
                 // Text typed during connection setup belongs to this newly claimed conversation.
                 _state.update { it.copy(taskNavigation = it.taskNavigation.copy(newChatDraft = AgentDraft())) }
-                rememberDraft()
             }
+            rememberDraft()
             persistConversation()
             return TurnClaim(acpClient, activeSession, generation)
         } finally {
@@ -1968,6 +1992,10 @@ public class AgentSessionViewModel(
 
     /** Continues a paused goal. Plan mode cannot resume the loop. */
     private suspend fun resumeGoal(clearComposer: Boolean) {
+        if (_state.value.restoration == SessionRestoration.Pending) {
+            _state.update { it.copy(goalNotice = "Resume the conversation before continuing the goal.") }
+            return
+        }
         val goal = _state.value.goal ?: return
         if (goal.status == AgentGoalStatus.MET) return
         if (_state.value.isStreaming) {
@@ -2295,10 +2323,13 @@ public class AgentSessionViewModel(
         val navigation = state.taskNavigation
         val updated =
             if (owner == null) {
-                navigation.copy(newChatDraft = draft)
+                navigation.copy(newChatDraft = draft, selectedRecordId = recordId)
             } else {
                 val task = navigation.tasks[owner] ?: AgentTaskNavigation()
-                navigation.copy(tasks = navigation.tasks + (owner to task.copy(draft = draft)))
+                navigation.copy(
+                    tasks = navigation.tasks + (owner to task.copy(draft = draft)),
+                    selectedRecordId = recordId,
+                )
             }
         if (navigation == updated) return
         _state.update { it.copy(taskNavigation = updated) }
@@ -2370,7 +2401,7 @@ public class AgentSessionViewModel(
     /** Captures only live conversations; viewing saved history must not rewrite it. */
     private fun conversationRecord(): AgentSessionRecord? {
         val restoration = _state.value.restoration
-        if (restoration is SessionRestoration.Loading || restoration is SessionRestoration.TranscriptOnly) return null
+        if (restoration != null && restoration != SessionRestoration.Resumed) return null
         val messages =
             _state.value.turns
                 .flatMap { turn ->
@@ -2457,6 +2488,7 @@ public class AgentSessionViewModel(
             )
         }
         applyDraft(_state.value.taskNavigation.newChatDraft)
+        rememberDraft()
         alignWithChosenAgent()
     }
 
@@ -2474,6 +2506,10 @@ public class AgentSessionViewModel(
                     it.taskNavigation.copy(
                         tasks =
                             it.taskNavigation.tasks - recordIdToDelete,
+                        selectedRecordId =
+                            it.taskNavigation.selectedRecordId.takeUnless { id ->
+                                id == recordIdToDelete
+                            },
                     ),
             )
         }
@@ -2514,6 +2550,7 @@ public class AgentSessionViewModel(
             )
         }
         applyDraft(_state.value.taskNavigation.newChatDraft)
+        rememberDraft()
     }
 
     /**
@@ -2545,6 +2582,30 @@ public class AgentSessionViewModel(
         recordId = record.id
         resetGoalLoop()
 
+        restoreTranscript(record, SessionRestoration.Loading)
+        rememberDraft()
+        saveNavigation()
+        if (!prepareRestoredAgent(record)) {
+            transcriptOnly(agentUnavailableNotice(agentLabel(record.agentId)))
+            return
+        }
+        if (record.agentSessionId == null) {
+            transcriptOnly("This saved conversation has no agent session to resume.")
+        } else if (ensureConnected()) {
+            client?.let { restoreAgentSession(it, record) }
+        } else {
+            transcriptOnly("Could not reconnect to the agent.")
+        }
+        _state.update { it.copy(error = it.error ?: record.failure) }
+    }
+
+    /** Opens saved content without connecting, replaying prompts, or claiming restored agent context. */
+    private fun restoreTranscript(
+        record: AgentSessionRecord,
+        restoration: SessionRestoration,
+    ) {
+        recordId = record.id
+        conversationSessionId = record.agentSessionId
         var counter = 0
         val turns =
             record.messages.map { message ->
@@ -2572,7 +2633,7 @@ public class AgentSessionViewModel(
                 interrupted = record.interrupted,
                 presence = null,
                 isStreaming = false,
-                restoration = SessionRestoration.Loading,
+                restoration = restoration,
                 activeRecordId = record.id,
                 goal = record.goal?.let(::restoredGoal),
                 goalNotice = restoredGoalNotice(record.goal),
@@ -2586,18 +2647,6 @@ public class AgentSessionViewModel(
         )
         checkpoints.loadPersisted(record.checkpoints, record.checkpointDisk)
         publishCheckpointFlags()
-        if (!prepareRestoredAgent(record)) {
-            transcriptOnly(agentUnavailableNotice(agentLabel(record.agentId)))
-            return
-        }
-        if (record.agentSessionId == null) {
-            transcriptOnly("This saved conversation has no agent session to resume.")
-        } else if (ensureConnected()) {
-            client?.let { restoreAgentSession(it, record) }
-        } else {
-            transcriptOnly("Could not reconnect to the agent.")
-        }
-        _state.update { it.copy(error = it.error ?: record.failure) }
     }
 
     /** Reloads context without creating an unrelated session or duplicating replayed messages. */
@@ -3012,7 +3061,7 @@ public class AgentSessionViewModel(
 
     /** Review decisions also persist for transcript-only sessions, without rewriting their messages. */
     private fun persistReviewDecision() {
-        if (_state.value.restoration !is SessionRestoration.TranscriptOnly) {
+        if (_state.value.restoration == null || _state.value.restoration == SessionRestoration.Resumed) {
             persistConversation()
             return
         }

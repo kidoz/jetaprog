@@ -119,6 +119,10 @@ internal fun AgentContextInspectorContent(
                                 "Saved transcript only. Sending starts a fresh agent conversation."
                             }
 
+                            SessionRestoration.Pending -> {
+                                "Saved transcript; agent context has not been resumed."
+                            }
+
                             SessionRestoration.Loading -> {
                                 "Restoring the conversation. Sending is unavailable until restoration finishes."
                             }

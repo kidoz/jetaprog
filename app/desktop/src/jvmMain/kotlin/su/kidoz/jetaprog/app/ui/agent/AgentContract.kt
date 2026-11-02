@@ -24,6 +24,9 @@ public enum class AgentConnection {
 
 /** Whether a saved conversation's agent context has been restored. */
 public sealed interface SessionRestoration {
+    /** Saved transcript is open locally; the user has not requested agent reconnection. */
+    public data object Pending : SessionRestoration
+
     /** Connecting to the agent or loading its saved context. */
     public data object Loading : SessionRestoration
 

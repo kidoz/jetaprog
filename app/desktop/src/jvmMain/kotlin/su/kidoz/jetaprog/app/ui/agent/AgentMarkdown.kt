@@ -2,6 +2,7 @@ package su.kidoz.jetaprog.app.ui.agent
 
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -29,14 +30,16 @@ internal fun AgentMarkdown(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalIntelliJColors.current
-    val state = rememberMarkdownState(content = markdown, retainState = true)
+    val state =
+        LocalRestoredMarkdown.current[markdown]
+            ?: rememberMarkdownState(content = markdown, retainState = true).state.collectAsState().value
 
     val body = TextStyle(color = colors.textPrimary, fontSize = 13.sp)
     val code = TextStyle(color = colors.textPrimary, fontFamily = JetaProgFonts.codeFont, fontSize = 12.sp)
 
     SelectionContainer {
         Markdown(
-            markdownState = state,
+            state = state,
             modifier = modifier,
             colors =
                 markdownColor(

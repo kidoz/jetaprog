@@ -141,6 +141,14 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
             }
         }
 
+        GallerySection("Agent · Resume conversation") {
+            Column(Modifier.width(Dimensions.popupSearchWidth.dp)) {
+                su.kidoz.jetaprog.app.ui.agent.AgentRestorationNotice(
+                    su.kidoz.jetaprog.app.ui.agent.SessionRestoration.Pending,
+                )
+            }
+        }
+
         GallerySection("Agent · Message context") {
             su.kidoz.jetaprog.app.ui.agent.AgentContextInspectorContent(
                 AgentUiState(

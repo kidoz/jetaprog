@@ -238,3 +238,14 @@ private fun AgentContextPreview() {
         )
     }
 }
+
+@Suppress("UnusedPrivateMember")
+@Preview
+@Composable
+private fun AgentResumeConversationPreview() {
+    JetaProgTheme {
+        su.kidoz.jetaprog.app.ui.agent.AgentRestorationNotice(
+            su.kidoz.jetaprog.app.ui.agent.SessionRestoration.Pending,
+        )
+    }
+}
