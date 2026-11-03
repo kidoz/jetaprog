@@ -795,6 +795,77 @@ class AgentSessionRestorationTest {
             assertNull(AgentNavigationStore(fileSystem, "/project").load().selectedRecordId)
         }
 
+    @Test
+    fun resumedLegacyConversationNeverReusesSavedMessageIdsAcrossRestarts() =
+        runTest {
+            val record =
+                savedRecord().copy(
+                    messages =
+                        listOf(
+                            AgentHistoryMessage(AgentHistoryRole.USER, "First question", "usr-0"),
+                            AgentHistoryMessage(AgentHistoryRole.USER, "Second question", "usr-1"),
+                            AgentHistoryMessage(AgentHistoryRole.AGENT, "Old answer", "agt-2"),
+                        ),
+                )
+            history.save(record)
+            repeat(2) { restart ->
+                val vm = viewModel(RestoringAgentTransport())
+                vm.dispatch(AgentIntent.RestoreSession(record.id))
+                runCurrent()
+                vm.dispatch(AgentIntent.Send("Continue $restart"))
+                runCurrent()
+                val ids =
+                    vm.state.value.turns
+                        .map { it.id }
+                assertEquals(ids.size, ids.toSet().size)
+                assertEquals("usr-0", ids.first())
+                assertEquals("usr-1", ids[1])
+                assertTrue(transcript(vm).contains("Continue $restart"))
+                vm.shutdown()
+            }
+            val persisted =
+                history
+                    .list()
+                    .single()
+                    .messages
+                    .filter { it.role == AgentHistoryRole.USER }
+                    .map { it.id }
+            assertEquals(persisted.size, persisted.toSet().size)
+        }
+
+    @Test
+    fun duplicateSavedIdsAreRepairedWithoutLosingMessagesAndStayStableOnReopen() =
+        runTest {
+            val messages =
+                listOf(
+                    AgentHistoryMessage(AgentHistoryRole.USER, "First question", "usr-1"),
+                    AgentHistoryMessage(AgentHistoryRole.AGENT, "First answer", "usr-1"),
+                    AgentHistoryMessage(AgentHistoryRole.USER, "Second question", "usr-1"),
+                    AgentHistoryMessage(AgentHistoryRole.USER, "Reserved fallback", "restored-old-record-2"),
+                    AgentHistoryMessage(AgentHistoryRole.AGENT, "Legacy without id"),
+                )
+            val record = savedRecord().copy(messages = messages)
+            history.save(record)
+            val first = viewModel(RestoringAgentTransport())
+            first.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            assertEquals(messages.map { it.text }, transcript(first))
+            val ids =
+                first.state.value.turns
+                    .map { it.id }
+            assertEquals(ids.size, ids.toSet().size)
+            assertEquals("usr-1", ids.first())
+            assertEquals("restored-old-record-2", ids[3])
+            val second = viewModel(RestoringAgentTransport())
+            second.dispatch(AgentIntent.RestoreSession(record.id))
+            runCurrent()
+            assertEquals(
+                ids,
+                second.state.value.turns
+                    .map { it.id },
+            )
+        }
+
     private fun viewModel(agent: RestoringAgentTransport): AgentSessionViewModel =
         AgentSessionViewModel(
             "/project",

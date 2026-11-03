@@ -18,6 +18,7 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.test.waitUntilExactlyOneExists
 import androidx.compose.ui.unit.dp
+import su.kidoz.jetaprog.app.agent.uniqueTranscriptIds
 import su.kidoz.jetaprog.app.ui.saveUiArtifacts
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
 import kotlin.test.Test
@@ -134,6 +135,35 @@ class AgentSessionRestorationUiTest {
                     intents.filterIsInstance<AgentIntent.RestoreSession>(),
                 )
                 onRoot().saveUiArtifacts("agent-resume-pending-$dark")
+            }
+        }
+    }
+
+    @Test
+    fun repairedDuplicateHistoryRowsRenderTogetherWithoutLazyKeyCrash() {
+        val ids = uniqueTranscriptIds(listOf("usr-1", "usr-1"), "restored-saved")
+        for (dark in listOf(true, false)) {
+            runComposeUiTest {
+                setContent {
+                    JetaProgTheme(darkTheme = dark) {
+                        Box(Modifier.size(420.dp, 700.dp)) {
+                            AgentSurfaceContent(
+                                state =
+                                    restoredState(SessionRestoration.Pending).copy(
+                                        turns =
+                                            listOf(
+                                                Turn.User(ids[0], "First saved message", ""),
+                                                Turn.User(ids[1], "Second saved message", ""),
+                                            ),
+                                    ),
+                                dispatch = {},
+                                showRail = false,
+                            )
+                        }
+                    }
+                }
+                onNodeWithText("First saved message").assertIsDisplayed()
+                onNodeWithText("Second saved message").assertIsDisplayed()
             }
         }
     }

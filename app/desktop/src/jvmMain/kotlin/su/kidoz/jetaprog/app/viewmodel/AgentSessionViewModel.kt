@@ -102,6 +102,7 @@ import su.kidoz.jetaprog.app.agent.legacyClaudeLaunch
 import su.kidoz.jetaprog.app.agent.loadProjectInstructions
 import su.kidoz.jetaprog.app.agent.restoredLaunch
 import su.kidoz.jetaprog.app.agent.toModelOption
+import su.kidoz.jetaprog.app.agent.uniqueTranscriptIds
 import su.kidoz.jetaprog.app.ui.agent.AgentCommand
 import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
@@ -2633,11 +2634,12 @@ public class AgentSessionViewModel(
     ) {
         recordId = record.id
         conversationSessionId = record.agentSessionId
-        var counter = 0
+        val reviewTurns = restoredReviewTurns(record)
+        val ids =
+            uniqueTranscriptIds(record.messages.map { it.id } + reviewTurns.map { it.id }, "restored-${record.id}")
         val turns =
-            record.messages.map { message ->
-                val generated = "restored-${record.id}-${counter++}"
-                val id = message.id?.takeIf { it.isNotBlank() } ?: generated
+            record.messages.mapIndexed { index, message ->
+                val id = ids[index]
                 when (message.role) {
                     AgentHistoryRole.USER -> {
                         Turn.User(id = id, text = message.text, timeLabel = "")
@@ -2654,7 +2656,8 @@ public class AgentSessionViewModel(
             }
         _state.update {
             it.copy(
-                turns = turns + restoredReviewTurns(record),
+                turns =
+                    turns + reviewTurns.mapIndexed { index, turn -> turn.copy(id = ids[record.messages.size + index]) },
                 historyVisible = false,
                 error = record.failure,
                 interrupted = record.interrupted,
@@ -3987,7 +3990,7 @@ public class AgentSessionViewModel(
         }
     }
 
-    private fun nextId(prefix: String): String = "$prefix-${seq++}"
+    private fun nextId(prefix: String): String = "$prefix-${UUID.randomUUID()}"
 
     private fun now(): Long = System.currentTimeMillis()
 
