@@ -656,6 +656,8 @@ public data class AgentUiState(
     val composerSelection: TextRange = TextRange.Zero,
     /** Text version to which the composer selection belongs. */
     val composerSelectionText: String = "",
+    /** Transient native edit receipt; distinguishes delayed echoes even when text repeats. */
+    val composerEditId: Long? = null,
     val composerAttachments: List<ComposerAttachment> = emptyList(),
     val queuedPrompts: List<QueuedFollowUp> = emptyList(),
     /** Delivery is paused after Stop, failure, or an explicit pause. */
@@ -918,6 +920,8 @@ public sealed interface AgentIntent {
         val selectionStart: Int = text.length,
         /** Selection focus, including reversed selections. */
         val selectionEnd: Int = selectionStart,
+        /** Native edit receipt; null for programmatic replacements. Never persisted. */
+        val editId: Long? = null,
     ) : AgentIntent
 
     /** Save a reading position for its explicit task, even if another task is now open. */

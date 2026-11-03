@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
 import kotlin.test.Test
@@ -28,6 +29,65 @@ import kotlin.test.assertTrue
 /** Exercises editable drafts and keyboard submission through a state round trip. */
 @OptIn(ExperimentalTestApi::class)
 class AgentComposerInputUiTest {
+    @Test
+    fun delayedStateEchoDoesNotReplaceNewerTyping() =
+        runComposeUiTest {
+            val state = mutableStateOf(AgentUiState(connection = AgentConnection.CONNECTED))
+            val intents = mutableListOf<AgentIntent>()
+            setContent {
+                JetaProgTheme {
+                    AgentSurfaceContent(state = state.value, dispatch = { intents += it }, showRail = false)
+                }
+            }
+            val field = onNodeWithContentDescription("Agent prompt")
+            field.performClick().performTextInput("a")
+            field.assertTextEquals("a")
+            field.performTextInput("b")
+            field.assertTextEquals("ab")
+            runOnIdle {
+                state.value =
+                    state.value.copy(
+                        composerInput = "a",
+                        composerSelectionText = "a",
+                        composerSelection = TextRange(1),
+                        composerEditId =
+                            intents
+                                .filterIsInstance<AgentIntent.SetComposerInput>()
+                                .last { it.text == "a" }
+                                .editId,
+                    )
+            }
+            field.assertTextEquals("ab")
+            field.performTextInput("c")
+            field.assertTextEquals("abc")
+            field.performKeyInput { pressKey(Key.Enter) }
+            assertEquals(listOf(AgentIntent.Send("abc")), intents.filterIsInstance<AgentIntent.Send>())
+            runOnIdle {
+                state.value =
+                    state.value.copy(
+                        composerInput = "abc",
+                        composerSelectionText = "abc",
+                        composerSelection = TextRange(3),
+                        composerEditId =
+                            intents
+                                .filterIsInstance<AgentIntent.SetComposerInput>()
+                                .last {
+                                    it.text ==
+                                        "abc"
+                                }.editId,
+                    )
+            }
+            field.assertTextEquals("abc")
+            runOnIdle {
+                state.value = state.value.copy(composerInput = "/review ")
+            }
+            field.assertTextEquals("/review ")
+            runOnIdle {
+                state.value = state.value.copy(composerInput = "")
+            }
+            field.assertTextEquals("")
+        }
+
     @Test
     fun namedFieldEditsMultilineUnicodeAndSendsInBothThemes() {
         for (dark in listOf(true, false)) {
@@ -120,7 +180,13 @@ class AgentComposerInputUiTest {
                         dispatch = { intent ->
                             intents += intent
                             if (intent is AgentIntent.SetComposerInput) {
-                                state.value = state.value.copy(composerInput = intent.text)
+                                state.value =
+                                    state.value.copy(
+                                        composerInput = intent.text,
+                                        composerSelectionText = intent.text,
+                                        composerSelection = TextRange(intent.selectionStart, intent.selectionEnd),
+                                        composerEditId = intent.editId,
+                                    )
                             }
                         },
                         showRail = false,

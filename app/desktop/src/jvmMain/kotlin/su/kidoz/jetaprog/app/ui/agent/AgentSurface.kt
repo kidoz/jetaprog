@@ -78,11 +78,9 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -854,30 +852,21 @@ private fun AgentComposer(
     state: AgentUiState,
     dispatch: (AgentIntent) -> Unit,
 ) {
-    val input = state.composerInput
-    val selection = state.composerSelection.takeIf { state.composerSelectionText == input }
-    var editingValue by remember(state.workspacePath, state.activeRecordId) {
-        mutableStateOf(TextFieldValue(input, selection ?: TextRange(input.length)))
-    }
-    val fieldValue =
-        if (editingValue.text ==
-            input
-        ) {
-            editingValue
-        } else {
-            TextFieldValue(input, selection ?: TextRange(input.length))
+    val selection = state.composerSelection.takeIf { state.composerSelectionText == state.composerInput }
+    val editor =
+        remember(state.workspacePath, state.activeRecordId) {
+            AgentComposerEditor(state.composerInput, selection, state.composerEditId)
         }
-    LaunchedEffect(input, selection) {
-        editingValue = fieldValue.copy(selection = selection ?: fieldValue.selection)
-    }
-    val canSubmit =
-        input.isNotBlank() && state.restoration != SessionRestoration.Loading &&
-            state.restoration != SessionRestoration.Pending
+    editor.synchronize(state.composerInput, selection, state.composerEditId)
+    val input = editor.value.text
+    val ready = state.restoration != SessionRestoration.Loading && state.restoration != SessionRestoration.Pending
     val send: () -> Unit = {
-        if (canSubmit) dispatch(AgentIntent.Send(input.trim()))
+        val prompt = editor.value.text.trim()
+        if (ready && prompt.isNotEmpty()) dispatch(AgentIntent.Send(prompt))
     }
     val steer: () -> Unit = {
-        if (canSubmit) dispatch(AgentIntent.Steer(input.trim()))
+        val prompt = editor.value.text.trim()
+        if (ready && prompt.isNotEmpty()) dispatch(AgentIntent.Steer(prompt))
     }
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(LocalIntelliJColors.current.divider))
     Column(modifier = Modifier.fillMaxWidth().padding(Spacing.md.dp)) {
@@ -917,10 +906,10 @@ private fun AgentComposer(
                     )
                 }
                 BasicTextField(
-                    value = fieldValue,
+                    value = editor.value,
                     onValueChange = {
-                        editingValue = it
-                        dispatch(AgentIntent.SetComposerInput(it.text, it.selection.start, it.selection.end))
+                        val editId = editor.edit(it)
+                        dispatch(AgentIntent.SetComposerInput(it.text, it.selection.start, it.selection.end, editId))
                     },
                     textStyle =
                         TextStyle(

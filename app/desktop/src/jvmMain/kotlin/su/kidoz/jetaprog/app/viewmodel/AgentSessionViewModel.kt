@@ -630,7 +630,7 @@ public class AgentSessionViewModel(
             }
 
             is AgentIntent.SetComposerInput -> {
-                updateComposerInput(intent.text, intent.selectionStart, intent.selectionEnd)
+                updateComposerInput(intent.text, intent.selectionStart, intent.selectionEnd, intent.editId)
             }
 
             AgentIntent.AttachCurrentFile -> {
@@ -2222,6 +2222,7 @@ public class AgentSessionViewModel(
         text: String,
         selectionStart: Int,
         selectionEnd: Int,
+        editId: Long?,
     ) {
         val textChanged = _state.value.composerInput != text
         val query = mentionQuery(text)
@@ -2234,6 +2235,7 @@ public class AgentSessionViewModel(
                         selectionEnd.coerceIn(0, text.length),
                     ),
                 composerSelectionText = text,
+                composerEditId = editId,
                 mentionFiles = if (query.isNullOrEmpty()) emptyList() else st.mentionFiles,
             )
         }
