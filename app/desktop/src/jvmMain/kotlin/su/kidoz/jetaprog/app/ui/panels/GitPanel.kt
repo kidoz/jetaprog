@@ -550,14 +550,20 @@ private fun ChangeRow(
             } else {
                 Box(modifier = Modifier.weight(1f))
             }
-            if (isHovered || isSelected) {
-                IconButton(onClick = onRollback, enabled = canRevert, modifier = Modifier.size(Dimensions.iconLg.dp)) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "Revert uncommitted changes in ${change.path}",
-                        tint = LocalIntelliJColors.current.textSecondary,
-                        modifier = Modifier.size(Dimensions.iconSm.dp),
-                    )
+            Box(modifier = Modifier.size(Dimensions.iconLg.dp)) {
+                if (isHovered || isSelected) {
+                    IconButton(
+                        onClick = onRollback,
+                        enabled = canRevert,
+                        modifier = Modifier.size(Dimensions.iconLg.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = "Revert uncommitted changes in ${change.path}",
+                            tint = LocalIntelliJColors.current.textSecondary,
+                            modifier = Modifier.size(Dimensions.iconSm.dp),
+                        )
+                    }
                 }
             }
             Text(

@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -166,6 +167,21 @@ class GitRevertUiTest {
             rows[0].performClick()
             rows[0].assertIsSelected()
             rows[1].assertIsNotSelected()
+        }
+
+    @Test
+    fun hoveringChangeDoesNotResizePathColumn() =
+        runComposeUiTest {
+            val vm = mockk<GitViewModel>(relaxed = true)
+            every { vm.state } returns MutableStateFlow(GitState(unstaged = listOf(unstaged)))
+            setContent { JetaProgTheme { GitPanel(vm, Modifier.width(320.dp)) } }
+
+            val originalBounds = onNodeWithText("src").getUnclippedBoundsInRoot()
+            onNodeWithText("Main.kt").performMouseInput { moveTo(center) }
+            waitForIdle()
+
+            onNodeWithContentDescription("Revert uncommitted changes in src/Main.kt").assertIsDisplayed()
+            kotlin.test.assertEquals(originalBounds, onNodeWithText("src").getUnclippedBoundsInRoot())
         }
 
     @Test
