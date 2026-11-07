@@ -131,7 +131,7 @@ public class GitViewModel(
                 clearSelection()
                 return@withLock
             }
-            _state.update { it.copy(isBusy = true, error = null) }
+            _state.update { it.copy(error = null) }
             service
                 .status()
                 .onSuccess { status ->

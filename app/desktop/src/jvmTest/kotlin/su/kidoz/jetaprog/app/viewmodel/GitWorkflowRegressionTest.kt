@@ -381,6 +381,33 @@ class GitWorkflowRegressionTest {
         }
 
     @Test
+    fun backgroundRefreshDoesNotToggleBusyState() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val executor =
+                fakeExecutor { command ->
+                    if (command.getOrNull(1) == "status") {
+                        withContext(NonCancellable) { delay(100) }
+                    }
+                    normalResponse(command)
+                }
+            val vm = GitViewModel(executor, "/nonexistent-jetaprog-audit")
+            try {
+                advanceUntilIdle()
+                assertTrue(!vm.state.value.isBusy)
+
+                vm.refreshIfIdle()
+                runCurrent()
+                assertTrue(!vm.state.value.isBusy, "Background status reads must not flicker busy-dependent controls")
+                advanceUntilIdle()
+                assertTrue(!vm.state.value.isBusy)
+            } finally {
+                vm.dispose()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
     fun refreshKeepsCurrentDiffVisibleWhileReloading() =
         runTest {
             Dispatchers.setMain(StandardTestDispatcher(testScheduler))
@@ -478,11 +505,13 @@ class GitWorkflowRegressionTest {
                 vm.setCommitMessage("Commit audit change")
                 vm.commit()
                 runCurrent()
+                assertTrue(vm.state.value.isBusy)
                 vm.checkoutBranch("feature")
                 advanceUntilIdle()
 
                 assertEquals(1, commands.count { it.getOrNull(1) == "commit" })
                 assertTrue(commands.none { it.getOrNull(1) == "checkout" })
+                assertTrue(!vm.state.value.isBusy)
             } finally {
                 vm.dispose()
                 Dispatchers.resetMain()
