@@ -58,6 +58,10 @@ public data class GitState(
     val selected: GitChange? = null,
     /** The unified diff of [selected]. */
     val diff: String = "",
+    /** Whether the selected change's diff is being loaded or refreshed. */
+    val isDiffLoading: Boolean = false,
+    /** Whether the selected change has completed at least one diff load. */
+    val isDiffLoaded: Boolean = false,
     /** Recent commit history, newest first. */
     val commitLog: List<GitCommit> = emptyList(),
     /** The pending commit message. */
@@ -225,19 +229,33 @@ public class GitViewModel(
         }
     }
 
-    /** Selects a change and loads its diff. */
+    /** Selects a change and loads its diff without hiding the current preview during same-file refreshes. */
     public fun select(change: GitChange) {
         diffJob?.cancel()
         val request = ++diffRequest
-        _state.update { it.copy(selected = change, diff = "", error = null) }
+        val preservePreview = _state.value.selected == change
+        _state.update {
+            it.copy(
+                selected = change,
+                diff = if (preservePreview) it.diff else "",
+                isDiffLoading = true,
+                isDiffLoaded = preservePreview && it.isDiffLoaded,
+                error = null,
+            )
+        }
         diffJob =
             scope.launch {
                 service
                     .diff(change.path, change.staged)
                     .onSuccess { diff ->
-                        if (request == diffRequest) _state.update { it.copy(diff = diff) }
+                        if (request == diffRequest) {
+                            _state.update { it.copy(diff = diff, isDiffLoading = false, isDiffLoaded = true) }
+                        }
                     }.onFailure { error ->
-                        if (request == diffRequest) fail(error)
+                        if (request == diffRequest) {
+                            _state.update { it.copy(isDiffLoading = false) }
+                            fail(error)
+                        }
                     }
             }
     }
@@ -245,7 +263,7 @@ public class GitViewModel(
     private fun clearSelection() {
         diffJob?.cancel()
         diffRequest++
-        _state.update { it.copy(selected = null, diff = "") }
+        _state.update { it.copy(selected = null, diff = "", isDiffLoading = false, isDiffLoaded = false) }
     }
 
     /** Stages [change]. */

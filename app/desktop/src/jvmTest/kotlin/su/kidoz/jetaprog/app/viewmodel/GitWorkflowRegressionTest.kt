@@ -381,6 +381,38 @@ class GitWorkflowRegressionTest {
         }
 
     @Test
+    fun refreshKeepsCurrentDiffVisibleWhileReloading() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val executor =
+                fakeExecutor { command ->
+                    if (command.getOrNull(1) == "diff") {
+                        withContext(NonCancellable) { delay(100) }
+                        ProcessResult(0, "loaded diff", "")
+                    } else {
+                        normalResponse(command)
+                    }
+                }
+            val vm = GitViewModel(executor, "/nonexistent-jetaprog-audit")
+            try {
+                advanceUntilIdle()
+                vm.select(GitChange("tracked.txt", GitChangeType.MODIFIED, false))
+                advanceUntilIdle()
+
+                vm.refresh()
+                runCurrent()
+                assertEquals("loaded diff", vm.state.value.diff)
+                assertTrue(vm.state.value.isDiffLoading)
+                advanceUntilIdle()
+                assertEquals("loaded diff", vm.state.value.diff)
+                assertTrue(!vm.state.value.isDiffLoading)
+            } finally {
+                vm.dispose()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
     fun successfulCommitRefreshesStatusEvenWhenPushFails() =
         runTest {
             Dispatchers.setMain(StandardTestDispatcher(testScheduler))

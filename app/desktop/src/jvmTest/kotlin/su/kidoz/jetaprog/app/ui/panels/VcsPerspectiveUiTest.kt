@@ -52,6 +52,41 @@ class VcsPerspectiveUiTest {
         }
 
     @Test
+    fun initialDiffLoadShowsLoadingInsteadOfNoChanges() =
+        runComposeUiTest {
+            val vm = mockk<GitViewModel>()
+            every { vm.state } returns
+                MutableStateFlow(
+                    GitState(
+                        selected = GitChange("src/Main.kt", GitChangeType.MODIFIED, staged = false),
+                        isDiffLoading = true,
+                    ),
+                )
+            setContent { JetaProgTheme { VcsMainArea(vm) } }
+
+            onNodeWithText("Loading diff…").assertIsDisplayed()
+            onNodeWithText("No text changes to display.").assertDoesNotExist()
+        }
+
+    @Test
+    fun completedEmptyPreviewStaysStableDuringRefresh() =
+        runComposeUiTest {
+            val vm = mockk<GitViewModel>()
+            every { vm.state } returns
+                MutableStateFlow(
+                    GitState(
+                        selected = GitChange("src/Main.kt", GitChangeType.MODIFIED, staged = false),
+                        isDiffLoading = true,
+                        isDiffLoaded = true,
+                    ),
+                )
+            setContent { JetaProgTheme { VcsMainArea(vm) } }
+
+            onNodeWithText("No text changes to display.").assertIsDisplayed()
+            onNodeWithText("Loading diff…").assertDoesNotExist()
+        }
+
+    @Test
     fun binaryPreviewExplainsWhyTextIsUnavailable() =
         runComposeUiTest {
             val vm = mockk<GitViewModel>()

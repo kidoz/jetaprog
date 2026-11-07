@@ -92,13 +92,14 @@ public fun VcsMainArea(
                 if (oldLines.isEmpty() && newLines.isEmpty()) {
                     Text(
                         text =
-                            if (state.diff.contains(
+                            when {
+                                state.isDiffLoading && !state.isDiffLoaded -> "Loading diff…"
+
+                                state.diff.contains(
                                     "Binary files",
-                                )
-                            ) {
-                                "Binary files differ; text preview is unavailable."
-                            } else {
-                                "No text changes to display."
+                                ) -> "Binary files differ; text preview is unavailable."
+
+                                else -> "No text changes to display."
                             },
                         color = LocalIntelliJColors.current.textMuted,
                         modifier = Modifier.padding(Spacing.lg.dp),
