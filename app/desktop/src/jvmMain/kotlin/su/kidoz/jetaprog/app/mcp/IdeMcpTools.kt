@@ -14,6 +14,7 @@ import su.kidoz.jetaprog.app.inspection.FileInspection
 import su.kidoz.jetaprog.app.navigation.IndexedSymbolLookup
 import su.kidoz.jetaprog.app.ui.debug.DebugIntent
 import su.kidoz.jetaprog.app.ui.debug.DebugUiState
+import su.kidoz.jetaprog.build.gradle.GradleTaskPath
 import su.kidoz.jetaprog.build.gradle.state.GradleIntent
 import su.kidoz.jetaprog.configuration.ConfigurationId
 import su.kidoz.jetaprog.configuration.ConfigurationIntent
@@ -312,6 +313,7 @@ public fun registerIdeTools(
             inputSchema = objectSchema("task" to "Gradle task path", required = listOf("task")),
         ) { args ->
             val task = args.string("task") ?: return@Tool missing("task")
+            if (!GradleTaskPath.isValid(task)) return@Tool ToolResult.Error("Not a Gradle task path: $task")
             val session = currentSession() ?: return@Tool text("No project is open.")
             if (session.gradleViewModel.state.value.isRunning) {
                 return@Tool ToolResult.Error("A Gradle task is already running")

@@ -33,6 +33,9 @@ public class JvmGradleTaskRunner(
         environment: Map<String, String>,
     ): Result<Flow<GradleOutput>> =
         try {
+            if (!GradleTaskPath.isValid(taskPath)) {
+                return Result.failure(IllegalArgumentException("Not a Gradle task path: $taskPath"))
+            }
             // Build the command
             val gradlewPath = getGradlewPath(project.rootPath)
             val command =
