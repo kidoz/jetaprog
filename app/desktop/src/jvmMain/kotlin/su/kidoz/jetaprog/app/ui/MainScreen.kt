@@ -734,6 +734,7 @@ private fun MainScreenContent(
                 branchName = gitState.branch,
                 branches = gitState.branches,
                 ahead = gitState.ahead,
+                isGitBusy = gitState.isBusy,
                 onUpdate = { session.gitViewModel.pull() },
                 onPush = { session.gitViewModel.push() },
                 onCheckoutBranch = { name -> session.gitViewModel.checkoutBranch(name) },
@@ -1722,9 +1723,13 @@ private fun IntelliJMenuBar(
                     MenuEntry("Show Git Tool Window") { onSelectedActivityItemChange(ActivityBarItem.VCS) },
                     null,
                     MenuEntry("Commit...") { onSelectedActivityItemChange(ActivityBarItem.VCS) },
-                    MenuEntry("Update Project") { session.gitViewModel.pull() },
-                    MenuEntry("Push") { session.gitViewModel.push() },
-                    MenuEntry("Refresh", enabled = gitState.isBusy) { session.gitViewModel.refresh() },
+                    MenuEntry("Update Project", enabled = !gitState.isBusy && gitState.isRepository) {
+                        session.gitViewModel.pull()
+                    },
+                    MenuEntry("Push", enabled = !gitState.isBusy && gitState.isRepository) {
+                        session.gitViewModel.push()
+                    },
+                    MenuEntry("Refresh", enabled = !gitState.isBusy) { session.gitViewModel.refresh() },
                 ),
         )
         MenuBarItem(
@@ -1773,6 +1778,7 @@ internal fun MainToolbar(
     branchName: String?,
     branches: List<su.kidoz.jetaprog.vcs.GitBranch>,
     ahead: Int,
+    isGitBusy: Boolean = false,
     onUpdate: () -> Unit,
     onPush: () -> Unit,
     onCheckoutBranch: (String) -> Unit,
@@ -1852,6 +1858,7 @@ internal fun MainToolbar(
                             onCreateBranch = onCreateBranch,
                             onDeleteBranch = onDeleteBranch,
                             onRenameBranch = onRenameBranch,
+                            enabled = !isGitBusy,
                         )
                         ToolbarDivider()
                         ToolbarAction(
@@ -1859,6 +1866,7 @@ internal fun MainToolbar(
                             label = "Update",
                             onClick = onUpdate,
                             showLabel = !compact,
+                            enabled = !isGitBusy,
                         )
                         ToolbarAction(
                             icon = Icons.Filled.North,
@@ -1866,6 +1874,7 @@ internal fun MainToolbar(
                             badge = ahead,
                             onClick = onPush,
                             showLabel = !compact,
+                            enabled = !isGitBusy,
                         )
                     }
                 }
@@ -1950,13 +1959,16 @@ private fun ToolbarAction(
     onClick: () -> Unit,
     showLabel: Boolean = true,
     badge: Int = 0,
+    enabled: Boolean = true,
 ) {
+    val contentColor =
+        if (enabled) LocalIntelliJColors.current.textPrimary else LocalIntelliJColors.current.textDisabled
     Row(
         modifier =
             Modifier
                 .height(Dimensions.chipHeight.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
-                .clickable(onClick = onClick)
+                .clickable(enabled = enabled, onClick = onClick)
                 .padding(horizontal = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -1964,11 +1976,11 @@ private fun ToolbarAction(
         Icon(
             imageVector = icon,
             contentDescription = if (showLabel) null else label,
-            tint = LocalIntelliJColors.current.textSecondary,
+            tint = if (enabled) LocalIntelliJColors.current.textSecondary else contentColor,
             modifier = Modifier.size(16.dp),
         )
         if (showLabel) {
-            Text(text = label, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+            Text(text = label, color = contentColor, fontSize = 12.sp)
         }
         if (badge > 0) {
             Box(

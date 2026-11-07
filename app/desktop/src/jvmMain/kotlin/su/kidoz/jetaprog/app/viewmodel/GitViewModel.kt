@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,10 +75,12 @@ public data class GitState(
  *
  * @param processExecutor used to invoke the `git` CLI.
  * @param projectPath the repository working directory.
+ * @param onError reports operation failures outside the Git tool window.
  */
 public class GitViewModel(
     processExecutor: ProcessExecutor,
     private val projectPath: String,
+    private val onError: (String) -> Unit = {},
 ) : Disposable {
     private val service: GitService = DefaultGitService(processExecutor, projectPath)
 
@@ -88,6 +91,7 @@ public class GitViewModel(
     private val _state = MutableStateFlow(GitState())
 
     private val refreshMutex = Mutex()
+    private val operationMutex = Mutex()
     private var diffJob: Job? = null
     private var diffRequest = 0L
 
@@ -311,75 +315,83 @@ public class GitViewModel(
         _state.update { it.copy(commitMessage = message) }
     }
 
-    /** Commits the staged changes with the current message. */
-    public fun commit() {
-        val message = _state.value.commitMessage.trim()
-        val amend = _state.value.amendMode
-        if (message.isEmpty() || (_state.value.staged.isEmpty() && !amend)) return
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
-            service
-                .commit(message, amend)
-                .onSuccess {
-                    clearSelection()
-                    _state.update { it.copy(commitMessage = "", amendMode = false) }
-                    refresh()
-                }.onFailure { error -> fail(error) }
-        }
+    /**
+     * Commits the staged changes with the current message after [prepare] succeeds.
+     * The operation is canceled when [prepare] returns false.
+     */
+    public fun commit(prepare: suspend () -> Boolean = { true }) {
+        commitOperation(pushAfterCommit = false, prepare = prepare)
     }
 
-    /** Commits the staged changes, then pushes to the upstream. */
-    public fun commitAndPush() {
+    /**
+     * Commits the staged changes after [prepare] succeeds, then pushes to the upstream.
+     * The operation is canceled when [prepare] returns false.
+     */
+    public fun commitAndPush(prepare: suspend () -> Boolean = { true }) {
+        commitOperation(pushAfterCommit = true, prepare = prepare)
+    }
+
+    private fun commitOperation(
+        pushAfterCommit: Boolean,
+        prepare: suspend () -> Boolean,
+    ) {
         val message = _state.value.commitMessage.trim()
         val amend = _state.value.amendMode
         if (message.isEmpty() || (_state.value.staged.isEmpty() && !amend)) return
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
+        runOperation {
+            if (!prepare()) {
+                fail(IllegalStateException("Commit canceled because some documents could not be saved."))
+                return@runOperation
+            }
             service
                 .commit(message, amend)
                 .onSuccess {
                     clearSelection()
                     _state.update { it.copy(commitMessage = "", amendMode = false) }
                     refreshStatus(keepBusy = true)
-                    service
-                        .push()
-                        .onSuccess { refreshStatus() }
-                        .onFailure { error ->
-                            fail(IllegalStateException("Committed locally, but push failed: ${error.message}", error))
-                        }
+                    if (pushAfterCommit) {
+                        service
+                            .push()
+                            .onSuccess { refreshStatus(keepBusy = true) }
+                            .onFailure { error ->
+                                fail(
+                                    IllegalStateException(
+                                        "Committed locally, but push failed: " + error.message,
+                                        error,
+                                    ),
+                                )
+                            }
+                    }
                 }.onFailure { error -> fail(error) }
         }
     }
 
     /** Pushes the current branch to its upstream. */
     public fun push() {
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
+        runOperation {
             service
                 .push()
-                .onSuccess { refresh() }
+                .onSuccess { refreshStatus(keepBusy = true) }
                 .onFailure { error -> fail(error) }
         }
     }
 
     /** Updates (fast-forwards) the current branch from its upstream. */
     public fun pull() {
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
+        runOperation {
             service
                 .pull()
-                .onSuccess { refresh() }
+                .onSuccess { refreshStatus(keepBusy = true) }
                 .onFailure { error -> fail(error) }
         }
     }
 
     /** Checks out the branch [name]. */
     public fun checkoutBranch(name: String) {
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
+        runOperation {
             service
                 .checkout(name)
-                .onSuccess { refresh() }
+                .onSuccess { refreshStatus(keepBusy = true) }
                 .onFailure { error -> fail(error) }
         }
     }
@@ -388,22 +400,20 @@ public class GitViewModel(
     public fun createBranch(name: String) {
         val branchName = name.trim()
         if (branchName.isEmpty()) return
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
+        runOperation {
             service
                 .createBranch(branchName)
-                .onSuccess { refresh() }
+                .onSuccess { refreshStatus(keepBusy = true) }
                 .onFailure { error -> fail(error) }
         }
     }
 
     /** Deletes the local branch [name]; fails when it is not fully merged. */
     public fun deleteBranch(name: String) {
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
+        runOperation {
             service
                 .deleteBranch(name)
-                .onSuccess { refresh() }
+                .onSuccess { refreshStatus(keepBusy = true) }
                 .onFailure { error -> fail(error) }
         }
     }
@@ -415,11 +425,10 @@ public class GitViewModel(
     ) {
         val branchName = newName.trim()
         if (branchName.isEmpty()) return
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
+        runOperation {
             service
                 .renameBranch(oldName, branchName)
-                .onSuccess { refresh() }
+                .onSuccess { refreshStatus(keepBusy = true) }
                 .onFailure { error -> fail(error) }
         }
     }
@@ -431,11 +440,10 @@ public class GitViewModel(
      */
     public fun discardChanges(changes: List<GitChange>) {
         if (changes.isEmpty()) return
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
+        runOperation {
             service
                 .discard(changes.map { it.path })
-                .onSuccess { refresh() }
+                .onSuccess { refreshStatus(keepBusy = true) }
                 .onFailure { error -> fail(error) }
         }
     }
@@ -448,16 +456,34 @@ public class GitViewModel(
         service.lineStatus(path).getOrDefault(emptyList())
 
     private fun runThenRefresh(action: suspend () -> Result<Unit>) {
-        scope.launch {
-            _state.update { it.copy(isBusy = true, error = null) }
+        runOperation {
             action()
-                .onSuccess { refresh() }
+                .onSuccess { refreshStatus(keepBusy = true) }
                 .onFailure { error -> fail(error) }
         }
     }
 
+    private fun runOperation(action: suspend () -> Unit) {
+        if (!operationMutex.tryLock()) return
+        _state.update { it.copy(isBusy = true, error = null) }
+        scope.launch {
+            try {
+                action()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                fail(error)
+            } finally {
+                _state.update { it.copy(isBusy = false) }
+                operationMutex.unlock()
+            }
+        }
+    }
+
     private fun fail(error: Throwable) {
-        _state.update { it.copy(isBusy = false, error = error.message ?: "Git operation failed") }
+        val message = error.message ?: "Git operation failed"
+        _state.update { it.copy(isBusy = false, error = message) }
+        onError(message)
     }
 
     override fun dispose() {

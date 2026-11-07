@@ -700,7 +700,11 @@ public class ProjectSession(
      * The Git workflow view model (status, diff, stage/unstage, commit).
      */
     public val gitViewModel: GitViewModel =
-        GitViewModel(processExecutor = processExecutor, projectPath = projectPath)
+        GitViewModel(
+            processExecutor = processExecutor,
+            projectPath = projectPath,
+            onError = { message -> notificationCenter.error(title = "Git", message = message) },
+        )
 
     // ========================================================================
     // Configuration

@@ -33,6 +33,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +72,7 @@ public fun BranchSelector(
     onDeleteBranch: (String) -> Unit,
     onRenameBranch: (oldName: String, newName: String) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var isCreating by remember { mutableStateOf(false) }
@@ -86,25 +88,28 @@ public fun BranchSelector(
         renamingBranch = null
         renameValue = ""
     }
+    LaunchedEffect(enabled) {
+        if (!enabled) closeMenu()
+    }
 
     var anchorHeightPx by remember { mutableStateOf(0) }
     Box(modifier = modifier.onSizeChanged { anchorHeightPx = it.height }) {
         Row(
             modifier =
                 Modifier
-                    .height(26.dp)
+                    .height(Dimensions.chipHeight.dp)
                     .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
                     .background(LocalIntelliJColors.current.surfaceElevated)
-                    .clickable { expanded = !expanded }
-                    .padding(horizontal = 10.dp),
+                    .clickable(enabled = enabled) { expanded = !expanded }
+                    .padding(horizontal = Dimensions.toolbarChipHorizontalPadding.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.toolbarChipSpacing.dp),
         ) {
             Icon(
                 imageVector = Icons.Filled.AccountTree,
                 contentDescription = "Branch",
                 tint = LocalIntelliJColors.current.success,
-                modifier = Modifier.size(15.dp),
+                modifier = Modifier.size(Dimensions.gitLogIconSize.dp),
             )
             Text(
                 text = branchName,
@@ -118,7 +123,7 @@ public fun BranchSelector(
                 imageVector = Icons.Filled.ExpandMore,
                 contentDescription = null,
                 tint = LocalIntelliJColors.current.textMuted,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(Dimensions.iconMd.dp),
             )
         }
 
@@ -132,7 +137,7 @@ public fun BranchSelector(
                 Column(
                     modifier =
                         Modifier
-                            .width(260.dp)
+                            .width(Dimensions.menuWidth.dp)
                             .popupChrome(Dimensions.cornerRadius.dp)
                             .padding(vertical = Spacing.xs.dp),
                 ) {
@@ -232,7 +237,7 @@ private fun BranchMenuItem(
                     },
                 ).hoverable(interactionSource)
                 .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.md.dp, vertical = 6.dp),
+                .padding(horizontal = Spacing.md.dp, vertical = Dimensions.gitBranchMenuItemVerticalPadding.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -244,7 +249,7 @@ private fun BranchMenuItem(
                 } else {
                     LocalIntelliJColors.current.textSecondary
                 },
-            modifier = Modifier.size(16.dp),
+            modifier = Modifier.size(Dimensions.iconMd.dp),
         )
         Spacer(modifier = Modifier.width(Spacing.sm.dp))
         Text(
@@ -258,21 +263,21 @@ private fun BranchMenuItem(
         )
         if (isHovered) {
             if (branch.isCurrent) {
-                IconButton(onClick = onRename, modifier = Modifier.size(20.dp)) {
+                IconButton(onClick = onRename, modifier = Modifier.size(Dimensions.gitBranchActionSize.dp)) {
                     Icon(
                         imageVector = Icons.Filled.Edit,
                         contentDescription = "Rename branch",
                         tint = LocalIntelliJColors.current.textSecondary,
-                        modifier = Modifier.size(13.dp),
+                        modifier = Modifier.size(Dimensions.gitBranchActionIconSize.dp),
                     )
                 }
             } else {
-                IconButton(onClick = onDelete, modifier = Modifier.size(20.dp)) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(Dimensions.gitBranchActionSize.dp)) {
                     Icon(
                         imageVector = Icons.Filled.Delete,
                         contentDescription = "Delete branch",
                         tint = LocalIntelliJColors.current.textSecondary,
-                        modifier = Modifier.size(13.dp),
+                        modifier = Modifier.size(Dimensions.gitBranchActionIconSize.dp),
                     )
                 }
             }
@@ -293,14 +298,14 @@ private fun NewBranchAction(onClick: () -> Unit) {
                     if (isHovered) LocalIntelliJColors.current.buttonBackgroundHover else Color.Transparent,
                 ).hoverable(interactionSource)
                 .clickable(onClick = onClick)
-                .padding(horizontal = Spacing.md.dp, vertical = 6.dp),
+                .padding(horizontal = Spacing.md.dp, vertical = Dimensions.gitBranchMenuItemVerticalPadding.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = Icons.Filled.Add,
             contentDescription = null,
             tint = LocalIntelliJColors.current.textSecondary,
-            modifier = Modifier.size(16.dp),
+            modifier = Modifier.size(Dimensions.iconMd.dp),
         )
         Spacer(modifier = Modifier.width(Spacing.sm.dp))
         Text(

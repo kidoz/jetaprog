@@ -8,6 +8,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -69,6 +70,7 @@ class ReviewFindingsUiTest {
             )
         for (dark in listOf(true, false)) {
             runComposeUiTest {
+                val gitBusy = androidx.compose.runtime.mutableStateOf(false)
                 setContent {
                     JetaProgTheme(darkTheme = dark) {
                         Box(Modifier.size(800.dp, 100.dp)) {
@@ -82,6 +84,7 @@ class ReviewFindingsUiTest {
                                 branchName = "feature/a-long-branch-name",
                                 branches = emptyList(),
                                 ahead = 0,
+                                isGitBusy = gitBusy.value,
                                 onUpdate = {},
                                 onPush = {},
                                 onCheckoutBranch = {},
@@ -108,6 +111,9 @@ class ReviewFindingsUiTest {
                     assertTrue(bounds.width > 0 && bounds.right <= 800, "$it is outside the toolbar: $bounds")
                 }
                 onRoot().saveUiArtifacts("toolbar-$dark")
+                runOnIdle { gitBusy.value = true }
+                onNodeWithContentDescription("Update").assertIsNotEnabled()
+                onNodeWithContentDescription("Push").assertIsNotEnabled()
             }
         }
     }

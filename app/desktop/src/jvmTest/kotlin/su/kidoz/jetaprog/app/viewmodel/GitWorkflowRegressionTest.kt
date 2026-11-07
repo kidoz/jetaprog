@@ -426,6 +426,38 @@ class GitWorkflowRegressionTest {
         }
 
     @Test
+    fun busyOperationRejectsSecondMutation() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val commands = mutableListOf<List<String>>()
+            val executor =
+                fakeExecutor { command ->
+                    commands += command
+                    if (command.getOrNull(1) == "commit") {
+                        withContext(NonCancellable) { delay(100) }
+                        ProcessResult(0, "committed", "")
+                    } else {
+                        stagedStatusResponse(command)
+                    }
+                }
+            val vm = GitViewModel(executor, "/nonexistent-jetaprog-audit")
+            try {
+                advanceUntilIdle()
+                vm.setCommitMessage("Commit audit change")
+                vm.commit()
+                runCurrent()
+                vm.checkoutBranch("feature")
+                advanceUntilIdle()
+
+                assertEquals(1, commands.count { it.getOrNull(1) == "commit" })
+                assertTrue(commands.none { it.getOrNull(1) == "checkout" })
+            } finally {
+                vm.dispose()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
     fun coloredGitConfigurationDoesNotHideDiff() =
         runBlocking {
             val dir = repo()
@@ -447,6 +479,13 @@ class GitWorkflowRegressionTest {
         coEvery { executor.executeRaw(any()) } coAnswers { Result.success(response(firstArg<ProcessConfig>().command)) }
         return executor
     }
+
+    private fun stagedStatusResponse(command: List<String>): ProcessResult =
+        if (command.getOrNull(1) == "status") {
+            ProcessResult(0, "## main\u0000M  tracked.txt\u0000", "")
+        } else {
+            normalResponse(command)
+        }
 
     private fun normalResponse(command: List<String>): ProcessResult =
         ProcessResult(
