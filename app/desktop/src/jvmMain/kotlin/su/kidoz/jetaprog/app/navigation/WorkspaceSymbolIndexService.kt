@@ -7,6 +7,10 @@ import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.editor.navigation.index.FileContentProvider
 import su.kidoz.jetaprog.editor.navigation.index.SymbolIndexer
+import su.kidoz.jetaprog.platform.filesystem.ContainedFileWalker
+import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
+import su.kidoz.jetaprog.platform.filesystem.isCanonicalPathInside
 import java.io.File
 import java.io.IOException
 
@@ -20,24 +24,30 @@ private val logger = KotlinLogging.logger {}
  */
 public class WorkspaceSymbolIndexService(
     private val indexer: SymbolIndexer,
+    private val fileSystem: FileSystem = JvmFileSystem(),
 ) {
+    private var workspaceRoot: String? = null
+
     /**
      * Walks the workspace and indexes every file a registered extractor understands.
      */
     public suspend fun indexWorkspace(rootPath: String): Unit =
         withContext(Dispatchers.IO) {
-            val root = File(rootPath)
-            if (!root.isDirectory) return@withContext
+            val root = fileSystem.canonicalize(rootPath).getOrNull() ?: return@withContext
+            if (!fileSystem.isDirectory(rootPath)) return@withContext
+            workspaceRoot = root
 
-            root
-                .walkTopDown()
-                .onEnter { dir -> dir == root || (!dir.name.startsWith(".") && dir.name !in EXCLUDED_DIRECTORIES) }
-                .filter { it.isFile && it.length() <= MAX_INDEXED_FILE_BYTES && indexer.canIndex(it.path) }
-                .forEach { file ->
-                    // Closing the project cancels the scope; stop the walk instead of finishing it.
-                    ensureActive()
-                    indexSafely(file)
+            ContainedFileWalker(fileSystem).walk(
+                rootPath = rootPath,
+                onDirectory = { entry -> !entry.name.startsWith(".") && entry.name !in EXCLUDED_DIRECTORIES },
+            ) { entry ->
+                // Closing the project cancels the scope; stop the walk instead of finishing it.
+                ensureActive()
+                if (entry.size <= MAX_INDEXED_FILE_BYTES && indexer.canIndex(entry.path)) {
+                    indexSafely(entry.path)
                 }
+                true
+            }
         }
 
     /**
@@ -46,20 +56,27 @@ public class WorkspaceSymbolIndexService(
      */
     public suspend fun indexFile(path: String): Unit =
         withContext(Dispatchers.IO) {
-            val file = File(path)
-            if (!file.isFile) {
+            val canonical = fileSystem.canonicalize(path).getOrNull()
+            val root = workspaceRoot
+            if (canonical == null || (root != null && !isCanonicalPathInside(root, canonical))) {
                 indexer.removeFile(path)
                 return@withContext
             }
-            if (!indexer.canIndex(path) || file.length() > MAX_INDEXED_FILE_BYTES) return@withContext
-            indexSafely(file)
+            if (!fileSystem.isFile(canonical)) {
+                indexer.removeFile(path)
+                return@withContext
+            }
+            val size = fileSystem.getInfo(canonical).getOrNull()?.size ?: return@withContext
+            if (!indexer.canIndex(path) || size > MAX_INDEXED_FILE_BYTES) return@withContext
+            indexSafely(path)
         }
 
-    private fun indexSafely(file: File) {
+    private suspend fun indexSafely(path: String) {
         try {
-            indexer.indexFile(file.absolutePath, file.readText())
+            val content = fileSystem.readText(path).getOrThrow()
+            indexer.indexFile(path, content)
         } catch (error: IOException) {
-            logger.debug { "Could not index ${file.path}: ${error.message}" }
+            logger.debug { "Could not index $path: ${error.message}" }
         }
     }
 

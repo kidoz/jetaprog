@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.editor.search
 
+import su.kidoz.jetaprog.platform.filesystem.ContainedFileWalker
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 
 /**
@@ -29,30 +30,24 @@ public class ProjectTextSearcher(
         val results = mutableListOf<FileTextMatches>()
         var total = 0
 
-        suspend fun walk(path: String) {
-            if (total >= maxResults) return
-            val entries = fileSystem.listDirectory(path).getOrNull() ?: return
-            for (entry in entries) {
-                if (total >= maxResults) return
-                when {
-                    entry.isDirectory -> {
-                        if (entry.name !in excludedDirectories) walk(entry.path)
-                    }
-
-                    entry.isFile && entry.size in 1..maxFileSizeBytes -> {
-                        val content = fileSystem.readText(entry.path).getOrNull() ?: continue
-                        val matches = TextSearchMatcher.matchesInText(content, query)
-                        if (matches.isNotEmpty()) {
-                            val capped = matches.take(maxResults - total)
-                            results += FileTextMatches(entry.path, capped)
-                            total += capped.size
-                        }
+        ContainedFileWalker(fileSystem).walk(
+            rootPath = rootPath,
+            onDirectory = { entry -> entry.name !in excludedDirectories },
+        ) { entry ->
+            if (total >= maxResults) return@walk false
+            if (entry.size in 1..maxFileSizeBytes) {
+                val content = fileSystem.readText(entry.path).getOrNull()
+                if (content != null) {
+                    val matches = TextSearchMatcher.matchesInText(content, query)
+                    if (matches.isNotEmpty()) {
+                        val capped = matches.take(maxResults - total)
+                        results += FileTextMatches(entry.path, capped)
+                        total += capped.size
                     }
                 }
             }
+            total < maxResults
         }
-
-        walk(rootPath)
         return results
     }
 

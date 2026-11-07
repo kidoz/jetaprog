@@ -1,6 +1,7 @@
 package su.kidoz.jetaprog.editor.search
 
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
 import java.io.File
 import java.nio.file.Files
@@ -43,5 +44,26 @@ class ProjectTextSearcherIntegrationTest {
             assertTrue(paths.any { it.endsWith("a.kt") }, "expected a match in src/a.kt: $paths")
             assertTrue(paths.any { it.endsWith("b.kt") }, "expected a match in src/sub/b.kt: $paths")
             assertTrue(paths.none { it.contains("/build/") }, "build/ should be excluded: $paths")
+        }
+
+    @Test
+    fun doesNotReadASymlinkOutsideTheWorkspace() =
+        runTest {
+            write("src/inside.kt", "fun target() = 1\n")
+            val outside = Files.createTempDirectory("jetaprog-search-outside").toFile()
+            try {
+                File(outside, "secret.kt").writeText("fun target() = 9\n")
+                val link = File(root, "src/escape")
+                val linked =
+                    runCatching { Files.createSymbolicLink(link.toPath(), outside.toPath()) }.isSuccess
+                assumeTrue(linked, "Symbolic links are unavailable on this platform")
+
+                val paths = searcher.search(root.absolutePath, TextSearchQuery("target")).map { it.filePath }
+
+                assertTrue(paths.any { it.endsWith("inside.kt") }, "expected the in-workspace match: $paths")
+                assertTrue(paths.none { it.endsWith("secret.kt") }, "symlink target should be skipped: $paths")
+            } finally {
+                outside.deleteRecursively()
+            }
         }
 }

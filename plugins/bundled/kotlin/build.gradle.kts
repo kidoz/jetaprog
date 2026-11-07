@@ -18,6 +18,7 @@ kotlin {
         }
         jvmMain {
             dependencies {
+                implementation(projects.core.platform)
                 // Kotlin compiler for parsing and semantic analysis
                 implementation(libs.kotlin.compiler.embeddable)
                 implementation(libs.kotlin.scripting.compiler.embeddable)

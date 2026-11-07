@@ -267,6 +267,11 @@ public class JvmFileSystem : FileSystem {
 
     override fun extension(path: String): String = Paths.get(path).extension
 
+    override suspend fun canonicalize(path: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching { Paths.get(path).toRealPath().toString() }
+        }
+
     private fun Path.toFileEntry(): FileEntry {
         val attrs = runCatching { Files.readAttributes(this, BasicFileAttributes::class.java) }.getOrNull()
         return FileEntry(

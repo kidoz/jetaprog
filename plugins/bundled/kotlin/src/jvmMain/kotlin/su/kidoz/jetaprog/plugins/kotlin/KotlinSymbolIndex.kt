@@ -7,13 +7,21 @@ import kotlinx.coroutines.withContext
 import su.kidoz.jetaprog.common.text.CamelHumpMatcher
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
-import java.io.File
+import su.kidoz.jetaprog.platform.filesystem.ContainedFileWalker
+import su.kidoz.jetaprog.platform.filesystem.FileSystem
+import su.kidoz.jetaprog.platform.filesystem.JvmFileSystem
+import su.kidoz.jetaprog.platform.filesystem.isCanonicalPathInside
 
 /**
  * Index of Kotlin symbols for a project.
+ *
+ * @param fileSystem Reads sources. Symbolic links are indexed only when their target stays in the root.
  */
-public class KotlinSymbolIndex {
+public class KotlinSymbolIndex(
+    private val fileSystem: FileSystem = JvmFileSystem(),
+) {
     private val mutex = Mutex()
+    private var indexedRoot: String? = null
     private val symbolsByFile = mutableMapOf<String, List<KotlinSymbol>>()
     private val symbolsByName = mutableMapOf<String, MutableList<KotlinSymbol>>()
     private val symbolsByFqName = mutableMapOf<String, KotlinSymbol>()
@@ -23,18 +31,19 @@ public class KotlinSymbolIndex {
      */
     public suspend fun indexDirectory(directory: String): Unit =
         withContext(Dispatchers.IO) {
-            val dir = File(directory)
-            if (!dir.isDirectory) return@withContext
+            val root = fileSystem.canonicalize(directory).getOrNull() ?: return@withContext
+            if (!fileSystem.isDirectory(directory)) return@withContext
+            indexedRoot = root
 
-            dir
-                .walkTopDown()
-                // Generated sources under build/ and the like used to be indexed too, so Go to
-                // Class offered copies of every symbol and definitions could land in build output.
-                .onEnter { it == dir || !(it.name.startsWith(".") || it.name in EXCLUDED_DIRECTORIES) }
-                .filter { it.isFile && it.extension in KOTLIN_EXTENSIONS }
-                .forEach { file ->
-                    indexFile(file.absolutePath)
-                }
+            // Generated sources under build/ and the like used to be indexed too, so Go to
+            // Class offered copies of every symbol and definitions could land in build output.
+            ContainedFileWalker(fileSystem).walk(
+                rootPath = directory,
+                onDirectory = { entry -> !entry.name.startsWith(".") && entry.name !in EXCLUDED_DIRECTORIES },
+            ) { entry ->
+                if (fileSystem.extension(entry.path) in KOTLIN_EXTENSIONS) indexFile(entry.path)
+                true
+            }
         }
 
     /**
@@ -42,10 +51,16 @@ public class KotlinSymbolIndex {
      */
     public suspend fun indexFile(filePath: String): Unit =
         withContext(Dispatchers.IO) {
-            val file = File(filePath)
-            if (!file.exists() || file.extension !in KOTLIN_EXTENSIONS) return@withContext
+            if (fileSystem.extension(filePath) !in KOTLIN_EXTENSIONS) return@withContext
+            val canonical = fileSystem.canonicalize(filePath).getOrNull() ?: return@withContext
+            val root = indexedRoot
+            if (root != null && !isCanonicalPathInside(root, canonical)) {
+                removeFile(filePath)
+                return@withContext
+            }
+            if (!fileSystem.isFile(canonical)) return@withContext
 
-            val content = file.readText()
+            val content = fileSystem.readText(canonical).getOrNull() ?: return@withContext
             val symbols = parseSymbols(content, filePath)
 
             mutex.withLock {

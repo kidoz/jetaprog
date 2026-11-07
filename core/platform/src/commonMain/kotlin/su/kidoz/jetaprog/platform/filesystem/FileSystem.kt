@@ -235,4 +235,15 @@ public interface FileSystem {
      * @return The extension (without dot), or empty string if none
      */
     public fun extension(path: String): String
+
+    /**
+     * Returns the canonical absolute path of [path], with symbolic links resolved.
+     *
+     * The default returns [path] unchanged and does not detect a link that leaves its parent.
+     * Platform implementations resolve links. Workspace walks rely on that behavior.
+     *
+     * @param path The path to canonicalize. It does not need to exist for the default.
+     * @return The canonical path, or a failure when the path cannot be resolved.
+     */
+    public suspend fun canonicalize(path: String): Result<String> = Result.success(path)
 }

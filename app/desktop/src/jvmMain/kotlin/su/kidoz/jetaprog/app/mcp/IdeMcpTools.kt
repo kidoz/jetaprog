@@ -38,6 +38,7 @@ import su.kidoz.jetaprog.mcp.server.resources.ResourceContent
 import su.kidoz.jetaprog.mcp.server.tools.Tool
 import su.kidoz.jetaprog.mcp.server.tools.ToolContent
 import su.kidoz.jetaprog.mcp.server.tools.ToolResult
+import su.kidoz.jetaprog.platform.filesystem.ContainedFileWalker
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.platform.filesystem.WorkspacePathException
 import su.kidoz.jetaprog.platform.filesystem.WorkspacePathGuard
@@ -260,31 +261,22 @@ public fun registerIdeTools(
             val session = currentSession() ?: return@Tool text("No project is open.")
             val projectRoot = File(session.projectPath)
             val searchRoot = resolve(args.string("path") ?: ".")
-            val matches =
-                File(searchRoot)
-                    .walkTopDown()
-                    .onEnter { directory -> directory.name !in SEARCH_EXCLUDED_DIRECTORIES }
-                    .filter(File::isFile)
-                    .flatMap { file ->
-                        runCatching {
-                            file.useLines { lines ->
-                                lines
-                                    .mapIndexedNotNull { index, line ->
-                                        if (query in line) {
-                                            buildString {
-                                                append(file.relativeTo(projectRoot))
-                                                append(":${index + 1}:")
-                                                append(line)
-                                            }
-                                        } else {
-                                            null
-                                        }
-                                    }.toList()
-                                    .asSequence()
-                            }
-                        }.getOrDefault(emptySequence())
-                    }.take(MAX_SEARCH_RESULTS)
-                    .toList()
+            val matches = mutableListOf<String>()
+            ContainedFileWalker(fileSystem).walk(
+                rootPath = searchRoot,
+                onDirectory = { entry -> entry.name !in SEARCH_EXCLUDED_DIRECTORIES },
+            ) { entry ->
+                if (matches.size >= MAX_SEARCH_RESULTS) return@walk false
+                if (entry.size !in 1..MAX_SEARCH_FILE_BYTES) return@walk true
+                val content = fileSystem.readText(entry.path).getOrNull() ?: return@walk true
+                content.lineSequence().forEachIndexed { index, line ->
+                    if (matches.size >= MAX_SEARCH_RESULTS) return@forEachIndexed
+                    if (query in line) {
+                        matches += "${projectRelativePath(projectRoot, entry.path)}:${index + 1}:$line"
+                    }
+                }
+                matches.size < MAX_SEARCH_RESULTS
+            }
             text(matches.joinToString("\n").ifEmpty { "No matches." })
         },
     )
@@ -749,8 +741,19 @@ private fun text(value: String): ToolResult = ToolResult.Success(listOf(ToolCont
 
 private fun missing(parameter: String): ToolResult = ToolResult.Error("Missing required parameter: $parameter")
 
+private fun projectRelativePath(
+    projectRoot: File,
+    path: String,
+): String {
+    val root = projectRoot.canonicalFile
+    val file = File(path).canonicalFile
+    val inside = file == root || file.path.startsWith(root.path + File.separator)
+    return if (inside) file.relativeTo(root).path else file.path
+}
+
 private val SEARCH_EXCLUDED_DIRECTORIES = setOf(".git", ".gradle", ".idea", ".jetaprog", "build", "node_modules")
 private const val MAX_SEARCH_RESULTS = 200
+private const val MAX_SEARCH_FILE_BYTES = 2L * 1024 * 1024
 private const val MAX_INSPECTION_RESULTS = 200
 private const val MAX_DEBUG_LINES = 200
 private const val MAX_RUN_CONFIGURATIONS = 200

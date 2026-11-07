@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.editor.search
 
+import su.kidoz.jetaprog.platform.filesystem.ContainedFileWalker
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 
 /**
@@ -63,25 +64,17 @@ public class ProjectTextReplacer(
         if (TextSearchMatcher.compile(query) == null) return emptyList()
         val results = mutableListOf<FileReplaceResult>()
 
-        suspend fun walk(path: String) {
-            if (results.size >= maxFiles) return
-            val entries = fileSystem.listDirectory(path).getOrNull() ?: return
-            for (entry in entries) {
-                if (results.size >= maxFiles) return
-                when {
-                    entry.isDirectory -> {
-                        if (entry.name !in excludedDirectories) walk(entry.path)
-                    }
-
-                    entry.isFile && entry.size in 1..maxFileSizeBytes -> {
-                        val result = replaceInFile(entry.path, query, replacement, skipPaths)
-                        if (result != null) results += result
-                    }
-                }
+        ContainedFileWalker(fileSystem).walk(
+            rootPath = rootPath,
+            onDirectory = { entry -> entry.name !in excludedDirectories },
+        ) { entry ->
+            if (results.size >= maxFiles) return@walk false
+            if (entry.size in 1..maxFileSizeBytes) {
+                val result = replaceInFile(entry.path, query, replacement, skipPaths)
+                if (result != null) results += result
             }
+            results.size < maxFiles
         }
-
-        walk(rootPath)
         return results
     }
 
