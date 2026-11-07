@@ -4,10 +4,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -60,7 +66,7 @@ class GitRevertUiTest {
             verify(exactly = 0) { vm.discardChanges(any()) }
             onNodeWithText("Revert").performClick()
             onNodeWithText("Revert changes").performClick()
-            verify(exactly = 1) { vm.discardChanges(listOf(staged)) }
+            verify(exactly = 1) { vm.discardChanges(listOf(unstaged)) }
         }
 
     @Test
@@ -147,5 +153,30 @@ class GitRevertUiTest {
             onNodeWithText("Revert").assertIsNotEnabled()
             runOnIdle { state.value = GitState() }
             onNodeWithText("Revert").assertIsNotEnabled()
+        }
+
+    @Test
+    fun partiallyStagedFileSelectsOnlyTheClickedEntry() =
+        runComposeUiTest {
+            val vm = mockk<GitViewModel>(relaxed = true)
+            every { vm.state } returns MutableStateFlow(GitState(staged = listOf(staged), unstaged = listOf(unstaged)))
+            setContent { JetaProgTheme { GitPanel(vm) } }
+
+            val rows = onAllNodesWithText("Main.kt").assertCountEquals(2)
+            rows[0].performClick()
+            rows[0].assertIsSelected()
+            rows[1].assertIsNotSelected()
+        }
+
+    @Test
+    fun stageCheckboxesExposeStateAndAccessibleActions() =
+        runComposeUiTest {
+            val vm = mockk<GitViewModel>(relaxed = true)
+            every { vm.state } returns MutableStateFlow(GitState(staged = listOf(staged), unstaged = listOf(unstaged)))
+            setContent { JetaProgTheme { GitPanel(vm) } }
+
+            onNodeWithContentDescription("Unstage src/Main.kt").assertIsOn()
+            onNodeWithContentDescription("Stage src/Main.kt").assertIsOff().performClick()
+            verify(exactly = 1) { vm.toggleStage(unstaged) }
         }
 }

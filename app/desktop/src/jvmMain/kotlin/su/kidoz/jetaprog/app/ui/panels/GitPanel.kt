@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.triStateToggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
@@ -54,8 +55,11 @@ import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -111,41 +115,42 @@ public fun GitPanel(
     val stageSelection = changes.stageSelection()
     var collapsedDirectories by remember { mutableStateOf(emptySet<String>()) }
     var pendingRollback by remember { mutableStateOf<List<GitChange>?>(null) }
-    var selectedPaths by remember { mutableStateOf(setOfNotNull(state.selected?.path)) }
-    var selectionAnchor by remember { mutableStateOf(state.selected?.path) }
-    val currentPaths = changes.map { it.path }.toSet()
-    LaunchedEffect(currentPaths) { selectedPaths = selectedPaths.intersect(currentPaths) }
+    var selectedKeys by remember { mutableStateOf(setOfNotNull(state.selected?.selectionKey())) }
+    var selectionAnchor by remember { mutableStateOf(state.selected?.selectionKey()) }
+    val currentKeys = changes.map { it.selectionKey() }.toSet()
+    LaunchedEffect(currentKeys) { selectedKeys = selectedKeys.intersect(currentKeys) }
     val treeItems = buildGitChangeTreeItems(changes, collapsedDirectories)
-    val visiblePaths =
+    val visibleKeys =
         if (state.changesViewMode == GitChangesViewMode.FLAT) {
-            changes.map { it.path }.distinct()
+            changes.map { it.selectionKey() }
         } else {
-            treeItems.filterIsInstance<GitChangeTreeItem.File>().map { it.change.path }.distinct()
+            treeItems.filterIsInstance<GitChangeTreeItem.File>().map { it.change.selectionKey() }
         }
     val selectFile: (GitChange, Boolean, Boolean) -> Unit = { change, toggle, extend ->
-        val anchorIndex = visiblePaths.indexOf(selectionAnchor)
-        val clickedIndex = visiblePaths.indexOf(change.path)
-        selectedPaths =
+        val key = change.selectionKey()
+        val anchorIndex = visibleKeys.indexOf(selectionAnchor)
+        val clickedIndex = visibleKeys.indexOf(key)
+        selectedKeys =
             when {
                 extend && anchorIndex >= 0 && clickedIndex >= 0 -> {
                     val range =
-                        visiblePaths
+                        visibleKeys
                             .subList(
                                 minOf(anchorIndex, clickedIndex),
                                 maxOf(anchorIndex, clickedIndex) + 1,
                             ).toSet()
-                    if (toggle) selectedPaths + range else range
+                    if (toggle) selectedKeys + range else range
                 }
 
                 toggle -> {
-                    if (change.path in selectedPaths) selectedPaths - change.path else selectedPaths + change.path
+                    if (key in selectedKeys) selectedKeys - key else selectedKeys + key
                 }
 
                 else -> {
-                    setOf(change.path)
+                    setOf(key)
                 }
             }
-        if (!extend) selectionAnchor = change.path
+        if (!extend) selectionAnchor = key
         viewModel.select(change)
     }
 
@@ -170,6 +175,7 @@ public fun GitPanel(
             fileCount = changes.distinctBy { it.path }.size,
             stageSelection = stageSelection,
             viewMode = state.changesViewMode,
+            isBusy = state.isBusy,
             onToggleAll = { viewModel.setAllStaged(stageSelection != StageSelection.CHECKED) },
             onToggleViewMode = {
                 viewModel.setChangesViewMode(
@@ -184,8 +190,8 @@ public fun GitPanel(
 
         IntelliJButton(
             text = "Revert",
-            enabled = !state.isBusy && changes.any { it.path in selectedPaths },
-            onClick = { pendingRollback = changes.filter { it.path in selectedPaths } },
+            enabled = !state.isBusy && changes.any { it.selectionKey() in selectedKeys },
+            onClick = { pendingRollback = changes.filter { it.selectionKey() in selectedKeys } },
             modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp, vertical = Spacing.xs.dp),
         )
 
@@ -197,12 +203,15 @@ public fun GitPanel(
                 items(changes, key = { "${it.staged}:${it.path}" }) { change ->
                     ChangeRow(
                         change = change,
-                        isSelected = change.path in selectedPaths,
+                        isSelected = change.selectionKey() in selectedKeys,
                         showParentPath = true,
                         onToggle = { viewModel.toggleStage(change) },
                         onClick = { toggle, extend -> selectFile(change, toggle, extend) },
-                        onRollback = { pendingRollback = changes.filter { it.path == change.path } },
+                        onRollback = {
+                            pendingRollback = changes.filter { it.selectionKey() == change.selectionKey() }
+                        },
                         canRevert = !state.isBusy,
+                        canStage = !state.isBusy,
                     )
                 }
             } else {
@@ -212,6 +221,7 @@ public fun GitPanel(
                             DirectoryRow(
                                 directory = item,
                                 isExpanded = item.path !in collapsedDirectories,
+                                canStage = !state.isBusy,
                                 onToggleExpanded = {
                                     collapsedDirectories =
                                         if (item.path in collapsedDirectories) {
@@ -230,13 +240,16 @@ public fun GitPanel(
                         is GitChangeTreeItem.File -> {
                             ChangeRow(
                                 change = item.change,
-                                isSelected = item.change.path in selectedPaths,
+                                isSelected = item.change.selectionKey() in selectedKeys,
                                 depth = item.depth,
                                 showParentPath = false,
                                 onToggle = { viewModel.toggleStage(item.change) },
                                 onClick = { toggle, extend -> selectFile(item.change, toggle, extend) },
-                                onRollback = { pendingRollback = changes.filter { it.path == item.change.path } },
+                                onRollback = {
+                                    pendingRollback = changes.filter { it.selectionKey() == item.change.selectionKey() }
+                                },
                                 canRevert = !state.isBusy,
+                                canStage = !state.isBusy,
                             )
                         }
                     }
@@ -305,7 +318,11 @@ private fun CommitHeader(
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onRefresh, enabled = !isBusy, modifier = Modifier.size(28.dp)) {
+        IconButton(
+            onClick = onRefresh,
+            enabled = !isBusy,
+            modifier = Modifier.size(Dimensions.gitToolWindowButtonSize.dp),
+        ) {
             Icon(
                 imageVector = Icons.Default.Refresh,
                 contentDescription = "Refresh Git status",
@@ -326,6 +343,7 @@ private fun ChangesHeader(
     fileCount: Int,
     stageSelection: StageSelection,
     viewMode: GitChangesViewMode,
+    isBusy: Boolean,
     onToggleAll: () -> Unit,
     onToggleViewMode: () -> Unit,
 ) {
@@ -338,7 +356,19 @@ private fun ChangesHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
     ) {
-        StageCheckbox(selection = stageSelection, enabled = fileCount > 0, onToggle = onToggleAll)
+        StageCheckbox(
+            selection = stageSelection,
+            enabled = fileCount > 0 && !isBusy,
+            contentDescription =
+                if (stageSelection ==
+                    StageSelection.CHECKED
+                ) {
+                    "Unstage all changes"
+                } else {
+                    "Stage all changes"
+                },
+            onToggle = onToggleAll,
+        )
         Text(
             text = "Changes",
             color = LocalIntelliJColors.current.textPrimary,
@@ -375,6 +405,13 @@ internal enum class StageSelection {
     INDETERMINATE,
 }
 
+private data class GitChangeKey(
+    val path: String,
+    val staged: Boolean,
+)
+
+private fun GitChange.selectionKey(): GitChangeKey = GitChangeKey(path, staged)
+
 internal fun List<GitChange>.stageSelection(): StageSelection =
     when {
         isEmpty() || none { it.staged } -> StageSelection.UNCHECKED
@@ -386,20 +423,33 @@ internal fun List<GitChange>.stageSelection(): StageSelection =
 private fun StageCheckbox(
     selection: StageSelection,
     enabled: Boolean,
+    contentDescription: String,
     onToggle: () -> Unit,
 ) {
     val isSelected = selection != StageSelection.UNCHECKED
+    val toggleableState =
+        when (selection) {
+            StageSelection.UNCHECKED -> ToggleableState.Off
+            StageSelection.CHECKED -> ToggleableState.On
+            StageSelection.INDETERMINATE -> ToggleableState.Indeterminate
+        }
     Box(
         modifier =
             Modifier
-                .size(14.dp)
-                .clip(RoundedCornerShape(3.dp))
+                .size(Dimensions.gitStageCheckboxSize.dp)
+                .clip(RoundedCornerShape(Dimensions.gitStageCheckboxCornerRadius.dp))
                 .background(if (isSelected) LocalIntelliJColors.current.accent else Color.Transparent)
                 .border(
-                    1.5.dp,
+                    Dimensions.gitStageCheckboxBorderWidth.dp,
                     if (enabled) LocalIntelliJColors.current.accent else LocalIntelliJColors.current.border,
-                    RoundedCornerShape(3.dp),
-                ).clickable(enabled = enabled, onClick = onToggle),
+                    RoundedCornerShape(Dimensions.gitStageCheckboxCornerRadius.dp),
+                ).semantics { this.contentDescription = contentDescription }
+                .triStateToggleable(
+                    state = toggleableState,
+                    enabled = enabled,
+                    role = Role.Checkbox,
+                    onClick = onToggle,
+                ),
         contentAlignment = Alignment.Center,
     ) {
         if (isSelected) {
@@ -412,7 +462,7 @@ private fun StageCheckbox(
                     },
                 contentDescription = null,
                 tint = Color.White,
-                modifier = Modifier.size(11.dp),
+                modifier = Modifier.size(Dimensions.gitStageCheckboxIconSize.dp),
             )
         }
     }
@@ -438,6 +488,7 @@ private fun ChangeRow(
     onClick: (toggle: Boolean, extend: Boolean) -> Unit,
     onRollback: () -> Unit,
     canRevert: Boolean,
+    canStage: Boolean,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -475,7 +526,8 @@ private fun ChangeRow(
         ) {
             StageCheckbox(
                 selection = if (change.staged) StageSelection.CHECKED else StageSelection.UNCHECKED,
-                enabled = true,
+                enabled = canStage,
+                contentDescription = if (change.staged) "Unstage ${change.path}" else "Stage ${change.path}",
                 onToggle = onToggle,
             )
             FileBadge(fileName = change.fileName())
@@ -521,7 +573,7 @@ private fun ChangeRow(
                 modifier =
                     Modifier
                         .align(Alignment.CenterStart)
-                        .width(2.dp)
+                        .width(Dimensions.selectionAccentWidth.dp)
                         .height(Dimensions.gitChangeRowHeight.dp)
                         .background(LocalIntelliJColors.current.accent),
             )
@@ -533,6 +585,7 @@ private fun ChangeRow(
 private fun DirectoryRow(
     directory: GitChangeTreeItem.Directory,
     isExpanded: Boolean,
+    canStage: Boolean,
     onToggleExpanded: () -> Unit,
     onToggleStage: () -> Unit,
 ) {
@@ -558,9 +611,16 @@ private fun DirectoryRow(
             tint = LocalIntelliJColors.current.iconDefault,
             modifier = Modifier.size(Dimensions.iconSm.dp),
         )
+        val selection = directory.changes.stageSelection()
         StageCheckbox(
-            selection = directory.changes.stageSelection(),
-            enabled = directory.changes.isNotEmpty(),
+            selection = selection,
+            enabled = directory.changes.isNotEmpty() && canStage,
+            contentDescription =
+                if (selection == StageSelection.CHECKED) {
+                    "Unstage changes in ${directory.path}"
+                } else {
+                    "Stage changes in ${directory.path}"
+                },
             onToggle = onToggleStage,
         )
         Icon(
