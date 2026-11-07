@@ -111,6 +111,7 @@ public class DefaultGitService(
             val args =
                 buildList {
                     add("diff")
+                    add("--no-color")
                     add("--no-ext-diff")
                     add("--no-textconv")
                     if (untracked) add("--no-index")
@@ -235,7 +236,7 @@ public class DefaultGitService(
         }
 
     override suspend fun lineStatus(path: String): Result<List<GitLineChange>> =
-        run("diff", "-U0", "HEAD", "--", path).mapCatching { result ->
+        run("diff", "--no-color", "-U0", "HEAD", "--", path).mapCatching { result ->
             if (!result.isSuccess) error(result.stderr.ifBlank { "git diff failed" })
             GitDiffLineParser.parse(result.stdout)
         }

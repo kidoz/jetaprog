@@ -425,6 +425,22 @@ class GitWorkflowRegressionTest {
             }
         }
 
+    @Test
+    fun coloredGitConfigurationDoesNotHideDiff() =
+        runBlocking {
+            val dir = repo()
+            git(dir, "config", "color.ui", "always")
+            dir.resolve("tracked.txt").writeText("changed\n")
+            val svc = service(dir)
+
+            val diff = svc.diff("tracked.txt", staged = false).getOrThrow()
+            val (oldLines, newLines) = parseUnifiedDiff(diff)
+
+            assertTrue(oldLines.any { it.text == "original" })
+            assertTrue(newLines.any { it.text == "changed" })
+            assertTrue(svc.lineStatus("tracked.txt").getOrThrow().isNotEmpty())
+        }
+
     private fun fakeExecutor(response: suspend (List<String>) -> ProcessResult): ProcessExecutor {
         val executor = mockk<ProcessExecutor>()
         coEvery { executor.execute(any(), any(), any(), any()) } coAnswers { Result.success(response(firstArg())) }
