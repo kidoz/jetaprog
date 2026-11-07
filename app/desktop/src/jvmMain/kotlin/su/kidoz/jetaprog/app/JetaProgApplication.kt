@@ -14,7 +14,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import su.kidoz.jetaprog.app.agent.AgentPrefsStore
 import su.kidoz.jetaprog.app.keymap.KeymapManager
+import su.kidoz.jetaprog.app.mcp.McpActionAuthorizer
+import su.kidoz.jetaprog.app.mcp.McpApprovalRequests
+import su.kidoz.jetaprog.app.mcp.McpSensitiveAction
 import su.kidoz.jetaprog.app.mcp.registerIdeTools
 import su.kidoz.jetaprog.app.notification.NotificationCenter
 import su.kidoz.jetaprog.app.plugin.PluginDialogRequests
@@ -177,6 +181,11 @@ public class JetaProgApplication {
      */
     public val pluginDialogRequests: PluginDialogRequests = PluginDialogRequests()
 
+    /**
+     * Pending Allow / Deny prompts for MCP tools that write, build, or control the debugger.
+     */
+    public val mcpApprovals: McpApprovalRequests = McpApprovalRequests()
+
     // ========================================================================
     // Project Session
     // ========================================================================
@@ -260,6 +269,7 @@ public class JetaProgApplication {
             onDestructiveTool = { message ->
                 notificationCenter.info(title = "MCP agent action", message = message)
             },
+            approve = ::approveMcpAction,
         )
         mcpServer.start()
     }
@@ -268,6 +278,17 @@ public class JetaProgApplication {
      * Writes a project-level `.mcp.json` pointing a terminal MCP client (e.g. Claude
      * Code) at the IDE's embedded server, including the bearer token for this run.
      */
+    private suspend fun approveMcpAction(
+        action: McpSensitiveAction,
+        description: String,
+    ): Boolean {
+        val session = _session.value ?: return false
+        return McpActionAuthorizer(
+            permissions = { AgentPrefsStore(fileSystem, session.projectPath).load().permissions },
+            ask = { message -> mcpApprovals.confirm(title = "Allow MCP action?", message = message) },
+        ).allow(action, description)
+    }
+
     private fun writeMcpConfig(projectPath: String) {
         val endpoint = mcpServer.endpoint ?: return
         val configFile = File(projectPath, ".mcp.json")

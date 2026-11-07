@@ -110,6 +110,7 @@ import su.kidoz.jetaprog.app.ui.editor.CodeEditor
 import su.kidoz.jetaprog.app.ui.editor.EditorDebugInfo
 import su.kidoz.jetaprog.app.ui.editor.EmptyEditorPlaceholder
 import su.kidoz.jetaprog.app.ui.editor.MarkdownEditor
+import su.kidoz.jetaprog.app.ui.mcp.McpApprovalHost
 import su.kidoz.jetaprog.app.ui.navigation.NavigationHost
 import su.kidoz.jetaprog.app.ui.navigation.NavigationIntent
 import su.kidoz.jetaprog.app.ui.navigation.SearchMode
@@ -1489,6 +1490,7 @@ private fun MainScreenContent(
         // Plugin modal requests (input box, quick pick) and the toast overlay —
         // last children so they sit above everything except modals.
         PluginDialogHost(requestQueue = app.pluginDialogRequests)
+        McpApprovalHost(requests = app.mcpApprovals)
         // Above the dialogs that open it (New Project, Clone Repository).
         FilePickerHost(viewModel = app.filePickerViewModel)
         NotificationOverlay(

@@ -57,6 +57,7 @@ public fun registerIdeTools(
     fileSystem: FileSystem,
     currentSession: () -> ProjectSession?,
     onDestructiveTool: (String) -> Unit = {},
+    approve: suspend (McpSensitiveAction, String) -> Boolean = { _, _ -> false },
 ) {
     val pathGuard = WorkspacePathGuard { currentSession()?.projectPath }
 
@@ -90,6 +91,8 @@ public fun registerIdeTools(
             val path = args.string("path") ?: return@Tool missing("path")
             val content = args.string("content") ?: return@Tool missing("content")
             val resolved = resolve(path)
+            val description = "Write ${File(resolved).name}"
+            if (!approve(McpSensitiveAction.EDIT, description)) return@Tool denied(description)
             fileSystem.writeText(resolved, content).fold(
                 onSuccess = {
                     // Writes arrive from an external agent; make them visible rather than silent.
@@ -225,7 +228,7 @@ public fun registerIdeTools(
                 ),
         ) { args ->
             val session = currentSession() ?: return@Tool text("No project is open.")
-            debugAction(session, args, ::resolve)
+            debugAction(session, args, ::resolve, approve)
         },
     )
 
@@ -310,8 +313,10 @@ public fun registerIdeTools(
             if (session.gradleViewModel.state.value.isRunning) {
                 return@Tool ToolResult.Error("A Gradle task is already running")
             }
+            val description = "Run Gradle task $task"
+            if (!approve(McpSensitiveAction.RUN, description)) return@Tool denied(description)
             logger.info { "MCP run_gradle_task: $task" }
-            onDestructiveTool("Agent started Gradle task: $task")
+            onDestructiveTool("Agent started $description")
             session.gradleViewModel
                 .dispatch(GradleIntent.RunTask(task))
             text("Started Gradle task: $task")
@@ -401,6 +406,7 @@ private suspend fun debugAction(
     session: ProjectSession,
     args: JsonObject,
     resolve: (String) -> String,
+    approve: suspend (McpSensitiveAction, String) -> Boolean,
 ): ToolResult {
     val action = args.string("action")?.trim()?.takeIf { it.isNotEmpty() } ?: "status"
     if (action != "status" && action != "breakpoint" && action !in DEBUG_CONTROL) {
@@ -427,6 +433,8 @@ private suspend fun debugAction(
         val file = File(absolute)
         if (file.isDirectory) return ToolResult.Error("Pass a file for the breakpoint.")
         if (!file.isFile) return ToolResult.Error("Failed to read ${requested ?: absolute}: file not found")
+        val description = "Toggle breakpoint in ${file.name}:$line"
+        if (!approve(McpSensitiveAction.EDIT, description)) return denied(description)
         val stored = editorFilePath(session)?.takeIf { samePath(it, absolute) } ?: absolute
         val state = debugger.perform(DebugIntent.ToggleBreakpoint(stored, line))
         return text("requested: breakpoint\n" + formatDebug(session.projectPath, state))
@@ -435,6 +443,8 @@ private suspend fun debugAction(
     if (!current.hasSession) {
         return text("No debug session is running.\n" + formatDebug(session.projectPath, current))
     }
+    val description = "Debug $action"
+    if (!approve(McpSensitiveAction.RUN, description)) return denied(description)
     val intent =
         when (action) {
             "resume" -> DebugIntent.Resume
@@ -740,6 +750,8 @@ internal fun formatIndexedSymbols(
 private fun text(value: String): ToolResult = ToolResult.Success(listOf(ToolContent.Text(value)))
 
 private fun missing(parameter: String): ToolResult = ToolResult.Error("Missing required parameter: $parameter")
+
+private fun denied(description: String): ToolResult = ToolResult.Error("The user denied: $description")
 
 private fun projectRelativePath(
     projectRoot: File,

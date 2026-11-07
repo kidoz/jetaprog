@@ -204,7 +204,12 @@ class IdeMcpDebugToolTest {
 
     private fun server(session: ProjectSession?): EmbeddedMcpServer {
         val mcp = EmbeddedMcpServer(McpServerConfig(enabled = false))
-        registerIdeTools(mcp, mockk<FileSystem>(relaxed = true), currentSession = { session })
+        registerIdeTools(
+            mcp,
+            mockk<FileSystem>(relaxed = true),
+            currentSession = { session },
+            approve = { _, _ -> true },
+        )
         return mcp
     }
 
