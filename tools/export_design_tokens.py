@@ -20,6 +20,7 @@ OUT = REPO / "DESIGN_TOKENS.generated.md"
 
 COLOR_RE = re.compile(r"public (?:override )?val (\w+): Color = Color\(0x([0-9A-Fa-f]{8})\)")
 INT_RE = re.compile(r"public (?:const )?val (\w+): Int = (\d+)")
+DIMENSION_RE = re.compile(r"public (?:const )?val (\w+): (?:Int|Double) = (\d+(?:\.\d+)?)")
 
 
 def block(text: str, start_marker: str) -> str:
@@ -48,7 +49,7 @@ def main() -> None:
     dark = block(src, "object IntelliJColors")
     colors = [(m.group(1), to_hex(m.group(2))) for m in COLOR_RE.finditer(dark)]
     spacing = INT_RE.findall(block(src, "object Spacing"))
-    dimensions = INT_RE.findall(block(src, "object Dimensions"))
+    dimensions = DIMENSION_RE.findall(block(src, "object Dimensions"))
 
     lines = [
         "# Design Tokens (generated)",

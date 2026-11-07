@@ -1920,9 +1920,9 @@ private fun ToolbarChip(
                 .height(Dimensions.chipHeight.dp)
                 .clip(RoundedCornerShape(Dimensions.cornerRadius.dp))
                 .background(LocalIntelliJColors.current.surfaceElevated)
-                .padding(horizontal = 10.dp),
+                .padding(horizontal = Dimensions.toolbarChipHorizontalPadding.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp + 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(Dimensions.toolbarChipSpacing.dp),
     ) {
         Icon(
             imageVector = icon,

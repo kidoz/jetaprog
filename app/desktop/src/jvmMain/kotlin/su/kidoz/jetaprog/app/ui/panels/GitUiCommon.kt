@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.vcs.GitChange
 import su.kidoz.jetaprog.vcs.GitChangeType
@@ -51,7 +52,7 @@ internal fun authorInitials(author: String): String =
 @Composable
 internal fun Avatar(
     author: String,
-    size: Dp = 18.dp,
+    size: Dp = Dimensions.iconLg.dp,
 ) {
     Box(
         modifier = Modifier.size(size).clip(CircleShape).background(gitColorFor(author, gitAvatarPalette())),
@@ -66,7 +67,11 @@ internal fun Avatar(
 internal fun FileBadge(fileName: String) {
     val (color, label) = badgeFor(fileName)
     Box(
-        modifier = Modifier.size(15.dp).clip(RoundedCornerShape(3.dp)).background(color),
+        modifier =
+            Modifier
+                .size(Dimensions.gitFileBadgeSize.dp)
+                .clip(RoundedCornerShape(Dimensions.gitFileBadgeCornerRadius.dp))
+                .background(color),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = label, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)

@@ -51,14 +51,6 @@ import su.kidoz.jetaprog.editor.syntax.highlighting.LightSyntaxTheme
 import su.kidoz.jetaprog.vcs.GitChange
 import su.kidoz.jetaprog.vcs.GitCommit
 
-private const val LOG_SECTION_EXPANDED_HEIGHT = 230
-private const val LOG_SECTION_COLLAPSED_HEIGHT = 32
-private const val LOG_TAB_STRIP_HEIGHT = 30
-private const val LOG_COLUMN_HEADER_HEIGHT = 24
-private const val LOG_ROW_HEIGHT = 28
-private const val AUTHOR_COLUMN_WIDTH = 150
-private const val DATE_COLUMN_WIDTH = 120
-
 /**
  * The main-area **Version Control perspective**: a side-by-side diff of the
  * selected change above the recent commit log. Rendered in place of the editor
@@ -165,8 +157,14 @@ private fun DiffStat(
     count: Int,
     color: Color,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(color))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp)) {
+        Box(
+            modifier =
+                Modifier
+                    .size(Spacing.sm.dp)
+                    .clip(RoundedCornerShape(Dimensions.gitDiffStatCornerRadius.dp))
+                    .background(color),
+        )
         Text(text = "$symbol$count", color = LocalIntelliJColors.current.textSecondary, fontSize = 12.sp)
     }
 }
@@ -274,13 +272,13 @@ private fun DiffRow(
             DiffKind.DELETE -> palette.diffRemovedText
             DiffKind.CONTEXT -> palette.textPrimary
         }
-    Row(modifier = modifier.fillMaxWidth().height(21.dp).background(background)) {
+    Row(modifier = modifier.fillMaxWidth().height(Dimensions.lineHeightCode.dp).background(background)) {
         Text(
             text = line.number?.toString().orEmpty(),
             color = LocalIntelliJColors.current.lineNumberForeground,
             fontSize = 12.sp,
             fontFamily = JetaProgFonts.codeFont,
-            modifier = Modifier.width(44.dp).padding(end = Spacing.md.dp),
+            modifier = Modifier.width(Dimensions.gitDiffLineNumberWidth.dp).padding(end = Spacing.md.dp),
             maxLines = 1,
         )
         Text(
@@ -288,7 +286,7 @@ private fun DiffRow(
             color = signColor,
             fontSize = 12.sp,
             fontFamily = JetaProgFonts.codeFont,
-            modifier = Modifier.width(14.dp),
+            modifier = Modifier.width(Dimensions.gitDiffSignWidth.dp),
             maxLines = 1,
         )
         Text(
@@ -315,8 +313,13 @@ private fun GitLogTable(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(if (expanded) LOG_SECTION_EXPANDED_HEIGHT.dp else LOG_SECTION_COLLAPSED_HEIGHT.dp)
-                .background(LocalIntelliJColors.current.background),
+                .height(
+                    if (expanded) {
+                        Dimensions.gitLogExpandedHeight.dp
+                    } else {
+                        Dimensions.gitLogCollapsedHeight.dp
+                    },
+                ).background(LocalIntelliJColors.current.background),
     ) {
         Box(
             modifier =
@@ -329,7 +332,7 @@ private fun GitLogTable(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(LOG_TAB_STRIP_HEIGHT.dp)
+                    .height(Dimensions.gitLogTabStripHeight.dp)
                     .background(LocalIntelliJColors.current.surface)
                     .padding(horizontal = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -367,7 +370,7 @@ private fun GitLogRows(commits: List<GitCommit>) {
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(LOG_COLUMN_HEADER_HEIGHT.dp)
+                    .height(Dimensions.gitLogColumnHeaderHeight.dp)
                     .padding(start = Spacing.md.dp + Spacing.xs.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -381,13 +384,13 @@ private fun GitLogRows(commits: List<GitCommit>) {
                 text = "Author",
                 color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
-                modifier = Modifier.width(AUTHOR_COLUMN_WIDTH.dp),
+                modifier = Modifier.width(Dimensions.gitLogAuthorColumnWidth.dp),
             )
             Text(
                 text = "Date",
                 color = LocalIntelliJColors.current.textMuted,
                 fontSize = 11.sp,
-                modifier = Modifier.width(DATE_COLUMN_WIDTH.dp),
+                modifier = Modifier.width(Dimensions.gitLogDateColumnWidth.dp),
             )
         }
         LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -404,11 +407,11 @@ private fun LogTab(
     label: String,
     selected: Boolean,
 ) {
-    Box(modifier = Modifier.height(LOG_TAB_STRIP_HEIGHT.dp)) {
+    Box(modifier = Modifier.height(Dimensions.gitLogTabStripHeight.dp)) {
         Row(
-            modifier = Modifier.height(LOG_TAB_STRIP_HEIGHT.dp).padding(horizontal = Spacing.sm.dp),
+            modifier = Modifier.height(Dimensions.gitLogTabStripHeight.dp).padding(horizontal = Spacing.sm.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.gitLogRefHorizontalPadding.dp),
         ) {
             Icon(
                 imageVector = icon,
@@ -419,7 +422,7 @@ private fun LogTab(
                     } else {
                         LocalIntelliJColors.current.textSecondary
                     },
-                modifier = Modifier.size(15.dp),
+                modifier = Modifier.size(Dimensions.gitLogIconSize.dp),
             )
             Text(
                 text = label,
@@ -438,7 +441,7 @@ private fun LogTab(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(2.dp)
+                        .height(Dimensions.selectionAccentWidth.dp)
                         .background(LocalIntelliJColors.current.accent),
             )
         }
@@ -451,7 +454,7 @@ private fun LogRow(commit: GitCommit) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(LOG_ROW_HEIGHT.dp)
+                .height(Dimensions.gitLogRowHeight.dp)
                 .padding(start = Spacing.md.dp + Spacing.xs.dp, end = Spacing.md.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
@@ -459,9 +462,8 @@ private fun LogRow(commit: GitCommit) {
         Box(
             modifier =
                 Modifier
-                    .size(
-                        10.dp,
-                    ).clip(RoundedCornerShape(5.dp))
+                    .size(Dimensions.gitLogCommitDotSize.dp)
+                    .clip(RoundedCornerShape(percent = 50))
                     .background(gitColorFor(commit.author, gitAvatarPalette())),
         )
         commit.refs.firstOrNull()?.let { ref ->
@@ -470,15 +472,18 @@ private fun LogRow(commit: GitCommit) {
                     Modifier
                         .clip(RoundedCornerShape(Dimensions.cornerRadiusSmall.dp))
                         .background(LocalIntelliJColors.current.successMuted)
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                        .padding(
+                            horizontal = Dimensions.gitLogRefHorizontalPadding.dp,
+                            vertical = Dimensions.gitLogRefVerticalPadding.dp,
+                        ),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.AccountTree,
                     contentDescription = null,
                     tint = LocalIntelliJColors.current.success,
-                    modifier = Modifier.size(12.dp),
+                    modifier = Modifier.size(Dimensions.iconXs.dp),
                 )
                 Text(text = ref, color = LocalIntelliJColors.current.success, fontSize = 11.sp, maxLines = 1)
             }
@@ -492,9 +497,9 @@ private fun LogRow(commit: GitCommit) {
             modifier = Modifier.weight(1f),
         )
         Row(
-            modifier = Modifier.width(AUTHOR_COLUMN_WIDTH.dp),
+            modifier = Modifier.width(Dimensions.gitLogAuthorColumnWidth.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.gitLogAvatarSpacing.dp),
         ) {
             Avatar(author = commit.author)
             Text(
@@ -510,7 +515,7 @@ private fun LogRow(commit: GitCommit) {
             color = LocalIntelliJColors.current.textMuted,
             fontSize = 12.sp,
             maxLines = 1,
-            modifier = Modifier.width(DATE_COLUMN_WIDTH.dp),
+            modifier = Modifier.width(Dimensions.gitLogDateColumnWidth.dp),
         )
     }
 }

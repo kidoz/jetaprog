@@ -472,6 +472,33 @@ public object Dimensions {
     // Git tools
     public const val gitChangesHeaderHeight: Int = 26
     public const val gitChangeRowHeight: Int = 24
+    public const val gitToolWindowButtonSize: Int = 28
+    public const val gitStageCheckboxSize: Int = 14
+    public const val gitStageCheckboxCornerRadius: Int = 3
+    public const val gitStageCheckboxBorderWidth: Double = 1.5
+    public const val gitStageCheckboxIconSize: Int = 11
+    public const val gitDiffStatCornerRadius: Int = 2
+    public const val gitDiffLineNumberWidth: Int = 44
+    public const val gitDiffSignWidth: Int = 14
+    public const val gitLogExpandedHeight: Int = 230
+    public const val gitLogCollapsedHeight: Int = 32
+    public const val gitLogTabStripHeight: Int = 30
+    public const val gitLogColumnHeaderHeight: Int = 24
+    public const val gitLogRowHeight: Int = 28
+    public const val gitLogAuthorColumnWidth: Int = 150
+    public const val gitLogDateColumnWidth: Int = 120
+    public const val gitLogIconSize: Int = 15
+    public const val gitLogCommitDotSize: Int = 10
+    public const val gitLogRefHorizontalPadding: Int = 6
+    public const val gitLogRefVerticalPadding: Int = 1
+    public const val gitLogAvatarSpacing: Int = 7
+    public const val gitBranchMenuItemVerticalPadding: Int = 6
+    public const val gitBranchActionSize: Int = 20
+    public const val gitBranchActionIconSize: Int = 13
+    public const val gitFileBadgeSize: Int = 15
+    public const val gitFileBadgeCornerRadius: Int = 3
+    public const val toolbarChipHorizontalPadding: Int = 10
+    public const val toolbarChipSpacing: Int = 7
 
     // Editor area
     public const val tabHeight: Int = 32
