@@ -458,6 +458,63 @@ class GitWorkflowRegressionTest {
         }
 
     @Test
+    fun commitWaitsForPreparation() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val events = mutableListOf<String>()
+            val executor =
+                fakeExecutor { command ->
+                    events += command.getOrElse(1) { "git" }
+                    stagedStatusResponse(command)
+                }
+            val vm = GitViewModel(executor, "/nonexistent-jetaprog-audit")
+            try {
+                advanceUntilIdle()
+                vm.setCommitMessage("Commit audit change")
+                vm.commit {
+                    withContext(NonCancellable) { delay(100) }
+                    events += "prepared"
+                    true
+                }
+                runCurrent()
+                assertTrue(events.none { it == "commit" })
+                advanceUntilIdle()
+
+                assertTrue(events.indexOf("prepared") < events.indexOf("commit"))
+            } finally {
+                vm.dispose()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
+    fun failedPreparationCancelsCommitAndReportsError() =
+        runTest {
+            Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+            val commands = mutableListOf<List<String>>()
+            val errors = mutableListOf<String>()
+            val executor =
+                fakeExecutor { command ->
+                    commands += command
+                    stagedStatusResponse(command)
+                }
+            val vm = GitViewModel(executor, "/nonexistent-jetaprog-audit", onError = errors::add)
+            try {
+                advanceUntilIdle()
+                vm.setCommitMessage("Commit audit change")
+                vm.commit { false }
+                advanceUntilIdle()
+
+                assertTrue(commands.none { it.getOrNull(1) == "commit" })
+                assertEquals("Commit canceled because some documents could not be saved.", vm.state.value.error)
+                assertEquals(listOf(vm.state.value.error), errors)
+            } finally {
+                vm.dispose()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
     fun coloredGitConfigurationDoesNotHideDiff() =
         runBlocking {
             val dir = repo()

@@ -876,7 +876,10 @@ private fun MainScreenContent(
                                 viewModel = session.gitViewModel,
                                 modifier = panelModifier,
                                 onSaveOpenDocuments = {
-                                    session.editorViewModel.dispatch(EditorIntent.SaveAll)
+                                    session.editorViewModel
+                                        .perform(EditorIntent.SaveAll)
+                                        .tabs
+                                        .none { it.isDirty }
                                 },
                             )
                         }

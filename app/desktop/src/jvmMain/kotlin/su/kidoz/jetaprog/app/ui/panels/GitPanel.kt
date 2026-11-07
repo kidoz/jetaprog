@@ -80,12 +80,13 @@ import su.kidoz.jetaprog.vcs.GitChange
  *
  * @param viewModel the Git view model.
  * @param modifier the layout modifier.
+ * @param onSaveOpenDocuments saves open documents and returns whether commit may proceed.
  */
 @Composable
 public fun GitPanel(
     viewModel: GitViewModel,
     modifier: Modifier = Modifier,
-    onSaveOpenDocuments: () -> Unit = {},
+    onSaveOpenDocuments: suspend () -> Boolean = { true },
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -250,16 +251,8 @@ public fun GitPanel(
             hasStagedChanges = state.staged.isNotEmpty(),
             onCommitMessageChange = viewModel::setCommitMessage,
             onAmendModeChange = viewModel::setAmendMode,
-            onCommit = {
-                // IntelliJ-style phase: persist open documents before committing
-                // so unsaved editor content is not left out of the commit.
-                onSaveOpenDocuments()
-                viewModel.commit()
-            },
-            onCommitAndPush = {
-                onSaveOpenDocuments()
-                viewModel.commitAndPush()
-            },
+            onCommit = { viewModel.commit(onSaveOpenDocuments) },
+            onCommitAndPush = { viewModel.commitAndPush(onSaveOpenDocuments) },
         )
     }
 
