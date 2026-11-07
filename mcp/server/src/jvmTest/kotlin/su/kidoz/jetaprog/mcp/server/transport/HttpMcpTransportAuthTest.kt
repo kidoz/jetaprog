@@ -14,6 +14,7 @@ private const val READY_DELAY_MILLIS = 100L
 private const val HTTP_OK = 200
 private const val HTTP_FORBIDDEN = 403
 private const val HTTP_UNAUTHORIZED = 401
+private const val HTTP_TOO_MANY = 429
 
 class HttpMcpTransportAuthTest {
     @Test
@@ -34,6 +35,14 @@ class HttpMcpTransportAuthTest {
         }
 
     @Test
+    fun limitsRepeatedRequests() =
+        runTest {
+            withTransport(token = "s3cret", maxRequestsPerMinute = 1) { port ->
+                assertEquals(HTTP_TOO_MANY, post(port, token = "s3cret"))
+            }
+        }
+
+    @Test
     fun rejectsBrowserOriginatedRequests() =
         runTest {
             withTransport(token = null) { port ->
@@ -44,10 +53,17 @@ class HttpMcpTransportAuthTest {
 
     private suspend fun withTransport(
         token: String?,
+        maxRequestsPerMinute: Int? = null,
         block: suspend (Int) -> Unit,
     ) {
         val port = ServerSocket(0).use { it.localPort }
-        val transport = HttpMcpTransport(host = "127.0.0.1", port = port, authToken = token)
+        val transport =
+            HttpMcpTransport(
+                host = "127.0.0.1",
+                port = port,
+                authToken = token,
+                maxRequestsPerMinute = maxRequestsPerMinute,
+            )
         transport.start { request -> buildJsonObject { put("echo", request.toString()) } }
         try {
             awaitReady(port, token)

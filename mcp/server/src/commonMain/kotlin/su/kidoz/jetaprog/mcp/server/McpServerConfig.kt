@@ -87,11 +87,8 @@ public data class SecurityConfig(
      */
     val authToken: String? = null,
     /**
-     * Allowed origins for CORS.
-     */
-    val allowedOrigins: List<String> = listOf("*"),
-    /**
-     * Rate limiting configuration.
+     * Rate limiting configuration. The HTTP transport enforces this window.
+     * Browser requests are rejected separately: any `Origin` header is refused.
      */
     val rateLimiting: RateLimitingConfig = RateLimitingConfig(),
 )

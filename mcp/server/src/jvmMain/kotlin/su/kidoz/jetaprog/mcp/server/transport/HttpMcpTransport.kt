@@ -15,10 +15,12 @@ import io.ktor.server.routing.routing
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import su.kidoz.jetaprog.mcp.server.McpServerConfig
+import java.util.ArrayDeque
 import java.util.UUID
 
 private const val STOP_GRACE_MILLIS = 500L
 private const val STOP_TIMEOUT_MILLIS = 1500L
+private const val RATE_WINDOW_MILLIS = 60_000L
 
 /**
  * JVM default transport: an MCP **Streamable HTTP** endpoint (a single `POST /mcp`
@@ -27,10 +29,15 @@ private const val STOP_TIMEOUT_MILLIS = 1500L
  */
 public actual fun createMcpTransport(config: McpServerConfig): McpTransport? {
     if (!config.transports.sse.enabled) return null
+    val rateLimit =
+        config.security.rateLimiting
+            .takeIf { it.enabled }
+            ?.requestsPerMinute
     return HttpMcpTransport(
         host = LOOPBACK_HOST,
         port = config.transports.sse.port,
         authToken = config.security.authToken.takeIf { config.security.authenticationEnabled },
+        maxRequestsPerMinute = rateLimit,
     )
 }
 
@@ -41,11 +48,14 @@ private const val LOOPBACK_HOST = "127.0.0.1"
  *
  * @param authToken When set, every request must carry `Authorization: Bearer <token>`.
  *   Loopback binding alone does not isolate the endpoint from other local processes.
+ * @param maxRequestsPerMinute When set, requests above this count in a rolling minute
+ *   receive HTTP 429. Null disables the limit.
  */
 public class HttpMcpTransport(
     private val host: String,
     private val port: Int,
     private val authToken: String? = null,
+    private val maxRequestsPerMinute: Int? = null,
 ) : McpTransport {
     private val json =
         Json {
@@ -54,6 +64,8 @@ public class HttpMcpTransport(
         }
     private val sessionId = UUID.randomUUID().toString()
     private var server: EmbeddedServer<*, *>? = null
+    private val requestTimes = ArrayDeque<Long>()
+    private val rateLock = Any()
 
     override val endpointDescription: String get() = "http://$host:$port/mcp"
 
@@ -68,6 +80,10 @@ public class HttpMcpTransport(
                         // not. Rejecting it blocks DNS-rebinding attacks on the local port.
                         if (call.request.headers["Origin"] != null) {
                             call.respond(HttpStatusCode.Forbidden)
+                            return@post
+                        }
+                        if (!tryAcquire()) {
+                            call.respond(HttpStatusCode.TooManyRequests)
                             return@post
                         }
                         if (!call.isAuthorized()) {
@@ -105,5 +121,20 @@ public class HttpMcpTransport(
         val expected = authToken ?: return true
         val presented = request.headers["Authorization"]?.removePrefix("Bearer ")?.trim()
         return presented == expected
+    }
+
+    private fun tryAcquire(): Boolean {
+        val limit = maxRequestsPerMinute ?: return true
+        if (limit <= 0) return false
+        val now = System.currentTimeMillis()
+        synchronized(rateLock) {
+            val cutoff = now - RATE_WINDOW_MILLIS
+            while (requestTimes.isNotEmpty() && requestTimes.first() <= cutoff) {
+                requestTimes.removeFirst()
+            }
+            if (requestTimes.size >= limit) return false
+            requestTimes.addLast(now)
+            return true
+        }
     }
 }
