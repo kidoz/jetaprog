@@ -48,6 +48,10 @@ import su.kidoz.jetaprog.settings.recent.RecentProjectsService
 import su.kidoz.jetaprog.settings.storage.JvmSettingsStorage
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.UUID
 
 /**
@@ -291,10 +295,9 @@ public class JetaProgApplication {
 
     private fun writeMcpConfig(projectPath: String) {
         val endpoint = mcpServer.endpoint ?: return
-        val configFile = File(projectPath, ".mcp.json")
         // The token changes every run, so refresh the file instead of skipping it.
         try {
-            configFile.writeText(mcpClientConfigJson(endpoint, mcpServer.authToken))
+            writeProjectMcpConfig(projectPath, endpoint, mcpServer.authToken)
         } catch (exception: IOException) {
             notificationCenter.warning(title = "MCP config not written", message = exception.message)
         }
@@ -359,3 +362,64 @@ internal fun mcpClientConfigJson(
 }
 
 private val MCP_CONFIG_JSON = Json { prettyPrint = true }
+
+private val OWNER_ONLY = PosixFilePermissions.fromString("rw-------")
+
+/**
+ * Writes the project `.mcp.json` so only the owner can read the bearer token,
+ * and adds the file to the repository's local git exclude when the project is a repo.
+ */
+internal fun writeProjectMcpConfig(
+    projectPath: String,
+    endpoint: String,
+    authToken: String?,
+) {
+    val projectDir = File(projectPath)
+    val configFile = File(projectDir, ".mcp.json")
+    writeOwnerOnly(configFile.toPath(), mcpClientConfigJson(endpoint, authToken))
+    excludeFromLocalGit(projectDir, ".mcp.json")
+}
+
+private fun writeOwnerOnly(
+    path: Path,
+    text: String,
+) {
+    path.parent?.let { Files.createDirectories(it) }
+    Files.writeString(
+        path,
+        text,
+        StandardOpenOption.CREATE,
+        StandardOpenOption.TRUNCATE_EXISTING,
+        StandardOpenOption.WRITE,
+    )
+    runCatching { Files.setPosixFilePermissions(path, OWNER_ONLY) }
+}
+
+private fun excludeFromLocalGit(
+    projectDir: File,
+    relativePath: String,
+) {
+    val gitDir = resolveGitDir(projectDir) ?: return
+    val info = File(gitDir, "info")
+    if (!info.isDirectory && !info.mkdirs()) return
+    val exclude = File(info, "exclude")
+    val existing = if (exclude.isFile) exclude.readText() else ""
+    if (existing.lineSequence().any { it.trim() == relativePath }) return
+    val separator = if (existing.isNotEmpty() && !existing.endsWith("\n")) "\n" else ""
+    exclude.appendText("$separator$relativePath\n")
+}
+
+private fun resolveGitDir(projectDir: File): File? {
+    val dotGit = File(projectDir, ".git")
+    if (dotGit.isDirectory) return dotGit
+    if (!dotGit.isFile) return null
+    val gitdir =
+        dotGit
+            .readLines()
+            .firstOrNull { it.startsWith("gitdir:") }
+            ?.removePrefix("gitdir:")
+            ?.trim()
+            ?: return null
+    val resolved = File(gitdir).let { if (it.isAbsolute) it else File(projectDir, gitdir) }
+    return resolved.takeIf { it.isDirectory }
+}
