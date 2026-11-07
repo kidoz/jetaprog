@@ -26,7 +26,8 @@ public data class GitLocalInfo(
 /**
  * Reads repository state by parsing the `.git` directory: `HEAD` for the
  * checked-out ref (or detached sha), loose refs under `refs/heads` plus
- * `packed-refs` (loose entries win) for the branch list.
+ * `packed-refs` (loose entries win) for the branch list. Linked worktrees
+ * resolve those refs through their `commondir` file.
  *
  * Falls back to `git` CLI behaviour is intentionally left to callers; when
  * [read] returns null (no repository or unreadable layout) callers should use
@@ -45,12 +46,13 @@ public class GitRepoInfoReader(
         if (!head.isFile) return null
         val headLine = head.readText().trim()
         if (headLine.isEmpty()) return null
+        val commonGitDir = resolveCommonGitDir(gitDir)
 
-        val branchShas = readBranchShas(gitDir)
+        val branchShas = readBranchShas(commonGitDir)
         if (headLine.startsWith("ref: ")) {
             val refName = headLine.removePrefix("ref: ").trim()
             val branchName = refName.removePrefix("refs/heads/")
-            val headSha = branchShas[branchName] ?: refSha(gitDir, refName)
+            val headSha = branchShas[branchName] ?: refSha(commonGitDir, refName)
             return GitLocalInfo(
                 currentBranch = branchName,
                 isDetached = false,
@@ -81,8 +83,18 @@ public class GitRepoInfoReader(
         if (!dotGit.isFile) return null
         val content = dotGit.readText().trim()
         if (!content.startsWith("gitdir:")) return null
-        val gitDir = File(content.removePrefix("gitdir:").trim())
+        val configured = File(content.removePrefix("gitdir:").trim())
+        val gitDir = if (configured.isAbsolute) configured else File(repositoryPath, configured.path)
         return gitDir.takeIf { it.isDirectory }
+    }
+
+    /** Resolves the shared ref directory used by linked worktrees. */
+    private fun resolveCommonGitDir(gitDir: File): File {
+        val commonDirFile = gitDir.resolve("commondir")
+        if (!commonDirFile.isFile) return gitDir
+        val configured = File(commonDirFile.readText().trim())
+        val commonGitDir = if (configured.isAbsolute) configured else File(gitDir, configured.path)
+        return commonGitDir.takeIf { it.isDirectory } ?: gitDir
     }
 
     /**

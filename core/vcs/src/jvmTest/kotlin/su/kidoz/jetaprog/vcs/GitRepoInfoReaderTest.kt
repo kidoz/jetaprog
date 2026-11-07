@@ -110,4 +110,22 @@ class GitRepoInfoReaderTest {
         assertEquals("main", info?.currentBranch)
         assertEquals("abc123", info?.headSha)
     }
+
+    @Test
+    fun readsCommonRefsForLinkedWorktree() {
+        val worktree = File(repoDir, "linked").apply { mkdirs() }
+        val gitDir = File(repoDir, "main/.git/worktrees/linked").apply { mkdirs() }
+        val commonGitDir = File(repoDir, "main/.git")
+        File(worktree, ".git").writeText("gitdir: ../main/.git/worktrees/linked\n")
+        File(gitDir, "HEAD").writeText("ref: refs/heads/linked-branch\n")
+        File(gitDir, "commondir").writeText("../..\n")
+        File(commonGitDir, "refs/heads").mkdirs()
+        File(commonGitDir, "refs/heads/linked-branch").writeText("abc123\n")
+
+        val info = GitRepoInfoReader(worktree.absolutePath).read()
+
+        assertEquals("linked-branch", info?.currentBranch)
+        assertEquals("abc123", info?.headSha)
+        assertEquals(listOf(GitBranch("linked-branch", isCurrent = true, sha = "abc123")), info?.branches)
+    }
 }
