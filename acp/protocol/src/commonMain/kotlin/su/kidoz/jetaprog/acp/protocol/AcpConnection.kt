@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.acp.protocol
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,6 +70,12 @@ public class AcpConnection(
     private val notificationHandler: AcpNotificationHandler = AcpNotificationHandler { _, _ -> },
 ) {
     private val mutex = Mutex()
+    private val closeMutex = Mutex()
+    private var transportClosed = false
+    private val requestJob = Job(scope.coroutineContext[Job])
+    private val requestScope = CoroutineScope(scope.coroutineContext + requestJob)
+    private var notificationJob: Job? = null
+    private var incomingJob: Job? = null
     private var nextId = 0
     private var started = false
     private val pending = mutableMapOf<String, CompletableDeferred<IncomingResponse>>()
@@ -92,37 +99,43 @@ public class AcpConnection(
      * Calling this more than once has no effect.
      */
     public fun start() {
-        if (started) return
+        if (started || !isOpen) return
         started = true
         // Notifications are consumed sequentially so streamed session updates keep
         // their wire order even when a handler applies backpressure.
-        scope.launch {
-            try {
-                for (notification in notifications) {
-                    try {
-                        notificationHandler.handle(notification.method, notification.params)
-                        notification.handled.complete(Unit)
-                    } catch (e: CancellationException) {
-                        notification.handled.cancel(e)
-                        throw e
-                    } catch (_: Exception) {
-                        // A malformed update must not stop subsequent notifications.
-                        notification.handled.complete(Unit)
+        notificationJob =
+            scope.launch {
+                try {
+                    for (notification in notifications) {
+                        try {
+                            notificationHandler.handle(notification.method, notification.params)
+                            notification.handled.complete(Unit)
+                        } catch (e: CancellationException) {
+                            notification.handled.cancel(e)
+                            throw e
+                        } catch (_: Exception) {
+                            // A malformed update must not stop subsequent notifications.
+                            notification.handled.complete(Unit)
+                        }
                     }
+                } finally {
+                    notifications.cancel()
                 }
-            } finally {
-                notifications.cancel()
             }
-        }
-        transport.incoming
-            .onEach { line -> dispatch(line) }
-            .onCompletion { cause ->
-                _isOpen.value = false
-                notifications.close()
-                // Fail in-flight requests rather than leaving callers suspended forever
-                // when the peer exits or the transport is closed.
-                withContext(NonCancellable) { failAllPending(cause?.message ?: "ACP transport closed") }
-            }.launchIn(scope)
+        incomingJob =
+            transport.incoming
+                .onEach { line -> dispatch(line) }
+                .onCompletion { cause ->
+                    _isOpen.value = false
+                    // A disconnected peer can no longer receive callback results.
+                    requestJob.cancel()
+                    // Drain already received updates, including those preceding a final
+                    // prompt response. Explicit close instead cancels the handlers.
+                    notifications.close()
+                    // Fail in-flight requests rather than leaving callers suspended forever
+                    // when the peer exits or the transport is closed.
+                    withContext(NonCancellable) { failAllPending(cause?.message ?: "ACP transport closed") }
+                }.launchIn(scope)
     }
 
     /**
@@ -173,17 +186,31 @@ public class AcpConnection(
         method: String,
         params: JsonElement? = null,
     ) {
+        checkOpen()
         transport.send(json.encodeToString(AcpNotification.serializer(), AcpNotification(method, params)))
     }
 
     /**
-     * Closes the underlying transport and fails every in-flight request.
+     * Closes the underlying transport, fails every in-flight request, and cancels
+     * inbound handlers without cancelling the caller-supplied scope.
+     *
+     * Calling this more than once has no effect. Cleanup also runs when the
+     * coroutine calling this method has already been cancelled.
      */
     public suspend fun close() {
-        _isOpen.value = false
-        notifications.close()
-        failAllPending("ACP connection closed")
-        transport.close()
+        withContext(NonCancellable) {
+            closeMutex.withLock {
+                if (transportClosed) return@withLock
+                _isOpen.value = false
+                requestJob.cancel()
+                notificationJob?.cancel()
+                incomingJob?.cancel()
+                notifications.cancel()
+                failAllPending("ACP connection closed")
+                transportClosed = true
+                transport.close()
+            }
+        }
     }
 
     private fun checkOpen() {
@@ -208,7 +235,7 @@ public class AcpConnection(
 
         when {
             obj.containsKey("id") && obj.containsKey("method") -> {
-                scope.launch { handleRequest(obj) }
+                requestScope.launch { handleRequest(obj) }
             }
 
             obj.containsKey("id") -> {

@@ -3,12 +3,15 @@ package su.kidoz.jetaprog.acp.protocol
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -18,6 +21,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -26,6 +30,7 @@ import kotlin.test.assertTrue
 private class TestTransport : AcpTransport {
     val inbound = Channel<String>(Channel.UNLIMITED)
     val sent = mutableListOf<String>()
+    var closeCount = 0
 
     override val incoming: Flow<String> get() = inbound.receiveAsFlow()
 
@@ -34,6 +39,7 @@ private class TestTransport : AcpTransport {
     }
 
     override suspend fun close() {
+        closeCount++
         inbound.close()
     }
 }
@@ -247,6 +253,138 @@ class AcpConnectionTest {
             assertEquals(JsonPrimitive("done"), request.await())
             assertEquals(JsonPrimitive("nested-result"), callbackResult.await())
             connection.close()
+        }
+
+    @Test
+    fun closingCancelsInboundRequestsWithoutCancellingTheOwner() =
+        runTest {
+            val transport = TestTransport()
+            val entered = CompletableDeferred<Unit>()
+            val stopped = CompletableDeferred<Unit>()
+            val connection =
+                AcpConnection(
+                    transport,
+                    backgroundScope,
+                    requestHandler =
+                        AcpRequestHandler { _, _ ->
+                            entered.complete(Unit)
+                            try {
+                                awaitCancellation()
+                            } finally {
+                                stopped.complete(Unit)
+                            }
+                        },
+                )
+            connection.start()
+            transport.inbound.send("""{"jsonrpc":"2.0","id":"permission","method":"permission"}""")
+            entered.await()
+
+            connection.close()
+            runCurrent()
+
+            assertTrue(stopped.isCompleted)
+            assertTrue(backgroundScope.coroutineContext[Job]!!.isActive)
+            assertTrue(transport.sent.isEmpty())
+        }
+
+    @Test
+    fun transportCompletionCancelsInboundRequests() =
+        runTest {
+            val transport = TestTransport()
+            val entered = CompletableDeferred<Unit>()
+            val stopped = CompletableDeferred<Unit>()
+            val connection =
+                AcpConnection(
+                    transport,
+                    backgroundScope,
+                    requestHandler =
+                        AcpRequestHandler { _, _ ->
+                            entered.complete(Unit)
+                            try {
+                                awaitCancellation()
+                            } finally {
+                                stopped.complete(Unit)
+                            }
+                        },
+                )
+            connection.start()
+            transport.inbound.send("""{"jsonrpc":"2.0","id":1,"method":"wait"}""")
+            entered.await()
+
+            transport.inbound.close()
+            runCurrent()
+
+            assertTrue(stopped.isCompleted)
+            assertFalse(connection.isOpen)
+            connection.close()
+        }
+
+    @Test
+    fun closingAbortsBlockedNotificationsAndReleasesResponseWaiters() =
+        runTest {
+            val transport = TestTransport()
+            val gate = CompletableDeferred<Unit>()
+            val received = mutableListOf<String>()
+            val connection =
+                AcpConnection(
+                    transport,
+                    backgroundScope,
+                    notificationHandler =
+                        AcpNotificationHandler { method, _ ->
+                            gate.await()
+                            received += method
+                        },
+                )
+            connection.start()
+            val prompt = async { runCatching { connection.sendRequest("prompt", awaitNotifications = true) } }
+            runCurrent()
+            transport.inbound.send(notification("first"))
+            transport.inbound.send(notification("queued"))
+            respond(transport, requestId(transport), "done")
+            runCurrent()
+            assertFalse(prompt.isCompleted)
+
+            connection.close()
+            runCurrent()
+
+            assertTrue(prompt.isCompleted)
+            assertTrue(prompt.await().isFailure)
+            gate.complete(Unit)
+            runCurrent()
+            assertTrue(received.isEmpty())
+        }
+
+    @Test
+    fun closedConnectionsRejectNotifications() =
+        runTest {
+            val transport = TestTransport()
+            val connection = AcpConnection(transport, backgroundScope)
+            connection.close()
+
+            assertFailsWith<AcpRequestException> { connection.sendNotification("cancel") }
+            assertTrue(transport.sent.isEmpty())
+        }
+
+    @Test
+    fun cancelledCallersCanCloseTheConnectionExactlyOnce() =
+        runTest {
+            val transport = TestTransport()
+            val connection = AcpConnection(transport, backgroundScope)
+            connection.start()
+            val pending = async { runCatching { connection.sendRequest("pending") } }
+            runCurrent()
+
+            val closer =
+                launch {
+                    coroutineContext[Job]!!.cancel()
+                    connection.close()
+                }
+            closer.join()
+            connection.close()
+
+            assertFalse(connection.isOpen)
+            assertIs<AcpRequestException>(pending.await().exceptionOrNull())
+            assertEquals(1, transport.closeCount)
         }
 
     private fun notification(method: String): String =
