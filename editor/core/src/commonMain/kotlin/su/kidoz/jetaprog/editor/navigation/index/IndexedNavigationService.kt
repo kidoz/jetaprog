@@ -28,9 +28,9 @@ import su.kidoz.jetaprog.editor.navigation.UsageKind
  * This provides fast "Go to Symbol" functionality without requiring LSP,
  * using the local symbol index for instant results.
  *
- * The optional delegate (embedded servers, language registry, LSP) is always consulted
- * first; the index answers only when the delegate has nothing, so index results never
- * shadow semantically accurate ones.
+ * Class and symbol searches merge the optional delegate (embedded servers, language
+ * registry, LSP) with the workspace index, preferring delegate metadata for duplicate
+ * locations. Other operations consult the delegate first and use the index as a fallback.
  */
 public class IndexedNavigationService(
     private val symbolIndex: SymbolIndex,
@@ -39,7 +39,7 @@ public class IndexedNavigationService(
     private val fileContentProvider: FileContentProvider? = null,
 ) : NavigationService {
     // ========================================================================
-    // Symbol Search - Delegate first, local index as fallback
+    // Symbol Search - Merge provider and workspace matches
     // ========================================================================
 
     override suspend fun searchClasses(
@@ -47,7 +47,8 @@ public class IndexedNavigationService(
         scope: SearchScope,
         limit: Int,
     ): List<NavigationSearchResult> {
-        lspDelegate?.searchClasses(query, scope, limit)?.takeIf { it.isNotEmpty() }?.let { return it }
+        if (query.isBlank() || limit <= 0) return emptyList()
+        val delegated = lspDelegate?.searchClasses(query, scope, limit).orEmpty()
 
         val classKinds =
             setOf(
@@ -58,7 +59,7 @@ public class IndexedNavigationService(
                 NavigationSymbolKind.TRAIT,
             )
 
-        return searchSymbolsOfKinds(query, scope, limit, classKinds)
+        return mergeSearchResults(delegated, searchSymbolsOfKinds(query, scope, limit, classKinds), limit)
     }
 
     override suspend fun searchFiles(
@@ -96,16 +97,19 @@ public class IndexedNavigationService(
         scope: SearchScope,
         limit: Int,
     ): List<NavigationSearchResult> {
-        lspDelegate?.searchSymbols(query, scope, limit)?.takeIf { it.isNotEmpty() }?.let { return it }
+        if (query.isBlank() || limit <= 0) return emptyList()
+        val delegated = lspDelegate?.searchSymbols(query, scope, limit).orEmpty()
 
         val matches = symbolIndex.findByPattern(query, scope, limit)
-        return matches.map { match ->
-            NavigationSearchResult(
-                target = match.symbol.toNavigationTarget(),
-                matchRanges = match.matchRanges.map { it.toMatchRange() },
-                score = match.score,
-            )
-        }
+        val indexed =
+            matches.map { match ->
+                NavigationSearchResult(
+                    target = match.symbol.toNavigationTarget(),
+                    matchRanges = match.matchRanges.map { it.toMatchRange() },
+                    score = match.score,
+                )
+            }
+        return mergeSearchResults(delegated, indexed, limit)
     }
 
     override suspend fun searchEverywhere(
@@ -357,6 +361,20 @@ public class IndexedNavigationService(
     // ========================================================================
     // Private Helpers
     // ========================================================================
+
+    private fun mergeSearchResults(
+        delegated: List<NavigationSearchResult>,
+        indexed: List<NavigationSearchResult>,
+        limit: Int,
+    ): List<NavigationSearchResult> =
+        (delegated + indexed)
+            // Keep provider metadata even when the index gives the same location a higher score.
+            .distinctBy { it.target.filePath to it.target.position }
+            .sortedWith(
+                compareByDescending<NavigationSearchResult> { it.score }
+                    .thenBy { it.target.filePath }
+                    .thenBy { it.target.position },
+            ).take(limit)
 
     private suspend fun searchSymbolsOfKinds(
         query: String,
