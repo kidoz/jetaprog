@@ -6,6 +6,7 @@ import su.kidoz.jetaprog.acp.protocol.AcpConnection
 import su.kidoz.jetaprog.acp.protocol.AcpError
 import su.kidoz.jetaprog.acp.protocol.AcpMethod
 import su.kidoz.jetaprog.acp.protocol.AcpRequestException
+import su.kidoz.jetaprog.acp.protocol.ClientCapabilities
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
 import su.kidoz.jetaprog.acp.protocol.CreateTerminalRequest
 import su.kidoz.jetaprog.acp.protocol.CreateTerminalResponse
@@ -37,14 +38,22 @@ public class AcpAgentSession internal constructor(
     public val sessionId: String,
     private val connection: AcpConnection,
     private val json: Json,
+    private val clientCapabilities: ClientCapabilities,
 ) {
     /**
      * Streams a [SessionUpdate] to the client via `session/update`.
+     * Boolean configuration options are omitted unless the client advertised support.
      */
     public suspend fun update(update: SessionUpdate) {
+        val supportedUpdate =
+            if (update is SessionUpdate.ConfigOptionUpdate) {
+                update.copy(configOptions = update.configOptions.forClient(clientCapabilities))
+            } else {
+                update
+            }
         connection.sendNotification(
             AcpMethod.SESSION_UPDATE,
-            json.encodeToJsonElement(SessionNotification.serializer(), SessionNotification(sessionId, update)),
+            json.encodeToJsonElement(SessionNotification.serializer(), SessionNotification(sessionId, supportedUpdate)),
         )
     }
 

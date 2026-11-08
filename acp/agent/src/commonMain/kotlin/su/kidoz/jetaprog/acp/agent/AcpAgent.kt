@@ -12,6 +12,9 @@ import su.kidoz.jetaprog.acp.protocol.NewSessionRequest
 import su.kidoz.jetaprog.acp.protocol.NewSessionResponse
 import su.kidoz.jetaprog.acp.protocol.PromptRequest
 import su.kidoz.jetaprog.acp.protocol.PromptResponse
+import su.kidoz.jetaprog.acp.protocol.SetSessionBooleanConfigRequest
+import su.kidoz.jetaprog.acp.protocol.SetSessionConfigRequest
+import su.kidoz.jetaprog.acp.protocol.SetSessionConfigResponse
 import su.kidoz.jetaprog.acp.protocol.SetSessionModeRequest
 import su.kidoz.jetaprog.acp.protocol.SetSessionModelRequest
 
@@ -70,6 +73,27 @@ public interface AcpAgent {
     public suspend fun setModel(request: SetSessionModelRequest) {
         // Models are optional.
     }
+
+    /**
+     * Changes a select setting and returns the complete authoritative configuration.
+     *
+     * Implementations validate the session, setting identifier, and advertised value
+     * before applying the change. Throw [AcpRequestException] to reject it. The
+     * default rejects settings changes with [AcpError.METHOD_NOT_FOUND].
+     */
+    public suspend fun setConfigOption(request: SetSessionConfigRequest): SetSessionConfigResponse =
+        throw AcpRequestException(AcpError.METHOD_NOT_FOUND, "Select session configuration is not supported")
+
+    /**
+     * Changes a boolean setting and returns the complete authoritative configuration.
+     *
+     * [AcpAgentServer] only dispatches this overload after the client advertises
+     * boolean configuration support. Implementations validate the session and
+     * setting identifier before applying the change, or throw [AcpRequestException].
+     * The default rejects the request with [AcpError.METHOD_NOT_FOUND].
+     */
+    public suspend fun setConfigOption(request: SetSessionBooleanConfigRequest): SetSessionConfigResponse =
+        throw AcpRequestException(AcpError.METHOD_NOT_FOUND, "Boolean session configuration is not supported")
 
     /**
      * Handles a cancellation request for an in-flight turn. The default does nothing.
