@@ -19,7 +19,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Handles an inbound request from the peer, returning the JSON result payload.
@@ -243,7 +242,7 @@ public class AcpConnection(
             }
 
             obj.containsKey("method") -> {
-                val method = obj["method"]?.jsonPrimitive?.content ?: return
+                val method = obj.methodName() ?: return
                 val notification = IncomingNotification(method, obj["params"])
                 lastNotification = notification.handled
                 if (notifications.trySend(notification).isFailure) notification.handled.cancel()
@@ -268,11 +267,13 @@ public class AcpConnection(
 
     private suspend fun handleRequest(obj: JsonObject) {
         val id = obj["id"] ?: return
-        val method = obj["method"]?.jsonPrimitive?.content ?: return
         val params = obj["params"]
 
         val response =
             try {
+                val method =
+                    obj.methodName()
+                        ?: throw AcpRequestException(AcpError.INVALID_REQUEST, "Invalid request method")
                 val result = requestHandler.handle(method, params)
                 AcpResponse(id = id, result = result)
             } catch (e: CancellationException) {
@@ -284,6 +285,8 @@ public class AcpConnection(
             }
         transport.send(json.encodeToString(AcpResponse.serializer(), response))
     }
+
+    private fun JsonObject.methodName(): String? = (get("method") as? JsonPrimitive)?.takeIf { it.isString }?.content
 
     private data class IncomingNotification(
         val method: String,

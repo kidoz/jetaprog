@@ -387,6 +387,67 @@ class AcpConnectionTest {
             assertEquals(1, transport.closeCount)
         }
 
+    @Test
+    fun malformedNotificationMethodsDoNotInterruptResponses() =
+        runTest {
+            val transport = TestTransport()
+            val received = mutableListOf<String>()
+            val connection =
+                AcpConnection(
+                    transport,
+                    backgroundScope,
+                    notificationHandler = AcpNotificationHandler { method, _ -> received += method },
+                )
+            connection.start()
+            val pending = async { runCatching { connection.sendRequest("prompt", awaitNotifications = true) } }
+            runCurrent()
+            for (method in listOf("{}", "[]", "null", "42", "true")) {
+                transport.inbound.send("""{"jsonrpc":"2.0","method":$method}""")
+            }
+            transport.inbound.send(notification("valid"))
+            respond(transport, requestId(transport), "done")
+
+            assertEquals(JsonPrimitive("done"), pending.await().getOrThrow())
+            assertEquals(listOf("valid"), received)
+            assertTrue(connection.isOpen)
+            connection.close()
+        }
+
+    @Test
+    fun malformedRequestMethodsReturnErrorsWithoutCallingTheHandler() =
+        runTest {
+            val transport = TestTransport()
+            val received = mutableListOf<String>()
+            val connection =
+                AcpConnection(
+                    transport,
+                    backgroundScope,
+                    requestHandler =
+                        AcpRequestHandler { method, _ ->
+                            received += method
+                            JsonPrimitive("accepted")
+                        },
+                )
+            connection.start()
+            val methods = listOf("{}", "[]", "null", "42", "true")
+            methods.forEachIndexed { index, method ->
+                transport.inbound.send("""{"jsonrpc":"2.0","id":"bad-$index","method":$method}""")
+            }
+            transport.inbound.send("""{"jsonrpc":"2.0","id":"good","method":"valid"}""")
+            runCurrent()
+
+            val responses = transport.sent.map { json.decodeFromString(AcpResponse.serializer(), it) }
+            assertEquals(methods.size + 1, responses.size)
+            methods.indices.forEach { index ->
+                val response = responses.single { it.id == JsonPrimitive("bad-$index") }
+                assertEquals(AcpError.INVALID_REQUEST, response.error?.code)
+            }
+            assertEquals(JsonPrimitive("accepted"), responses.single { it.id == JsonPrimitive("good") }.result)
+            assertEquals(listOf("valid"), received)
+            assertTrue(connection.isOpen)
+            connection.close()
+        }
+
     private fun notification(method: String): String =
         json.encodeToString(AcpNotification.serializer(), AcpNotification(method = method))
 
