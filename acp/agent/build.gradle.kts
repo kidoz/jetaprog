@@ -3,6 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+tasks.named<Test>("jvmTest") {
+    doFirst { systemProperty("jetaprog.acp.test.classpath", classpath.asPath) }
+}
+
 kotlin {
     sourceSets {
         commonMain {
