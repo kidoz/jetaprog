@@ -113,6 +113,12 @@ internal fun AgentContextInspectorContent(
                             "Protocol issues: ${state.protocolIssues} ignored updates. Payloads are not logged.",
                         )
                     }
+                    state.telemetry.usage?.let { ContextText(it) }
+                    state.telemetry.compactions.forEach {
+                        ContextText("Compaction ${it.status}", heading = true)
+                        if (it.summary.isNotBlank()) ContextText(it.summary)
+                        it.error?.let { error -> ContextText(error) }
+                    }
                     HorizontalDivider(color = LocalIntelliJColors.current.divider)
                     ContextText("Checkout", heading = true)
                     ContextText(state.workspacePath.ifBlank { "Workspace unavailable" })

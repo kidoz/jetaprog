@@ -626,6 +626,8 @@ public data class AgentUiState(
     val hasUnsavedEdits: Boolean = false,
     val connection: AgentConnection = AgentConnection.DISCONNECTED,
     val agentName: String? = null,
+    /** Session-scoped information reported by the agent. */
+    val telemetry: AgentSessionTelemetry = AgentSessionTelemetry(),
     /** Negotiated support, shown in the context inspector. */
     val capabilitySummary: List<String> = emptyList(),
     /** Count of malformed or unsupported notifications, without their payloads. */

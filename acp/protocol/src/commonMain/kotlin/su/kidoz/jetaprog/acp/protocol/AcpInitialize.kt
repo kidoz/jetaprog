@@ -136,6 +136,10 @@ public data class McpCapabilities(
 public data class ClientSessionCapabilities(
     /** Supported configuration extensions. */
     val configOptions: SessionConfigCapabilities? = null,
+    /** Presence opts into live notices. */
+    val notices: SessionFeatureCapability? = null,
+    /** Presence opts into compaction updates and summary chunks. */
+    val compaction: SessionFeatureCapability? = null,
 )
 
 /** Configuration controls beyond the baseline select type. */
@@ -148,3 +152,7 @@ public data class SessionConfigCapabilities(
 /** Empty capability object required by ACP to opt into boolean settings. */
 @Serializable
 public data object SessionConfigBooleanCapability
+
+/** Empty opt-in object for supported session features. */
+@Serializable
+public data object SessionFeatureCapability

@@ -233,6 +233,14 @@ internal fun AgentSurfaceContent(
                                     if (workspaceReview) Modifier else Modifier.verticalScroll(rememberScrollState()),
                                 ),
                     ) {
+                        state.telemetry.title?.let { AgentStatusMessage(it) }
+                        state.telemetry.usage?.let { AgentStatusMessage(it) }
+                        state.telemetry.notices
+                            .lastOrNull()
+                            ?.let { AgentStatusMessage(it) }
+                        state.telemetry.compactions.lastOrNull()?.let {
+                            AgentStatusMessage("Context compaction: ${it.status}")
+                        }
                         val goalNotice = state.goalNotice
                         if (!goalNotice.isNullOrBlank()) AgentStatusMessage(goalNotice)
                         if (reviewing) {

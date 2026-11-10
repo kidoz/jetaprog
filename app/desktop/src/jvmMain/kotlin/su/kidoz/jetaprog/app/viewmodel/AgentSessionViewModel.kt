@@ -53,6 +53,7 @@ import su.kidoz.jetaprog.acp.protocol.RequestPermissionResponse
 import su.kidoz.jetaprog.acp.protocol.SessionConfigBooleanCapability
 import su.kidoz.jetaprog.acp.protocol.SessionConfigCapabilities
 import su.kidoz.jetaprog.acp.protocol.SessionConfigOption
+import su.kidoz.jetaprog.acp.protocol.SessionFeatureCapability
 import su.kidoz.jetaprog.acp.protocol.SessionMode
 import su.kidoz.jetaprog.acp.protocol.SessionModeState
 import su.kidoz.jetaprog.acp.protocol.SessionModelState
@@ -109,6 +110,7 @@ import su.kidoz.jetaprog.app.ui.agent.AgentConnection
 import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.AgentMenuRow
 import su.kidoz.jetaprog.app.ui.agent.AgentOption
+import su.kidoz.jetaprog.app.ui.agent.AgentSessionTelemetry
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
 import su.kidoz.jetaprog.app.ui.agent.ApprovalChoice
 import su.kidoz.jetaprog.app.ui.agent.ApprovalChoiceRole
@@ -966,6 +968,8 @@ public class AgentSessionViewModel(
                         session =
                             ClientSessionCapabilities(
                                 configOptions = SessionConfigCapabilities(boolean = SessionConfigBooleanCapability),
+                                notices = SessionFeatureCapability,
+                                compaction = SessionFeatureCapability,
                             ),
                     ),
                 clientInfo = Implementation("JetaProg", "1.0"),
@@ -2484,7 +2488,11 @@ public class AgentSessionViewModel(
             )
         return AgentSessionRecord(
             id = id,
-            title = sessionTitle(_state.value.turns, TITLE_MAX_CHARS) ?: "Agent session",
+            title =
+                _state.value.telemetry.title
+                    ?.takeIf { it.isNotBlank() }
+                    ?.take(TITLE_MAX_CHARS)
+                    ?: sessionTitle(_state.value.turns, TITLE_MAX_CHARS) ?: "Agent session",
             projectPath = projectPath,
             savedAtEpochMillis = System.currentTimeMillis(),
             agentSessionId = conversationSessionId,
@@ -2832,6 +2840,15 @@ public class AgentSessionViewModel(
 
             is SessionUpdate.CurrentModeUpdate -> {
                 applyCurrentMode(update.currentModeId)
+            }
+
+            is SessionUpdate.SessionInfoUpdate,
+            is SessionUpdate.UsageUpdate,
+            is SessionUpdate.Notice,
+            is SessionUpdate.CompactionUpdate,
+            is SessionUpdate.CompactionSummaryChunk,
+            -> {
+                _state.update { it.copy(telemetry = it.telemetry.applyTelemetry(update)) }
             }
 
             is SessionUpdate.UserMessageChunk -> {
@@ -3900,6 +3917,7 @@ public class AgentSessionViewModel(
         _state.update {
             it.copy(
                 configOptions = null,
+                telemetry = AgentSessionTelemetry(),
                 changingConfigId = null,
                 configError = null,
                 availableModels = emptyList(),
@@ -3936,7 +3954,7 @@ public class AgentSessionViewModel(
                 }
 
                 else -> {
-                    base
+                    base.copy(telemetry = base.telemetry.applyTelemetry(update))
                 }
             }
     }
@@ -3953,7 +3971,7 @@ public class AgentSessionViewModel(
                 is SessionUpdate.AvailableCommandsUpdate -> pending.copy(commands = null)
                 is SessionUpdate.CurrentModeUpdate -> pending.copy(modeId = null)
                 is SessionUpdate.ConfigOptionUpdate -> pending.copy(configOptions = null)
-                else -> pending
+                else -> pending.copy(telemetry = pending.telemetry.applyTelemetry(update))
             }
         pendingSurface = remaining.takeUnless { it.isEmpty() }
     }
@@ -3976,6 +3994,7 @@ public class AgentSessionViewModel(
             state.copy(
                 plan = pending.plan ?: state.plan,
                 commands = pending.commands ?: state.commands,
+                telemetry = pending.telemetry,
             )
         }
         if (applyConfig) applySessionConfig(pending.configOptions)
@@ -4063,7 +4082,7 @@ public class AgentSessionViewModel(
             update is SessionUpdate.Plan ||
                 update is SessionUpdate.AvailableCommandsUpdate ||
                 update is SessionUpdate.CurrentModeUpdate ||
-                update is SessionUpdate.ConfigOptionUpdate
+                update is SessionUpdate.ConfigOptionUpdate || isTelemetryUpdate(update)
 
         fun toPlanStep(entry: PlanEntry): PlanStep =
             PlanStep(
@@ -4269,9 +4288,12 @@ private data class PendingSurface(
     val commands: List<AgentCommand>? = null,
     val modeId: String? = null,
     val configOptions: List<SessionConfigOption>? = null,
+    val telemetry: AgentSessionTelemetry = AgentSessionTelemetry(),
 ) {
     /** Whether every stashed field has already been applied or was never set. */
-    fun isEmpty(): Boolean = plan == null && commands == null && modeId == null && configOptions == null
+    fun isEmpty(): Boolean =
+        plan == null && commands == null && modeId == null && configOptions == null &&
+            telemetry == AgentSessionTelemetry()
 }
 
 private fun SessionMode.toModeOption(): ModeOption = ModeOption(id = id, name = name.ifBlank { id })
