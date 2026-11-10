@@ -144,7 +144,7 @@ public class EditorViewModel(
     private var hoverJob: Job? = null
     private var signatureHelpJob: Job? = null
     private var lintJob: Job? = null
-    private var autoSaveJob: Job? = null
+    private val autoSaveJobs = mutableMapOf<DocumentUri, Job>()
 
     /**
      * Set when the user moves the cursor themselves. A workspace restore that
@@ -234,6 +234,15 @@ public class EditorViewModel(
 
             is EditorIntent.Save -> {
                 saveCurrentFile()
+            }
+
+            is EditorIntent.AutoSave -> {
+                if (_settings.value.editor.autoSave &&
+                    documentSessions[intent.uri.value]?.version == intent.expectedVersion &&
+                    currentState.tabs.any { it.uri == intent.uri && it.isDirty }
+                ) {
+                    saveDocument(intent.uri)
+                }
             }
 
             is EditorIntent.SaveAll -> {
@@ -712,6 +721,7 @@ public class EditorViewModel(
             return
         }
         if (content == previous.content && !discardChanges) return
+        autoSaveJobs.remove(uri)?.cancel()
         updateState {
             copy(tabs = tabs.map { if (it.uri == uri) it.copy(isDirty = false) else it }, error = null)
         }
@@ -798,15 +808,18 @@ public class EditorViewModel(
     private class ExternalFileChangeException : IllegalStateException("File changed on disk")
 
     private suspend fun saveCurrentFile() {
-        val activeTab = currentState.activeTab ?: return
-        val path = activeTab.uri.toPath() ?: return
-        val uri = activeTab.uri
-        val languageId = currentState.languageId
-        val diskContent = documentSessions[uri.value]?.diskContent ?: return
-        val contentToSave = prepareContentForSave(currentState.content)
-        if (contentToSave != currentState.content) {
-            updateContent(contentToSave, coalesceUndo = false)
-        }
+        saveDocument(currentState.activeDocumentUri ?: return)
+    }
+
+    private suspend fun saveDocument(uri: DocumentUri) {
+        val tab = currentState.tabs.firstOrNull { it.uri == uri } ?: return
+        val path = uri.toPath() ?: return
+        val session = documentSessions[uri.value] ?: return
+        val languageId = session.languageId
+        val diskContent = session.diskContent
+        val contentToSave = prepareContentForSave(session.content)
+        prepareDocumentForSave(uri, session, contentToSave)
+        autoSaveJobs.remove(uri)?.cancel()
 
         updateState { copy(isSaving = true, error = null) }
 
@@ -841,7 +854,7 @@ public class EditorViewModel(
                 EditorEffect.ShowConfirmation(
                     title = "File changed on disk",
                     message =
-                        "${activeTab.name} has external changes. Reload discards your editor changes. " +
+                        "${tab.name} has external changes. Reload discards your editor changes. " +
                             "Cancel to keep editing, or use Save As to preserve a separate copy.",
                     confirmLabel = "Reload from disk",
                     onConfirm = { dispatch(EditorIntent.ReloadFile(path, discardChanges = true)) },
@@ -852,6 +865,25 @@ public class EditorViewModel(
             markSaveFailed(uri, error)
             emitEffect(EditorEffect.ShowError("Failed to save file: ${error.message}"))
         }
+    }
+
+    private fun prepareDocumentForSave(
+        uri: DocumentUri,
+        session: DocumentSession,
+        content: String,
+    ) {
+        if (content == session.content) return
+        if (currentState.activeDocumentUri == uri) {
+            updateContent(content, coalesceUndo = false)
+            return
+        }
+        undoManagerFor(uri.value).recordBeforeEdit(
+            before = EditSnapshot(session.content, session.cursor.position),
+            nowMs = System.currentTimeMillis(),
+            coalesce = false,
+        )
+        documentSessions[uri.value] = session.copy(content = content, version = session.version + 1)
+        syncDocumentChanged(uri, session.languageId, content)
     }
 
     private fun markSaveFailed(
@@ -916,6 +948,7 @@ public class EditorViewModel(
             }
 
             val languageId = detectLanguage(fileName)
+            autoSaveJobs.remove(sourceUri)?.cancel()
             val oldSession =
                 documentSessions.remove(sourceUri.value)
                     ?: DocumentSession(contentToSave, sourceLanguageId, currentState.cursor)
@@ -1023,6 +1056,7 @@ public class EditorViewModel(
         }
 
         syncDocumentClosed(tab.uri, detectLanguage(tab.name))
+        autoSaveJobs.remove(tab.uri)?.cancel()
         documentSessions.remove(tab.uri.value)
         undoManagers.remove(tab.uri.value)
         incrementalTokenizers.keys.removeAll { it.startsWith("${tab.uri.value}:") }
@@ -1053,7 +1087,8 @@ public class EditorViewModel(
         incrementalTokenizers.clear()
         documentSessions.clear()
         lintJob?.cancel()
-        autoSaveJob?.cancel()
+        autoSaveJobs.values.forEach { it.cancel() }
+        autoSaveJobs.clear()
         lspDiagnostics.clear()
         lintDiagnostics.clear()
         updateState {
@@ -1221,22 +1256,15 @@ public class EditorViewModel(
     }
 
     private fun scheduleAutoSave(uri: DocumentUri) {
-        autoSaveJob?.cancel()
+        autoSaveJobs.remove(uri)?.cancel()
         val editorSettings = _settings.value.editor
         if (!editorSettings.autoSave) return
         val expectedVersion = documentSessions[uri.value]?.version ?: return
-        autoSaveJob =
+        autoSaveJobs[uri] =
             viewModelScope.launch {
                 delay(editorSettings.autoSaveDelayMs)
-                val session = documentSessions[uri.value]
-                val tab = currentState.tabs.firstOrNull { it.uri == uri }
-                if (
-                    currentState.activeDocumentUri == uri &&
-                    session?.version == expectedVersion &&
-                    tab?.isDirty == true
-                ) {
-                    dispatch(EditorIntent.Save)
-                }
+                autoSaveJobs.remove(uri)
+                dispatch(EditorIntent.AutoSave(uri, expectedVersion))
             }
     }
 

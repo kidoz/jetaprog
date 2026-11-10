@@ -3,6 +3,7 @@ package su.kidoz.jetaprog.editor.state
 import su.kidoz.jetaprog.common.mvi.Intent
 import su.kidoz.jetaprog.common.text.TextPosition
 import su.kidoz.jetaprog.common.text.TextRange
+import su.kidoz.jetaprog.editor.document.DocumentUri
 
 /**
  * Intents (actions) that can be dispatched to the editor.
@@ -34,6 +35,12 @@ public sealed interface EditorIntent : Intent {
      * Save the active document.
      */
     public data object Save : EditorIntent
+
+    /** Save a dirty document if it still has the version that scheduled autosave. */
+    public data class AutoSave(
+        val uri: DocumentUri,
+        val expectedVersion: Int,
+    ) : EditorIntent
 
     /**
      * Save every dirty document.
