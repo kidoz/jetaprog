@@ -166,6 +166,16 @@ public enum class ConfigurationType(
     /** Docker Compose. */
     @SerialName("docker_compose")
     DOCKER_COMPOSE("Docker Compose", "docker"),
+    ;
+
+    /** Why this configuration cannot be launched, or null when its execution is implemented. */
+    public val unavailableReason: String?
+        get() =
+            when (this) {
+                TOMCAT_LOCAL, TOMCAT_REMOTE -> "Tomcat execution is not available in this version."
+                DOCKER_BUILD, DOCKER_RUN, DOCKER_COMPOSE -> "Docker execution is not available in this version."
+                else -> null
+            }
 }
 
 /**

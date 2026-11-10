@@ -106,7 +106,7 @@ public fun RunConfigurationSelector(
         ToolbarButton(
             icon = Icons.Default.PlayArrow,
             contentDescription = "Run",
-            enabled = state.activeConfiguration != null && !state.isRunning,
+            enabled = state.activeConfiguration?.let { it.type.unavailableReason == null } == true && !state.isRunning,
             onClick = onRun,
             tint = LocalIntelliJColors.current.success,
         )
@@ -115,7 +115,7 @@ public fun RunConfigurationSelector(
         ToolbarButton(
             icon = Icons.Default.BugReport,
             contentDescription = "Debug",
-            enabled = state.activeConfiguration != null && !state.isRunning,
+            enabled = state.activeConfiguration?.let { it.type.unavailableReason == null } == true && !state.isRunning,
             onClick = onDebug,
             tint = LocalIntelliJColors.current.accent,
         )
@@ -182,7 +182,18 @@ private fun ConfigurationDropdown(
 
             // Configuration name
             Text(
-                text = activeConfiguration?.name ?: "Add Configuration...",
+                text =
+                    activeConfiguration?.let {
+                        it.name +
+                            if (it.type.unavailableReason !=
+                                null
+                            ) {
+                                " (unavailable)"
+                            } else {
+                                ""
+                            }
+                    }
+                        ?: "Add Configuration...",
                 color =
                     if (activeConfiguration != null) {
                         LocalIntelliJColors.current.textPrimary
@@ -310,7 +321,7 @@ private fun ConfigurationMenuItem(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = configuration.name,
+                text = configuration.name + if (configuration.type.unavailableReason != null) " (unavailable)" else "",
                 color = LocalIntelliJColors.current.textPrimary,
                 fontSize = 12.sp,
                 fontStyle = if (configuration.isTemporary) FontStyle.Italic else FontStyle.Normal,

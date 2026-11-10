@@ -51,11 +51,13 @@ public fun PluginsPanel(
         SettingSection(title = "UPDATE POLICY") {
             SettingRow(
                 label = "Update Policy",
-                description = "How to handle plugin updates",
+                description = "Plugin updates are not available in this version",
             ) {
                 IntelliJDropdown(
                     items = PluginUpdatePolicy.entries.toList(),
+                    modifier = Modifier.fillMaxWidth(0.35f),
                     selectedItem = settings.updatePolicy,
+                    enabled = false,
                     onItemSelected = { onIntent(SettingsIntent.SetPluginUpdatePolicy(it)) },
                     itemToString = { it.displayName },
                 )
@@ -63,10 +65,11 @@ public fun PluginsPanel(
 
             SettingRow(
                 label = "Allow Pre-release Versions",
-                description = "Include beta and alpha versions in updates",
+                description = "Available when plugin updates are supported",
             ) {
                 IntelliJCheckbox(
                     checked = settings.allowPrerelease,
+                    enabled = false,
                     onCheckedChange = { onIntent(SettingsIntent.SetAllowPrerelease(it)) },
                 )
             }

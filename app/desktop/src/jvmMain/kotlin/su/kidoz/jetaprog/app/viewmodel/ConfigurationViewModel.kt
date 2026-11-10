@@ -210,6 +210,8 @@ public class ConfigurationViewModel(
         val activeConfig = currentState.activeConfiguration ?: return
         val config = currentState.configurations.find { it.id == activeConfig.id } ?: return
 
+        if (rejectUnavailableConfiguration(config)) return
+
         selectConfiguration(config.id)
 
         updateState {
@@ -268,8 +270,17 @@ public class ConfigurationViewModel(
             }
     }
 
+    private suspend fun rejectUnavailableConfiguration(config: RunConfiguration): Boolean {
+        val reason = config.type.unavailableReason ?: return false
+        updateState { copy(error = reason) }
+        emitEffect(ConfigurationEffect.ShowError(reason))
+        return true
+    }
+
     private suspend fun runConfiguration(id: ConfigurationId) {
         val config = currentState.configurations.find { it.id == id } ?: return
+
+        if (rejectUnavailableConfiguration(config)) return
 
         // Update to recent
         selectConfiguration(id)

@@ -368,7 +368,7 @@ private fun ConfigurationTypeHeader(type: ConfigurationType) {
         )
         Spacer(modifier = Modifier.width(Spacing.xs.dp))
         Text(
-            text = type.displayName,
+            text = type.displayName + if (type.unavailableReason != null) " (unavailable)" else "",
             color = LocalIntelliJColors.current.textMuted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
@@ -588,7 +588,7 @@ private fun ConfigurationEditorPanel(
             is su.kidoz.jetaprog.configuration.TomcatRemoteSettings,
             -> {
                 Text(
-                    text = "Tomcat settings editor coming soon",
+                    text = "Tomcat configuration editing and execution are not available in this version.",
                     color = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.padding(16.dp),
                 )
@@ -615,7 +615,7 @@ private fun ConfigurationEditorPanel(
             is su.kidoz.jetaprog.configuration.DockerComposeSettings,
             -> {
                 Text(
-                    text = "Docker settings editor coming soon",
+                    text = "Docker configuration editing and execution are not available in this version.",
                     color = LocalIntelliJColors.current.textSecondary,
                     modifier = Modifier.padding(16.dp),
                 )
