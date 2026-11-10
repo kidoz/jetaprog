@@ -7,8 +7,8 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
 **embedded MCP server** for first-class AI-agent integration.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.10-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
-[![Compose Multiplatform](https://img.shields.io/badge/Compose-1.11.1-4285F4.svg?logo=jetpackcompose&logoColor=white)](https://www.jetbrains.com/compose-multiplatform/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.20-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Compose Multiplatform](https://img.shields.io/badge/Compose-1.12.1-4285F4.svg?logo=jetpackcompose&logoColor=white)](https://www.jetbrains.com/compose-multiplatform/)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-informational.svg)](#installation)
 
 > **Status:** under active development. The core editor, language services, build integration,
@@ -20,7 +20,7 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
 ## Features
 
 ### Code editor
-- Syntax highlighting for many languages (hand-written lexers + Tree-sitter)
+- Syntax highlighting with incremental hand-written lexers and LSP semantic overlays
 - Code completion, signature help, and hover information
 - Find & replace with case / whole-word / regex options and live match highlighting
 - Project-wide find in files, plus replace in files with a confirmation dialog
@@ -45,13 +45,28 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
   commit history, and per-gutter line-change markers
 
 ### Build & tooling
-- Build-system runners: **Gradle, Cargo, Meson, Python (Poetry / uv)**
+- Build/run integration: **Gradle, CMake, Cargo, Meson, Python (Poetry / uv), Java, Go, Node.js, and .NET**
 - Run-configuration system (JetBrains-style)
 - Integrated terminal and build-output panels
 
 ### AI integration
 - Embedded **Model Context Protocol (MCP)** server exposing IDE tools, resources,
   and prompts to external AI agents (e.g. Claude)
+
+- ACP agent workspace with session history, recovery, approvals, queues, checkpoints,
+  Git worktrees, and change review
+- MCP tools cover file access, project context, diagnostics/inspections, search, debug,
+  run-configuration discovery, and Gradle tasks; resources expose project/editor context
+
+### Database tools
+- PostgreSQL and StarRocks connection profiles, schema browsing, SQL execution,
+  cancellation, and query results
+- Passwords are supplied separately and are not persisted in connection profiles
+
+### Workspace persistence
+- Restores open tabs and their cursors, active tab, panel layout, tree expansion,
+  recent files, and search/replace histories
+- Unsaved document contents are not persisted as workspace state
 
 ### Extensibility
 - VS Code-style plugin system with lazy activation and a typed plugin API
@@ -63,13 +78,13 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
 
 | Area | Technology |
 |------|------------|
-| Language | Kotlin 2.4.10 (JVM target 25) |
-| UI | Compose Multiplatform 1.12.0 (Desktop) |
+| Language | Kotlin 2.4.20 (JVM target 26) |
+| UI | Compose Multiplatform 1.12.1 (Desktop) |
 | Async | Kotlin Coroutines 1.11.0 |
 | DI | Manual constructor injection |
 | Serialization | kotlinx.serialization 1.11.0 (JSON settings/storage) |
-| HTTP / WebSocket | Ktor 3.5.2 |
-| Build | Gradle 9.6+ (Kotlin DSL, version catalog, convention plugins) |
+| HTTP / WebSocket | Ktor 3.6.0 |
+| Build | Gradle 9.8 (Kotlin DSL, version catalog, convention plugins) |
 | Quality | ktlint, detekt, explicit API mode, all warnings as errors |
 
 ---
@@ -80,13 +95,13 @@ The codebase is a multi-module Gradle build organized by concern:
 
 ```
 core/          common utilities, platform abstractions, project model,
-               settings, lint, run configuration
-editor/        text editor engine, syntax highlighting, Tree-sitter
+               settings, lint, run configuration, database tools
+editor/        text editing models, syntax highlighting, Tree-sitter abstractions
 lsp/           Language Server Protocol — protocol types, client, embedded server
 dap/           Debug Adapter Protocol — protocol, client, service
-mcp/           embedded MCP server and IDE services bridge
+mcp/           embedded MCP server (desktop tools are registered by app/desktop)
 plugins/       plugin API, runtime, support, and bundled language plugins
-build-system/  Gradle, Cargo, Meson, Python, and server runners
+build-system/  Gradle, CMake, Cargo, .NET, Meson, Python, and server runners
 app/desktop    Compose Desktop application (UI shell, editor, dialogs)
 ```
 
@@ -138,9 +153,31 @@ app/desktop    Compose Desktop application (UI shell, editor, dialogs)
   typed `PluginContext`.
 - **Hybrid language services**: UI-centric features can run in-process for low latency
   while heavier analysis is delegated to an LSP server.
-- **Piece-table** text buffer for efficient editing of large files.
+- **Desktop editor storage** currently uses whole strings and snapshot-based undo.
+  Piece-table utilities exist in `editor/core` but are not used by the desktop editor.
+  Highlighting is disabled for documents over 1,000,000 characters; large-file editing
+  performance is not guaranteed.
 
 ---
+
+## Feature limits
+
+- Tree-sitter interfaces and lexer adapters exist, but no native parser is connected
+  to the desktop editor. Highlighting currently uses the lexers described above.
+- Tomcat and Docker configurations are retained for compatibility but cannot be run
+  or debugged. Their editors and selectors label them unavailable.
+- Plugin marketplace, third-party installation, and update delivery are not implemented.
+  Update-policy controls are disabled; bundled plugins can be enabled or disabled.
+- Symbol-aware rename is available for Kotlin. Extract/move/inline refactorings and
+  super-symbol navigation are not implemented. External LSP call/type hierarchy
+  fallback is not connected.
+- Non-JVM debuggers and external language servers require separate installations.
+  Availability of a plugin does not guarantee identical capabilities across languages.
+- Remote development and multiple application windows are not implemented.
+
+Normal verification includes Compose UI tests, but excludes real-provider agent recovery.
+Use `./gradlew :app:desktop:liveAgentRecoveryTest` explicitly for that integration test;
+external database/server/toolchain and cross-platform compatibility need separate validation.
 
 ## Roadmap
 
