@@ -160,6 +160,7 @@ import su.kidoz.jetaprog.project.state.TabState
 import su.kidoz.jetaprog.project.state.WorkspaceState
 import su.kidoz.jetaprog.settings.SettingsService
 import su.kidoz.jetaprog.vcs.GitLineChangeType
+import java.io.File
 
 /**
  * Encapsulates all project-scoped services for a single open project.
@@ -1089,6 +1090,14 @@ public class ProjectSession(
             EditorIntent.RestoreSession(
                 filePaths = state.openTabs.map { tab -> resolveWorkspacePath(tab.filePath) },
                 activeTabIndex = state.activeTabIndex,
+                cursors =
+                    state.openTabs.associate { tab ->
+                        resolveWorkspacePath(tab.filePath) to
+                            TextPosition(
+                                tab.cursor.line.coerceAtLeast(0),
+                                tab.cursor.column.coerceAtLeast(0),
+                            )
+                    },
                 cursor =
                     activeTab?.cursor?.let {
                         TextPosition(it.line.coerceAtLeast(0), it.column.coerceAtLeast(0))
@@ -1098,7 +1107,7 @@ public class ProjectSession(
     }
 
     private fun resolveWorkspacePath(filePath: String): String =
-        if (filePath.startsWith("/")) filePath else "$projectPath/$filePath"
+        if (File(filePath).isAbsolute) filePath else "$projectPath/$filePath"
 
     private suspend fun saveWorkspaceState() {
         val editorState = editorViewModel.state.value
@@ -1107,19 +1116,12 @@ public class ProjectSession(
                 .loadWorkspaceState()
                 .getOrDefault(WorkspaceState())
         val openTabs =
-            editorState.tabs.mapIndexedNotNull { index, tab ->
+            editorState.tabs.mapNotNull { tab ->
                 val uri = tab.uri.value
-                if (!uri.startsWith("file://")) return@mapIndexedNotNull null
+                if (!uri.startsWith("file://")) return@mapNotNull null
                 val path = uri.removePrefix("file://")
-                val cursor =
-                    if (index == editorState.activeTabIndex) {
-                        CursorState(
-                            line = editorState.cursor.position.line,
-                            column = editorState.cursor.position.column,
-                        )
-                    } else {
-                        CursorState()
-                    }
+                val position = editorViewModel.openDocumentCursor(tab.uri) ?: TextPosition.Zero
+                val cursor = CursorState(line = position.line, column = position.column)
                 TabState(
                     filePath = path.removePrefix("$projectPath/"),
                     cursor = cursor,

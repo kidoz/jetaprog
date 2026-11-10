@@ -29,6 +29,8 @@ public sealed interface EditorIntent : Intent {
         val filePaths: List<String>,
         val activeTabIndex: Int,
         val cursor: TextPosition? = null,
+        /** Saved positions keyed by the original file path, including inactive tabs. */
+        val cursors: Map<String, TextPosition> = emptyMap(),
     ) : EditorIntent
 
     /**

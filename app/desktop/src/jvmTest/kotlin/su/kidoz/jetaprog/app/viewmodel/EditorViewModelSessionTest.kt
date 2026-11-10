@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import su.kidoz.jetaprog.common.text.TextPosition
+import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.state.EditorEffect
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -72,6 +73,45 @@ class EditorViewModelSessionTest {
             assertEquals(1, state.activeTabIndex)
             assertEquals("file:///project/src/B.kt", state.activeDocumentUri?.value)
             viewModel.dispose()
+        }
+
+    @Test
+    fun restoresEveryTabsCursorByPathAndClampsShortenedFiles() =
+        runTest {
+            coEvery { fileSystem.exists(any()) } returns true
+            coEvery { fileSystem.exists("/project/Missing.kt") } returns false
+            val original = EditorViewModel(fileSystem, settingsService)
+            val restored = EditorViewModel(fileSystem, settingsService)
+            try {
+                original.perform(EditorIntent.OpenFile("/project/A.kt"))
+                original.perform(EditorIntent.MoveCursor(TextPosition(0, 5)))
+                original.perform(EditorIntent.OpenFile("/project/B.kt"))
+                original.perform(EditorIntent.MoveCursor(TextPosition(0, 10)))
+                val cursors =
+                    original.state.value.tabs.associate { tab ->
+                        tab.uri.value.removePrefix("file://") to requireNotNull(original.openDocumentCursor(tab.uri))
+                    }
+                coEvery { fileSystem.readText("/project/B.kt", any()) } returns Result.success("short")
+                restored.perform(
+                    EditorIntent.RestoreSession(
+                        filePaths = listOf("/project/A.kt", "/project/Missing.kt", "/project/B.kt"),
+                        activeTabIndex = 0,
+                        cursors = cursors,
+                    ),
+                )
+                assertEquals(TextPosition(0, 5), restored.state.value.cursor.position)
+                assertEquals(TextPosition(0, 5), restored.openDocumentCursor(DocumentUri.file("/project/B.kt")))
+                restored.perform(EditorIntent.SwitchTab(1))
+                assertEquals(TextPosition(0, 5), restored.state.value.cursor.position)
+                assertEquals(
+                    "B.kt",
+                    restored.state.value.activeTab
+                        ?.name,
+                )
+            } finally {
+                original.dispose()
+                restored.dispose()
+            }
         }
 
     @Test

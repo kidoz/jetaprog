@@ -616,6 +616,16 @@ public class EditorViewModel(
         return documentSessions[uri]?.content
     }
 
+    /** Current cursor for an open document, including inactive tabs. */
+    public fun openDocumentCursor(uri: DocumentUri): TextPosition? =
+        if (currentState.activeDocumentUri ==
+            uri
+        ) {
+            currentState.cursor.position
+        } else {
+            documentSessions[uri.value]?.cursor?.position
+        }
+
     /**
      * Opens [path] in a tab, or switches to it if already open.
      *
@@ -795,14 +805,25 @@ public class EditorViewModel(
             intent.filePaths.withIndex().filter { (_, path) ->
                 withContext(Dispatchers.IO) { fileSystem.exists(path) }
             }
-        existingFiles.forEach { (_, path) -> openFile(path) }
+        existingFiles.forEach { (_, path) ->
+            openFile(path)
+            if (!userMovedCursorSinceRestore && currentState.activeDocumentUri == DocumentUri.file(path)) {
+                intent.cursors[path]?.let { position ->
+                    moveCursor(clampCursorToContent(currentState.content, Cursor(position)).position)
+                }
+            }
+        }
 
         val activeIndex = existingFiles.indexOfFirst { it.index == intent.activeTabIndex }
         if (activeIndex >= 0) {
             switchTab(activeIndex)
         }
         if (!userMovedCursorSinceRestore) {
-            intent.cursor?.let { moveCursor(it, synchronizeUi = true) }
+            val position =
+                intent.cursor.takeIf { activeIndex >= 0 } ?: intent.cursors[currentState.activeDocumentUri?.toPath()]
+            position?.let {
+                moveCursor(clampCursorToContent(currentState.content, Cursor(it)).position, synchronizeUi = true)
+            }
         }
     }
 
