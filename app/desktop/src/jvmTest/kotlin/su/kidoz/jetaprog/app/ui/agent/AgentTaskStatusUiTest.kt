@@ -82,7 +82,9 @@ class AgentTaskStatusUiTest {
             onNodeWithText("No command evidence in this session.").assertIsDisplayed()
             onNodeWithText("Review request").performClick()
             onNodeWithText("No command evidence in this session.").assertDoesNotExist()
-            onAllNodesWithText("Allow once")[1].performScrollTo().assertIsDisplayed().performClick()
+            onAllNodesWithText(
+                "Allow once",
+            ).assertCountEquals(1)[0].performScrollTo().assertIsDisplayed().performClick()
             assertTrue(AgentIntent.SelectApproval("approval", "once") in intents)
             onNodeWithContentDescription("Conversation").assertIsDisplayed()
             onNodeWithContentDescription("Queue message").assertIsDisplayed()

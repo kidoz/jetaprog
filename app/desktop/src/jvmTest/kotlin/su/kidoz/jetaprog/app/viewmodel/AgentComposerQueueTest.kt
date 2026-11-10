@@ -691,6 +691,39 @@ class AgentComposerQueueTest {
         }
 
     @Test
+    fun unacknowledgedSteeringDisconnectsAndPreservesTheUnsentMessage() =
+        runTest {
+            val agent = HeldPromptTransport(true)
+            val vm = viewModel(agent)
+            vm.dispatch(AgentIntent.Send("Build"))
+            runCurrent()
+            vm.dispatch(AgentIntent.Steer("Change direction"))
+            runCurrent()
+            assertEquals(1, agent.cancels)
+            assertEquals(
+                su.kidoz.jetaprog.app.ui.agent.FollowUpDelivery.STOPPING,
+                vm.state.value.queuedPrompts
+                    .single()
+                    .delivery,
+            )
+            advanceTimeBy(5_001)
+            runCurrent()
+            assertFalse(vm.state.value.isStreaming)
+            assertTrue(vm.state.value.queuePaused)
+            assertEquals(listOf("Build"), agent.prompts)
+            assertEquals(
+                "Change direction",
+                vm.state.value.queuedPrompts
+                    .single()
+                    .prompt,
+            )
+            assertEquals(
+                su.kidoz.jetaprog.app.ui.agent.AgentStopState.DISCONNECTED,
+                vm.state.value.stopState,
+            )
+        }
+
+    @Test
     fun unacknowledgedStopClosesConnectionWithoutStartingOverlappingPrompt() =
         runTest {
             val agent = HeldPromptTransport(true, holdSecondPrompt = true)

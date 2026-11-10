@@ -128,7 +128,7 @@ class AgentSessionSurfaceUiTest {
                     }
                 }
                 onNodeWithText("Queued (1) · Show").assertIsDisplayed()
-                onNodeWithText("Next: Add tests").assertIsDisplayed()
+                onNodeWithText("Queued for next turn: Add tests").assertIsDisplayed()
                 onNodeWithContentDescription("Remove Reader.kt").assertIsDisplayed()
                 onNodeWithText("Current file").assertIsDisplayed()
                 onNodeWithText("Current selection").assertIsDisplayed()
@@ -201,18 +201,19 @@ class AgentSessionSurfaceUiTest {
                         }
                     }
                 }
+                onNodeWithText("Review request").performClick()
                 onNodeWithText("requires approval").assertIsDisplayed()
                 onNodeWithText("\$ gradle test").assertIsDisplayed()
-                onNodeWithText("Allow once").assertIsDisplayed()
-                onNodeWithText("Allow always").assertIsDisplayed()
-                onNodeWithText("Reject once").assertIsDisplayed()
-                onNodeWithText("Reject always").assertIsDisplayed()
+                onNodeWithText("Allow once").performScrollTo().assertIsDisplayed()
+                onNodeWithText("Allow always").performScrollTo().assertIsDisplayed()
+                onNodeWithText("Reject once").performScrollTo().assertIsDisplayed()
+                onNodeWithText("Reject always").performScrollTo().assertIsDisplayed()
                 onNodeWithText("Approve & run").assertDoesNotExist()
                 onNode(hasSetTextAction()).assertIsDisplayed()
-                onNodeWithText("Allow once").performClick()
-                onNodeWithText("Allow always").performClick()
-                onNodeWithText("Reject once").performClick()
-                onNodeWithText("Reject always").performClick()
+                onNodeWithText("Allow once").performScrollTo().performClick()
+                onNodeWithText("Allow always").performScrollTo().performClick()
+                onNodeWithText("Reject once").performScrollTo().performClick()
+                onNodeWithText("Reject always").performScrollTo().performClick()
                 if (dark) onRoot().saveUiArtifacts("agent-approval-choices")
             }
             assertEquals(
@@ -242,7 +243,7 @@ class AgentSessionSurfaceUiTest {
                     }
                 }
             }
-            onNodeWithText("resolved").performScrollTo().assertIsDisplayed()
+            onNodeWithText("Run command · Request resolved").performScrollTo().assertIsDisplayed()
             onNodeWithText("Allow once").assertDoesNotExist()
             onNodeWithText("Allow always").assertDoesNotExist()
         }

@@ -85,7 +85,7 @@ internal fun AgentQueueSection(
         }
         if (!expanded) {
             Text(
-                "Next: ${queue.first().prompt}",
+                "${if (paused) "Paused" else queue.first().delivery.label}: ${queue.first().prompt}",
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
@@ -119,7 +119,7 @@ private fun QueueItem(
     val colors = LocalIntelliJColors.current
     Column(Modifier.fillMaxWidth().padding(Spacing.sm.dp), verticalArrangement = Arrangement.spacedBy(Spacing.xs.dp)) {
         Text(
-            "${index + 1}${if (item.steer) " · Steering next" else ""}",
+            "${index + 1} · ${item.delivery.label}",
             color = colors.textSecondary,
             style = MaterialTheme.typography.labelSmall,
         )

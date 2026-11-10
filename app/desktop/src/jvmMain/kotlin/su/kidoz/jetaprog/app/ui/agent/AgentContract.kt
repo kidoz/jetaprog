@@ -285,7 +285,27 @@ public data class QueuedFollowUp(
     /** Stable identity for queue actions, independent of the prompt text or position. */
     val id: String,
     val restoreComposerOnFailure: Boolean = false,
+    /** Local delivery progress; never implies agent acknowledgement. */
+    val delivery: FollowUpDelivery = FollowUpDelivery.QUEUED,
 )
+
+/** Local progress of an unsent follow-up. */
+public enum class FollowUpDelivery(
+    public val label: String,
+) {
+    QUEUED("Queued for next turn"),
+    WAITING_FOR_TOOL("Waiting for current tool"),
+    STOPPING("Stopping current turn"),
+    SENDING("Preparing to send"),
+}
+
+/** Result of a user-requested cancellation, distinct from ordinary interruption. */
+public enum class AgentStopState {
+    NONE,
+    STOPPING,
+    CONFIRMED,
+    DISCONNECTED,
+}
 
 /**
  * Returns the `@` query being typed, or null when the composer is not mentioning a file.
@@ -638,6 +658,8 @@ public data class AgentUiState(
     val isStreaming: Boolean = false,
     /** The latest turn stopped before normal completion. Cleared when a new turn starts. */
     val interrupted: Boolean = false,
+    /** Whether cancellation is pending, confirmed, or required a disconnect. */
+    val stopState: AgentStopState = AgentStopState.NONE,
     val presence: Presence? = null,
     val permissions: Map<PermissionKind, PermissionPolicy> =
         mapOf(

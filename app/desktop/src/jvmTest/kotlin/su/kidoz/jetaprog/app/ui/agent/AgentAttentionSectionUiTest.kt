@@ -109,7 +109,7 @@ class AgentAttentionSectionUiTest {
                 }
             }
             onNodeWithText("Review request").assertIsDisplayed().performClick()
-            onAllNodesWithText("Allow once").assertCountEquals(2)[1].assertIsDisplayed()
+            onAllNodesWithText("Allow once").assertCountEquals(1)[0].assertIsDisplayed()
             onRoot().saveUiArtifacts("agent-attention-docked-${if (dark) "dark" else "light"}")
         }
 }

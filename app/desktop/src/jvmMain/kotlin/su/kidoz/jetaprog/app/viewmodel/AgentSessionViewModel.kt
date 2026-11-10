@@ -111,6 +111,7 @@ import su.kidoz.jetaprog.app.ui.agent.AgentIntent
 import su.kidoz.jetaprog.app.ui.agent.AgentMenuRow
 import su.kidoz.jetaprog.app.ui.agent.AgentOption
 import su.kidoz.jetaprog.app.ui.agent.AgentSessionTelemetry
+import su.kidoz.jetaprog.app.ui.agent.AgentStopState
 import su.kidoz.jetaprog.app.ui.agent.AgentUiState
 import su.kidoz.jetaprog.app.ui.agent.ApprovalChoice
 import su.kidoz.jetaprog.app.ui.agent.ApprovalChoiceRole
@@ -128,6 +129,7 @@ import su.kidoz.jetaprog.app.ui.agent.DiffDecision
 import su.kidoz.jetaprog.app.ui.agent.DiffLine
 import su.kidoz.jetaprog.app.ui.agent.DiffLineKind
 import su.kidoz.jetaprog.app.ui.agent.EditorSnippet
+import su.kidoz.jetaprog.app.ui.agent.FollowUpDelivery
 import su.kidoz.jetaprog.app.ui.agent.GOAL_BUSY_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.GOAL_CAP_NOTICE
 import su.kidoz.jetaprog.app.ui.agent.GOAL_EMPTY_NOTICE
@@ -803,6 +805,7 @@ public class AgentSessionViewModel(
             it.copy(
                 turns = emptyList(),
                 interrupted = false,
+                stopState = AgentStopState.NONE,
                 isStreaming = false,
                 presence = null,
                 error = null,
@@ -1140,6 +1143,9 @@ public class AgentSessionViewModel(
                 if (result.stopReason != StopReason.END_TURN) {
                     _state.update { it.copy(interrupted = true) }
                 }
+                if (_state.value.stopState == AgentStopState.STOPPING) {
+                    _state.update { it.copy(stopState = AgentStopState.CONFIRMED) }
+                }
                 endTurn()
             }
         } catch (e: CancellationException) {
@@ -1230,6 +1236,7 @@ public class AgentSessionViewModel(
                     isStreaming = true,
                     queuedPrompts = if (queuedId == null) it.queuedPrompts else it.queuedPrompts.drop(1),
                     interrupted = false,
+                    stopState = AgentStopState.NONE,
                     error = null,
                     goalNotice = null,
                     presence = Presence(action = "Thinking", fileName = null, startedAtEpochMillis = now()),
@@ -1254,44 +1261,50 @@ public class AgentSessionViewModel(
     private suspend fun handleStop() {
         disarmQueue()
         freezeGoalPaused(notice = null, keepNotice = true)
+        requestTurnStop()
+    }
+
+    /** Stop and steering share the same deadline and permission cancellation. */
+    private suspend fun requestTurnStop() {
         val acpClient = client ?: return
         val activeSession = sessionId ?: return
-        if (!_state.value.isStreaming) return
-        _state.update { it.copy(interrupted = true) }
-
-        try {
-            acpClient.cancel(activeSession)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            val closed = !acpClient.isOpen
-            if (closed) resetConnection()
-            invalidateTurn()
-            _state.update {
-                it.copy(
-                    connection = if (closed) AgentConnection.ERROR else it.connection,
-                    error = e.message ?: "Could not stop the agent",
-                )
-            }
-            endTurn()
-            return
+        if (!_state.value.isStreaming || _state.value.stopState == AgentStopState.STOPPING) return
+        val generation = turnGeneration
+        _state.update {
+            it.copy(
+                interrupted = true,
+                stopState = AgentStopState.STOPPING,
+                presence = it.presence?.copy(action = "Stopping"),
+            )
         }
-
-        _state.update { st ->
-            if (st.isStreaming) st.copy(presence = st.presence?.copy(action = "Stopping")) else st
-        }
+        cancelPendingApprovals()
+        // Arm before writing: even an unresponsive transport must not trap Stop.
         stopFallbackJob?.cancel()
         stopFallbackJob =
             scope.launch {
                 delay(STOP_GRACE_PERIOD_MS)
-                if (_state.value.isStreaming) {
+                if (generation == turnGeneration && _state.value.isStreaming) {
                     stopFallbackJob = null
-                    invalidateTurn()
-                    resetConnection()
-                    _state.update { it.copy(connection = AgentConnection.DISCONNECTED) }
-                    endTurn()
+                    finishUnconfirmedStop()
                 }
             }
+        try {
+            acpClient.cancel(activeSession)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            if (generation == turnGeneration && _state.value.isStreaming) finishUnconfirmedStop()
+        }
+    }
+
+    private suspend fun finishUnconfirmedStop() {
+        disarmQueue()
+        invalidateTurn()
+        resetConnection()
+        _state.update {
+            it.copy(connection = AgentConnection.DISCONNECTED, stopState = AgentStopState.DISCONNECTED)
+        }
+        endTurn()
     }
 
     /**
@@ -1422,6 +1435,7 @@ public class AgentSessionViewModel(
                 while (session == queueSession && deliverQueuedPrompt && !_state.value.isStreaming) {
                     val queued = _state.value.queuedPrompts.firstOrNull() ?: break
                     val version = queueVersion
+                    updateQueuedDelivery(FollowUpDelivery.SENDING)
                     val sent =
                         handleSend(
                             queued.prompt,
@@ -1468,7 +1482,7 @@ public class AgentSessionViewModel(
             state.copy(
                 queuedPrompts =
                     change(state.queuedPrompts).mapIndexed { index, item ->
-                        if (index == 0) item else item.copy(steer = false)
+                        if (index == 0) item else item.copy(steer = false, delivery = FollowUpDelivery.QUEUED)
                     },
             )
         }
@@ -1506,7 +1520,8 @@ public class AgentSessionViewModel(
             st.copy(
                 queuedPrompts =
                     if (steer) {
-                        listOf(entry) + st.queuedPrompts.map { it.copy(steer = false) }
+                        listOf(entry) +
+                            st.queuedPrompts.map { it.copy(steer = false, delivery = FollowUpDelivery.QUEUED) }
                     } else {
                         st.queuedPrompts + entry
                     },
@@ -1527,16 +1542,23 @@ public class AgentSessionViewModel(
      */
     private suspend fun steerCancelIfIdle() {
         if (!steerArmed || !deliverQueuedPrompt) return
-        if (hasRunningTool()) return
-        val acpClient = client ?: return
-        val activeSession = sessionId ?: return
+        if (hasRunningTool()) {
+            updateQueuedDelivery(FollowUpDelivery.WAITING_FOR_TOOL)
+            return
+        }
         steerArmed = false
-        try {
-            acpClient.cancel(activeSession)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            // The prompt return path still ends the turn and delivers the follow-up.
+        updateQueuedDelivery(FollowUpDelivery.STOPPING)
+        requestTurnStop()
+    }
+
+    private fun updateQueuedDelivery(delivery: FollowUpDelivery) {
+        _state.update { state ->
+            state.copy(
+                queuedPrompts =
+                    state.queuedPrompts.mapIndexed { index, item ->
+                        if (index == 0) item.copy(delivery = delivery) else item
+                    },
+            )
         }
     }
 
@@ -1550,7 +1572,13 @@ public class AgentSessionViewModel(
         deliverQueuedPrompt = false
         steerArmed = false
         _state.update { st ->
-            st.copy(queuePaused = true, queuedPrompts = st.queuedPrompts.map { it.copy(steer = false) })
+            st.copy(
+                queuePaused = true,
+                queuedPrompts =
+                    st.queuedPrompts.map {
+                        it.copy(steer = false, delivery = FollowUpDelivery.QUEUED)
+                    },
+            )
         }
     }
 
@@ -2534,6 +2562,7 @@ public class AgentSessionViewModel(
             it.copy(
                 turns = emptyList(),
                 interrupted = false,
+                stopState = AgentStopState.NONE,
                 isStreaming = false,
                 presence = null,
                 error = null,
@@ -2596,6 +2625,7 @@ public class AgentSessionViewModel(
                 turns = emptyList(),
                 sessionHistory = historyStore.list(),
                 interrupted = false,
+                stopState = AgentStopState.NONE,
                 error = null,
                 isStreaming = false,
                 presence = null,
@@ -3446,7 +3476,9 @@ public class AgentSessionViewModel(
     }
 
     private fun requireActiveTurn(requestSessionId: String) {
-        if (requestSessionId != sessionId || !_state.value.isStreaming) {
+        if (requestSessionId != sessionId || !_state.value.isStreaming ||
+            _state.value.stopState == AgentStopState.STOPPING
+        ) {
             throw AcpRequestException(
                 code = AcpError.INVALID_REQUEST,
                 message = "The agent session or turn is no longer active",
@@ -3523,7 +3555,11 @@ public class AgentSessionViewModel(
     ): Boolean {
         // Without an active turn there is no card to accept; deny instead of
         // suspending a request that the user can never answer.
-        if (_state.value.turns.none { it is Turn.Agent }) return false
+        if (_state.value.turns.none { it is Turn.Agent } ||
+            _state.value.stopState == AgentStopState.STOPPING
+        ) {
+            return false
+        }
         val deferred = CompletableDeferred<RequestPermissionResponse>()
         val callId = "$prefix:$detail:${seq++}"
         val choices = directApprovalChoices()
@@ -3536,6 +3572,9 @@ public class AgentSessionViewModel(
     }
 
     override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
+        if (request.sessionId == sessionId && _state.value.stopState == AgentStopState.STOPPING) {
+            return RequestPermissionResponse(PermissionOutcome.Cancelled)
+        }
         requireActiveTurn(request.sessionId)
         val kind = AgentPermissionPolicy.kindFor(request.toolCall)
         // Unknown kinds are never auto-approved: fall back to asking the user.
@@ -3561,6 +3600,11 @@ public class AgentSessionViewModel(
                 val deferred = CompletableDeferred<RequestPermissionResponse>()
                 val callId = request.toolCall.toolCallId
                 val choices = approvalChoices(request.options)
+                pendingApprovals
+                    .remove(
+                        callId,
+                    )?.deferred
+                    ?.complete(RequestPermissionResponse(PermissionOutcome.Cancelled))
                 pendingApprovals[callId] = PendingApproval(deferred, choices)
                 mutateAgentTurn { blocks ->
                     blocks +
@@ -4141,44 +4185,30 @@ public class AgentSessionViewModel(
             )
 
         /**
-         * One button per allow and reject kind the agent actually offered.
-         *
-         * Allow once stays the primary action when both allows are present. A single
-         * reject stays labeled Deny. Both reject kinds stay separate so each id can be sent.
+         * Preserve the agent's option labels and scope rather than inventing a permission lifetime.
          */
-        fun approvalChoices(options: List<PermissionOption>): List<ApprovalChoice> {
-            val allowOnce = options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ONCE }
-            val allowAlways = options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ALWAYS }
-            val rejectOnce = options.firstOrNull { it.kind == PermissionOptionKind.REJECT_ONCE }
-            val rejectAlways = options.firstOrNull { it.kind == PermissionOptionKind.REJECT_ALWAYS }
-            val bothRejects = rejectOnce != null && rejectAlways != null
-            return buildList {
-                if (allowOnce != null) {
-                    add(ApprovalChoice(allowOnce.optionId, "Allow once", ApprovalChoiceRole.ALLOW_ONCE))
-                }
-                if (allowAlways != null) {
-                    add(ApprovalChoice(allowAlways.optionId, "Allow always", ApprovalChoiceRole.ALLOW_ALWAYS))
-                }
-                if (rejectOnce != null) {
-                    add(
-                        ApprovalChoice(
-                            rejectOnce.optionId,
-                            if (bothRejects) "Reject once" else "Deny",
-                            ApprovalChoiceRole.REJECT,
-                        ),
-                    )
-                }
-                if (rejectAlways != null) {
-                    add(
-                        ApprovalChoice(
-                            rejectAlways.optionId,
-                            if (bothRejects) "Reject always" else "Deny",
-                            ApprovalChoiceRole.REJECT,
-                        ),
-                    )
-                }
+        fun approvalChoices(options: List<PermissionOption>): List<ApprovalChoice> =
+            options.distinctBy { it.optionId }.mapNotNull { option ->
+                val role =
+                    when (option.kind) {
+                        PermissionOptionKind.ALLOW_ONCE -> {
+                            ApprovalChoiceRole.ALLOW_ONCE
+                        }
+
+                        PermissionOptionKind.ALLOW_ALWAYS -> {
+                            ApprovalChoiceRole.ALLOW_ALWAYS
+                        }
+
+                        PermissionOptionKind.REJECT_ONCE, PermissionOptionKind.REJECT_ALWAYS -> {
+                            ApprovalChoiceRole.REJECT
+                        }
+
+                        else -> {
+                            return@mapNotNull null
+                        }
+                    }
+                ApprovalChoice(option.optionId, option.name, role)
             }
-        }
 
         /** True when [optionId] is an allow-once or allow-always option on this request. */
         fun optionAllowsEdit(

@@ -161,7 +161,7 @@ class AgentApprovalTest {
             assertEquals(
                 listOf(
                     ApprovalChoice("once", "Allow once", ApprovalChoiceRole.ALLOW_ONCE),
-                    ApprovalChoice("reject-once", "Deny", ApprovalChoiceRole.REJECT),
+                    ApprovalChoice("reject-once", "Reject once", ApprovalChoiceRole.REJECT),
                 ),
                 approval(viewModel, "call-once").choices,
             )
@@ -179,7 +179,7 @@ class AgentApprovalTest {
             assertEquals(
                 listOf(
                     ApprovalChoice("always", "Allow always", ApprovalChoiceRole.ALLOW_ALWAYS),
-                    ApprovalChoice("reject-always", "Deny", ApprovalChoiceRole.REJECT),
+                    ApprovalChoice("reject-always", "Reject always", ApprovalChoiceRole.REJECT),
                 ),
                 approval(viewModel, "call-always").choices,
             )
@@ -216,6 +216,33 @@ class AgentApprovalTest {
             assertTrue(approval(viewModel, "call-end").resolved)
         }
 
+    @Test
+    fun stopImmediatelyCancelsApprovalsAndDeclinesLateRequests() =
+        runTest {
+            val agent = ApprovalTransport()
+            val vm = streamingViewModel(agent)
+            val response = async { vm.requestPermission(runRequest("pending", allowOnce = true)) }
+            runCurrent()
+            vm.dispatch(AgentIntent.Stop)
+            runCurrent()
+            assertTrue(response.isCompleted)
+            assertEquals(PermissionOutcome.Cancelled, response.await().outcome)
+            assertTrue(vm.state.value.isStreaming)
+            assertEquals(
+                su.kidoz.jetaprog.app.ui.agent.AgentStopState.STOPPING,
+                vm.state.value.stopState,
+            )
+            assertEquals(
+                PermissionOutcome.Cancelled,
+                vm.requestPermission(runRequest("late", allowOnce = true)).outcome,
+            )
+            agent.release.complete(Unit)
+            runCurrent()
+            assertEquals(
+                su.kidoz.jetaprog.app.ui.agent.AgentStopState.CONFIRMED,
+                vm.state.value.stopState,
+            )
+        }
     @Test
     fun allowAlwaysAuthorizesTheFollowingEdit() =
         runTest {

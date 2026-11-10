@@ -48,6 +48,7 @@ internal fun AgentAttentionSection(
     modifier: Modifier = Modifier,
     reviewVisible: Boolean = false,
     presence: Presence? = null,
+    stopState: AgentStopState = AgentStopState.NONE,
     connectionFailed: Boolean = false,
     detailMaxHeight: Dp = Dimensions.popupCompletionMaxHeight.dp,
     requestExpanded: Boolean? = null,
@@ -67,12 +68,18 @@ internal fun AgentAttentionSection(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
         ) {
             Text(
-                if (connectionFailed) "Connection failed" else sessionStatusLabel(attention.status),
+                if (stopState == AgentStopState.STOPPING) {
+                    "Stopping"
+                } else if (connectionFailed) {
+                    "Connection failed"
+                } else {
+                    sessionStatusLabel(attention.status)
+                },
                 color = colors.textPrimary,
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
             )
-            if (attention.execution == AgentExecution.RUNNING) {
+            if (attention.execution == AgentExecution.RUNNING && stopState != AgentStopState.STOPPING) {
                 AttentionButton("Stop", onClick = { dispatch(AgentIntent.Stop) })
             }
             if (connectionFailed) {
@@ -84,7 +91,19 @@ internal fun AgentAttentionSection(
         }
         if (attention.execution == AgentExecution.INTERRUPTED) {
             Text(
-                "The turn stopped. Send a message to continue.",
+                when (stopState) {
+                    AgentStopState.DISCONNECTED -> {
+                        "Agent did not confirm stopping. Disconnected; queued messages are paused."
+                    }
+
+                    AgentStopState.CONFIRMED -> {
+                        "Turn ended after Stop. Send a message to continue."
+                    }
+
+                    else -> {
+                        "The turn stopped. Send a message to continue."
+                    }
+                },
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.bodySmall,
             )

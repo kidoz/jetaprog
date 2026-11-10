@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -286,6 +287,7 @@ internal fun AgentSurfaceContent(
                 dispatch,
                 reviewVisible = reviewing,
                 presence = state.presence,
+                stopState = state.stopState,
                 connectionFailed = state.connection == AgentConnection.ERROR,
                 detailMaxHeight = detailMaxHeight,
                 requestExpanded = expandedPanel == TaskPanel.APPROVAL,
@@ -810,9 +812,11 @@ private fun BlockView(
         }
 
         is Block.Approval -> {
-            ApprovalCard(block) { optionId ->
-                dispatch(AgentIntent.SelectApproval(block.id, optionId))
-            }
+            Text(
+                "${block.title} · ${if (block.resolved) "Request resolved" else "Review request below"}",
+                color = LocalIntelliJColors.current.textSecondary,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
@@ -905,7 +909,7 @@ private fun AgentComposer(
                     Text(
                         text =
                             if (state.isStreaming || state.queuedPrompts.isNotEmpty()) {
-                                "Enter queues a follow-up. Ctrl/Cmd+Enter steers next…"
+                                "Enter queues next. Ctrl/Cmd+Enter redirects after the current tool…"
                             } else {
                                 "Ask the agent to build a feature, refactor, explain code, or run the project…"
                             },
