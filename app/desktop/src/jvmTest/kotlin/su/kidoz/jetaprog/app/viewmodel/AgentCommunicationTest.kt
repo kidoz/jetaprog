@@ -1,6 +1,8 @@
 package su.kidoz.jetaprog.app.viewmodel
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import su.kidoz.jetaprog.acp.protocol.AcpPatch
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
@@ -48,6 +50,27 @@ class AgentCommunicationTest {
             form.content(answered.copy(answers = answered.answers + ("targets" to listOf("unknown"))))
         }
     }
+
+    @Test
+    fun burstTextIsCoalescedWithoutLosingOrderAtControlBoundaries() =
+        runTest {
+            val output = mutableListOf<Pair<String, Boolean>>()
+            val batcher = AgentTextBatcher(this) { text, thought -> output += text to thought }
+            repeat(1000) { batcher.offer("$it,", false) }
+            assertTrue(output.size < 10)
+            advanceTimeBy(40)
+            runCurrent()
+            assertEquals((0 until 1000).joinToString("") { "$it," }, output.joinToString("") { it.first })
+            batcher.offer("thinking", true)
+            batcher.offer(" more", true)
+            batcher.offer("answer", false)
+            batcher.offer(" final", false)
+            batcher.flush()
+            assertEquals(
+                listOf("thinking" to true, " more" to true, "answer" to false, " final" to false),
+                output.takeLast(4),
+            )
+        }
 
     @Test
     fun compactionPatchesRetainIdentityAndClearExplicitly() {

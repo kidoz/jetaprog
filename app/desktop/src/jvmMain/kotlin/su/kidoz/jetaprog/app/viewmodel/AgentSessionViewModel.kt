@@ -276,6 +276,7 @@ public class AgentSessionViewModel(
 
     private val pendingQuestions =
         mutableMapOf<String, Pair<AgentQuestionForm, CompletableDeferred<CreateElicitationResponse>>>()
+    private val textBatcher = AgentTextBatcher(scope, ::appendText)
     private val _state = MutableStateFlow(AgentUiState(workspacePath = projectPath))
 
     /** The observable agent surface state. */
@@ -1396,6 +1397,7 @@ public class AgentSessionViewModel(
      * archive a newer one, then resolves any outstanding approvals.
      */
     private fun invalidateTurn() {
+        textBatcher.flush()
         turnGeneration++
         recoverySaveJob?.cancel()
         recoverySaveJob = null
@@ -1408,6 +1410,7 @@ public class AgentSessionViewModel(
     }
 
     private suspend fun endTurn() {
+        textBatcher.flush()
         recoverySaveJob?.cancel()
         recoverySaveJob = null
         stopFallbackJob?.cancel()
@@ -2583,6 +2586,7 @@ public class AgentSessionViewModel(
 
     /** Captures only live conversations; viewing saved history must not rewrite it. */
     private fun conversationRecord(): AgentSessionRecord? {
+        textBatcher.flush()
         val restoration = _state.value.restoration
         if (restoration != null && restoration != SessionRestoration.Resumed) return null
         val messages =
@@ -2925,13 +2929,16 @@ public class AgentSessionViewModel(
     }
 
     private fun applyUpdate(update: SessionUpdate) {
+        if (update !is SessionUpdate.AgentMessageChunk && update !is SessionUpdate.AgentThoughtChunk) {
+            textBatcher.flush()
+        }
         when (update) {
             is SessionUpdate.AgentMessageChunk -> {
-                appendText(textOf(update.content), thought = false)
+                textBatcher.offer(textOf(update.content), isThought = false)
             }
 
             is SessionUpdate.AgentThoughtChunk -> {
-                appendText(textOf(update.content), thought = true)
+                textBatcher.offer(textOf(update.content), isThought = true)
             }
 
             is SessionUpdate.ToolCallStart -> {
@@ -3486,6 +3493,7 @@ public class AgentSessionViewModel(
             throw AcpRequestException(AcpError.INVALID_PARAMS, "Question requires a session or request scope")
         }
         if (_state.value.stopState == AgentStopState.STOPPING) return CreateElicitationResponse("cancel")
+        textBatcher.flush()
         val id = nextId("question")
         val form: AgentQuestionForm
         val question =
@@ -3726,6 +3734,7 @@ public class AgentSessionViewModel(
         ) {
             return false
         }
+        textBatcher.flush()
         val deferred = CompletableDeferred<RequestPermissionResponse>()
         val callId = "$prefix:$detail:${seq++}"
         val choices = directApprovalChoices()
@@ -3738,6 +3747,7 @@ public class AgentSessionViewModel(
     }
 
     override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
+        textBatcher.flush()
         if (request.sessionId == sessionId && _state.value.stopState == AgentStopState.STOPPING) {
             return RequestPermissionResponse(PermissionOutcome.Cancelled)
         }
