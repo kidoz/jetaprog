@@ -714,6 +714,8 @@ public data class AgentUiState(
     val goalNotice: String? = null,
     /** Whether `/review` is showing this session's files. */
     val reviewVisible: Boolean = false,
+    /** Unsent review feedback for this conversation. */
+    val reviewComments: List<ReviewComment> = emptyList(),
     /** Which review source is currently selected. */
     val reviewScope: ReviewScope = ReviewScope.AGENT,
     /** Read-only Git review of the active checkout. */
@@ -1030,6 +1032,21 @@ public sealed interface AgentIntent {
 
     /** Opens local file review without sending or clearing the composer. */
     public data object ShowReview : AgentIntent
+
+    /** Collect a file or line-range review comment without sending it. */
+    public data class AddReviewComment(
+        val path: String,
+        val lines: String,
+        val text: String,
+    ) : AgentIntent
+
+    /** Remove one unsent review comment. */
+    public data class RemoveReviewComment(
+        val id: String,
+    ) : AgentIntent
+
+    /** Move collected feedback into the editable composer for final review. */
+    public data object ComposeReviewFeedback : AgentIntent
 
     /** Edit one field without transmitting the answer. */
     public data class AnswerQuestion(

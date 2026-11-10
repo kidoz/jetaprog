@@ -75,6 +75,7 @@ import su.kidoz.jetaprog.app.agent.AgentCheckout
 import su.kidoz.jetaprog.app.agent.AgentChoice
 import su.kidoz.jetaprog.app.agent.AgentDraft
 import su.kidoz.jetaprog.app.agent.AgentDraftAttachment
+import su.kidoz.jetaprog.app.agent.AgentDraftReviewComment
 import su.kidoz.jetaprog.app.agent.AgentFileReview
 import su.kidoz.jetaprog.app.agent.AgentGoal
 import su.kidoz.jetaprog.app.agent.AgentGoalStatus
@@ -150,6 +151,7 @@ import su.kidoz.jetaprog.app.ui.agent.PlanStepStatus
 import su.kidoz.jetaprog.app.ui.agent.Presence
 import su.kidoz.jetaprog.app.ui.agent.QueuedFollowUp
 import su.kidoz.jetaprog.app.ui.agent.REVIEW_BUSY_NOTICE
+import su.kidoz.jetaprog.app.ui.agent.ReviewComment
 import su.kidoz.jetaprog.app.ui.agent.ReviewScope
 import su.kidoz.jetaprog.app.ui.agent.SessionRestoration
 import su.kidoz.jetaprog.app.ui.agent.ToolStatus
@@ -186,10 +188,12 @@ import su.kidoz.jetaprog.app.ui.agent.promptWithContext
 import su.kidoz.jetaprog.app.ui.agent.promptWithInstructions
 import su.kidoz.jetaprog.app.ui.agent.restoredGoal
 import su.kidoz.jetaprog.app.ui.agent.restoredGoalNotice
+import su.kidoz.jetaprog.app.ui.agent.reviewFeedbackPrompt
 import su.kidoz.jetaprog.app.ui.agent.reviewFiles
 import su.kidoz.jetaprog.app.ui.agent.sessionTitle
 import su.kidoz.jetaprog.app.ui.agent.summarizeSession
 import su.kidoz.jetaprog.app.ui.agent.toAgentConfigOption
+import su.kidoz.jetaprog.app.ui.agent.validReviewLines
 import su.kidoz.jetaprog.app.ui.agent.withoutMentionToken
 import su.kidoz.jetaprog.common.Disposable
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -565,6 +569,56 @@ public class AgentSessionViewModel(
             is AgentIntent.ResolveQuestion -> {
                 resolveQuestion(intent.id, intent.action)
             }
+
+            is AgentIntent.AddReviewComment -> {
+                if (intent.path.isNotBlank() && intent.text.isNotBlank() && validReviewLines(intent.lines)) {
+                    _state.update {
+                        it.copy(
+                            reviewComments =
+                                it.reviewComments +
+                                    ReviewComment(
+                                        UUID.randomUUID().toString(),
+                                        intent.path,
+                                        intent.lines,
+                                        intent.text.trim(),
+                                        it.reviewScope,
+                                    ),
+                        )
+                    }
+                }
+                rememberDraft()
+            }
+
+            is AgentIntent.RemoveReviewComment -> {
+                _state.update {
+                    it.copy(
+                        reviewComments =
+                            it.reviewComments.filterNot { comment ->
+                                comment.id ==
+                                    intent.id
+                            },
+                    )
+                }
+                rememberDraft()
+            }
+
+            AgentIntent.ComposeReviewFeedback -> {
+                val comments = _state.value.reviewComments
+                if (comments.isNotEmpty()) {
+                    _state.update {
+                        it.copy(
+                            composerInput =
+                                listOf(it.composerInput, reviewFeedbackPrompt(comments))
+                                    .filter { text -> text.isNotBlank() }
+                                    .joinToString("\n\n"),
+                            reviewComments = emptyList(),
+                            reviewVisible = false,
+                        )
+                    }
+                    rememberDraft()
+                }
+            }
+
             is AgentIntent.OpenDiff -> {
                 openDiff(intent.blockId)
             }
@@ -842,6 +896,7 @@ public class AgentSessionViewModel(
                 goal = null,
                 goalNotice = null,
                 reviewVisible = false,
+                reviewComments = emptyList(),
                 reviewNotice = null,
                 agentNotice = null,
                 connection = if (client == null) AgentConnection.DISCONNECTED else it.connection,
@@ -2430,6 +2485,10 @@ public class AgentSessionViewModel(
                 selectionStart =
                     state.composerSelection.takeIf { state.composerSelectionText == state.composerInput }?.start
                         ?: state.composerInput.length,
+                reviewComments =
+                    state.reviewComments.map {
+                        AgentDraftReviewComment(it.id, it.path, it.lines, it.text, it.scope == ReviewScope.WORKSPACE)
+                    },
                 selectionEnd =
                     state.composerSelection.takeIf { state.composerSelectionText == state.composerInput }?.end
                         ?: state.composerInput.length,
@@ -2473,6 +2532,16 @@ public class AgentSessionViewModel(
                 composerAttachments =
                     draft.attachments.map { item ->
                         ComposerAttachment(item.label, item.path, item.excerpt)
+                    },
+                reviewComments =
+                    draft.reviewComments.map {
+                        ReviewComment(
+                            it.id,
+                            it.path,
+                            it.lines,
+                            it.text,
+                            if (it.workspace) ReviewScope.WORKSPACE else ReviewScope.AGENT,
+                        )
                     },
                 mentionFiles = emptyList(),
             )
@@ -2603,6 +2672,7 @@ public class AgentSessionViewModel(
                 goal = null,
                 goalNotice = null,
                 reviewVisible = false,
+                reviewComments = emptyList(),
                 reviewNotice = null,
             )
         }
@@ -2666,6 +2736,7 @@ public class AgentSessionViewModel(
                 goal = null,
                 goalNotice = null,
                 reviewVisible = false,
+                reviewComments = emptyList(),
                 reviewNotice = null,
             )
         }
@@ -2760,6 +2831,7 @@ public class AgentSessionViewModel(
                 goal = record.goal?.let(::restoredGoal),
                 goalNotice = restoredGoalNotice(record.goal),
                 reviewVisible = false,
+                reviewComments = emptyList(),
                 reviewNotice = null,
             )
         }

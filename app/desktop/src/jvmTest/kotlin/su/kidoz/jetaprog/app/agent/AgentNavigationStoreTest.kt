@@ -42,7 +42,14 @@ class AgentNavigationStoreTest {
                             AgentTaskNavigation(
                                 true,
                                 true,
-                                draft.copy(selectionStart = 9, selectionEnd = 2),
+                                draft.copy(
+                                    selectionStart = 9,
+                                    selectionEnd = 2,
+                                    reviewComments =
+                                        listOf(
+                                            AgentDraftReviewComment("r", "Reader.kt", "12-18", "Handle EOF", true),
+                                        ),
+                                ),
                                 AgentConversationView("turn", 4, 27, false),
                             ),
                     ),

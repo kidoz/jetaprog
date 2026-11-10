@@ -6,10 +6,16 @@ import su.kidoz.jetaprog.acp.protocol.AcpPatch
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
 import su.kidoz.jetaprog.acp.protocol.SessionUpdate
 import su.kidoz.jetaprog.app.ui.agent.AgentSessionTelemetry
+import su.kidoz.jetaprog.app.ui.agent.ReviewComment
+import su.kidoz.jetaprog.app.ui.agent.ReviewScope
+import su.kidoz.jetaprog.app.ui.agent.reviewFeedbackPrompt
+import su.kidoz.jetaprog.app.ui.agent.validReviewLines
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AgentCommunicationTest {
@@ -57,5 +63,24 @@ class AgentCommunicationTest {
         assertEquals("first second", state.compactions.single().summary)
         state = state.applyTelemetry(SessionUpdate.CompactionUpdate("c", "completed", summary = AcpPatch.Value(null)))
         assertEquals("", state.compactions.single().summary)
+    }
+
+    @Test
+    fun reviewFeedbackKeepsScopeAndLineReferences() {
+        assertTrue(validReviewLines(""))
+        assertTrue(validReviewLines("12-18"))
+        assertFalse(validReviewLines("18-12"))
+        assertFalse(validReviewLines("0"))
+        assertFalse(validReviewLines("1-2-3"))
+        val prompt =
+            reviewFeedbackPrompt(
+                listOf(
+                    ReviewComment("one", "Reader.kt", "12-18", "Handle EOF", ReviewScope.AGENT),
+                    ReviewComment("two", "Other.kt", "", "Preserve this change", ReviewScope.WORKSPACE),
+                ),
+            )
+        assertTrue(prompt.contains("Reader.kt:12-18 (Agent changes)"))
+        assertTrue(prompt.contains("Workspace changes; origin may be mixed"))
+        assertTrue(prompt.contains("Handle EOF"))
     }
 }

@@ -228,7 +228,7 @@ internal fun AgentSurfaceContent(
                     Column(
                         modifier =
                             Modifier
-                                .weight(if (reviewing) 2f else 1f, fill = false)
+                                .weight(1f, fill = reviewing)
                                 .fillMaxWidth()
                                 .then(
                                     if (workspaceReview) Modifier else Modifier.verticalScroll(rememberScrollState()),
@@ -261,15 +261,17 @@ internal fun AgentSurfaceContent(
                         if (!agentNotice.isNullOrBlank()) AgentStatusMessage(agentNotice)
                         if (!workspaceReview) AgentTaskDetails(state, dispatch)
                     }
-                    Box(modifier = Modifier.weight(if (reviewing) 1f else 2f).fillMaxWidth()) {
-                        if (state.turns.isEmpty()) {
-                            EmptyState(dispatch)
-                        } else {
-                            Conversation(state, dispatch)
+                    if (!reviewing) {
+                        Box(modifier = Modifier.weight(2f).fillMaxWidth()) {
+                            if (state.turns.isEmpty()) {
+                                EmptyState(dispatch)
+                            } else {
+                                Conversation(state, dispatch)
+                            }
                         }
                     }
                 }
-                if (showRail && !workspaceReview) {
+                if (showRail && !reviewing) {
                     SessionChangesRail(state, dispatch)
                 }
             }

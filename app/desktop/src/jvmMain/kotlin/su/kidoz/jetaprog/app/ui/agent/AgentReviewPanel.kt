@@ -61,6 +61,17 @@ internal fun AgentReviewPanel(
                 modifier = Modifier.semantics { contentDescription = "Close review" },
             )
         }
+        AgentReviewFeedback(
+            state,
+            if (state.reviewScope ==
+                ReviewScope.AGENT
+            ) {
+                files.map { it.key }
+            } else {
+                state.workspaceReview.files.map { it.path }
+            },
+            dispatch,
+        )
         if (state.reviewScope == ReviewScope.AGENT) {
             if (files.isEmpty()) {
                 ReviewText("No agent-reported changes. Check Workspace changes for other edits.")

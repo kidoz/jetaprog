@@ -130,6 +130,10 @@ public fun ComponentGallery(modifier: Modifier = Modifier) {
             }
         }
 
+        GallerySection("Agent · Questions and review feedback") {
+            AgentCommunicationSpecimen()
+        }
+
         GallerySection("Agent · Workspace and checks") {
             Column(Modifier.width(Dimensions.popupSearchWidth.dp)) {
                 AgentWorkspaceContext("/projects/jetaprog-worktree")

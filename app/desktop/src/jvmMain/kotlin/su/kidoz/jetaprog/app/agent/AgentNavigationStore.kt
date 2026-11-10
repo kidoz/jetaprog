@@ -27,6 +27,18 @@ public data class AgentDraft(
     val selectionStart: Int = text.length,
     /** Selection focus, preserving reverse selections. */
     val selectionEnd: Int = selectionStart,
+    /** Collected review feedback, restored without sending it. */
+    val reviewComments: List<AgentDraftReviewComment> = emptyList(),
+)
+
+/** Durable review feedback kept with its conversation draft. */
+@Serializable
+public data class AgentDraftReviewComment(
+    val id: String,
+    val path: String,
+    val lines: String,
+    val text: String,
+    val workspace: Boolean = false,
 )
 
 /** A durable reading position; message identity takes priority over its fallback index. */
