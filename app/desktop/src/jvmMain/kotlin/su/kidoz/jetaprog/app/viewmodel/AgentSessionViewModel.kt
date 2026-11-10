@@ -29,6 +29,7 @@ import su.kidoz.jetaprog.acp.client.AcpClient
 import su.kidoz.jetaprog.acp.client.AcpClientHandler
 import su.kidoz.jetaprog.acp.client.StdioAcpTransport
 import su.kidoz.jetaprog.acp.client.StdioAgentConfig
+import su.kidoz.jetaprog.acp.protocol.AcpDiagnostic
 import su.kidoz.jetaprog.acp.protocol.AcpError
 import su.kidoz.jetaprog.acp.protocol.AcpRequestException
 import su.kidoz.jetaprog.acp.protocol.AcpTransport
@@ -979,6 +980,16 @@ public class AgentSessionViewModel(
             it.copy(
                 connection = AgentConnection.CONNECTED,
                 agentName = initialize.agentInfo?.name,
+                protocolIssues = 0,
+                capabilitySummary =
+                    listOf(
+                        "ACP v${initialize.protocolVersion}",
+                        "Resume: ${if (initialize.agentCapabilities.loadSession) "supported" else "transcript only"}",
+                        "Attachments: text and file links",
+                        "Embedded context: ${initialize.agentCapabilities.promptCapabilities.embeddedContext}",
+                        "Structured questions: forms supported; URL mode unavailable",
+                        "Notices and compaction: supported by JetaProg",
+                    ),
                 error = null,
             )
         }
@@ -1153,6 +1164,15 @@ public class AgentSessionViewModel(
     private suspend fun readProjectInstructions(): String? = loadProjectInstructions(fileSystem, projectPath).text
 
     private fun refreshContextPreview() {
+        client?.metrics?.let { metrics ->
+            _state.update {
+                it.copy(
+                    trafficSummary =
+                        "${metrics.receivedMessages} messages · ${metrics.receivedChars} characters received · " +
+                            "${metrics.queuedNotifications} queued · peak ${metrics.peakQueuedNotifications}",
+                )
+            }
+        }
         val generation = ++contextGeneration
         contextReadJob?.cancel()
         _state.update { it.copy(instructionPreview = it.instructionPreview.copy(loading = true)) }
@@ -3302,6 +3322,10 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
     // AcpClientHandler
     // ------------------------------------------------------------------------
+
+    override fun protocolDiagnostic(diagnostic: AcpDiagnostic) {
+        _state.update { it.copy(protocolIssues = it.protocolIssues + 1) }
+    }
 
     override suspend fun sessionUpdate(notification: SessionNotification) {
         // Apply updates before the prompt response can end the turn and archive it.

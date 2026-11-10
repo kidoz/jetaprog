@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.acp.client
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -10,6 +11,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import su.kidoz.jetaprog.acp.protocol.AcpConnection
+import su.kidoz.jetaprog.acp.protocol.AcpDiagnostic
 import su.kidoz.jetaprog.acp.protocol.AcpError
 import su.kidoz.jetaprog.acp.protocol.AcpMethod
 import su.kidoz.jetaprog.acp.protocol.AcpNotificationHandler
@@ -95,7 +97,12 @@ public class AcpClient(
             json = json,
             requestHandler = AcpRequestHandler { method, params -> handleAgentRequest(method, params) },
             notificationHandler = AcpNotificationHandler { method, params -> handleAgentNotification(method, params) },
+            diagnosticHandler = handler::protocolDiagnostic,
         )
+
+    /** Snapshot of payload-free traffic and backlog counters. */
+    public val metrics: su.kidoz.jetaprog.acp.protocol.AcpConnectionMetrics
+        get() = connection.metrics.value
 
     /**
      * Starts listening and performs the `initialize` handshake.
@@ -339,7 +346,15 @@ public class AcpClient(
         params: JsonElement?,
     ) {
         if (method == AcpMethod.SESSION_UPDATE && params != null) {
-            val notification = decode(SessionNotification.serializer(), params)
+            val notification =
+                try {
+                    decode(SessionNotification.serializer(), params)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    handler.protocolDiagnostic(AcpDiagnostic.UNSUPPORTED_OR_MALFORMED_UPDATE)
+                    return
+                }
             handler.sessionUpdate(notification)
             _sessionUpdates.tryEmit(notification)
         }

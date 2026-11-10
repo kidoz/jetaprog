@@ -6,10 +6,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -67,6 +73,7 @@ public class AcpConnection(
             throw AcpRequestException(AcpError.METHOD_NOT_FOUND, "Method not found: $method")
         },
     private val notificationHandler: AcpNotificationHandler = AcpNotificationHandler { _, _ -> },
+    private val diagnosticHandler: (AcpDiagnostic) -> Unit = {},
 ) {
     private val mutex = Mutex()
     private val closeMutex = Mutex()
@@ -79,7 +86,12 @@ public class AcpConnection(
     private var started = false
     private val pending = mutableMapOf<String, CompletableDeferred<IncomingResponse>>()
     private val notifications =
-        Channel<IncomingNotification>(Channel.UNLIMITED, onUndeliveredElement = { it.handled.cancel() })
+        Channel<IncomingNotification>(MAX_QUEUED_NOTIFICATIONS, onUndeliveredElement = { it.handled.cancel() })
+    private val _metrics = MutableStateFlow(AcpConnectionMetrics())
+
+    /** Live payload-free traffic and backlog counters. */
+    public val metrics: StateFlow<AcpConnectionMetrics> = _metrics.asStateFlow()
+
     private var lastNotification: CompletableDeferred<Unit>? = null
     private val _isOpen = MutableStateFlow(true)
 
@@ -106,6 +118,12 @@ public class AcpConnection(
             scope.launch {
                 try {
                     for (notification in notifications) {
+                        _metrics.update {
+                            it.copy(
+                                queuedNotifications = it.queuedNotifications - 1,
+                                queuedChars = it.queuedChars - notification.chars,
+                            )
+                        }
                         try {
                             notificationHandler.handle(notification.method, notification.params)
                             notification.handled.complete(Unit)
@@ -113,7 +131,7 @@ public class AcpConnection(
                             notification.handled.cancel(e)
                             throw e
                         } catch (_: Exception) {
-                            // A malformed update must not stop subsequent notifications.
+                            report(AcpDiagnostic.NOTIFICATION_HANDLER_FAILED)
                             notification.handled.complete(Unit)
                         }
                     }
@@ -134,6 +152,8 @@ public class AcpConnection(
                     // Fail in-flight requests rather than leaving callers suspended forever
                     // when the peer exits or the transport is closed.
                     withContext(NonCancellable) { failAllPending(cause?.message ?: "ACP transport closed") }
+                }.catch {
+                    // onCompletion already failed pending requests and closed the connection.
                 }.launchIn(scope)
     }
 
@@ -171,7 +191,16 @@ public class AcpConnection(
         try {
             transport.send(json.encodeToString(AcpRequest.serializer(), AcpRequest(idElement, method, params)))
             val response = deferred.await()
-            if (awaitNotifications) response.notificationsHandled?.await()
+            if (awaitNotifications) {
+                try {
+                    response.notificationsHandled?.await()
+                } catch (e: CancellationException) {
+                    // A cancelled barrier is a connection failure, not cancellation of
+                    // the prompt caller. Preserve genuine caller cancellation separately.
+                    currentCoroutineContext().ensureActive()
+                    throw AcpRequestException(AcpError.INTERNAL_ERROR, "ACP updates were interrupted before completion")
+                }
+            }
             return response.result()
         } finally {
             withContext(NonCancellable) { mutex.withLock { pending.remove(key) } }
@@ -229,8 +258,19 @@ public class AcpConnection(
     }
 
     private suspend fun dispatch(line: String) {
-        if (line.isBlank()) return
-        val obj = runCatching { json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return
+        if (!isOpen || line.isBlank()) return
+        _metrics.update {
+            it.copy(
+                receivedMessages = it.receivedMessages + 1,
+                receivedChars =
+                    it.receivedChars + line.length,
+            )
+        }
+        val obj = runCatching { json.parseToJsonElement(line).jsonObject }.getOrNull()
+        if (obj == null) {
+            report(AcpDiagnostic.MALFORMED_MESSAGE)
+            return
+        }
 
         when {
             obj.containsKey("id") && obj.containsKey("method") -> {
@@ -243,11 +283,41 @@ public class AcpConnection(
 
             obj.containsKey("method") -> {
                 val method = obj.methodName() ?: return
-                val notification = IncomingNotification(method, obj["params"])
-                lastNotification = notification.handled
-                if (notifications.trySend(notification).isFailure) notification.handled.cancel()
+                if (_metrics.value.queuedChars + line.length > MAX_QUEUED_CHARS ||
+                    _metrics.value.queuedNotifications >= MAX_QUEUED_NOTIFICATIONS
+                ) {
+                    overflow()
+                    return
+                }
+                val notification = IncomingNotification(method, obj["params"], line.length)
+                _metrics.update {
+                    it.copy(
+                        queuedNotifications = it.queuedNotifications + 1,
+                        queuedChars = it.queuedChars + line.length,
+                        peakQueuedNotifications = maxOf(it.peakQueuedNotifications, it.queuedNotifications + 1),
+                    )
+                }
+                if (notifications.trySend(notification).isFailure) {
+                    notification.handled.cancel()
+                    overflow()
+                } else {
+                    lastNotification = notification.handled
+                }
             }
         }
+    }
+
+    private fun report(diagnostic: AcpDiagnostic) {
+        _metrics.update { it.copy(issues = it.issues + 1) }
+        diagnosticHandler(diagnostic)
+    }
+
+    private suspend fun overflow() {
+        report(AcpDiagnostic.INCOMING_OVERFLOW)
+        // Never suspend the reader behind notifications: responses and permission requests
+        // use this same stream. Fail the connection visibly instead of dropping events.
+        failAllPending("ACP notification backlog exceeded the safety limit")
+        close()
     }
 
     private suspend fun handleResponse(obj: JsonObject) {
@@ -291,6 +361,7 @@ public class AcpConnection(
     private data class IncomingNotification(
         val method: String,
         val params: JsonElement?,
+        val chars: Int,
         val handled: CompletableDeferred<Unit> = CompletableDeferred(),
     )
 
@@ -309,3 +380,6 @@ public class AcpConnection(
             }
     }
 }
+
+private const val MAX_QUEUED_NOTIFICATIONS = 2_048
+private const val MAX_QUEUED_CHARS = 16_777_216L

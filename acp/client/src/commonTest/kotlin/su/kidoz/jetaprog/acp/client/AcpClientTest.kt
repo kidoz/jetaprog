@@ -72,6 +72,42 @@ private class ClientTestTransport(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AcpClientTest {
+
+    @Test
+    fun unknownUpdatesAreDiagnosedAndDoNotPreventLaterOutput() =
+        runTest {
+            val transport = ClientTestTransport()
+            val diagnostics = mutableListOf<su.kidoz.jetaprog.acp.protocol.AcpDiagnostic>()
+            val updates = mutableListOf<SessionNotification>()
+            val client =
+                AcpClient(
+                    transport,
+                    backgroundScope,
+                    handler =
+                        object : AcpClientHandler {
+                            override fun protocolDiagnostic(diagnostic: su.kidoz.jetaprog.acp.protocol.AcpDiagnostic) {
+                                diagnostics += diagnostic
+                            }
+
+                            override suspend fun sessionUpdate(notification: SessionNotification) {
+                                updates += notification
+                            }
+                        },
+                )
+            client.initialize()
+            transport.inbound.send(
+                """{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"future_kind","private":"do not log"}}}""",
+            )
+            transport.update("visible")
+            runCurrent()
+            assertEquals(
+                listOf(su.kidoz.jetaprog.acp.protocol.AcpDiagnostic.UNSUPPORTED_OR_MALFORMED_UPDATE),
+                diagnostics,
+            )
+            assertEquals(1, updates.size)
+            client.close()
+        }
+
     @Test
     fun booleanSettingsRequireAdvertisedCapability() =
         runTest {

@@ -7,6 +7,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -18,10 +19,13 @@ import su.kidoz.jetaprog.platform.process.withResolvedExecutable
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
+import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 private val logger = KotlinLogging.logger {}
 
@@ -54,24 +58,25 @@ public class StdioAcpTransport(
     private var writer: BufferedWriter? = null
 
     private val sendMutex = Mutex()
-    private var closed = false
+    private val closed = AtomicBoolean(false)
+    private val queuedChars = AtomicLong()
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val incomingChannel = Channel<String>(Channel.UNLIMITED)
+    private val incomingChannel = Channel<String>(MAX_INCOMING_FRAMES)
 
     /** Whether the agent process is alive. */
     public val isAlive: Boolean
         get() = process?.isAlive == true
 
     override val incoming: Flow<String>
-        get() = incomingChannel.receiveAsFlow()
+        get() = incomingChannel.receiveAsFlow().onEach { queuedChars.addAndGet(-it.length.toLong()) }
 
     /**
      * Launches the agent process and begins reading its output.
      */
     public suspend fun start(): Unit =
         withContext(Dispatchers.IO) {
-            check(!closed) { "Transport is closed" }
+            check(!closed.get()) { "Transport is closed" }
             if (process != null) return@withContext
 
             logger.info { "Starting ACP agent: ${config.command.joinToString(" ")}" }
@@ -96,14 +101,22 @@ public class StdioAcpTransport(
                 BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
                     try {
                         while (isActive) {
-                            val line = reader.readLine() ?: break
+                            val line = reader.readBoundedLine() ?: break
                             if (line.isNotBlank()) {
                                 logger.debug { "ACP <- message (${line.length} chars)" }
-                                incomingChannel.send(line)
+                                val chars = queuedChars.addAndGet(line.length.toLong())
+                                if (chars > MAX_INCOMING_CHARS || incomingChannel.trySend(line).isFailure) {
+                                    queuedChars.addAndGet(-line.length.toLong())
+                                    throw IOException("ACP input backlog exceeded the safety limit")
+                                }
                             }
                         }
                     } catch (e: Exception) {
-                        if (isActive) logger.error(e) { "Error reading ACP agent output" }
+                        if (isActive) {
+                            logger.error { "ACP output reader stopped (${e::class.simpleName})" }
+                            incomingChannel.close(e)
+                            process.destroy()
+                        }
                     }
                 }
             } finally {
@@ -125,7 +138,7 @@ public class StdioAcpTransport(
 
     override suspend fun send(line: String): Unit =
         sendMutex.withLock {
-            check(!closed) { "Transport is closed" }
+            check(!closed.get()) { "Transport is closed" }
             withContext(Dispatchers.IO) {
                 val running = process ?: throw IllegalStateException("Transport not started")
                 if (!running.isAlive) {
@@ -142,16 +155,8 @@ public class StdioAcpTransport(
         }
 
     override suspend fun close() {
-        val alreadyClosed =
-            sendMutex.withLock {
-                if (closed) {
-                    true
-                } else {
-                    closed = true
-                    false
-                }
-            }
-        if (alreadyClosed) return
+        // A blocked pipe write may own sendMutex. Terminating the process must not wait for it.
+        if (!closed.compareAndSet(false, true)) return
 
         logger.info { "Closing ACP agent transport" }
         scope.cancel()
@@ -163,12 +168,27 @@ public class StdioAcpTransport(
 
             val target = writer
             writer = null
-            runCatching { target?.close() }
-
             if (running != null && !running.waitFor(PROCESS_EXIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 running.destroyForcibly()
                 running.waitFor(PROCESS_EXIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             }
+            runCatching { target?.close() }
         }
     }
 }
+
+/** Bounds allocation even when a peer never terminates a line. */
+private fun BufferedReader.readBoundedLine(): String? {
+    val line = StringBuilder()
+    while (true) {
+        val char = read()
+        if (char < 0) return if (line.isEmpty()) null else line.toString()
+        if (char == '\n'.code) return line.toString().removeSuffix("\r")
+        if (line.length >= MAX_FRAME_CHARS) throw IOException("ACP frame exceeded the safety limit")
+        line.append(char.toChar())
+    }
+}
+
+private const val MAX_INCOMING_FRAMES = 2_048
+private const val MAX_INCOMING_CHARS = 16_777_216L
+private const val MAX_FRAME_CHARS = 8_388_608

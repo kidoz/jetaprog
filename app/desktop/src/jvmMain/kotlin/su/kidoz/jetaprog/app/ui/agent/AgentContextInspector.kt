@@ -100,6 +100,20 @@ internal fun AgentContextInspectorContent(
                     Modifier.verticalScroll(scroll).padding(end = Spacing.md.dp),
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp),
                 ) {
+                    ContextText("Agent capabilities", heading = true)
+                    state.capabilitySummary.forEach { ContextText(it) }
+                    state.trafficSummary?.let { ContextText(it) }
+                    ContextText(
+                        "Session settings: ${if (state.configOptions != null) "agent-confirmed configuration" else "legacy controls"}",
+                    )
+                    if (state.protocolIssues >
+                        0
+                    ) {
+                        ContextText(
+                            "Protocol issues: ${state.protocolIssues} ignored updates. Payloads are not logged.",
+                        )
+                    }
+                    HorizontalDivider(color = LocalIntelliJColors.current.divider)
                     ContextText("Checkout", heading = true)
                     ContextText(state.workspacePath.ifBlank { "Workspace unavailable" })
                     ContextText("This is the current draft. Already queued messages keep their captured attachments.")

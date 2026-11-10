@@ -626,6 +626,12 @@ public data class AgentUiState(
     val hasUnsavedEdits: Boolean = false,
     val connection: AgentConnection = AgentConnection.DISCONNECTED,
     val agentName: String? = null,
+    /** Negotiated support, shown in the context inspector. */
+    val capabilitySummary: List<String> = emptyList(),
+    /** Count of malformed or unsupported notifications, without their payloads. */
+    val protocolIssues: Int = 0,
+    /** Payload-free connection counters captured when the inspector is refreshed. */
+    val trafficSummary: String? = null,
     val turns: List<Turn> = emptyList(),
     val isStreaming: Boolean = false,
     /** The latest turn stopped before normal completion. Cleared when a new turn starts. */

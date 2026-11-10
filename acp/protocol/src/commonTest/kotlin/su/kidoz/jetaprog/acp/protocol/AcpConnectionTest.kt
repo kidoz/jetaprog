@@ -49,6 +49,66 @@ class AcpConnectionTest {
     private val json = AcpConnection.defaultJson
 
     @Test
+    fun disconnectWhileDrainingAResponseFailsTheCallerInsteadOfCancellingIt() =
+        runTest {
+            val transport = TestTransport()
+            val connection =
+                AcpConnection(
+                    transport,
+                    backgroundScope,
+                    notificationHandler = AcpNotificationHandler { _, _ -> kotlinx.coroutines.awaitCancellation() },
+                )
+            connection.start()
+            val result = async { runCatching { connection.sendRequest("prompt", awaitNotifications = true) } }
+            runCurrent()
+            transport.inbound.send("""{"jsonrpc":"2.0","method":"update","params":{}}""")
+            respond(transport, requestId(transport), "done")
+            runCurrent()
+            assertFalse(result.isCompleted)
+            connection.close()
+            runCurrent()
+            assertIs<AcpRequestException>(result.await().exceptionOrNull())
+        }
+
+    @Test
+    fun notificationOverloadDisconnectsInsteadOfLosingEventsOrBlockingResponses() =
+        runTest {
+            val transport = TestTransport()
+            val diagnostics = mutableListOf<AcpDiagnostic>()
+            val connection =
+                AcpConnection(
+                    transport,
+                    backgroundScope,
+                    notificationHandler = AcpNotificationHandler { _, _ -> kotlinx.coroutines.awaitCancellation() },
+                    diagnosticHandler = { diagnostics += it },
+                )
+            connection.start()
+            val pending = async { runCatching { connection.sendRequest("session/prompt", awaitNotifications = true) } }
+            runCurrent()
+            repeat(2_100) { transport.inbound.trySend("""{"jsonrpc":"2.0","method":"session/update","params":{}}""") }
+            runCurrent()
+            assertFalse(connection.isOpen)
+            assertTrue(pending.await().isFailure)
+            assertEquals(listOf(AcpDiagnostic.INCOMING_OVERFLOW), diagnostics)
+            assertTrue(connection.metrics.value.peakQueuedNotifications <= 2_049)
+            assertEquals(1, transport.closeCount)
+        }
+
+    @Test
+    fun malformedFramesAreReportedWithoutTheirContents() =
+        runTest {
+            val transport = TestTransport()
+            val diagnostics = mutableListOf<AcpDiagnostic>()
+            val connection = AcpConnection(transport, backgroundScope, diagnosticHandler = { diagnostics += it })
+            connection.start()
+            transport.inbound.send("not JSON: private prompt")
+            runCurrent()
+            assertEquals(listOf(AcpDiagnostic.MALFORMED_MESSAGE), diagnostics)
+            assertTrue(connection.isOpen)
+            connection.close()
+        }
+
+    @Test
     fun responsesAreCorrelatedWithTheirRequests() =
         runTest {
             val transport = TestTransport()

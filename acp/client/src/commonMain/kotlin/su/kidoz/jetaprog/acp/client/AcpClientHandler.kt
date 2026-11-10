@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.acp.client
 
+import su.kidoz.jetaprog.acp.protocol.AcpDiagnostic
 import su.kidoz.jetaprog.acp.protocol.AcpError
 import su.kidoz.jetaprog.acp.protocol.AcpRequestException
 import su.kidoz.jetaprog.acp.protocol.CreateTerminalRequest
@@ -26,6 +27,11 @@ import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
  * correspond to the capabilities advertised in [AcpClient]'s configuration.
  */
 public interface AcpClientHandler {
+    /** Receives payload-free protocol problems; must return without blocking. */
+    public fun protocolDiagnostic(diagnostic: AcpDiagnostic) {
+        // Optional diagnostics observer.
+    }
+
     /**
      * Applies a streamed session update in wire order. [AcpClient.prompt] and
      * [AcpClient.loadSession] wait for preceding updates to finish here before
