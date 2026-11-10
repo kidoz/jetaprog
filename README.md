@@ -55,6 +55,13 @@ inspired by the power of JetBrains IntelliJ IDEA and the extensibility of VS Cod
 
 - ACP agent workspace with session history, recovery, approvals, queues, checkpoints,
   Git worktrees, and change review
+- ACP Stop cancels pending approvals/questions immediately and pauses queued work;
+  steering redirects after the current tool, with bounded cancellation and visible delivery progress
+- Agent-reported session titles, context usage/cost, notices, and compaction details;
+  negotiated capabilities and payload-free diagnostics in the context inspector
+- Structured agent forms with editable answers and explicit send/decline/cancel controls
+- File and line-range review comments collected into an editable revision request;
+  collected comments persist with the conversation draft
 - MCP tools cover file access, project context, diagnostics/inspections, search, debug,
   run-configuration discovery, and Gradle tasks; resources expose project/editor context
 
@@ -174,6 +181,10 @@ app/desktop    Compose Desktop application (UI shell, editor, dialogs)
 - Non-JVM debuggers and external language servers require separate installations.
   Availability of a plugin does not guarantee identical capabilities across languages.
 - Remote development and multiple application windows are not implemented.
+- ACP remains on protocol v1. URL elicitation, pattern-constrained forms, and draft v2
+  lifecycle support are unavailable. Forms support flat primitive and enum fields.
+  Oversized frames or notification backlogs disconnect explicitly; accepted text is
+  batched for display without truncating the saved transcript.
 
 Normal verification includes Compose UI tests, but excludes real-provider agent recovery.
 Use `./gradlew :app:desktop:liveAgentRecoveryTest` explicitly for that integration test;
