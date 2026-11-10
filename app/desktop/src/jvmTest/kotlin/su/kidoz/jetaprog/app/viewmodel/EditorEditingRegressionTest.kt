@@ -14,6 +14,10 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import su.kidoz.jetaprog.common.completion.CompletionItem
+import su.kidoz.jetaprog.common.completion.TextEditData
+import su.kidoz.jetaprog.common.text.TextPosition
+import su.kidoz.jetaprog.common.text.TextRange
 import su.kidoz.jetaprog.editor.document.DocumentUri
 import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
@@ -155,5 +159,19 @@ class EditorEditingRegressionTest {
             )
             assertEquals(DocumentUri.file("/b.kt"), vm.state.value.activeDocumentUri)
             assertFalse(vm.state.value.isSaving)
+        }
+
+    @Test
+    fun completionImportPreservesCrLf() =
+        testEditor { vm, disk ->
+            disk["/a.kt"] = "package p\r\n\r\nArr"
+            vm.perform(EditorIntent.OpenFile("/a.kt"))
+            vm.perform(EditorIntent.MoveCursor(TextPosition(2, 3)))
+            val edit = TextEditData(TextRange(TextPosition(1, 0), TextPosition(1, 0)), "import foo.ArrayList\r\n")
+            vm.perform(
+                EditorIntent.ApplyCompletion(CompletionItem(label = "ArrayList", additionalTextEdits = listOf(edit))),
+            )
+            assertEquals("package p\r\nimport foo.ArrayList\r\n\r\nArrayList", vm.state.value.content)
+            assertEquals(TextPosition(3, 9), vm.state.value.cursor.position)
         }
 }

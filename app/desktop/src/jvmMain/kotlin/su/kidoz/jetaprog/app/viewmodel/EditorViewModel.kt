@@ -2393,8 +2393,8 @@ public class EditorViewModel(
             val replacements =
                 serverEdits.map { edit ->
                     TextReplacement(
-                        startOffset = edit.range.start.toOffset(contentAfterInsert),
-                        endOffset = edit.range.end.toOffset(contentAfterInsert),
+                        startOffset = positionToOffset(contentAfterInsert, edit.range.start),
+                        endOffset = positionToOffset(contentAfterInsert, edit.range.end),
                         newText = edit.newText,
                     )
                 }
@@ -2432,14 +2432,6 @@ public class EditorViewModel(
                 .sumOf { it.newText.length - (it.endOffset - it.startOffset) }
         moveCursorToOffset(updated, caret + shift)
         updateContent(updated)
-    }
-
-    /** Converts a position to a character offset in [content]. */
-    private fun su.kidoz.jetaprog.common.text.TextPosition.toOffset(content: String): Int {
-        val lines = content.lines()
-        if (line >= lines.size) return content.length
-        val before = lines.take(line).sumOf { it.length + 1 }
-        return (before + column).coerceIn(0, content.length)
     }
 
     /**
