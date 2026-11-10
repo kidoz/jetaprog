@@ -680,6 +680,7 @@ public class EditorViewModel(
                 )
             }
 
+            refreshFindMatches()
             syncDocumentOpened(uri, languageId, content)
             scheduleLint(uri, languageId, content, LintTrigger.OPEN)
             if (recordInHistory) recordActiveDocument()

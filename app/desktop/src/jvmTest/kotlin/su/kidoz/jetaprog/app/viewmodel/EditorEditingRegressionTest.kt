@@ -54,6 +54,25 @@ class EditorEditingRegressionTest {
     }
 
     @Test
+    fun openingFileRefreshesReplacementMatches() =
+        testEditor { vm, _ ->
+            vm.perform(EditorIntent.OpenFile("/a.kt"))
+            vm.perform(EditorIntent.OpenFindBar(true))
+            vm.perform(EditorIntent.UpdateFindQuery("cat"))
+            vm.perform(EditorIntent.UpdateReplaceText("fox"))
+            vm.perform(EditorIntent.OpenFile("/b.kt"))
+            assertTrue(
+                vm.state.value.findReplaceState.matches
+                    .isEmpty(),
+            )
+            vm.perform(EditorIntent.ReplaceAll)
+            assertEquals("dog dog", vm.state.value.content)
+            vm.perform(EditorIntent.SwitchTab(0))
+            vm.perform(EditorIntent.ReplaceCurrent)
+            assertEquals("fox cat", vm.state.value.content)
+        }
+
+    @Test
     fun autoSavePersistsBothTabsWithoutChangingActiveDocument() =
         testEditor(autoSave = true) { vm, disk ->
             vm.perform(EditorIntent.OpenFile("/a.kt"))
