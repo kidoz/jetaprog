@@ -282,12 +282,18 @@ internal fun AgentSurfaceContent(
                     detailMaxHeight = detailMaxHeight,
                 )
             }
+            if (attention.approval == null) {
+                state.questions.firstOrNull()?.let {
+                    AgentQuestionSection(it, state.agentName ?: state.agent?.name ?: "Agent", dispatch, detailMaxHeight)
+                }
+            }
             AgentAttentionSection(
                 attention,
                 dispatch,
                 reviewVisible = reviewing,
                 presence = state.presence,
                 stopState = state.stopState,
+                waitingForInput = state.questions.isNotEmpty(),
                 connectionFailed = state.connection == AgentConnection.ERROR,
                 detailMaxHeight = detailMaxHeight,
                 requestExpanded = expandedPanel == TaskPanel.APPROVAL,

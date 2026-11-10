@@ -22,6 +22,8 @@ import su.kidoz.jetaprog.acp.protocol.AuthenticateRequest
 import su.kidoz.jetaprog.acp.protocol.CancelNotification
 import su.kidoz.jetaprog.acp.protocol.ClientCapabilities
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
+import su.kidoz.jetaprog.acp.protocol.CreateElicitationRequest
+import su.kidoz.jetaprog.acp.protocol.CreateElicitationResponse
 import su.kidoz.jetaprog.acp.protocol.CreateTerminalRequest
 import su.kidoz.jetaprog.acp.protocol.Implementation
 import su.kidoz.jetaprog.acp.protocol.InitializeRequest
@@ -281,6 +283,14 @@ public class AcpClient(
         params: JsonElement?,
     ): JsonElement =
         when (method) {
+            "elicitation/create" -> {
+                val request = decode(CreateElicitationRequest.serializer(), params)
+                if (request.mode != "form" || capabilities.elicitation?.form == null) {
+                    throw AcpRequestException(AcpError.METHOD_NOT_FOUND, "Elicitation mode not supported")
+                }
+                encodeResult(CreateElicitationResponse.serializer(), handler.createElicitation(request))
+            }
+
             AcpMethod.FS_READ_TEXT_FILE -> {
                 encodeResult(
                     su.kidoz.jetaprog.acp.protocol.ReadTextFileResponse

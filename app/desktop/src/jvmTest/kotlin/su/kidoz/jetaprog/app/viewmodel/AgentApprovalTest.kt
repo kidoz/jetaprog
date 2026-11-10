@@ -243,6 +243,58 @@ class AgentApprovalTest {
                 vm.state.value.stopState,
             )
         }
+
+    @Test
+    fun structuredQuestionsRequireExplicitValidAnswersAndCancelOnStop() =
+        runTest {
+            val vm = streamingViewModel()
+            val schema =
+                AcpConnection.defaultJson
+                    .parseToJsonElement(
+                        """{"type":"object","properties":{"strategy":{"type":"string","enum":["safe","fast"]}},"required":["strategy"]}""",
+                    ).jsonObject
+            val request =
+                su.kidoz.jetaprog.acp.protocol
+                    .CreateElicitationRequest("form", "Choose strategy", schema, "s1")
+            val response = async { vm.createElicitation(request) }
+            runCurrent()
+            val id =
+                vm.state.value.questions
+                    .single()
+                    .id
+            vm.dispatch(AgentIntent.ResolveQuestion(id, "accept"))
+            runCurrent()
+            assertFalse(response.isCompleted)
+            assertTrue(
+                vm.state.value.questions
+                    .single()
+                    .error != null,
+            )
+            vm.dispatch(AgentIntent.AnswerQuestion(id, "strategy", listOf("safe")))
+            runCurrent()
+            assertFalse(response.isCompleted)
+            vm.dispatch(AgentIntent.ResolveQuestion(id, "accept"))
+            runCurrent()
+            assertEquals(
+                "safe",
+                response
+                    .await()
+                    .content
+                    ?.get("strategy")
+                    ?.jsonPrimitive
+                    ?.content,
+            )
+            val pending = async { vm.createElicitation(request) }
+            runCurrent()
+            vm.dispatch(AgentIntent.Stop)
+            runCurrent()
+            assertEquals("cancel", pending.await().action)
+            assertTrue(
+                vm.state.value.questions
+                    .isEmpty(),
+            )
+        }
+
     @Test
     fun allowAlwaysAuthorizesTheFollowingEdit() =
         runTest {

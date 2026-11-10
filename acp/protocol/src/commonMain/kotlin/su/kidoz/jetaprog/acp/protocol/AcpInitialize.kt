@@ -61,6 +61,8 @@ public data class ClientCapabilities(
     val terminal: Boolean = false,
     /** Optional session features; omitted by clients that do not implement them. */
     val session: ClientSessionCapabilities? = null,
+    /** Optional structured-input modes. */
+    val elicitation: ElicitationCapabilities? = null,
 )
 
 /**

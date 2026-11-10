@@ -49,6 +49,7 @@ internal fun AgentAttentionSection(
     reviewVisible: Boolean = false,
     presence: Presence? = null,
     stopState: AgentStopState = AgentStopState.NONE,
+    waitingForInput: Boolean = false,
     connectionFailed: Boolean = false,
     detailMaxHeight: Dp = Dimensions.popupCompletionMaxHeight.dp,
     requestExpanded: Boolean? = null,
@@ -70,6 +71,8 @@ internal fun AgentAttentionSection(
             Text(
                 if (stopState == AgentStopState.STOPPING) {
                     "Stopping"
+                } else if (waitingForInput && attention.approval == null) {
+                    "Waiting for input"
                 } else if (connectionFailed) {
                     "Connection failed"
                 } else {
@@ -86,7 +89,7 @@ internal fun AgentAttentionSection(
                 AttentionButton("Retry", onClick = { dispatch(AgentIntent.EnsureConnected) })
             }
         }
-        if (attention.execution == AgentExecution.RUNNING && approval == null && presence != null) {
+        if (attention.execution == AgentExecution.RUNNING && approval == null && presence != null && !waitingForInput) {
             TaskActivity(presence)
         }
         if (attention.execution == AgentExecution.INTERRUPTED) {

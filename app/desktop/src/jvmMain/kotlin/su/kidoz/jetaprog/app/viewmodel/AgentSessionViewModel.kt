@@ -37,6 +37,9 @@ import su.kidoz.jetaprog.acp.protocol.AvailableCommand
 import su.kidoz.jetaprog.acp.protocol.ClientCapabilities
 import su.kidoz.jetaprog.acp.protocol.ClientSessionCapabilities
 import su.kidoz.jetaprog.acp.protocol.ContentBlock
+import su.kidoz.jetaprog.acp.protocol.CreateElicitationRequest
+import su.kidoz.jetaprog.acp.protocol.CreateElicitationResponse
+import su.kidoz.jetaprog.acp.protocol.ElicitationCapabilities
 import su.kidoz.jetaprog.acp.protocol.FileSystemCapability
 import su.kidoz.jetaprog.acp.protocol.HttpHeader
 import su.kidoz.jetaprog.acp.protocol.Implementation
@@ -267,6 +270,8 @@ public class AgentSessionViewModel(
     private var contextGeneration: Long = 0
     private val pathGuard = WorkspacePathGuard { projectPath }
 
+    private val pendingQuestions =
+        mutableMapOf<String, Pair<AgentQuestionForm, CompletableDeferred<CreateElicitationResponse>>>()
     private val _state = MutableStateFlow(AgentUiState(workspacePath = projectPath))
 
     /** The observable agent surface state. */
@@ -537,6 +542,29 @@ public class AgentSessionViewModel(
                 decideDiff(intent.blockId, accept = false)
             }
 
+            is AgentIntent.AnswerQuestion -> {
+                _state.update {
+                    it.copy(
+                        questions =
+                            it.questions.map { question ->
+                                if (question.id == intent.id &&
+                                    question.fields.any { field -> field.id == intent.field }
+                                ) {
+                                    question.copy(
+                                        answers = question.answers + (intent.field to intent.values),
+                                        error = null,
+                                    )
+                                } else {
+                                    question
+                                }
+                            },
+                    )
+                }
+            }
+
+            is AgentIntent.ResolveQuestion -> {
+                resolveQuestion(intent.id, intent.action)
+            }
             is AgentIntent.OpenDiff -> {
                 openDiff(intent.blockId)
             }
@@ -968,6 +996,7 @@ public class AgentSessionViewModel(
                     ClientCapabilities(
                         fs = FileSystemCapability(readTextFile = true, writeTextFile = true),
                         terminal = false,
+                        elicitation = ElicitationCapabilities(form = SessionFeatureCapability),
                         session =
                             ClientSessionCapabilities(
                                 configOptions = SessionConfigCapabilities(boolean = SessionConfigBooleanCapability),
@@ -2376,6 +2405,9 @@ public class AgentSessionViewModel(
     }
 
     private fun cancelPendingApprovals() {
+        pendingQuestions.values.forEach { it.second.complete(CreateElicitationResponse("cancel")) }
+        pendingQuestions.clear()
+        _state.update { it.copy(questions = emptyList()) }
         if (pendingApprovals.isEmpty()) return
         val pending = pendingApprovals.values.toList()
         pendingApprovals.clear()
@@ -3369,6 +3401,68 @@ public class AgentSessionViewModel(
     // ------------------------------------------------------------------------
     // AcpClientHandler
     // ------------------------------------------------------------------------
+
+    override suspend fun createElicitation(request: CreateElicitationRequest): CreateElicitationResponse {
+        val schema = request.requestedSchema
+        if (request.mode != "form" || schema == null) {
+            throw AcpRequestException(AcpError.INVALID_PARAMS, "A form schema is required")
+        }
+        if (request.sessionId != null && request.sessionId != sessionId) {
+            throw AcpRequestException(AcpError.INVALID_PARAMS, "Question belongs to an inactive session")
+        }
+        if (request.sessionId == null && request.requestId == null) {
+            throw AcpRequestException(AcpError.INVALID_PARAMS, "Question requires a session or request scope")
+        }
+        if (_state.value.stopState == AgentStopState.STOPPING) return CreateElicitationResponse("cancel")
+        val id = nextId("question")
+        val form: AgentQuestionForm
+        val question =
+            try {
+                form = AgentQuestionForm(schema)
+                form.question(id, request.message)
+            } catch (_: Exception) {
+                protocolDiagnostic(AcpDiagnostic.UNSUPPORTED_OR_MALFORMED_UPDATE)
+                throw AcpRequestException(AcpError.INVALID_PARAMS, "Unsupported or malformed question schema")
+            }
+        val response = CompletableDeferred<CreateElicitationResponse>()
+        pendingQuestions[id] = form to response
+        _state.update { it.copy(questions = it.questions + question) }
+        return try {
+            response.await()
+        } finally {
+            pendingQuestions.remove(id)
+            _state.update { it.copy(questions = it.questions.filterNot { question -> question.id == id }) }
+        }
+    }
+
+    private fun resolveQuestion(
+        id: String,
+        action: String,
+    ) {
+        val pending = pendingQuestions[id] ?: return
+        val question = _state.value.questions.firstOrNull { it.id == id } ?: return
+        val response =
+            if (action == "accept") {
+                try {
+                    CreateElicitationResponse("accept", pending.first.content(question))
+                } catch (e: Exception) {
+                    _state.update {
+                        it.copy(
+                            questions =
+                                it.questions.map { item ->
+                                    if (item.id == id) item.copy(error = e.message ?: "Check your answers") else item
+                                },
+                        )
+                    }
+                    return
+                }
+            } else {
+                CreateElicitationResponse(if (action == "decline") "decline" else "cancel")
+            }
+        pendingQuestions.remove(id)
+        _state.update { it.copy(questions = it.questions.filterNot { question -> question.id == id }) }
+        pending.second.complete(response)
+    }
 
     override fun protocolDiagnostic(diagnostic: AcpDiagnostic) {
         _state.update { it.copy(protocolIssues = it.protocolIssues + 1) }

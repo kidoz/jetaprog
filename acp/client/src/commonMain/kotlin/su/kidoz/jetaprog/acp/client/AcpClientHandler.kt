@@ -3,6 +3,8 @@ package su.kidoz.jetaprog.acp.client
 import su.kidoz.jetaprog.acp.protocol.AcpDiagnostic
 import su.kidoz.jetaprog.acp.protocol.AcpError
 import su.kidoz.jetaprog.acp.protocol.AcpRequestException
+import su.kidoz.jetaprog.acp.protocol.CreateElicitationRequest
+import su.kidoz.jetaprog.acp.protocol.CreateElicitationResponse
 import su.kidoz.jetaprog.acp.protocol.CreateTerminalRequest
 import su.kidoz.jetaprog.acp.protocol.CreateTerminalResponse
 import su.kidoz.jetaprog.acp.protocol.KillTerminalRequest
@@ -27,6 +29,10 @@ import su.kidoz.jetaprog.acp.protocol.WriteTextFileRequest
  * correspond to the capabilities advertised in [AcpClient]'s configuration.
  */
 public interface AcpClientHandler {
+    /** Collects explicit user input for a negotiated form; never auto-accepts. */
+    public suspend fun createElicitation(request: CreateElicitationRequest): CreateElicitationResponse =
+        CreateElicitationResponse("cancel")
+
     /** Receives payload-free protocol problems; must return without blocking. */
     public fun protocolDiagnostic(diagnostic: AcpDiagnostic) {
         // Optional diagnostics observer.

@@ -654,6 +654,8 @@ public data class AgentUiState(
     val protocolIssues: Int = 0,
     /** Payload-free connection counters captured when the inspector is refreshed. */
     val trafficSummary: String? = null,
+    /** Pending structured input, separate from tool authorization. */
+    val questions: List<AgentQuestion> = emptyList(),
     val turns: List<Turn> = emptyList(),
     val isStreaming: Boolean = false,
     /** The latest turn stopped before normal completion. Cleared when a new turn starts. */
@@ -1028,6 +1030,19 @@ public sealed interface AgentIntent {
 
     /** Opens local file review without sending or clearing the composer. */
     public data object ShowReview : AgentIntent
+
+    /** Edit one field without transmitting the answer. */
+    public data class AnswerQuestion(
+        val id: String,
+        val field: String,
+        val values: List<String>,
+    ) : AgentIntent
+
+    /** Explicitly accept, decline, or cancel a structured question. */
+    public data class ResolveQuestion(
+        val id: String,
+        val action: String,
+    ) : AgentIntent
 
     /** Switches between agent-reported edits and all local Git changes. */
     public data class SetReviewScope(

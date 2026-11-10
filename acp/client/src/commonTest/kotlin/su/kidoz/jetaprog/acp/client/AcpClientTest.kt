@@ -72,6 +72,54 @@ private class ClientTestTransport(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AcpClientTest {
+    @Test
+    fun formRequestsRequireNegotiationAndReturnTheUsersDecision() =
+        runTest {
+            for (supported in listOf(false, true)) {
+                val transport = ClientTestTransport()
+                var called = false
+                val client =
+                    AcpClient(
+                        transport,
+                        backgroundScope,
+                        capabilities =
+                            su.kidoz.jetaprog.acp.protocol.ClientCapabilities(
+                                elicitation =
+                                    if (supported) {
+                                        su.kidoz.jetaprog.acp.protocol.ElicitationCapabilities(
+                                            su.kidoz.jetaprog.acp.protocol.SessionFeatureCapability,
+                                        )
+                                    } else {
+                                        null
+                                    },
+                            ),
+                        handler =
+                            object : AcpClientHandler {
+                                override suspend fun createElicitation(
+                                    request: su.kidoz.jetaprog.acp.protocol.CreateElicitationRequest,
+                                ): su.kidoz.jetaprog.acp.protocol.CreateElicitationResponse {
+                                    called = true
+                                    assertEquals("s", request.sessionId)
+                                    return su.kidoz.jetaprog.acp.protocol
+                                        .CreateElicitationResponse("decline")
+                                }
+                            },
+                    )
+                client.initialize()
+                transport.inbound.send(
+                    """{"jsonrpc":"2.0","id":"q","method":"elicitation/create","params":{"mode":"form","sessionId":"s","message":"Choose","requestedSchema":{"type":"object","properties":{}}}}""",
+                )
+                runCurrent()
+                val response = transport.sent.last()
+                assertEquals(supported, called)
+                if (supported) {
+                    assertEquals(JsonPrimitive("decline"), response.getValue("result").jsonObject["action"])
+                } else {
+                    assertEquals(JsonPrimitive(-32601), response.getValue("error").jsonObject["code"])
+                }
+                client.close()
+            }
+        }
 
     @Test
     fun unknownUpdatesAreDiagnosedAndDoNotPreventLaterOutput() =
