@@ -232,6 +232,155 @@ class TextEditingOpsTest {
     }
 
     // ------------------------------------------------------------------
+    // Line ending preservation
+    // ------------------------------------------------------------------
+
+    @Test
+    fun crlfNewlineBetweenBracesPreservesConvention() {
+        val text = "fun main() {\r\n    if (ready) {}\r\n"
+        val caret = text.indexOf("{}") + 1
+
+        val result = TextEditingOps.autoIndentNewline(text, caret, caret)
+
+        assertEquals("fun main() {\r\n    if (ready) {\r\n        \r\n    }\r\n", result.text)
+        assertEquals("fun main() {\r\n    if (ready) {\r\n        ".length, result.selectionStart)
+    }
+
+    @Test
+    fun newlineInEmptyDocumentUsesLf() {
+        val result = TextEditingOps.autoIndentNewline("", 0, 0)
+
+        assertEquals("\n", result.text)
+        assertEquals(1, result.selectionStart)
+    }
+
+    @Test
+    fun newlineInMixedDocumentUsesFirstSeparatorWithoutNormalizing() {
+        val text = "a\r\nb\n    c"
+
+        val result = TextEditingOps.autoIndentNewline(text, text.length, text.length)
+
+        assertEquals("a\r\nb\n    c\r\n    ", result.text)
+    }
+
+    @Test
+    fun commentPreservesCrlfBlankLinesAndFinalNewline() {
+        val text = "a\r\n\r\nb\r\n"
+
+        val result = TextEditingOps.toggleLineComment(text, 0, text.length, "//")
+
+        assertEquals("// a\r\n\r\n// b\r\n", result.text)
+        assertEquals(result.text.length, result.selectionEnd)
+    }
+
+    @Test
+    fun uncommentPreservesLfWithoutAddingFinalNewline() {
+        val text = "// a\n// b"
+
+        val result = TextEditingOps.toggleLineComment(text, 0, text.length, "//")
+
+        assertEquals("a\nb", result.text)
+    }
+
+    @Test
+    fun uncommentPreservesMixedLineEndings() {
+        val text = "// a\r\n// b\n"
+
+        val result = TextEditingOps.toggleLineComment(text, 0, text.length, "//")
+
+        assertEquals("a\r\nb\n", result.text)
+    }
+
+    @Test
+    fun indentPreservesCrlfBlankLinesAndFinalNewline() {
+        val text = "a\r\n\r\nb\r\n"
+
+        val result = TextEditingOps.indentLines(text, 0, text.length)
+
+        assertEquals("    a\r\n\r\n    b\r\n", result.text)
+        assertEquals(4, result.selectionStart)
+        assertEquals(result.text.length, result.selectionEnd)
+    }
+
+    @Test
+    fun dedentPreservesCrlfWithoutAddingFinalNewline() {
+        val text = "        a\r\n    b"
+
+        val result = TextEditingOps.dedentLines(text, 0, text.length)
+
+        assertEquals("    a\r\nb", result.text)
+        assertEquals(result.text.length, result.selectionEnd)
+    }
+
+    @Test
+    fun dedentPreservesLfFinalNewline() {
+        val text = "    a\n    b\n"
+
+        val result = TextEditingOps.dedentLines(text, 0, text.length)
+
+        assertEquals("a\nb\n", result.text)
+    }
+
+    @Test
+    fun moveDownPreservesCrlfAndSelectionOffsetsWithoutFinalNewline() {
+        val text = "a\r\nb\r\nc"
+        val caret = text.indexOf('b')
+
+        val result = TextEditingOps.moveLines(text, caret, caret, up = false)
+
+        assertEquals("a\r\nc\r\nb", result?.text)
+        assertEquals(result?.text?.indexOf('b'), result?.selectionStart)
+    }
+
+    @Test
+    fun moveUpPreservesCrlfFinalNewline() {
+        val text = "a\r\nb\r\nc\r\n"
+        val caret = text.indexOf('c')
+
+        val result = TextEditingOps.moveLines(text, caret, caret, up = true)
+
+        assertEquals("a\r\nc\r\nb\r\n", result?.text)
+        assertEquals(result?.text?.indexOf('c'), result?.selectionStart)
+    }
+
+    @Test
+    fun moveDownPreservesLfFinalNewline() {
+        val text = "a\nb\n"
+
+        val result = TextEditingOps.moveLines(text, 0, 0, up = false)
+
+        assertEquals("b\na\n", result?.text)
+        assertEquals(2, result?.selectionStart)
+    }
+
+    @Test
+    fun moveUpPreservesLfWithoutFinalNewline() {
+        val text = "a\nb\nc"
+
+        val result = TextEditingOps.moveLines(text, text.length, text.length, up = true)
+
+        assertEquals("a\nc\nb", result?.text)
+        assertEquals(3, result?.selectionStart)
+    }
+
+    @Test
+    fun movePreservesMixedLineEndings() {
+        val text = "a\r\nb\nc\r\n"
+
+        val result = TextEditingOps.moveLines(text, 0, 0, up = false)
+
+        assertEquals("b\r\na\nc\r\n", result?.text)
+    }
+
+    @Test
+    fun moveLastContentLineDownReturnsNullWhenFileHasFinalNewline() {
+        val text = "a\r\nb\r\n"
+        val caret = text.indexOf('b')
+
+        assertNull(TextEditingOps.moveLines(text, caret, caret, up = false))
+    }
+
+    // ------------------------------------------------------------------
     // findMatchingBracket
     // ------------------------------------------------------------------
 

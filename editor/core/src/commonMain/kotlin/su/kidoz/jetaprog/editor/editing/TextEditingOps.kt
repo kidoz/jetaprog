@@ -29,12 +29,63 @@ public object TextEditingOps {
     private val closeToOpen = mapOf(')' to '(', ']' to '[', '}' to '{')
     private val quoteChars = setOf('"', '\'', '`')
 
+    private data class DocumentLine(
+        val content: String,
+        val separator: String,
+    )
+
+    private fun splitLines(text: String): List<DocumentLine> {
+        val lines = mutableListOf<DocumentLine>()
+        var lineStart = 0
+        var index = 0
+        while (index < text.length) {
+            val separator =
+                when {
+                    text[index] == '\r' && index + 1 < text.length && text[index + 1] == '\n' -> "\r\n"
+                    text[index] == '\r' -> "\r"
+                    text[index] == '\n' -> "\n"
+                    else -> null
+                }
+            if (separator == null) {
+                index++
+                continue
+            }
+            lines += DocumentLine(text.substring(lineStart, index), separator)
+            index += separator.length
+            lineStart = index
+        }
+        lines += DocumentLine(text.substring(lineStart), "")
+        return lines
+    }
+
+    private fun joinLines(
+        lines: List<DocumentLine>,
+        contents: List<String>,
+    ): String =
+        buildString {
+            contents.forEachIndexed { index, content ->
+                append(content)
+                append(lines[index].separator)
+            }
+        }
+
+    private fun preferredLineSeparator(text: String): String {
+        for (index in text.indices) {
+            when (text[index]) {
+                '\r' -> return if (index + 1 < text.length && text[index + 1] == '\n') "\r\n" else "\r"
+                '\n' -> return "\n"
+            }
+        }
+        return "\n"
+    }
+
     /**
      * Insert a newline keeping the current line's indentation.
      *
      * After an opening brace the indentation is increased by [indentUnit]; when the
      * caret sits between a brace pair (`{|}`), the closing brace is moved to its own
-     * line at the original indentation.
+     * line at the original indentation. The first existing line separator is used;
+     * documents without one default to LF.
      */
     public fun autoIndentNewline(
         text: String,
@@ -58,24 +109,25 @@ public object TextEditingOps {
         val previousChar = if (start > 0) text[start - 1] else null
         val nextChar = if (end < text.length) text[end] else null
         val opensBlock = previousChar != null && previousChar in openToClose.keys
+        val separator = preferredLineSeparator(text)
 
         return when {
             opensBlock && nextChar != null && nextChar == openToClose[previousChar] -> {
                 // Between a brace pair: expand to three lines with the caret indented
-                val insertion = "\n$indent$indentUnit\n$indent"
+                val insertion = "$separator$indent$indentUnit$separator$indent"
                 val newText = text.substring(0, start) + insertion + text.substring(end)
-                val caret = start + 1 + indent.length + indentUnit.length
+                val caret = start + separator.length + indent.length + indentUnit.length
                 EditResult(newText, caret)
             }
 
             opensBlock -> {
-                val insertion = "\n$indent$indentUnit"
+                val insertion = "$separator$indent$indentUnit"
                 val newText = text.substring(0, start) + insertion + text.substring(end)
                 EditResult(newText, start + insertion.length)
             }
 
             else -> {
-                val insertion = "\n$indent"
+                val insertion = "$separator$indent"
                 val newText = text.substring(0, start) + insertion + text.substring(end)
                 EditResult(newText, start + insertion.length)
             }
@@ -150,11 +202,11 @@ public object TextEditingOps {
         selectionEnd: Int,
         prefix: String,
     ): EditResult {
-        val lines = text.lines()
+        val lines = splitLines(text)
         val startLine = lineIndexOf(text, selectionStart.coerceIn(0, text.length))
         val endLine = lineIndexOf(text, selectionEnd.coerceIn(0, text.length))
 
-        val covered = (startLine..endLine).map { lines[it] }
+        val covered = (startLine..endLine).map { lines[it].content }
         val addComments =
             covered.any { line ->
                 line.isNotBlank() && !line.trimStart().startsWith(prefix)
@@ -163,7 +215,8 @@ public object TextEditingOps {
         var startDelta = 0
         var totalDelta = 0
         val newLines =
-            lines.mapIndexed { index, line ->
+            lines.mapIndexed { index, documentLine ->
+                val line = documentLine.content
                 if (index !in startLine..endLine || line.isBlank()) return@mapIndexed line
                 val newLine =
                     if (addComments) {
@@ -178,7 +231,7 @@ public object TextEditingOps {
                 newLine
             }
 
-        val newText = newLines.joinToString("\n")
+        val newText = joinLines(lines, newLines)
         val newStart = (selectionStart + startDelta).coerceIn(0, newText.length)
         val newEnd = (selectionEnd + totalDelta).coerceIn(0, newText.length)
         return EditResult(newText, newStart, newEnd)
@@ -212,16 +265,17 @@ public object TextEditingOps {
             return EditResult(newText, caret + indentUnit.length)
         }
 
-        val lines = text.lines()
+        val lines = splitLines(text)
         val startLine = lineIndexOf(text, selectionStart)
         val endLine = lineIndexOf(text, selectionEnd)
 
         val newLines =
-            lines.mapIndexed { index, line ->
+            lines.mapIndexed { index, documentLine ->
+                val line = documentLine.content
                 if (index in startLine..endLine && line.isNotEmpty()) indentUnit + line else line
             }
-        val newText = newLines.joinToString("\n")
-        val startDelta = if (lines[startLine].isNotEmpty()) indentUnit.length else 0
+        val newText = joinLines(lines, newLines)
+        val startDelta = if (lines[startLine].content.isNotEmpty()) indentUnit.length else 0
         val totalDelta = newText.length - text.length
         return EditResult(
             newText,
@@ -240,14 +294,15 @@ public object TextEditingOps {
         selectionEnd: Int,
         indentUnit: String = DEFAULT_INDENT_UNIT,
     ): EditResult {
-        val lines = text.lines()
+        val lines = splitLines(text)
         val startLine = lineIndexOf(text, selectionStart.coerceIn(0, text.length))
         val endLine = lineIndexOf(text, selectionEnd.coerceIn(0, text.length))
 
         var startDelta = 0
         var totalDelta = 0
         val newLines =
-            lines.mapIndexed { index, line ->
+            lines.mapIndexed { index, documentLine ->
+                val line = documentLine.content
                 if (index !in startLine..endLine) return@mapIndexed line
                 val removed = dedentAmount(line, indentUnit)
                 val newLine = line.substring(removed)
@@ -256,7 +311,7 @@ public object TextEditingOps {
                 newLine
             }
 
-        val newText = newLines.joinToString("\n")
+        val newText = joinLines(lines, newLines)
         return EditResult(
             newText,
             (selectionStart + startDelta).coerceAtLeast(0).coerceAtMost(newText.length),
@@ -285,26 +340,35 @@ public object TextEditingOps {
         selectionEnd: Int,
         up: Boolean,
     ): EditResult? {
-        val lines = text.lines()
+        val lines = splitLines(text)
         val startLine = lineIndexOf(text, selectionStart.coerceIn(0, text.length))
-        val endLine = lineIndexOf(text, selectionEnd.coerceIn(0, text.length))
+        val hasFinalSeparator = lines.size > 1 && lines.last().content.isEmpty()
+        val lastMovableLine = lines.lastIndex - if (hasFinalSeparator) 1 else 0
+        if (startLine > lastMovableLine) return null
+        val endLine =
+            lineIndexOf(text, selectionEnd.coerceIn(0, text.length)).coerceAtMost(lastMovableLine)
 
         if (up && startLine == 0) return null
-        if (!up && endLine == lines.lastIndex) return null
+        if (!up && endLine == lastMovableLine) return null
 
-        val mutable = lines.toMutableList()
+        val contents = lines.map { it.content }.toMutableList()
         if (up) {
             // Move the line above to just below the selected block
-            val above = mutable.removeAt(startLine - 1)
-            mutable.add(endLine, above)
+            val above = contents.removeAt(startLine - 1)
+            contents.add(endLine, above)
         } else {
             // Move the line below to just above the selected block
-            val below = mutable.removeAt(endLine + 1)
-            mutable.add(startLine, below)
+            val below = contents.removeAt(endLine + 1)
+            contents.add(startLine, below)
         }
 
-        val newText = mutable.joinToString("\n")
-        val delta = if (up) -(lines[startLine - 1].length + 1) else lines[endLine + 1].length + 1
+        val newText = joinLines(lines, contents)
+        val delta =
+            if (up) {
+                -(lines[startLine - 1].content.length + lines[startLine - 1].separator.length)
+            } else {
+                lines[endLine + 1].content.length + lines[endLine].separator.length
+            }
         return EditResult(
             newText,
             (selectionStart + delta).coerceIn(0, newText.length),
@@ -393,7 +457,9 @@ public object TextEditingOps {
     ): Int {
         var line = 0
         for (i in 0 until offset.coerceAtMost(text.length)) {
-            if (text[i] == '\n') line++
+            if (text[i] == '\n' || (text[i] == '\r' && (i + 1 == text.length || text[i + 1] != '\n'))) {
+                line++
+            }
         }
         return line
     }
