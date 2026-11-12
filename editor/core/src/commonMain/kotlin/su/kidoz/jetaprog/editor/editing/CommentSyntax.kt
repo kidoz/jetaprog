@@ -20,6 +20,8 @@ public object CommentSyntax {
             LanguageId.JAVASCRIPT.value to "//",
             LanguageId.TYPESCRIPT.value to "//",
             LanguageId.GO.value to "//",
+            LanguageId.GO_MOD.value to "//",
+            LanguageId.GO_WORK.value to "//",
             LanguageId.VALA.value to "//",
             LanguageId.VAPI.value to "//",
             LanguageId.PYTHON.value to "#",

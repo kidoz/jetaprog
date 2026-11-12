@@ -6,6 +6,7 @@ import su.kidoz.jetaprog.editor.syntax.cpp.CppLexer
 import su.kidoz.jetaprog.editor.syntax.csharp.CSharpLexer
 import su.kidoz.jetaprog.editor.syntax.gitignore.GitignoreLexer
 import su.kidoz.jetaprog.editor.syntax.go.GoLexer
+import su.kidoz.jetaprog.editor.syntax.gomod.GoModLexer
 import su.kidoz.jetaprog.editor.syntax.java.JavaLexer
 import su.kidoz.jetaprog.editor.syntax.javascript.JavaScriptLexer
 import su.kidoz.jetaprog.editor.syntax.javascript.TypeScriptLexer
@@ -32,6 +33,9 @@ public object BuiltinLexers {
         LexerRegistry.register(KotlinLexer())
         LexerRegistry.register(ValaLexer())
         LexerRegistry.register(GoLexer())
+        LexerRegistry.register(GoModLexer())
+        LexerRegistry.register(GoModLexer(GoModLexer.WORK_LANGUAGE_ID))
+        LexerRegistry.register(GoModLexer(GoModLexer.SUM_LANGUAGE_ID))
         LexerRegistry.register(JavaLexer())
         LexerRegistry.register(JavaScriptLexer())
         LexerRegistry.register(TypeScriptLexer())

@@ -89,6 +89,24 @@ internal object BuiltinLanguageDefinitions {
                 aliases = listOf("Go", "Golang"),
                 lexerId = "go",
             ),
+            LanguageDefinition(
+                id = LanguageId.GO_MOD,
+                filenames = listOf("go.mod"),
+                aliases = listOf("Go Module", "go.mod"),
+                lexerId = "go.mod",
+            ),
+            LanguageDefinition(
+                id = LanguageId.GO_WORK,
+                filenames = listOf("go.work"),
+                aliases = listOf("Go Workspace", "go.work"),
+                lexerId = "go.work",
+            ),
+            LanguageDefinition(
+                id = LanguageId.GO_SUM,
+                filenames = listOf("go.sum"),
+                aliases = listOf("Go Checksum", "go.sum"),
+                lexerId = "go.sum",
+            ),
             // ".h" is shared between C and C++; clangd resolves the real dialect from the
             // compilation database, so map it to C like most editors do.
             LanguageDefinition(

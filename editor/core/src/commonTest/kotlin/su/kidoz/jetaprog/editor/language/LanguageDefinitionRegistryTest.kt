@@ -10,6 +10,9 @@ class LanguageDefinitionRegistryTest {
     fun detectsLanguageByExtension() {
         assertEquals(LanguageId.KOTLIN, LanguageDefinitionRegistry.detect("Main.kt"))
         assertEquals(LanguageId.GO, LanguageDefinitionRegistry.detect("main.go"))
+        assertEquals(LanguageId.GO_MOD, LanguageDefinitionRegistry.detect("go.mod"))
+        assertEquals(LanguageId.GO_WORK, LanguageDefinitionRegistry.detect("/module/go.work"))
+        assertEquals(LanguageId.GO_SUM, LanguageDefinitionRegistry.detect("go.sum"))
         assertEquals(LanguageId.TYPESCRIPT, LanguageDefinitionRegistry.detect("app.tsx"))
         assertEquals(LanguageId.SQL, LanguageDefinitionRegistry.detect("schema.sql"))
         assertEquals(LanguageId.POSTGRESQL, LanguageDefinitionRegistry.detect("functions.pgsql"))
@@ -77,6 +80,9 @@ class LanguageDefinitionRegistryTest {
         assertEquals("postgresql", LanguageDefinitionRegistry.lexerIdFor(LanguageId.POSTGRESQL))
         assertEquals("starrocks", LanguageDefinitionRegistry.lexerIdFor(LanguageId.STARROCKS))
         assertEquals("dotprolog", LanguageDefinitionRegistry.lexerIdFor(LanguageId.DOTPROLOG))
+        assertEquals("go.mod", LanguageDefinitionRegistry.lexerIdFor(LanguageId.GO_MOD))
+        assertEquals("go.work", LanguageDefinitionRegistry.lexerIdFor(LanguageId.GO_WORK))
+        assertEquals("go.sum", LanguageDefinitionRegistry.lexerIdFor(LanguageId.GO_SUM))
         assertEquals("xml", LanguageDefinitionRegistry.lexerIdFor(LanguageId.MSBUILD))
         assertNull(LanguageDefinitionRegistry.lexerIdFor(LanguageId.JSON))
     }

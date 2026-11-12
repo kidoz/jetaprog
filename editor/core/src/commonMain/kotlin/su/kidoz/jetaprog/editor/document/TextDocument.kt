@@ -70,6 +70,9 @@ public value class LanguageId(
         public val MESON: LanguageId = LanguageId("meson")
         public val CMAKE: LanguageId = LanguageId("cmake")
         public val GO: LanguageId = LanguageId("go")
+        public val GO_MOD: LanguageId = LanguageId("go.mod")
+        public val GO_WORK: LanguageId = LanguageId("go.work")
+        public val GO_SUM: LanguageId = LanguageId("go.sum")
         public val GITIGNORE: LanguageId = LanguageId("gitignore")
 
         private val displayNames: Map<String, String> =
@@ -101,6 +104,9 @@ public value class LanguageId(
                 "meson" to "Meson",
                 "cmake" to "CMake",
                 "go" to "Go",
+                "go.mod" to "Go Module",
+                "go.work" to "Go Workspace",
+                "go.sum" to "Go Checksum",
                 "gitignore" to "Git Ignore",
             )
     }
