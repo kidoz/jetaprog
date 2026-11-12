@@ -79,6 +79,7 @@ import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
 import su.kidoz.jetaprog.common.completion.CompletionItem
 import su.kidoz.jetaprog.common.completion.CompletionTriggerKind
 import su.kidoz.jetaprog.common.text.TextPosition
+import su.kidoz.jetaprog.editor.cursor.Cursor
 import su.kidoz.jetaprog.editor.editing.CommentSyntax
 import su.kidoz.jetaprog.editor.editing.EditResult
 import su.kidoz.jetaprog.editor.editing.TextEditingOps
@@ -184,8 +185,7 @@ public fun CodeEditor(
 
     // Track the text field value - keyed by document URI to reset when switching files
     var textFieldValue by remember(state.activeDocumentUri) {
-        val caret = offsetOfPosition(state.content, state.cursor.position)
-        mutableStateOf(TextFieldValue(state.content, selection = TextRange(caret)))
+        mutableStateOf(TextFieldValue(state.content, selection = selectionOfCursor(state.content, state.cursor)))
     }
 
     val documentKey = state.activeDocumentUri?.value.orEmpty()
@@ -231,6 +231,21 @@ public fun CodeEditor(
     // Track last known content to detect external changes (file reload, undo from outside, etc.)
     var lastKnownContent by remember(state.activeDocumentUri) { mutableStateOf(state.content) }
 
+    val reportSelection: (String, TextRange, TextRange) -> Unit = { text, previous, current ->
+        val anchor = offsetToPosition(text, current.start)
+        val active = offsetToPosition(text, current.end)
+        val range =
+            su.kidoz.jetaprog.common.text.TextRange(
+                minOf(anchor, active),
+                maxOf(anchor, active),
+            )
+        if (current.collapsed && previous.collapsed) {
+            onCursorMove(range.end)
+        } else {
+            onIntent(EditorIntent.Select(range, reversed = current.start > current.end))
+        }
+    }
+
     // Apply a text-editing operation result to the field and propagate the change
     val applyEdit: (EditResult) -> Unit = edit@{ result ->
         revealRange(textFieldValue.selection.min, textFieldValue.selection.max)
@@ -240,12 +255,13 @@ public fun CodeEditor(
             return@edit
         }
         lastKnownContent = result.text
+        val previousSelection = textFieldValue.selection
         textFieldValue =
             TextFieldValue(
                 text = result.text,
                 selection = TextRange(result.selectionStart, result.selectionEnd),
             )
-        onCursorMove(offsetToPosition(result.text, result.selectionEnd))
+        reportSelection(result.text, previousSelection, textFieldValue.selection)
         onContentChange(result.text)
     }
 
@@ -260,13 +276,11 @@ public fun CodeEditor(
     LaunchedEffect(state.activeDocumentUri, state.content) {
         val newContent = state.content
         if (newContent != lastKnownContent && newContent != textFieldValue.text) {
-            // Follow the caret the view model asked for: accepting a completion or a
-            // snippet places it after the inserted text, and preserving the old
-            // offset here would leave it behind. Operations that do not move the
-            // caret (Format Document, a quick fix) leave state.cursor untouched, so
-            // this preserves it for them.
-            val caret = offsetOfPosition(newContent, state.cursor.position)
-            textFieldValue = TextFieldValue(text = newContent, selection = TextRange(caret))
+            // Follow the cursor and selection requested by the view model. Offsets are
+            // resolved against the new content, so shortened documents cannot leave an
+            // invalid Compose selection behind.
+            textFieldValue =
+                TextFieldValue(text = newContent, selection = selectionOfCursor(newContent, state.cursor))
         }
         lastKnownContent = newContent
     }
@@ -275,10 +289,9 @@ public fun CodeEditor(
     // explicitly signals the field so normal cursor updates do not collapse selections.
     LaunchedEffect(state.activeDocumentUri, state.caretSyncVersion) {
         if (state.caretSyncVersion == 0L) return@LaunchedEffect
-        val start = offsetOfPosition(textFieldValue.text, state.cursor.selectionStart)
-        val end = offsetOfPosition(textFieldValue.text, state.cursor.selectionEnd)
-        revealRange(minOf(start, end), maxOf(start, end))
-        textFieldValue = textFieldValue.copy(selection = TextRange(start, end))
+        val selection = selectionOfCursor(textFieldValue.text, state.cursor)
+        revealRange(selection.min, selection.max)
+        textFieldValue = textFieldValue.copy(selection = selection)
         val lineHeight = with(density) { Dimensions.lineHeightCode.sp.roundToPx() }
         val target = (revealedLine(state.cursor.position.line) * lineHeight).coerceAtLeast(0)
         verticalScrollState.animateScrollTo(target)
@@ -707,7 +720,7 @@ public fun CodeEditor(
 
                                 textFieldValue = processed
                                 if (processed.selection != oldSelection) {
-                                    onCursorMove(offsetToPosition(processed.text, processed.selection.end))
+                                    reportSelection(processed.text, oldSelection, processed.selection)
                                 }
                                 // Compare against the previous local text, not state.content:
                                 // the ViewModel lags by at least a frame, so typing a character
@@ -1475,3 +1488,12 @@ private fun offsetOfPosition(
     content: String,
     position: TextPosition,
 ): Int = positionToOffset(content, position)
+
+private fun selectionOfCursor(
+    content: String,
+    cursor: Cursor,
+): TextRange {
+    val active = offsetOfPosition(content, cursor.position)
+    val anchor = cursor.anchor?.let { offsetOfPosition(content, it) } ?: active
+    return TextRange(anchor, active)
+}

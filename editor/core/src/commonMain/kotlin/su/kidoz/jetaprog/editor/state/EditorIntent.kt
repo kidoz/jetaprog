@@ -197,9 +197,11 @@ public sealed interface EditorIntent : Intent {
 
     /**
      * Select text in a range.
+     * A reversed selection starts at [range.end] and has its active caret at [range.start].
      */
     public data class Select(
         val range: TextRange,
+        val reversed: Boolean = false,
     ) : EditorIntent
 
     /**

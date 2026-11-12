@@ -446,7 +446,7 @@ public class EditorViewModel(
             }
 
             is EditorIntent.Select -> {
-                select(intent.range)
+                select(intent.range, intent.reversed)
             }
 
             is EditorIntent.SelectAll -> {
@@ -491,11 +491,11 @@ public class EditorViewModel(
 
             // Formatting intents
             is EditorIntent.FormatDocument -> {
-                formatDocument()
+                viewModelScope.launch { formatDocument() }
             }
 
             is EditorIntent.FormatSelection -> {
-                formatSelection(intent.range)
+                viewModelScope.launch { formatSelection(intent.range) }
             }
 
             // Hover intents
@@ -794,6 +794,34 @@ public class EditorViewModel(
         val line = cursor.position.line.coerceIn(0, (lines.size - 1).coerceAtLeast(0))
         val column = cursor.position.column.coerceAtMost(lines[line].length)
         return Cursor(TextPosition(line, column))
+    }
+
+    private fun clampFormattedCursor(
+        content: String,
+        cursor: Cursor,
+    ): Cursor {
+        fun clamp(position: TextPosition): TextPosition {
+            val lines = content.split('\n')
+            val line = position.line.coerceIn(0, (lines.size - 1).coerceAtLeast(0))
+            return TextPosition(line, position.column.coerceIn(0, lines[line].length))
+        }
+
+        val position = clamp(cursor.position)
+        val anchor = cursor.anchor?.let(::clamp)?.takeUnless { it == position }
+        return Cursor(position, anchor)
+    }
+
+    private fun applyFormattedContent(formattedText: String) {
+        val cursor = clampFormattedCursor(formattedText, currentState.cursor)
+        updateContent(formattedText)
+        val anchor = cursor.anchor
+        if (anchor == null) {
+            moveCursor(cursor.position, synchronizeUi = true)
+        } else if (anchor <= cursor.position) {
+            select(TextRange(anchor, cursor.position))
+        } else {
+            select(TextRange(cursor.position, anchor), reversed = true)
+        }
     }
 
     private suspend fun restoreSession(intent: EditorIntent.RestoreSession) {
@@ -1683,10 +1711,15 @@ public class EditorViewModel(
         moveCursor(TextPosition(line, if (end) lines.getOrElse(line) { "" }.length else 0), true)
     }
 
-    private fun select(range: TextRange) {
+    private fun select(
+        range: TextRange,
+        reversed: Boolean = false,
+    ) {
+        val position = if (reversed) range.start else range.end
+        val anchor = if (reversed) range.end else range.start
         updateState {
             copy(
-                cursor = Cursor(position = range.end, anchor = range.start),
+                cursor = Cursor(position = position, anchor = anchor.takeUnless { it == position }),
                 caretSyncVersion = caretSyncVersion + 1,
             )
         }
@@ -2872,6 +2905,8 @@ public class EditorViewModel(
     // ========================================================================
 
     private suspend fun formatDocument() {
+        val documentUri = currentState.activeDocumentUri ?: return
+        val documentVersion = currentState.documentVersion
         val content = currentState.content
         val languageId = currentState.languageId
 
@@ -2895,11 +2930,12 @@ public class EditorViewModel(
             withContext(Dispatchers.Default) {
                 formatter.format(content, options)
             }
+        if (currentState.activeDocumentUri != documentUri || currentState.documentVersion != documentVersion) return
 
         when (result) {
             is FormattingResult.Success -> {
                 if (result.formattedText != content) {
-                    updateContent(result.formattedText)
+                    applyFormattedContent(result.formattedText)
                     emitEffect(
                         EditorEffect.FormattingApplied(
                             originalLength = content.length,
@@ -2930,6 +2966,8 @@ public class EditorViewModel(
     }
 
     private suspend fun formatSelection(range: su.kidoz.jetaprog.common.text.TextRange) {
+        val documentUri = currentState.activeDocumentUri ?: return
+        val documentVersion = currentState.documentVersion
         val content = currentState.content
         val languageId = currentState.languageId
 
@@ -2953,11 +2991,12 @@ public class EditorViewModel(
             withContext(Dispatchers.Default) {
                 formatter.formatRange(content, range, options)
             }
+        if (currentState.activeDocumentUri != documentUri || currentState.documentVersion != documentVersion) return
 
         when (result) {
             is FormattingResult.Success -> {
                 if (result.formattedText != content) {
-                    updateContent(result.formattedText)
+                    applyFormattedContent(result.formattedText)
                     emitEffect(
                         EditorEffect.FormattingApplied(
                             originalLength = content.length,
