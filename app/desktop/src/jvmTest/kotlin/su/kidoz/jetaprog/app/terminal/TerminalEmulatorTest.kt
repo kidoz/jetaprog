@@ -1,5 +1,9 @@
 package su.kidoz.jetaprog.app.terminal
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -254,5 +258,60 @@ class TerminalEmulatorTest {
                 .first()
                 .hyperlink,
         )
+    }
+
+    @Test
+    fun oversizedOscIsDiscardedWithoutChangingTitle() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+        emulator.accept("\u001b]0;original\u0007")
+
+        val snapshot =
+            emulator.accept(
+                "\u001b]0;discarded" + "x".repeat(100_000) + "\u0007safe",
+            )
+
+        assertEquals("original", snapshot.title)
+        assertEquals("safe", snapshot.lines.first())
+    }
+
+    @Test
+    fun oversizedCsiAndDcsRecoverAtTheirTerminators() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        val snapshot =
+            emulator.accept(
+                "\u001b[" + "1;".repeat(50_000) + "Hcsi" +
+                    "\u001bP" + "x".repeat(100_000) + "\u001b\\dcs",
+            )
+
+        assertEquals("csidcs", snapshot.lines.first())
+    }
+
+    @Test
+    fun attackerControlledScrollCountsAreBoundedByScreenHeight() =
+        runTest {
+            val emulator = TerminalEmulator(columns = 20, rows = 3)
+
+            val snapshot =
+                withContext(Dispatchers.Default) {
+                    withTimeout(2_000) {
+                        emulator.accept(
+                            "one\r\ntwo\r\nthree\u001b[2147483647Safter" +
+                                "\u001b[2147483647T!",
+                        )
+                    }
+                }
+
+            assertEquals("          !", snapshot.lines.last())
+        }
+
+    @Test
+    fun combiningCharactersCannotGrowOneCellWithoutBound() {
+        val emulator = TerminalEmulator(columns = 20, rows = 5)
+
+        val snapshot = emulator.accept("A" + "\u0301".repeat(100_000) + "|")
+
+        assertTrue(snapshot.lines.first().endsWith("|"))
+        assertTrue(snapshot.lines.first().length <= 300)
     }
 }

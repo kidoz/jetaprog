@@ -46,6 +46,7 @@ internal class TerminalEmulator(
     private var isCursorVisible: Boolean = true
     private var parserState: ParserState = ParserState.Ground
     private val sequenceBuffer: StringBuilder = StringBuilder()
+    private var sequenceOverflowed: Boolean = false
     private var controlStringType: Char = ' '
     private val scrollback: ArrayDeque<TerminalStyledLine> = ArrayDeque()
     private var currentStyle: TerminalCellStyle = TerminalCellStyle()
@@ -97,6 +98,7 @@ internal class TerminalEmulator(
         joinNextCodePoint = false
         resetScrollRegion()
         sequenceBuffer.clear()
+        sequenceOverflowed = false
         return snapshot()
     }
 
@@ -267,6 +269,7 @@ internal class TerminalEmulator(
 
     private fun startSequence(state: ParserState) {
         sequenceBuffer.clear()
+        sequenceOverflowed = false
         parserState = state
     }
 
@@ -274,7 +277,7 @@ internal class TerminalEmulator(
         when (character) {
             BEL -> finishControlString()
             ESC -> parserState = ParserState.ControlStringEscape
-            else -> sequenceBuffer.append(character)
+            else -> appendSequenceCharacter(character)
         }
     }
 
@@ -282,15 +285,24 @@ internal class TerminalEmulator(
         if (character == '\\') {
             finishControlString()
         } else {
-            sequenceBuffer.append(ESC).append(character)
+            appendSequenceCharacter(ESC)
+            appendSequenceCharacter(character)
             parserState = ParserState.ControlString
         }
     }
 
     private fun finishControlString() {
-        if (controlStringType == ']') executeOsc(sequenceBuffer.toString())
+        if (!sequenceOverflowed && controlStringType == ']') executeOsc(sequenceBuffer.toString())
         sequenceBuffer.clear()
         parserState = ParserState.Ground
+    }
+
+    private fun appendSequenceCharacter(character: Char) {
+        if (sequenceBuffer.length >= MAX_CONTROL_SEQUENCE_LENGTH) {
+            sequenceOverflowed = true
+        } else {
+            sequenceBuffer.append(character)
+        }
     }
 
     private fun executeOsc(sequence: String) {
@@ -318,11 +330,11 @@ internal class TerminalEmulator(
 
     private fun acceptCsi(character: Char) {
         if (character.code in CSI_FINAL_RANGE) {
-            executeCsi(character, sequenceBuffer.toString())
+            if (!sequenceOverflowed) executeCsi(character, sequenceBuffer.toString())
             sequenceBuffer.clear()
             parserState = ParserState.Ground
         } else {
-            sequenceBuffer.append(character)
+            appendSequenceCharacter(character)
         }
     }
 
@@ -405,11 +417,11 @@ internal class TerminalEmulator(
             }
 
             'S' -> {
-                repeat(params.valueOrDefault(0, 1)) { scrollUp() }
+                repeat(params.valueOrDefault(0, 1).coerceAtMost(scrollBottom - scrollTop + 1)) { scrollUp() }
             }
 
             'T' -> {
-                repeat(params.valueOrDefault(0, 1)) { scrollDown() }
+                repeat(params.valueOrDefault(0, 1).coerceAtMost(scrollBottom - scrollTop + 1)) { scrollDown() }
             }
 
             's' -> {
@@ -562,7 +574,8 @@ internal class TerminalEmulator(
 
     private fun appendToPreviousCell(value: String) {
         val targetColumn = previousBaseColumn() ?: return
-        screen[cursorRow][targetColumn].text += value
+        val cell = screen[cursorRow][targetColumn]
+        if (cell.text.length + value.length <= MAX_CELL_TEXT_LENGTH) cell.text += value
     }
 
     private fun previousBaseColumn(): Int? {
@@ -834,6 +847,8 @@ internal class TerminalEmulator(
         private const val WIDE_CELL_WIDTH = 2
         private const val CURSOR_POSITION_REPORT = 6
         private const val MAX_TITLE_LENGTH = 512
+        private const val MAX_CONTROL_SEQUENCE_LENGTH = 16_384
+        private const val MAX_CELL_TEXT_LENGTH = 256
         private const val ANSI_EXTENDED_START = 16
         private const val COLOR_CUBE_END = 232
         private const val GRAYSCALE_START = 8

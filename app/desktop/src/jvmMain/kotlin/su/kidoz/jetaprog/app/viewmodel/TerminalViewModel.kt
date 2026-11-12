@@ -1,8 +1,12 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -156,8 +160,10 @@ public sealed interface TerminalIntent {
 public class TerminalViewModel(
     private val defaultWorkingDirectory: String = System.getProperty("user.dir"),
     private val backendFactory: (String) -> Result<TerminalBackend> = { PtyTerminalBackend.start(it) },
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : Disposable {
     private var nextTabId = 1
+    private var disposed = false
     private val terminalBackends = mutableMapOf<Int, TerminalBackend>()
     private val backendJobs = mutableMapOf<Int, Job>()
     private val terminalEmulators = mutableMapOf<Int, TerminalEmulator>()
@@ -219,20 +225,22 @@ public class TerminalViewModel(
     }
 
     private fun closeTerminal(tabId: Int) {
-        terminalBackends[tabId]?.kill()
-        backendJobs[tabId]?.cancel()
-        terminalBackends.remove(tabId)
-        backendJobs.remove(tabId)
         terminalEmulators.remove(tabId)
+        val backend = terminalBackends.remove(tabId)
+        val backendJob = backendJobs.remove(tabId)
+        backendJob?.cancel()
+        backend?.dispose()
 
         _state.update { state ->
             val tabIndex = state.tabs.indexOfFirst { it.id == tabId }
             if (tabIndex < 0) return@update state
 
+            val activeTabId = state.activeTab?.id
             val newTabs = state.tabs.filterNot { it.id == tabId }
             val newActiveIndex =
                 when {
                     newTabs.isEmpty() -> -1
+                    activeTabId != tabId -> newTabs.indexOfFirst { it.id == activeTabId }
                     tabIndex >= newTabs.size -> newTabs.size - 1
                     else -> tabIndex
                 }
@@ -258,7 +266,7 @@ public class TerminalViewModel(
         workingDirectory: String,
     ) {
         val backendResult =
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher + NonCancellable) {
                 backendFactory(workingDirectory)
             }
         if (backendResult.isFailure) {
@@ -271,39 +279,59 @@ public class TerminalViewModel(
         }
 
         val backend = backendResult.getOrThrow()
+        if (disposed || terminalEmulators[tabId] == null) {
+            backend.dispose()
+            return
+        }
         terminalBackends[tabId] = backend
         _state.value.tabs.firstOrNull { it.id == tabId }?.let { tab ->
             backend.resize(tab.columns, tab.rows)
         }
 
         val job =
-            viewModelScope.launch {
-                backend.output.collect { output ->
-                    when (output) {
-                        is TerminalBackendOutput.Text -> {
-                            applyTerminalOutput(tabId, output.value)
-                        }
+            viewModelScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    backend.output.collect { output ->
+                        when (output) {
+                            is TerminalBackendOutput.Text -> {
+                                applyTerminalOutput(tabId, output.value)
+                            }
 
-                        is TerminalBackendOutput.Error -> {
-                            appendError(tabId, output.message)
-                        }
+                            is TerminalBackendOutput.Error -> {
+                                appendError(tabId, output.message)
+                            }
 
-                        is TerminalBackendOutput.Exited -> {
-                            updateTab(tabId) { it.copy(isRunning = false, exitCode = output.exitCode) }
-                            terminalBackends.remove(tabId)
-                            backendJobs.remove(tabId)
+                            is TerminalBackendOutput.Exited -> {
+                                if (terminalBackends[tabId] === backend) {
+                                    updateTab(tabId) { it.copy(isRunning = false, exitCode = output.exitCode) }
+                                    terminalBackends.remove(tabId)
+                                    backendJobs.remove(tabId)
+                                    backend.dispose()
+                                }
+                            }
                         }
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Exception) {
+                    if (terminalBackends[tabId] === backend) {
+                        appendError(tabId, "Terminal output failed: ${error.message ?: error.javaClass.simpleName}")
+                        updateTab(tabId) { it.copy(isRunning = false) }
+                        terminalBackends.remove(tabId)
+                        backendJobs.remove(tabId)
+                        backend.dispose()
                     }
                 }
             }
         backendJobs[tabId] = job
+        job.start()
     }
 
     private suspend fun sendInput(text: String) {
         val activeTab = _state.value.activeTab ?: return
         val backend = terminalBackends[activeTab.id] ?: return
         if (!backend.isAlive) return
-        runCatching { backend.write(text.encodeToByteArray()) }
+        writeToBackend(activeTab.id, backend, text.encodeToByteArray())
     }
 
     private fun clearOutput() {
@@ -319,12 +347,9 @@ public class TerminalViewModel(
     private fun killCurrentProcess() {
         val activeTab = _state.value.activeTab ?: return
         val backend = terminalBackends[activeTab.id]
-        val job = backendJobs[activeTab.id]
-
-        backend?.kill()
-        job?.cancel()
 
         updateTab(activeTab.id) { it.copy(isRunning = false) }
+        backend?.kill()
     }
 
     private fun toggleSearch() {
@@ -373,8 +398,22 @@ public class TerminalViewModel(
         val backend = terminalBackends[tabId]
         if (backend != null && backend.isAlive) {
             emulator.drainResponses().forEach { response ->
-                backend.write(response.encodeToByteArray())
+                writeToBackend(tabId, backend, response.encodeToByteArray())
             }
+        }
+    }
+
+    private suspend fun writeToBackend(
+        tabId: Int,
+        backend: TerminalBackend,
+        bytes: ByteArray,
+    ) {
+        try {
+            backend.write(bytes)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            appendError(tabId, "Terminal write failed: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
@@ -420,11 +459,15 @@ public class TerminalViewModel(
     }
 
     override fun dispose() {
-        terminalBackends.values.forEach { it.kill() }
-        backendJobs.values.forEach { it.cancel() }
+        if (disposed) return
+        disposed = true
+        val backends = terminalBackends.values.toList()
+        val jobs = backendJobs.values.toList()
         terminalBackends.clear()
         backendJobs.clear()
         terminalEmulators.clear()
+        jobs.forEach { it.cancel() }
+        backends.forEach { it.dispose() }
         viewModelScope.cancel()
     }
 }
