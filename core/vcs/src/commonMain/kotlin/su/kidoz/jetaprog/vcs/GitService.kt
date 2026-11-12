@@ -1,7 +1,25 @@
 package su.kidoz.jetaprog.vcs
 
+import kotlinx.coroutines.CancellationException
 import su.kidoz.jetaprog.platform.process.ProcessConfig
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
+import su.kidoz.jetaprog.platform.process.ProcessResult
+import java.io.IOException
+import java.util.concurrent.TimeoutException
+
+private const val LOCAL_GIT_TIMEOUT_MILLIS = 30_000L
+private const val NETWORK_GIT_TIMEOUT_MILLIS = 120_000L
+
+private val NETWORK_GIT_OPERATIONS = setOf("push", "pull")
+
+private val GIT_ENVIRONMENT =
+    mapOf(
+        "GIT_LITERAL_PATHSPECS" to "1",
+        "GIT_TERMINAL_PROMPT" to "0",
+        "GIT_SSH_COMMAND" to "ssh -oBatchMode=yes",
+        "SSH_ASKPASS_REQUIRE" to "never",
+        "GCM_INTERACTIVE" to "never",
+    )
 
 /**
  * Read/write access to a Git working copy: status, diff, staging and commit.
@@ -102,7 +120,7 @@ public class DefaultGitService(
         path: String,
         staged: Boolean,
     ): Result<String> =
-        runCatching {
+        gitCatching {
             val untracked =
                 !staged &&
                     status().getOrThrow().unstaged.any {
@@ -202,7 +220,7 @@ public class DefaultGitService(
 
     override suspend fun discard(paths: List<String>): Result<Unit> {
         if (paths.isEmpty()) return Result.success(Unit)
-        return runCatching {
+        return gitCatching {
             val changes = status().getOrThrow().changes
             val selected = changes.filter { it.path in paths }
             val untracked = selected.filter { it.type == GitChangeType.UNTRACKED }.map { it.path }.distinct()
@@ -259,21 +277,64 @@ public class DefaultGitService(
         }
     }
 
-    private suspend fun runRaw(args: List<String>) =
-        processExecutor.executeRaw(
-            ProcessConfig(
-                command = listOf("git") + args,
-                workingDirectory = repositoryPath,
-                environment = mapOf("GIT_LITERAL_PATHSPECS" to "1"),
-            ),
-        )
+    private suspend fun runRaw(args: List<String>): Result<ProcessResult> {
+        val timeoutMillis = gitTimeout(args)
+        return processExecutor
+            .executeRaw(
+                ProcessConfig(
+                    command = listOf("git") + args,
+                    workingDirectory = repositoryPath,
+                    environment = GIT_ENVIRONMENT,
+                    timeoutMillis = timeoutMillis,
+                ),
+            ).withGitContext(args, timeoutMillis)
+    }
 
     private suspend fun run(vararg args: String) = run(args.asList())
 
-    private suspend fun run(args: List<String>) =
-        processExecutor.execute(
-            command = listOf("git") + args,
-            workingDirectory = repositoryPath,
-            environment = mapOf("GIT_LITERAL_PATHSPECS" to "1"),
-        )
+    private suspend fun run(args: List<String>): Result<ProcessResult> {
+        val timeoutMillis = gitTimeout(args)
+        return processExecutor
+            .execute(
+                command = listOf("git") + args,
+                workingDirectory = repositoryPath,
+                environment = GIT_ENVIRONMENT,
+                timeoutMillis = timeoutMillis,
+            ).withGitContext(args, timeoutMillis)
+    }
 }
+
+private fun gitTimeout(args: List<String>): Long =
+    if (args.firstOrNull() in NETWORK_GIT_OPERATIONS) NETWORK_GIT_TIMEOUT_MILLIS else LOCAL_GIT_TIMEOUT_MILLIS
+
+private fun <T> Result<T>.withGitContext(
+    args: List<String>,
+    timeoutMillis: Long,
+): Result<T> {
+    val cause = exceptionOrNull() ?: return this
+    if (cause is CancellationException) throw cause
+
+    val operation = args.firstOrNull().orEmpty().ifBlank { "command" }
+    val message =
+        if (cause is TimeoutException) {
+            val advice =
+                if (operation in NETWORK_GIT_OPERATIONS) {
+                    "Check the remote URL, network connection, and credentials."
+                } else {
+                    "Check that Git is available and the repository is responsive."
+                }
+            "git $operation timed out after ${timeoutMillis / 1_000} seconds. $advice"
+        } else {
+            "git $operation could not be executed: ${cause.message ?: cause::class.simpleName}"
+        }
+    return Result.failure(IOException(message, cause))
+}
+
+private inline fun <T> gitCatching(block: () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (error: Throwable) {
+        Result.failure(error)
+    }
