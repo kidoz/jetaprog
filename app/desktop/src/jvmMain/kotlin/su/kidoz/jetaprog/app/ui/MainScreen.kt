@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import su.kidoz.jetaprog.app.JetaProgApplication
+import su.kidoz.jetaprog.app.PendingProjectTransition
 import su.kidoz.jetaprog.app.ProjectSession
 import su.kidoz.jetaprog.app.database.DatabaseEffect
 import su.kidoz.jetaprog.app.gradle.GradleSyncState
@@ -418,7 +419,6 @@ private fun MainScreenContent(
     val currentProjectPath = session.projectPath
     val notificationCenter = app.notificationCenter
     var editorConfirmation by remember(session) { mutableStateOf<EditorEffect.ShowConfirmation?>(null) }
-    var showCloseProjectConfirmation by remember(session) { mutableStateOf(false) }
 
     DisposableEffect(gradleSyncState, session) {
         val failure = gradleSyncState as? GradleSyncState.Failed
@@ -700,11 +700,7 @@ private fun MainScreenContent(
                 onOpenFile = openFile,
                 onSaveAs = saveFileAs,
                 onCloseProject = {
-                    if (editorState.hasUnsavedChanges) {
-                        showCloseProjectConfirmation = true
-                    } else {
-                        coroutineScope.launch { app.closeProject() }
-                    }
+                    coroutineScope.launch { app.closeProject() }
                 },
                 onSettings = { app.settingsViewModel.dispatch(SettingsIntent.Show) },
             )
@@ -1447,24 +1443,6 @@ private fun MainScreenContent(
             )
         }
 
-        if (showCloseProjectConfirmation) {
-            ConfirmationDialog(
-                title = "Close project?",
-                message = "The project has unsaved files. Closing it will discard those changes.",
-                confirmLabel = "Close Project",
-                onConfirm = {
-                    showCloseProjectConfirmation = false
-                    coroutineScope.launch { app.closeProject() }
-                },
-                onDismiss = { showCloseProjectConfirmation = false },
-                alternateLabel = "Save All",
-                onAlternate = {
-                    showCloseProjectConfirmation = false
-                    session.editorViewModel.dispatch(EditorIntent.SaveAll)
-                },
-            )
-        }
-
         // Rename refactoring (Shift+F6)
         val renamePlan by session.renamePlan.collectAsState()
         RenameDialog(
@@ -1500,6 +1478,45 @@ private fun MainScreenContent(
         NotificationOverlay(
             center = notificationCenter,
             modifier = Modifier.padding(bottom = Dimensions.statusBarHeight.dp),
+        )
+    }
+}
+
+@Composable
+internal fun ProjectTransitionDialog(
+    transition: PendingProjectTransition,
+    onDiscard: () -> Unit,
+    onCancel: () -> Unit,
+    onSaveAll: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val (title, message) =
+        when (transition) {
+            is PendingProjectTransition.OpenProject -> {
+                "Open project?" to
+                    "The current project has unsaved files. Save them before opening another project, " +
+                    "or discard those changes."
+            }
+
+            PendingProjectTransition.CloseProject -> {
+                "Close project?" to
+                    "The project has unsaved files. Save them before closing the project, or discard those changes."
+            }
+
+            PendingProjectTransition.Exit -> {
+                "Exit JetaProg?" to
+                    "There are unsaved files. Save them before exiting, or discard those changes."
+            }
+        }
+    Box(modifier = modifier) {
+        ConfirmationDialog(
+            title = title,
+            message = message,
+            confirmLabel = "Discard",
+            onConfirm = onDiscard,
+            onDismiss = onCancel,
+            alternateLabel = "Save All",
+            onAlternate = onSaveAll,
         )
     }
 }

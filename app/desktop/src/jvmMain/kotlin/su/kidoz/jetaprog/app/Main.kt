@@ -26,9 +26,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,14 +43,14 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import su.kidoz.jetaprog.app.ui.MainScreen
+import su.kidoz.jetaprog.app.ui.ProjectTransitionDialog
 import su.kidoz.jetaprog.app.ui.components.rememberJetaProgIcon
-import su.kidoz.jetaprog.app.ui.dialogs.ConfirmationDialog
 import su.kidoz.jetaprog.app.ui.theme.Dimensions
 import su.kidoz.jetaprog.app.ui.theme.JetaProgTheme
 import su.kidoz.jetaprog.app.ui.theme.LocalIntelliJColors
-import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.settings.model.AppearanceSettings
 import su.kidoz.jetaprog.settings.model.Theme
 import java.awt.Cursor
@@ -68,7 +67,8 @@ public fun main(): Unit =
         val iconPainter = rememberJetaProgIcon()
 
         val app = remember { JetaProgApplication() }
-        var showExitConfirmation by remember { mutableStateOf(false) }
+        val transitionScope = rememberCoroutineScope()
+        val pendingTransition by app.pendingProjectTransition.collectAsState()
         // The stored appearance setting picks the palette; SYSTEM follows the OS.
         val appearance by app.appearanceSettings.collectAsState(initial = AppearanceSettings.DEFAULT)
         val darkTheme =
@@ -78,16 +78,7 @@ public fun main(): Unit =
                 Theme.SYSTEM -> isSystemInDarkTheme()
             }
         val requestExit: () -> Unit = {
-            if (app.session.value
-                    ?.editorViewModel
-                    ?.state
-                    ?.value
-                    ?.hasUnsavedChanges == true
-            ) {
-                showExitConfirmation = true
-            } else {
-                exitApplication()
-            }
+            app.requestExit { exitApplication() }
         }
 
         Window(
@@ -131,22 +122,24 @@ public fun main(): Unit =
                         if (windowState.placement == WindowPlacement.Floating) {
                             WindowResizeHandles(window)
                         }
-                        if (showExitConfirmation) {
-                            ConfirmationDialog(
-                                title = "Exit JetaProg?",
-                                message = "There are unsaved files. Exiting will discard those changes.",
-                                confirmLabel = "Exit",
-                                onConfirm = {
-                                    showExitConfirmation = false
-                                    exitApplication()
+                        pendingTransition?.let { transition ->
+                            ProjectTransitionDialog(
+                                transition = transition,
+                                onDiscard = {
+                                    transitionScope.launch {
+                                        if (app.discardPendingProjectTransition() is PendingProjectTransition.Exit) {
+                                            exitApplication()
+                                        }
+                                    }
                                 },
-                                onDismiss = { showExitConfirmation = false },
-                                alternateLabel = "Save All",
-                                onAlternate = {
-                                    showExitConfirmation = false
-                                    app.session.value
-                                        ?.editorViewModel
-                                        ?.dispatch(EditorIntent.SaveAll)
+                                onCancel = app::cancelPendingProjectTransition,
+                                onSaveAll = {
+                                    transitionScope.launch {
+                                        val resumed = app.saveAllAndResumePendingProjectTransition()
+                                        if (resumed is PendingProjectTransition.Exit) {
+                                            exitApplication()
+                                        }
+                                    }
                                 },
                             )
                         }

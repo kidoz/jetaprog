@@ -31,6 +31,7 @@ import su.kidoz.jetaprog.app.viewmodel.NewProjectViewModel
 import su.kidoz.jetaprog.app.viewmodel.SettingsViewModel
 import su.kidoz.jetaprog.database.JvmDatabaseProfileStore
 import su.kidoz.jetaprog.database.SessionDatabaseCredentialStore
+import su.kidoz.jetaprog.editor.state.EditorIntent
 import su.kidoz.jetaprog.lint.engine.DefaultLintEngine
 import su.kidoz.jetaprog.lint.provider.LintProviderRegistry
 import su.kidoz.jetaprog.mcp.server.EmbeddedMcpServer
@@ -202,15 +203,39 @@ public class JetaProgApplication {
      */
     public val session: StateFlow<ProjectSession?> = _session.asStateFlow()
 
+    private val projectTransitions =
+        ProjectTransitionGuard(
+            hasUnsavedChanges = {
+                _session.value
+                    ?.editorViewModel
+                    ?.state
+                    ?.value
+                    ?.hasUnsavedChanges == true
+            },
+            saveAll = {
+                val currentSession = _session.value ?: return@ProjectTransitionGuard false
+                val savedState = currentSession.editorViewModel.perform(EditorIntent.SaveAll)
+                _session.value === currentSession && !savedState.hasUnsavedChanges
+            },
+            openProjectAction = ::replaceProject,
+            closeProjectAction = ::closeCurrentProject,
+        )
+
+    internal val pendingProjectTransition: StateFlow<PendingProjectTransition?> = projectTransitions.pending
+
     /**
      * Opens a project at the given path.
      *
-     * Shuts down the current session (if any) and creates a new [ProjectSession]
-     * with all project-scoped services initialized for the new path.
+     * Prompts before replacing a session with unsaved changes. Once the transition is
+     * allowed, shuts down the current session (if any) and initializes the new path.
      *
      * @param projectPath The root path of the project to open.
      */
     public suspend fun openProject(projectPath: String) {
+        projectTransitions.openProject(projectPath)
+    }
+
+    private suspend fun replaceProject(projectPath: String) {
         // Shut down the old session
         _session.value?.shutdown()
 
@@ -244,13 +269,31 @@ public class JetaProgApplication {
     }
 
     /**
-     * Closes the current project (if any) and returns to the Welcome Hub.
+     * Prompts for unsaved changes, then closes the project and returns to the Welcome Hub.
      */
     public suspend fun closeProject() {
+        projectTransitions.closeProject()
+    }
+
+    private suspend fun closeCurrentProject() {
         _session.value?.shutdown()
         _session.value = null
         welcomeViewModel.dispatch(WelcomeIntent.Refresh)
     }
+
+    internal fun requestExit(onExit: () -> Unit) {
+        projectTransitions.requestExit(onExit)
+    }
+
+    internal fun cancelPendingProjectTransition() {
+        projectTransitions.cancelPending()
+    }
+
+    internal suspend fun discardPendingProjectTransition(): PendingProjectTransition? =
+        projectTransitions.discardPending()
+
+    internal suspend fun saveAllAndResumePendingProjectTransition(): PendingProjectTransition? =
+        projectTransitions.saveAllAndResumePending()
 
     /**
      * Initializes the application.
@@ -335,6 +378,91 @@ public class JetaProgApplication {
             message = exception.message,
         )
     }
+}
+
+internal sealed interface PendingProjectTransition {
+    public data class OpenProject(
+        val projectPath: String,
+    ) : PendingProjectTransition
+
+    public data object CloseProject : PendingProjectTransition
+
+    public data object Exit : PendingProjectTransition
+}
+
+internal class ProjectTransitionGuard(
+    private val hasUnsavedChanges: () -> Boolean,
+    private val saveAll: suspend () -> Boolean,
+    private val openProjectAction: suspend (String) -> Unit,
+    private val closeProjectAction: suspend () -> Unit,
+) {
+    private val _pending = MutableStateFlow<PendingProjectTransition?>(null)
+    public val pending: StateFlow<PendingProjectTransition?> = _pending.asStateFlow()
+
+    public suspend fun openProject(projectPath: String) {
+        request(PendingProjectTransition.OpenProject(projectPath))
+    }
+
+    public suspend fun closeProject() {
+        request(PendingProjectTransition.CloseProject)
+    }
+
+    public fun requestExit(onExit: () -> Unit) {
+        if (_pending.value != null) return
+        if (hasUnsavedChanges()) {
+            _pending.compareAndSet(null, PendingProjectTransition.Exit)
+        } else {
+            onExit()
+        }
+    }
+
+    public fun cancelPending() {
+        _pending.value = null
+    }
+
+    public suspend fun discardPending(): PendingProjectTransition? {
+        val transition = takePending() ?: return null
+        return resume(transition)
+    }
+
+    public suspend fun saveAllAndResumePending(): PendingProjectTransition? {
+        val transition = takePending() ?: return null
+        if (!saveAll()) return null
+        return resume(transition)
+    }
+
+    private fun takePending(): PendingProjectTransition? {
+        while (true) {
+            val pending = _pending.value ?: return null
+            if (_pending.compareAndSet(pending, null)) return pending
+        }
+    }
+
+    private suspend fun request(transition: PendingProjectTransition) {
+        if (_pending.value != null) return
+        if (hasUnsavedChanges()) {
+            _pending.compareAndSet(null, transition)
+        } else {
+            resume(transition)
+        }
+    }
+
+    private suspend fun resume(transition: PendingProjectTransition): PendingProjectTransition? =
+        when (transition) {
+            is PendingProjectTransition.OpenProject -> {
+                openProjectAction(transition.projectPath)
+                null
+            }
+
+            PendingProjectTransition.CloseProject -> {
+                closeProjectAction()
+                null
+            }
+
+            PendingProjectTransition.Exit -> {
+                transition
+            }
+        }
 }
 
 /**
