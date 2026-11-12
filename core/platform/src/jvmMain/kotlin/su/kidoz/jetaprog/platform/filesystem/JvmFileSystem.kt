@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.nio.charset.Charset
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileSystems
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -63,12 +64,37 @@ public class JvmFileSystem : FileSystem {
     ): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val p = Paths.get(path)
-                p.parent?.let { Files.createDirectories(it) }
-                Files.writeString(p, content, Charset.forName(charset))
-                Unit
+                val target = Paths.get(path).toAbsolutePath()
+                val parent = checkNotNull(target.parent) { "Cannot replace a filesystem root" }
+                Files.createDirectories(parent)
+                val encoding = Charset.forName(charset)
+                var temporary: Path? = null
+                try {
+                    val temporaryFile = Files.createTempFile(parent, ".${target.fileName}.", ".tmp")
+                    temporary = temporaryFile
+                    Files.writeString(temporaryFile, content, encoding)
+                    replaceFile(temporaryFile, target)
+                    Unit
+                } finally {
+                    temporary?.let { Files.deleteIfExists(it) }
+                }
             }
         }
+
+    /**
+     * Both replacement paths stay in one directory, so the non-atomic fallback never
+     * copies across filesystems or deletes the target before the replacement is ready.
+     */
+    private fun replaceFile(
+        source: Path,
+        target: Path,
+    ) {
+        try {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
 
     override suspend fun delete(path: String): Result<Unit> =
         withContext(Dispatchers.IO) {
