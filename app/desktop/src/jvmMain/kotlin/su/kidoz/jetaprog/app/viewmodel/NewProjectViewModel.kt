@@ -218,9 +218,19 @@ public class NewProjectViewModel(
         }
 
         if (currentState.packageName.isBlank()) {
-            errors["packageName"] = "Package name is required"
+            errors["packageName"] =
+                if (currentState.language == ProjectLanguage.GO) {
+                    "Module path is required"
+                } else {
+                    "Package name is required"
+                }
         } else if (!isValidPackageName(currentState.packageName)) {
-            errors["packageName"] = "Invalid package name"
+            errors["packageName"] =
+                if (currentState.language == ProjectLanguage.GO) {
+                    "Invalid module path"
+                } else {
+                    "Invalid package name"
+                }
         }
 
         return errors
@@ -228,10 +238,19 @@ public class NewProjectViewModel(
 
     private fun isValidProjectName(name: String): Boolean = name.matches(Regex("^[a-zA-Z][a-zA-Z0-9_-]*$"))
 
-    private fun isValidPackageName(name: String): Boolean = name.matches(Regex("^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$"))
+    private fun isValidPackageName(name: String): Boolean =
+        if (currentState.language == ProjectLanguage.GO) {
+            name.matches(Regex("^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)*$"))
+        } else {
+            name.matches(Regex("^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$"))
+        }
 
     private fun generatePackageName(projectName: String): String {
         val sanitized = projectName.lowercase().replace(Regex("[^a-z0-9]"), "")
-        return "com.example.$sanitized"
+        return if (currentState.language == ProjectLanguage.GO) {
+            "example.com/$sanitized"
+        } else {
+            "com.example.$sanitized"
+        }
     }
 }

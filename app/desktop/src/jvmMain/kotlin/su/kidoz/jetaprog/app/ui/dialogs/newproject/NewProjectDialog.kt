@@ -312,6 +312,7 @@ private fun Step2Content(
                 ProjectLanguage.RUST -> "Crate Name"
                 ProjectLanguage.CPP -> "Project Name"
                 ProjectLanguage.VALA -> "Namespace"
+                ProjectLanguage.GO -> "Module Path"
             }
 
         val packagePlaceholder =
@@ -320,6 +321,7 @@ private fun Step2Content(
                 ProjectLanguage.RUST -> "my_crate"
                 ProjectLanguage.CPP -> "myproject"
                 ProjectLanguage.VALA -> "MyApp"
+                ProjectLanguage.GO -> "example.com/myapp"
             }
 
         IntelliJTextField(
@@ -363,6 +365,7 @@ private fun Step3Content(
                 ProjectLanguage.RUST -> "Rust Version"
                 ProjectLanguage.CPP -> "C++ Standard"
                 ProjectLanguage.VALA -> "Vala Version"
+                ProjectLanguage.GO -> "Go Version"
             }
 
         IntelliJDropdown(

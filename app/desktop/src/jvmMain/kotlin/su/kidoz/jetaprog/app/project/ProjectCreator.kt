@@ -44,6 +44,7 @@ public class ProjectCreator(
                 is RustCargoTemplate -> createRustCargoProject(config)
                 is CppMesonTemplate -> createCppMesonProject(config)
                 is ValaMesonTemplate -> createValaMesonProject(config)
+                is GoModuleTemplate -> createGoModuleProject(config)
             }
 
             // Create common files
@@ -581,6 +582,31 @@ public class ProjectCreator(
         )
     }
 
+    private suspend fun createGoModuleProject(config: ProjectConfig) {
+        val projectPath = config.projectPath
+        val goVersion = config.sdkVersion.ifEmpty { "1.25" }
+        writeFile(
+            "$projectPath/go.mod",
+            """
+            module ${config.packageName}
+
+            go $goVersion
+            """.trimIndent(),
+        )
+        writeFile(
+            "$projectPath/main.go",
+            """
+            package main
+
+            import "fmt"
+
+            func main() {
+            ${"\t"}fmt.Println("Hello, ${config.name}!")
+            }
+            """.trimIndent(),
+        )
+    }
+
     private suspend fun createReadme(config: ProjectConfig) {
         val languageName = config.template.language.displayName
 
@@ -630,6 +656,28 @@ public class ProjectCreator(
 
                     ```bash
                     cargo run
+                    ```
+                    """.trimIndent()
+                }
+
+                is GoModuleTemplate -> {
+                    """
+                    ## Build
+
+                    ```bash
+                    go build ./...
+                    ```
+
+                    ## Run
+
+                    ```bash
+                    go run .
+                    ```
+
+                    ## Test
+
+                    ```bash
+                    go test ./...
                     ```
                     """.trimIndent()
                 }
@@ -728,6 +776,25 @@ public class ProjectCreator(
                     # Rust/Cargo
                     /target/
                     Cargo.lock
+
+                    # IDE
+                    .idea/
+                    .vscode/
+
+                    # OS
+                    .DS_Store
+                    Thumbs.db
+                    """.trimIndent()
+                }
+
+                is GoModuleTemplate -> {
+                    """
+                    # Go
+                    /bin/
+                    /vendor/
+                    *.exe
+                    *.test
+                    *.out
 
                     # IDE
                     .idea/

@@ -50,6 +50,7 @@ public data class NewProjectState(
                 ProjectLanguage.RUST -> listOf("1.83", "1.82", "1.81", "1.80")
                 ProjectLanguage.CPP -> listOf("C++26", "C++23", "C++20", "C++17")
                 ProjectLanguage.VALA -> listOf("0.56", "0.54", "0.52", "0.48")
+                ProjectLanguage.GO -> listOf("1.25", "1.24", "1.23", "1.22")
             }
 
     /**

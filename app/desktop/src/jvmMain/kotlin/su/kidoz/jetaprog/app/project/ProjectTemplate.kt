@@ -21,6 +21,7 @@ public enum class ProjectLanguage(
     RUST("Rust"),
     CPP("C++"),
     VALA("Vala"),
+    GO("Go"),
 }
 
 /**
@@ -33,6 +34,7 @@ public enum class BuildTool(
     MAVEN("Maven"),
     CARGO("Cargo"),
     MESON("Meson"),
+    GO("Go"),
 }
 
 /**
@@ -45,6 +47,7 @@ public fun ProjectLanguage.availableBuildTools(): List<BuildTool> =
         ProjectLanguage.RUST -> listOf(BuildTool.CARGO)
         ProjectLanguage.CPP -> listOf(BuildTool.MESON)
         ProjectLanguage.VALA -> listOf(BuildTool.MESON)
+        ProjectLanguage.GO -> listOf(BuildTool.GO)
     }
 
 /**
@@ -121,6 +124,16 @@ public data object CppMesonTemplate : ProjectTemplate {
 }
 
 /**
+ * Go module with the standard Go toolchain.
+ */
+public data object GoModuleTemplate : ProjectTemplate {
+    override val name: String = "Go Module"
+    override val description: String = "Go module with go.mod, a main package, and the Go toolchain"
+    override val language: ProjectLanguage = ProjectLanguage.GO
+    override val buildTool: BuildTool = BuildTool.GO
+}
+
+/**
  * Vala project with Meson build system.
  */
 public data object ValaMesonTemplate : ProjectTemplate {
@@ -164,6 +177,10 @@ public fun getTemplate(
 
         ProjectLanguage.VALA -> {
             ValaMesonTemplate
+        }
+
+        ProjectLanguage.GO -> {
+            GoModuleTemplate
         }
     }
 
