@@ -384,6 +384,10 @@ public class ConfigurationViewModel(
                 executeGo(config)
             }
 
+            is ConfigurationSettings.GoDebug -> {
+                Result.failure(UnsupportedOperationException("Go debug requires the debug action"))
+            }
+
             is ConfigurationSettings.Node -> {
                 executeNode(config)
             }
@@ -1312,6 +1316,19 @@ public class ConfigurationViewModel(
                 )
             }
 
+            ConfigurationType.GO_DEBUG -> {
+                RunConfiguration(
+                    id = ConfigurationId.generate(),
+                    name = name,
+                    type = ConfigurationType.GO_DEBUG,
+                    settings =
+                        ConfigurationSettings.GoDebug(
+                            program = ".",
+                            workingDirectory = projectPath.ifBlank { null },
+                        ),
+                )
+            }
+
             ConfigurationType.NODE_RUN,
             ConfigurationType.NODE_BUILD,
             ConfigurationType.NODE_TEST,
@@ -1510,6 +1527,7 @@ public class ConfigurationViewModel(
             ConfigurationType.GO_BUILD -> "New Go Build"
             ConfigurationType.GO_RUN -> "New Go Run"
             ConfigurationType.GO_TEST -> "New Go Test"
+            ConfigurationType.GO_DEBUG -> "New Go Debug"
             ConfigurationType.NODE_RUN -> "New Node.js Run"
             ConfigurationType.NODE_BUILD -> "New Node.js Build"
             ConfigurationType.NODE_TEST -> "New Node.js Test"
@@ -1547,6 +1565,7 @@ public class ConfigurationViewModel(
             ConfigurationType.GO_BUILD -> "Go Build"
             ConfigurationType.GO_RUN -> "Go Run"
             ConfigurationType.GO_TEST -> "Go Test"
+            ConfigurationType.GO_DEBUG -> "Go Debug"
             ConfigurationType.NODE_RUN -> "Node.js Run"
             ConfigurationType.NODE_BUILD -> "Node.js Build"
             ConfigurationType.NODE_TEST -> "Node.js Test"

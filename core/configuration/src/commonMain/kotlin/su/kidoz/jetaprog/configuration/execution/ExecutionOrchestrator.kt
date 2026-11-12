@@ -265,6 +265,8 @@ public class ExecutionOrchestrator(
 
             is ConfigurationSettings.Go -> buildGoConfig(settings, workspacePath)
 
+            is ConfigurationSettings.GoDebug -> null
+
             is ConfigurationSettings.Node -> buildNodeConfig(settings, workspacePath)
 
             is ConfigurationSettings.Java -> buildJavaConfig(settings, workspacePath)

@@ -4,6 +4,7 @@ import su.kidoz.jetaprog.configuration.ConfigurationId
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationType
 import su.kidoz.jetaprog.configuration.GoCommand
+import su.kidoz.jetaprog.configuration.GoDebugMode
 import su.kidoz.jetaprog.configuration.JavaBuildTool
 import su.kidoz.jetaprog.configuration.JavaCommand
 import su.kidoz.jetaprog.configuration.NodePackageManager
@@ -366,6 +367,24 @@ public class ConfigurationDiscovery(
                         settings =
                             ConfigurationSettings.Go(
                                 command = GoCommand.RUN,
+                                workingDirectory = project.rootPath,
+                            ),
+                    ),
+                )
+            }
+
+            val debugName = "$baseName Debug"
+            if (debugName !in existingNames) {
+                configs.add(
+                    RunConfiguration(
+                        id = ConfigurationId.generate(),
+                        name = debugName,
+                        type = ConfigurationType.GO_DEBUG,
+                        isTemporary = false,
+                        settings =
+                            ConfigurationSettings.GoDebug(
+                                mode = GoDebugMode.DEBUG,
+                                program = ".",
                                 workingDirectory = project.rootPath,
                             ),
                     ),

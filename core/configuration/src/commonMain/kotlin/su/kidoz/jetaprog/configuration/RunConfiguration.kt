@@ -91,6 +91,10 @@ public enum class ConfigurationType(
     @SerialName("go_test")
     GO_TEST("Go Test", "go"),
 
+    /** Go debug session launched through Delve. */
+    @SerialName("go_debug")
+    GO_DEBUG("Go Debug", "go"),
+
     /** Node.js package run script. */
     @SerialName("node_run")
     NODE_RUN("Node.js Run", "javascript"),
@@ -452,6 +456,35 @@ public sealed interface ConfigurationSettings {
     ) : ConfigurationSettings
 
     /**
+     * Delve debug configuration.
+     *
+     * The adapter is `dlv dap`. [mode] selects Delve's launch mode, and [program] is the
+     * package, directory, or binary Delve builds or executes.
+     */
+    @Serializable
+    @SerialName("go_debug")
+    public data class GoDebug(
+        /** Delve launch mode. */
+        val mode: GoDebugMode = GoDebugMode.DEBUG,
+        /** Package path, directory, or executable. */
+        val program: String = ".",
+        /** Extra flags passed to the Go compiler by Delve. */
+        val buildFlags: String = "",
+        /** Arguments forwarded to the debugged program. */
+        val programArguments: List<String> = emptyList(),
+        /** Environment variables passed to the debuggee. */
+        val environment: Map<String, String> = emptyMap(),
+        /** Working directory. */
+        val workingDirectory: String? = null,
+        /** Debug adapter executable. */
+        val adapterCommand: String = "dlv",
+        /** Arguments that start the adapter in DAP mode. */
+        val adapterArguments: List<String> = listOf("dap"),
+        /** Stop at the program entry point. */
+        val stopOnEntry: Boolean = false,
+    ) : ConfigurationSettings
+
+    /**
      * Node.js package script configuration.
      */
     @Serializable
@@ -660,6 +693,28 @@ public enum class GoCommand(
     /** Run tests for the selected packages. */
     @SerialName("test")
     TEST("test"),
+}
+
+/**
+ * Delve launch mode.
+ *
+ * @property value Value sent as the DAP `mode` field.
+ */
+@Serializable
+public enum class GoDebugMode(
+    public val value: String,
+) {
+    /** Compile and debug the current package. */
+    @SerialName("debug")
+    DEBUG("debug"),
+
+    /** Debug a test binary. */
+    @SerialName("test")
+    TEST("test"),
+
+    /** Debug a prebuilt executable. */
+    @SerialName("exec")
+    EXEC("exec"),
 }
 
 /**

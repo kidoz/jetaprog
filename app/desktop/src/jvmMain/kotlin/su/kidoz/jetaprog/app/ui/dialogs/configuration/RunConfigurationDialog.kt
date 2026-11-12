@@ -65,6 +65,7 @@ import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationState
 import su.kidoz.jetaprog.configuration.ConfigurationType
 import su.kidoz.jetaprog.configuration.DotNetConfigurationType
+import su.kidoz.jetaprog.configuration.GoDebugMode
 import su.kidoz.jetaprog.configuration.JavaBuildTool
 import su.kidoz.jetaprog.configuration.JavaCommand
 import su.kidoz.jetaprog.configuration.NodePackageManager
@@ -537,6 +538,13 @@ private fun ConfigurationEditorPanel(
 
             is ConfigurationSettings.Go -> {
                 GoSettingsEditor(
+                    settings = settings,
+                    onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
+                )
+            }
+
+            is ConfigurationSettings.GoDebug -> {
+                GoDebugSettingsEditor(
                     settings = settings,
                     onSettingsChange = { onConfigurationChange(configuration.copy(settings = it)) },
                 )
@@ -1124,6 +1132,80 @@ private fun GoSettingsEditor(
 }
 
 @Composable
+private fun GoDebugSettingsEditor(
+    settings: ConfigurationSettings.GoDebug,
+    onSettingsChange: (ConfigurationSettings.GoDebug) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)) {
+        GoDebugModeSelector(mode = settings.mode, onModeChange = { onSettingsChange(settings.copy(mode = it)) })
+
+        IntelliJTextField(
+            value = settings.program,
+            onValueChange = { onSettingsChange(settings.copy(program = it)) },
+            label = "Program:",
+            placeholder = ". for the current package, or a binary path in exec mode",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.buildFlags,
+            onValueChange = { onSettingsChange(settings.copy(buildFlags = it)) },
+            label = "Build flags:",
+            placeholder = "-tags=integration",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.programArguments.joinToString(" "),
+            onValueChange = { onSettingsChange(settings.copy(programArguments = parseArguments(it))) },
+            label = "Program arguments:",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        IntelliJTextField(
+            value = settings.workingDirectory ?: "",
+            onValueChange = { onSettingsChange(settings.copy(workingDirectory = it.ifBlank { null })) },
+            label = "Working directory:",
+            placeholder = "Project root by default",
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun GoDebugModeSelector(
+    mode: GoDebugMode,
+    onModeChange: (GoDebugMode) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var anchorHeightPx by remember { mutableStateOf(0) }
+    Box(modifier = Modifier.onSizeChanged { anchorHeightPx = it.height }) {
+        IntelliJButton(
+            text = "Mode: ${mode.value}",
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        PopupChromeMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            offsetY = anchorHeightPx,
+        ) {
+            GoDebugMode.entries.forEach { entry ->
+                PopupListRow(
+                    selected = entry == mode,
+                    onClick = {
+                        onModeChange(entry)
+                        expanded = false
+                    },
+                ) {
+                    Text(entry.value, color = LocalIntelliJColors.current.textPrimary, fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun NodeSettingsEditor(
     settings: ConfigurationSettings.Node,
     onSettingsChange: (ConfigurationSettings.Node) -> Unit,
@@ -1672,6 +1754,7 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.GO_BUILD -> Icons.Filled.Build
         ConfigurationType.GO_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.GO_TEST -> Icons.Filled.PlayArrow
+        ConfigurationType.GO_DEBUG -> Icons.Default.BugReport
         ConfigurationType.NODE_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.NODE_BUILD -> Icons.Filled.Build
         ConfigurationType.NODE_TEST -> Icons.Filled.PlayArrow
@@ -1705,6 +1788,7 @@ private val configurationCreationTypes =
         ConfigurationType.GO_RUN,
         ConfigurationType.GO_BUILD,
         ConfigurationType.GO_TEST,
+        ConfigurationType.GO_DEBUG,
         ConfigurationType.NODE_RUN,
         ConfigurationType.NODE_BUILD,
         ConfigurationType.NODE_TEST,

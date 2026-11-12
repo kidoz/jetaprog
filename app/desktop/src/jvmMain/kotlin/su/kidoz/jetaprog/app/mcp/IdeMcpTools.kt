@@ -654,6 +654,10 @@ private fun configurationTarget(settings: ConfigurationSettings): String =
             "${settings.command.value} ${settings.packagePattern}"
         }
 
+        is ConfigurationSettings.GoDebug -> {
+            "${settings.mode.value} ${settings.program}"
+        }
+
         is ConfigurationSettings.Node -> {
             "${settings.packageManager.executable} ${settings.script}"
         }

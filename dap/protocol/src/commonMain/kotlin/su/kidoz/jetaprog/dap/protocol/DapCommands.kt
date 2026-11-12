@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.dap.protocol
 
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -77,6 +78,12 @@ public data class LaunchRequestArguments(
     val attachTimeoutMs: Long? = null,
     /** Source roots used to resolve compiled locations back to files (JVM adapter). */
     val sourceRoots: List<String>? = null,
+    /** Delve launch mode: `debug`, `test`, or `exec`. Omitted for other adapters. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val mode: String? = null,
+    /** Extra compiler flags Delve forwards to `go build`. Omitted when unset. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val buildFlags: String? = null,
 )
 
 /**

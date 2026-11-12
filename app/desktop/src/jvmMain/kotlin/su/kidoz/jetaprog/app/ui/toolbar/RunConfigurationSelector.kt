@@ -476,6 +476,10 @@ private fun RunConfiguration.subtitle(): String? =
             "go ${s.command.value} ${s.packagePattern}"
         }
 
+        is ConfigurationSettings.GoDebug -> {
+            "dlv ${s.mode.value} ${s.program}"
+        }
+
         is ConfigurationSettings.Node -> {
             "${s.packageManager.executable} run ${s.script}"
         }
@@ -534,6 +538,7 @@ private fun ConfigurationType.toIcon(): ImageVector =
         ConfigurationType.GO_BUILD -> Icons.Filled.Build
         ConfigurationType.GO_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.GO_TEST -> Icons.Filled.PlayArrow
+        ConfigurationType.GO_DEBUG -> Icons.Default.BugReport
         ConfigurationType.NODE_RUN -> Icons.Filled.PlayArrow
         ConfigurationType.NODE_BUILD -> Icons.Filled.Build
         ConfigurationType.NODE_TEST -> Icons.Filled.PlayArrow

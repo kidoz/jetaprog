@@ -164,6 +164,8 @@ public class DebugService(
 
             is ConfigurationSettings.DotNetDebug -> getDotNetDebugAdapter(settings, workspacePath)
 
+            is ConfigurationSettings.GoDebug -> getGoDebugAdapter(settings, workspacePath)
+
             else -> null
         }
 
@@ -213,6 +215,16 @@ public class DebugService(
             workingDirectory = settings.workingDirectory ?: workspacePath,
         )
 
+    private fun getGoDebugAdapter(
+        settings: ConfigurationSettings.GoDebug,
+        workspacePath: String,
+    ): DebugAdapterConfig =
+        DebugAdapterConfig(
+            command = listOf(settings.adapterCommand) + settings.adapterArguments,
+            workingDirectory = settings.workingDirectory ?: workspacePath,
+            environment = settings.environment,
+        )
+
     private fun getAdapterId(configuration: RunConfiguration): String =
         when (configuration.settings) {
             is ConfigurationSettings.Gradle -> "jetaprog-jvm"
@@ -227,6 +239,8 @@ public class DebugService(
             -> "codelldb"
 
             is ConfigurationSettings.DotNetDebug -> "coreclr"
+
+            is ConfigurationSettings.GoDebug -> "delve"
 
             else -> "generic"
         }
@@ -284,6 +298,20 @@ public class DebugService(
 
             is ConfigurationSettings.DotNetDebug -> {
                 buildDotNetLaunchArgs(settings, workspacePath)
+            }
+
+            is ConfigurationSettings.GoDebug -> {
+                Result.success(
+                    LaunchRequestArguments(
+                        program = settings.program,
+                        args = settings.programArguments,
+                        cwd = settings.workingDirectory ?: workspacePath,
+                        env = settings.environment,
+                        stopOnEntry = settings.stopOnEntry,
+                        mode = settings.mode.value,
+                        buildFlags = settings.buildFlags.takeIf { it.isNotBlank() },
+                    ),
+                )
             }
 
             else -> {

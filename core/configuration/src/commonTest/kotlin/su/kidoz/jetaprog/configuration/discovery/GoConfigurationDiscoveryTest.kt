@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runTest
 import su.kidoz.jetaprog.configuration.ConfigurationSettings
 import su.kidoz.jetaprog.configuration.ConfigurationType
 import su.kidoz.jetaprog.configuration.GoCommand
+import su.kidoz.jetaprog.configuration.GoDebugMode
 import su.kidoz.jetaprog.platform.filesystem.FileEntry
 import su.kidoz.jetaprog.platform.filesystem.FileSystem
 import su.kidoz.jetaprog.platform.filesystem.FileSystemEvent
@@ -28,9 +29,17 @@ class GoConfigurationDiscoveryTest {
 
             val configurations = discovery.discoverConfigurations("/workspace")
 
-            assertEquals(listOf("server Build", "server Run", "server Test"), configurations.map { it.name })
             assertEquals(
-                listOf(ConfigurationType.GO_BUILD, ConfigurationType.GO_RUN, ConfigurationType.GO_TEST),
+                listOf("server Build", "server Run", "server Debug", "server Test"),
+                configurations.map { it.name },
+            )
+            assertEquals(
+                listOf(
+                    ConfigurationType.GO_BUILD,
+                    ConfigurationType.GO_RUN,
+                    ConfigurationType.GO_DEBUG,
+                    ConfigurationType.GO_TEST,
+                ),
                 configurations.map { it.type },
             )
 
@@ -42,7 +51,12 @@ class GoConfigurationDiscoveryTest {
             assertEquals(GoCommand.RUN, run.command)
             assertEquals(".", run.packagePattern)
 
-            val test = assertIs<ConfigurationSettings.Go>(configurations[2].settings)
+            val debug = assertIs<ConfigurationSettings.GoDebug>(configurations[2].settings)
+            assertEquals(GoDebugMode.DEBUG, debug.mode)
+            assertEquals(".", debug.program)
+            assertEquals("dlv", debug.adapterCommand)
+
+            val test = assertIs<ConfigurationSettings.Go>(configurations[3].settings)
             assertEquals(GoCommand.TEST, test.command)
             assertEquals(listOf("-json"), test.arguments)
             assertEquals("./...", test.packagePattern)
