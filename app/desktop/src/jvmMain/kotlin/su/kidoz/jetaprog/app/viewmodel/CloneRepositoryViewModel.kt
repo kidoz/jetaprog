@@ -1,5 +1,6 @@
 package su.kidoz.jetaprog.app.viewmodel
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,9 +38,9 @@ public class CloneRepositoryViewModel(
             }
 
             CloneRepositoryIntent.Hide -> {
-                if (!currentState.isCloning) {
-                    updateState { CloneRepositoryState(isVisible = false) }
-                }
+                cloneJob?.cancel()
+                cloneJob = null
+                updateState { CloneRepositoryState(isVisible = false) }
             }
 
             is CloneRepositoryIntent.SetRepositoryUrl -> {
@@ -78,6 +79,7 @@ public class CloneRepositoryViewModel(
 
     private fun startClone() {
         val state = currentState
+        if (state.isCloning) return
         val url = state.repositoryUrl.trim()
         val projectName = state.projectName.trim()
         val destinationDirectory = state.destinationDirectory.trim()
@@ -124,6 +126,7 @@ public class CloneRepositoryViewModel(
                         emitEffect(CloneRepositoryEffect.Cloned(targetPath))
                     },
                     onFailure = { error ->
+                        if (error is CancellationException) throw error
                         updateState {
                             copy(
                                 isCloning = false,
@@ -143,18 +146,32 @@ public class CloneRepositoryViewModel(
     private suspend fun runClone(
         url: String,
         targetPath: String,
-    ): Result<Unit> =
-        runCatching {
-            val process =
+    ): Result<Unit> {
+        val process =
+            try {
                 processExecutor
                     .start(
                         config =
                             ProcessConfig(
                                 command = listOf("git", "clone", "--progress", url, targetPath),
                                 workingDirectory = null,
+                                environment =
+                                    mapOf(
+                                        "GIT_TERMINAL_PROMPT" to "0",
+                                        "GIT_SSH_COMMAND" to "ssh -oBatchMode=yes",
+                                        "SSH_ASKPASS_REQUIRE" to "never",
+                                        "GCM_INTERACTIVE" to "never",
+                                    ),
                             ),
                     ).getOrThrow()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                return Result.failure(error)
+            }
 
+        var processExited = false
+        return try {
             process.output.collect { output ->
                 val line =
                     when (output) {
@@ -169,10 +186,21 @@ public class CloneRepositoryViewModel(
             }
 
             val exitCode = process.waitFor()
+            processExited = true
             if (exitCode != 0) {
                 error("git clone failed (exit code $exitCode). Check the URL and your credentials.")
             }
+            Result.success(Unit)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Throwable) {
+            Result.failure(error)
+        } finally {
+            if (!processExited) {
+                process.kill()
+            }
         }
+    }
 
     override fun dispose() {
         cloneJob?.cancel()

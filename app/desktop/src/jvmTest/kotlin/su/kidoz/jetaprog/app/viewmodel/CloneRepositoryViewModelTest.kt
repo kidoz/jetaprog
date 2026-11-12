@@ -3,14 +3,19 @@ package su.kidoz.jetaprog.app.viewmodel
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withTimeout
 import su.kidoz.jetaprog.app.ui.dialogs.clone.CloneRepositoryEffect
 import su.kidoz.jetaprog.app.ui.dialogs.clone.CloneRepositoryIntent
 import su.kidoz.jetaprog.platform.process.ProcessExecutor
@@ -34,7 +39,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 public class CloneRepositoryViewModelTest {
     private val executor: ProcessExecutor = mockk()
-    private val process: RunningProcess = mockk()
+    private val process: RunningProcess = mockk(relaxUnitFun = true)
     private lateinit var tempDir: File
 
     @BeforeTest
@@ -138,11 +143,41 @@ public class CloneRepositoryViewModelTest {
             coEvery { process.waitFor() } returns 128
 
             val viewModel = shownViewModel()
-            viewModel.dispatch(CloneRepositoryIntent.SetRepositoryUrl("https://example.com/nope.git"))
+            viewModel.dispatch(CloneRepositoryIntent.SetRepositoryUrl("https://example.com/user/nope.git"))
             viewModel.dispatch(CloneRepositoryIntent.Clone)
 
             val state = viewModel.state.first { it.error != null }
             assertFalse(state.isCloning)
             assertTrue(state.error.orEmpty().contains("exit code 128"))
+        }
+
+    @Test
+    fun cancelRunningCloneKillsProcessAndHidesDialog() =
+        runBlocking {
+            val started = CompletableDeferred<Unit>()
+            val killed = CompletableDeferred<Unit>()
+            coEvery { executor.start(any()) } coAnswers {
+                started.complete(Unit)
+                Result.success(process)
+            }
+            every { process.output } returns flow { awaitCancellation() }
+            every { process.kill() } answers {
+                killed.complete(Unit)
+                return@answers Unit
+            }
+
+            val viewModel = shownViewModel()
+            viewModel.dispatch(CloneRepositoryIntent.SetRepositoryUrl("https://example.com/user/sample.git"))
+            viewModel.dispatch(CloneRepositoryIntent.Clone)
+            withTimeout(5_000) { started.await() }
+
+            viewModel.perform(CloneRepositoryIntent.Hide)
+
+            withTimeout(5_000) { killed.await() }
+            val state = viewModel.state.value
+            assertFalse(state.isVisible)
+            assertFalse(state.isCloning)
+            assertNull(state.error)
+            viewModel.dispose()
         }
 }

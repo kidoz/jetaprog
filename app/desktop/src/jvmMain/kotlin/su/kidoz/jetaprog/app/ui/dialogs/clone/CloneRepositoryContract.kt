@@ -36,7 +36,7 @@ public sealed interface CloneRepositoryIntent : Intent {
     /** Show the dialog with defaults. */
     public data object Show : CloneRepositoryIntent
 
-    /** Hide the dialog (no-op while a clone is running). */
+    /** Hide the dialog, cancelling the clone if one is running. */
     public data object Hide : CloneRepositoryIntent
 
     /** Update the repository URL; re-derives the project name from it. */
