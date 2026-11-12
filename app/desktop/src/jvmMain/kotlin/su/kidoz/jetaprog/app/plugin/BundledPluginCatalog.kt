@@ -67,7 +67,7 @@ public object BundledPluginCatalog {
             BundledPluginInfo(
                 id = "su.kidoz.jetaprog.go",
                 name = "Go Language Support",
-                description = "Go support with gopls navigation, diagnostics, completion, and gofmt formatting",
+                description = "Go support with gopls, Go modules and workspaces, gofmt, golangci-lint, and Delve",
                 version = "1.0.0",
             ),
             BundledPluginInfo(
